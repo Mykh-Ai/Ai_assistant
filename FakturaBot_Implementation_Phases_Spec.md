@@ -40,43 +40,46 @@ A minimal bot starts successfully and responds to `/start`.
 
 ---
 
-## Phase 1 — Voice Input Smoke Test
+## Phase 1 — Voice-to-Draft Smoke Test
 
 ### Goal
-Prove the core wow-channel works technically: voice message → speech-to-text.
+Prove the first real wow-path: voice message → STT → AI draft parsing → simple understanding preview in chat.
 
 ### In scope
 - receive Telegram voice message
 - download audio file
 - store temporary file
 - send audio to Whisper STT
-- return recognized text back to Telegram chat
-- basic error handling for unsupported/failed STT
+- pass recognized text into AI draft parsing
+- show simple chat preview like “ось що я зрозумів”
+- basic error handling for failed STT or failed draft parsing
 
 ### Out of scope
-- invoice parsing
+- DB save
 - PDF generation
-- contact detection
+- email sending
+- final invoice creation
 - contract extraction
 
 ### Deliverable
-User sends a voice message and receives recognized text back in chat.
+User sends a voice message and receives a simple parsed invoice-intent preview in chat.
 
 ### Exit criteria
 - Telegram voice input handled end-to-end
 - temporary file lifecycle is controlled
 - Whisper/STT integration works reliably on test cases
+- AI draft parsing produces a usable preview from test inputs
+- preview reflects parsed intent, not only raw recognized text
 - failure path gives understandable message
-
 ---
 
 ## Phase 2 — Supplier Onboarding
 
 ### Goal
-Create the supplier profile required for all future invoice flows.
+Create the minimal supplier profile required for all future invoice flows.
 
 ### In scope
-- manual supplier onboarding flow
+- minimal manual supplier onboarding flow
 - fields:
   - name / obchodné meno
   - IČO
@@ -90,9 +93,10 @@ Create the supplier profile required for all future invoice flows.
   - SMTP settings
 - validation of critical fields
 - save/update supplier profile in DB
+- simple sequential chat-based flow without fancy UI or premature polishing
 
 ### Deliverable
-One complete local supplier profile can be created and edited.
+One complete local supplier profile can be created and edited through a simple chat-based flow.
 
 ### Exit criteria
 - supplier can be created from chat
@@ -105,17 +109,18 @@ One complete local supplier profile can be created and edited.
 ## Phase 3 — Manual Contact Creation
 
 ### Goal
-Add local customer/contact cards manually.
+Add local customer/contact cards manually with a minimal chat-based flow.
 
 ### In scope
-- create contact flow
-- edit contact flow
+- minimal create contact flow
+- minimal edit contact flow
 - save contact in local DB
 - list contacts
 - select contact from local address book
+- no fancy UI or premature polishing
 
 ### Deliverable
-Contacts can be manually added and reused later.
+Contacts can be manually added and reused later through a simple sequential chat-based flow.
 
 ### Exit criteria
 - contact record can be created
@@ -182,7 +187,9 @@ A confirmed invoice generates a PDF with QR code.
 
 ### Exit criteria
 - PDF file is created successfully
-- invoice numbering works on final confirmation/save
+- invoice number is assigned only at final confirmation/save
+- invoice number is not duplicated
+- numbering remains sequential
 - Pay by Square QR contains correct payment fields
 - stored file path is linked to invoice record
 
@@ -206,6 +213,8 @@ Confirmed invoice PDF can be emailed directly from the bot.
 
 ### Exit criteria
 - email sends successfully using configured SMTP
+- SMTP connection uses TLS/SSL
+- insecure plain-text SMTP mode is rejected / not accepted
 - PDF attachment included
 - invoice status updated
 - failures are surfaced clearly
@@ -215,35 +224,37 @@ Confirmed invoice PDF can be emailed directly from the bot.
 ## Phase 7 — Contract-Based Contact Extraction
 
 ### Goal
-Allow adding a customer/contact from a contract using AI-assisted extraction.
+Allow adding a customer/contact from a text-based PDF contract using AI-assisted extraction.
 
 ### In scope
-- upload PDF/photo contract
+- upload PDF contract
 - save original file in `storage/contracts/`
-- extract document text:
-  - PDF text extraction for text-based PDFs
-  - vision/OCR fallback for photos or scanned PDFs
-- LLM extraction of customer block
+- text extraction from text-based PDF
+- LLM extraction of customer block into structured JSON
 - strict focus on customer/orderer side, not contractor side
 - validation of extracted identifiers
 - preview card
 - user confirm / edit / cancel
 - save contact with contract file reference
+- manual fallback when automatic text extraction is not available
 
 ### Core rule
 Do not auto-save extracted data.
 
 **Python orchestrates → AI extracts → Python validates → user confirms**
 
+If text cannot be extracted from the PDF, the bot must report that automatic extraction is unavailable and offer manual contact entry instead.
+
 ### Deliverable
-A contact can be created from a contract with the original document archived.
+A contact can be created from a text-based PDF contract with the original document archived, or the user is routed to manual entry when automatic extraction is not available.
 
 ### Exit criteria
 - contract file stored locally
-- extracted customer preview shown
+- extracted customer preview shown for text-based PDF input
 - wrong-side extraction is guarded against
+- no OCR/Vision pipeline is used inside MVP for scanned/image-based PDFs
+- failed text extraction leads to clear manual fallback
 - confirmed contact saved with contract path
-
 ---
 
 ## Phase Discipline
@@ -252,7 +263,7 @@ A contact can be created from a contract with the original document archived.
 Recommended order:
 
 1. Phase 0 — skeleton
-2. Phase 1 — voice smoke test
+2. Phase 1 — voice-to-draft smoke test
 3. Phase 2 — supplier onboarding
 4. Phase 3 — manual contact creation
 5. Phase 4 — invoice draft from text/voice
@@ -261,7 +272,8 @@ Recommended order:
 8. Phase 7 — contract extraction
 
 ### Why this order
-- voice is a key product differentiator, so it should be proven early
+- the early wow-effect should prove not only STT, but also draft understanding preview
+- supplier onboarding and manual contacts should stay minimal and chat-based so they do not kill momentum
 - supplier and contact data must exist before real invoice generation
 - PDF and email only make sense after invoice draft flow exists
 - contract extraction is valuable, but belongs after the basic invoice engine works

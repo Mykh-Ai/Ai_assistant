@@ -1,7 +1,37 @@
-﻿# PROJECT_LOG
+# PROJECT_LOG
 
 Журнал ходу проєкту.
 Фіксує не лише зміну коду, а й зміну рішень, логіки, scope та концепції.
+
+---
+
+## 2026-03-31 — Session 002 — Phase 0 implementation skeleton
+
+### Що вирішено
+
+- docs bootstrap вважається завершеним;
+- стартував Phase 0 implementation skeleton;
+- серверний deploy свідомо відкладено;
+- поточна ціль — підготувати локальний runnable каркас без feature-логіки.
+
+### Що змінено
+
+- створено базову структуру `bot/`, `prompts/`, `storage/`;
+- додано мінімальний `config.py` з читанням `.env`;
+- додано SQLite bootstrap з початковою таблицею `supplier`;
+- додано мінімальний `/start` handler і запуск aiogram polling;
+- додано `.env.example`, `requirements.txt`, `Dockerfile`, `docker-compose.yml`.
+
+### Що свідомо не робилось
+
+- не реалізовувались voice / Whisper / LLM draft / PDF / email / contract extraction;
+- не виконувався серверний deploy;
+- не додавались internet lookup, SaaS/multi-tenant або інші модулі поза Phase 0.
+
+### Що далі
+
+- наступна ціль — ранній voice/draft flow;
+- після цього — мінімальний onboarding та contacts у chat-based стилі.
 
 ---
 

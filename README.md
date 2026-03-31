@@ -81,3 +81,9 @@ AI не є джерелом істини.
 - боти для запису клієнтів,
 - боти для заявок,
 - інші Telegram-боти під конкретні бізнес-процеси.
+## Phase 0 Run
+
+1. Copy `.env.example` to `.env` and set `BOT_TOKEN`.
+2. Install dependencies: `pip install -r requirements.txt`
+3. Start locally: `python -m bot.main`
+4. Or start with Docker: `docker compose up --build`

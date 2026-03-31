@@ -1,0 +1,1 @@
+"""FakturaBot package skeleton."""
