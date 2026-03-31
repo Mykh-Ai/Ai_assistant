@@ -149,3 +149,54 @@ FakturaBot — не просто бот для фактур.
 - додати CHANGELOG
 - перенести актуальне ТЗ у docs
 - почати каркас MVP
+
+## 2026-03-31 — Session 003 — Phase 1 voice-to-draft preview
+
+### Що вирішено
+
+- Phase 1 реалізується не як простий voice → text smoke test, а як перший wow-flow:
+  **voice → STT → AI draft preview**
+- На цій фазі свідомо не робимо:
+  - save у БД
+  - PDF
+  - email
+  - supplier/contact persistence
+- STT і LLM parsing розділені на окремі сервіси.
+- Реальні API ключі не зберігаються в repo; використовується `.env`.
+
+### Що змінено
+
+- додано підтримку `OPENAI_STT_MODEL` і `OPENAI_LLM_MODEL` у config;
+- додано `bot/services/speech_to_text.py`;
+- додано `bot/services/llm_invoice_parser.py`;
+- додано prompt `prompts/invoice_draft_prompt.txt`;
+- додано `bot/handlers/voice.py`;
+- підключено voice router;
+- Phase 1 flow тепер:
+  Telegram voice → local temp file → OpenAI transcription → OpenAI draft parsing → preview in chat.
+
+### Важливі дрібниці / уроки
+
+- На старті проєкту треба перевіряти, що `.env` внесений у `.gitignore`.
+- Один `OPENAI_API_KEY` використовується і для STT, і для LLM parsing.
+- Перший voice-flow повинен показувати не просто розпізнаний текст, а спробу зрозуміти намір користувача.
+- Preview не повинен показувати криві значення типу `— —`; форматування треба одразу чистити.
+- Якщо STT повернув порожній текст, не можна відправляти його в LLM — треба зупиняти flow і просити повторити голосове.
+
+### Що свідомо не робилось
+
+- не реалізовувались supplier onboarding, contacts, PDF, email, contract extraction;
+- не додавалась логіка save draft;
+- не було серверного deploy;
+- internet lookup / FinStat не входять у поточний flow.
+
+### Статус фази
+
+Phase 1 завершена на рівні коду.
+Живий runtime test з реальним `BOT_TOKEN` і `OPENAI_API_KEY` ще потрібен.
+
+### Що далі
+
+- Phase 2 — мінімальний supplier onboarding у chat-based стилі;
+- без fancy UI;
+- ціль: створити і зберегти профіль постачальника, потрібний для майбутніх invoice flows.

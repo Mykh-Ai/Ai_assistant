@@ -18,3 +18,20 @@
 - QR Pay by Square входить у MVP
 - lookup з інтернету не входить у v1.0
 - контрагент з договору додається через AI + validation + confirmation
+
+## [0.2.0] - 2026-03-31
+
+### Added
+- voice handler for Telegram voice messages
+- speech-to-text service using OpenAI Audio API
+- LLM invoice draft parser service
+- invoice draft extraction prompt
+- config support for `OPENAI_STT_MODEL` and `OPENAI_LLM_MODEL`
+
+### Changed
+- Phase 1 redefined from simple voice-to-text smoke test to voice-to-draft preview flow
+- bot polling startup updated to pass config into runtime handlers
+
+### Fixed
+- preview formatting for quantity/unit and amount/currency no longer shows `— —`
+- empty STT result no longer goes into LLM parsing
