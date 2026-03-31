@@ -19,7 +19,7 @@ FakturaBot — перша вітрина цього підходу.
 
 ## Поточний статус
 
-Проєкт у фазі підготовки репозиторію та стартової архітектури MVP.
+Проєкт у фазі ранньої MVP-реалізації (Phase 2).
 
 Поточна ціль:
 - розгорнути перший інстанс для автора,
@@ -91,3 +91,7 @@ AI не є джерелом істини.
 2. Install dependencies: `pip install -r requirements.txt`
 3. Start locally: `python -m bot.main`
 4. Or start with Docker: `docker compose up --build`
+5. In Telegram use:
+   - `/start` — health check
+   - voice message — Phase 1 draft preview
+   - `/supplier` або `/onboarding` — Phase 2 supplier onboarding
