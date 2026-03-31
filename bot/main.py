@@ -27,8 +27,8 @@ async def main() -> None:
     for router in routers:
         dp.include_router(router)
 
-    logging.info('FakturaBot skeleton is starting')
-    await dp.start_polling(bot)
+    logging.info('FakturaBot starting')
+    await dp.start_polling(bot, config=config)
 
 
 if __name__ == '__main__':

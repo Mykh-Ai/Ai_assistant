@@ -81,9 +81,13 @@ AI не є джерелом істини.
 - боти для запису клієнтів,
 - боти для заявок,
 - інші Telegram-боти під конкретні бізнес-процеси.
-## Phase 0 Run
+## Run
 
-1. Copy `.env.example` to `.env` and set `BOT_TOKEN`.
+1. Copy `.env.example` to `.env` and fill in:
+   - `BOT_TOKEN` — Telegram bot token (required)
+   - `OPENAI_API_KEY` — required for voice-to-draft flow (Phase 1+)
+   - `OPENAI_STT_MODEL` — default: `whisper-1`
+   - `OPENAI_LLM_MODEL` — default: `gpt-4o`
 2. Install dependencies: `pip install -r requirements.txt`
 3. Start locally: `python -m bot.main`
 4. Or start with Docker: `docker compose up --build`

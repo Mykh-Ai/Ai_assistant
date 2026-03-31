@@ -12,6 +12,8 @@ load_dotenv()
 class Config:
     bot_token: str
     openai_api_key: str | None
+    openai_stt_model: str
+    openai_llm_model: str
     db_path: Path
     storage_dir: Path
 
@@ -29,6 +31,8 @@ def load_config() -> Config:
         raise RuntimeError('BOT_TOKEN is required')
 
     openai_api_key = os.getenv('OPENAI_API_KEY', '').strip() or None
+    openai_stt_model = os.getenv('OPENAI_STT_MODEL', '').strip() or 'whisper-1'
+    openai_llm_model = os.getenv('OPENAI_LLM_MODEL', '').strip() or 'gpt-4o'
     db_path = Path(os.getenv('DB_PATH', 'storage/fakturabot.db')).resolve()
     storage_dir = Path(os.getenv('STORAGE_DIR', 'storage')).resolve()
     ensure_storage_dirs(storage_dir)
@@ -36,6 +40,8 @@ def load_config() -> Config:
     return Config(
         bot_token=bot_token,
         openai_api_key=openai_api_key,
+        openai_stt_model=openai_stt_model,
+        openai_llm_model=openai_llm_model,
         db_path=db_path,
         storage_dir=storage_dir,
     )

@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-03-31 — Session 003 — Phase 1: voice-to-draft preview flow
+
+### Ціль
+
+Реалізувати перший живий wow-flow: голос → STT → AI draft preview в чаті.
+Без save в БД, без PDF, без email, без supplier/contact persistence.
+
+### Що реалізовано
+
+- `bot/services/speech_to_text.py` — STT через OpenAI Audio API (Whisper)
+- `bot/services/llm_invoice_parser.py` — LLM draft parsing через OpenAI Chat API
+- `bot/handlers/voice.py` — voice message handler: download → STT → parse → preview
+- `prompts/invoice_draft_prompt.txt` — системний промпт для витягу invoice draft
+- `bot/config.py` — додано `openai_stt_model`, `openai_llm_model`
+- `bot/main.py` — config передається в polling workflow data
+- `requirements.txt` — додано `openai>=1.30`
+
+### Архітектурні рішення
+
+- STT і LLM parsing — два окремі сервіси, не злиті в один
+- тимчасові файли видаляються одразу після обробки (try/finally)
+- якщо `OPENAI_API_KEY` відсутній — app стартує нормально, voice handler
+  повертає зрозуміле повідомлення без падіння
+- graceful error handling для STT і LLM failure окремо
+
+### Що свідомо не робилось
+
+- save draft у БД
+- PDF генерація
+- email
+- supplier/contact persistence
+- contract extraction
+- FSM / multi-step dialog
+
+### Що далі
+
+- Phase 2: мінімальний supplier onboarding (chat-based, sequential)
+
+---
+
 ## 2026-03-31 — Session 002 — Phase 0 implementation skeleton
 
 ### Що вирішено
