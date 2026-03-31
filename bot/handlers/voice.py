@@ -1,6 +1,6 @@
 import logging
 
-from aiogram import Bot, Router
+from aiogram import Bot, F, Router
 from aiogram.types import Message
 
 from bot.config import Config
@@ -39,7 +39,7 @@ def _format_preview(recognized_text: str, draft: dict) -> str:
     )
 
 
-@router.message(lambda m: m.voice is not None)
+@router.message(F.voice)
 async def handle_voice(message: Message, bot: Bot, config: Config) -> None:
     if not config.openai_api_key:
         await message.answer(
@@ -47,6 +47,8 @@ async def handle_voice(message: Message, bot: Bot, config: Config) -> None:
             'Зверніться до адміністратора.'
         )
         return
+
+    assert message.voice is not None
 
     uploads_dir = config.storage_dir / 'uploads'
     voice_path = uploads_dir / f'{message.voice.file_id}.ogg'
