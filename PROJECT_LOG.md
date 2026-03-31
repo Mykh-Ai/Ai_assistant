@@ -5,6 +5,49 @@
 
 ---
 
+## 2026-03-31 — Session 004 — Phase 2: supplier onboarding (chat-based)
+
+### Ціль
+
+Реалізувати мінімальний supplier onboarding без fancy UI, без складної FSM-архітектури,
+як базу для наступних invoice phases.
+
+### Що реалізовано
+
+- розширено SQLite schema `supplier` під повний профіль постачальника;
+- додано `bot/services/supplier_service.py` з операціями:
+  - create or replace profile,
+  - get by `telegram_id`,
+  - update profile (через upsert);
+- реалізовано `bot/handlers/onboarding.py` як простий послідовний chat flow:
+  12 полів → summary → confirm (`yes/no`) → save;
+- додано MVP-рівень валідації для IČO/DIČ/IČ DPH/email/IBAN/days_due;
+- додано UX-повідомлення, якщо профіль уже існує, з пропозицією пройти flow повторно.
+
+### Безпека / обмеження фази
+
+- SMTP пароль не логується;
+- у summary пароль маскується (`********`);
+- зберігання SMTP пароля в цій фазі лишається plain-text у SQLite (тимчасово, для MVP);
+- production-grade secure credential storage ще не завершено.
+
+### Що свідомо не робилось
+
+- contact onboarding;
+- invoice save flow;
+- PDF/email send;
+- contract extraction;
+- lookup API;
+- окремий settings center.
+
+### Рішення
+
+Phase 2 стартувала та реалізована в межах simple chat-based supplier onboarding.
+Fancy UI свідомо відкладено.
+Supplier profile став базовим persistence-шаром для наступних invoice phases.
+
+---
+
 ## 2026-03-31 — Session 003 — Phase 1: voice-to-draft preview flow
 
 ### Ціль
