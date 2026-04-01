@@ -243,3 +243,41 @@ Phase 1 завершена на рівні коду.
 - Phase 2 — мінімальний supplier onboarding у chat-based стилі;
 - без fancy UI;
 - ціль: створити і зберегти профіль постачальника, потрібний для майбутніх invoice flows.
+## 2026-04-01 - Session 005 - Phase 3: manual contact creation
+
+### Goal
+Implement minimal manual customer contact creation required for next invoice phases.
+
+### Implemented
+- SQLite bootstrap extended with `contact` table (fail-loud compatibility check, no auto-drop/migrations).
+- Added `bot/services/contact_service.py` with repository-style operations:
+  - `ContactProfile`
+  - `get_all_by_supplier(telegram_id)`
+  - `get_by_name(telegram_id, name)`
+  - `create_contact(...)`
+  - `create_or_replace(...)`
+- Implemented `bot/handlers/contacts.py` as a simple chat-based flow:
+  1. company name
+  2. ICO
+  3. DIC
+  4. optional IC DPH (`-`)
+  5. address
+  6. email
+  7. optional contact person (`-`)
+  8. summary
+  9. confirm `yes`/`no`
+  10. save
+- Added exact-name duplicate check per supplier; existing name is warned and confirmed overwrite saves via upsert.
+- Added supplier-profile guard: contact flow is blocked until `/supplier` onboarding is completed.
+
+### Explicitly not included in this phase
+- contract-based contact extraction
+- contact search UI
+- invoice save flow
+- PDF generation
+- email send
+- external lookup API / FinStat
+- complex dedup/fuzzy matching
+
+### Decision
+Phase 3 remains intentionally simple and chat-based; contract extraction and external lookup stay deferred to later phases.

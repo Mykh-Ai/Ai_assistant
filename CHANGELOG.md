@@ -45,3 +45,12 @@
 ### Fixed
 - preview formatting for quantity/unit and amount/currency no longer shows `— —`
 - empty STT result no longer goes into LLM parsing
+## [0.3.0] - 2026-04-01
+
+### Added
+- contact persistence in SQLite (`contact` table bootstrap with schema compatibility checks)
+- manual contact onboarding flow via `/contact` and `/contact_add`
+- contact validation and summary/confirm (`yes`/`no`) step before save
+
+### Changed
+- contact save path now stores per-supplier records (`supplier_telegram_id`) with exact-name upsert behavior

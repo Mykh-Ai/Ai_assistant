@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -38,27 +38,27 @@ class OnboardingStates(StatesGroup):
 
 def _summary(data: dict[str, str]) -> str:
     return (
-        '📋 <b>Підсумок профілю постачальника</b>\n\n'
-        f'• Name: {data["name"]}\n'
+        '<b>Prehľad profilu dodávateľa</b>\n\n'
+        f'• Názov: {data["name"]}\n'
         f'• ICO: {data["ico"]}\n'
         f'• DIC: {data["dic"]}\n'
-        f'• IC DPH: {data["ic_dph"] or "—"}\n'
-        f'• Address: {data["address"]}\n'
+        f'• IC DPH: {data["ic_dph"] or "-"}\n'
+        f'• Adresa: {data["address"]}\n'
         f'• IBAN: {data["iban"]}\n'
         f'• SWIFT: {data["swift"]}\n'
         f'• Email: {data["email"]}\n'
         f'• SMTP host: {data["smtp_host"]}\n'
         f'• SMTP user: {data["smtp_user"]}\n'
-        '• SMTP pass: ********\n'
-        f'• Days due: {data["days_due"]}\n\n'
-        'Напишіть <b>yes</b> для підтвердження або <b>no</b> для скасування.'
+        '• SMTP heslo: ********\n'
+        f'• Splatnosť: {data["days_due"]} dní\n\n'
+        'Napíšte <b>yes</b> pre potvrdenie alebo <b>no</b> pre zrušenie.'
     )
 
 
 @router.message(Command('onboarding', 'supplier'))
 async def cmd_onboarding(message: Message, state: FSMContext, config: Config) -> None:
     if message.from_user is None:
-        await message.answer('Не вдалося визначити користувача.')
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
     service = SupplierService(config.db_path)
@@ -66,148 +66,148 @@ async def cmd_onboarding(message: Message, state: FSMContext, config: Config) ->
 
     if existing:
         await message.answer(
-            'Профіль постачальника вже існує.\n'
-            f'Поточний профіль: {existing.name} ({existing.ico}).\n'
-            'Пройдемо onboarding повторно для оновлення.'
+            'Profil dodávateľa už existuje.\n'
+            f'Aktuálny profil: {existing.name} ({existing.ico}).\n'
+            'Onboarding teraz prejdeme znova kvôli aktualizácii.'
         )
     else:
-        await message.answer('Починаємо onboarding постачальника.')
+        await message.answer('Spúšťam onboarding dodávateľa.')
 
     await state.clear()
     await state.set_state(OnboardingStates.name)
-    await message.answer('1/12 Введіть імʼя / obchodné meno:')
+    await message.answer('1/12 Zadajte názov firmy / obchodné meno:')
 
 
 @router.message(OnboardingStates.name)
 async def onboarding_name(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('Імʼя не може бути порожнім. Спробуйте ще раз:')
+        await message.answer('Názov nemôže byť prázdny. Skúste znova:')
         return
     await state.update_data(name=value)
     await state.set_state(OnboardingStates.ico)
-    await message.answer('2/12 Введіть IČO (8 цифр):')
+    await message.answer('2/12 Zadajte ICO (8 číslic):')
 
 
 @router.message(OnboardingStates.ico)
 async def onboarding_ico(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_ico(value):
-        await message.answer('Некоректний IČO. Формат: 8 цифр. Спробуйте ще раз:')
+        await message.answer('Neplatné ICO. Formát: 8 číslic. Skúste znova:')
         return
     await state.update_data(ico=value)
     await state.set_state(OnboardingStates.dic)
-    await message.answer('3/12 Введіть DIČ (10 цифр):')
+    await message.answer('3/12 Zadajte DIC (10 číslic):')
 
 
 @router.message(OnboardingStates.dic)
 async def onboarding_dic(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_dic(value):
-        await message.answer('Некоректний DIČ. Формат: 10 цифр. Спробуйте ще раз:')
+        await message.answer('Neplatné DIC. Formát: 10 číslic. Skúste znova:')
         return
     await state.update_data(dic=value)
     await state.set_state(OnboardingStates.ic_dph)
-    await message.answer('4/12 Введіть IČ DPH (або "-" якщо немає):')
+    await message.answer('4/12 Zadajte IC DPH (alebo "-", ak ho nemáte):')
 
 
 @router.message(OnboardingStates.ic_dph)
 async def onboarding_ic_dph(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
-    if value in {'-', '—'}:
+    if value == '-':
         await state.update_data(ic_dph='')
     else:
         if not validate_ic_dph(value):
-            await message.answer('Некоректний IČ DPH. Приклад: SK1234567890. Спробуйте ще раз:')
+            await message.answer('Neplatné IC DPH. Príklad: SK1234567890. Skúste znova:')
             return
         await state.update_data(ic_dph=value.upper().replace(' ', ''))
 
     await state.set_state(OnboardingStates.address)
-    await message.answer('5/12 Введіть адресу:')
+    await message.answer('5/12 Zadajte adresu:')
 
 
 @router.message(OnboardingStates.address)
 async def onboarding_address(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('Адреса не може бути порожньою. Спробуйте ще раз:')
+        await message.answer('Adresa nemôže byť prázdna. Skúste znova:')
         return
     await state.update_data(address=value)
     await state.set_state(OnboardingStates.iban)
-    await message.answer('6/12 Введіть IBAN:')
+    await message.answer('6/12 Zadajte IBAN:')
 
 
 @router.message(OnboardingStates.iban)
 async def onboarding_iban(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_iban(value):
-        await message.answer('Некоректний IBAN. Спробуйте ще раз:')
+        await message.answer('Neplatný IBAN. Skúste znova:')
         return
     await state.update_data(iban=value.upper().replace(' ', ''))
     await state.set_state(OnboardingStates.swift)
-    await message.answer('7/12 Введіть SWIFT/BIC:')
+    await message.answer('7/12 Zadajte SWIFT/BIC:')
 
 
 @router.message(OnboardingStates.swift)
 async def onboarding_swift(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('SWIFT/BIC не може бути порожнім. Спробуйте ще раз:')
+        await message.answer('SWIFT/BIC nemôže byť prázdny. Skúste znova:')
         return
     await state.update_data(swift=value.upper())
     await state.set_state(OnboardingStates.email)
-    await message.answer('8/12 Введіть email:')
+    await message.answer('8/12 Zadajte email:')
 
 
 @router.message(OnboardingStates.email)
 async def onboarding_email(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_email(value):
-        await message.answer('Некоректний email. Спробуйте ще раз:')
+        await message.answer('Neplatný email. Skúste znova:')
         return
     await state.update_data(email=value)
     await state.set_state(OnboardingStates.smtp_host)
-    await message.answer('9/12 Введіть SMTP host:')
+    await message.answer('9/12 Zadajte SMTP host:')
 
 
 @router.message(OnboardingStates.smtp_host)
 async def onboarding_smtp_host(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('SMTP host не може бути порожнім. Спробуйте ще раз:')
+        await message.answer('SMTP host nemôže byť prázdny. Skúste znova:')
         return
     await state.update_data(smtp_host=value)
     await state.set_state(OnboardingStates.smtp_user)
-    await message.answer('10/12 Введіть SMTP user:')
+    await message.answer('10/12 Zadajte SMTP user:')
 
 
 @router.message(OnboardingStates.smtp_user)
 async def onboarding_smtp_user(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('SMTP user не може бути порожнім. Спробуйте ще раз:')
+        await message.answer('SMTP user nemôže byť prázdny. Skúste znova:')
         return
     await state.update_data(smtp_user=value)
     await state.set_state(OnboardingStates.smtp_pass)
-    await message.answer('11/12 Введіть SMTP pass:')
+    await message.answer('11/12 Zadajte SMTP heslo:')
 
 
 @router.message(OnboardingStates.smtp_pass)
 async def onboarding_smtp_pass(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('SMTP pass не може бути порожнім. Спробуйте ще раз:')
+        await message.answer('SMTP heslo nemôže byť prázdne. Skúste znova:')
         return
     await state.update_data(smtp_pass=value)
     await state.set_state(OnboardingStates.days_due)
-    await message.answer('12/12 Введіть стандартну splatnosť у днях (ціле число > 0):')
+    await message.answer('12/12 Zadajte štandardnú splatnosť v dňoch (celé číslo > 0):')
 
 
 @router.message(OnboardingStates.days_due)
 async def onboarding_days_due(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_days_due(value):
-        await message.answer('Некоректне значення. Введіть ціле число > 0:')
+        await message.answer('Neplatná hodnota. Zadajte celé číslo > 0:')
         return
     await state.update_data(days_due=value)
     data = await state.get_data()
@@ -223,16 +223,16 @@ async def onboarding_confirm(
 ) -> None:
     answer = (message.text or '').strip().lower()
     if answer not in {'yes', 'no'}:
-        await message.answer('Введіть yes або no.')
+        await message.answer('Napíšte yes alebo no.')
         return
 
     if answer == 'no':
         await state.clear()
-        await message.answer('Onboarding скасовано. Запустіть /supplier для повтору.')
+        await message.answer('Onboarding bol zrušený. Pre nový pokus spustite /supplier.')
         return
 
     if message.from_user is None:
-        await message.answer('Не вдалося визначити користувача.')
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
     data = await state.get_data()
@@ -256,4 +256,4 @@ async def onboarding_confirm(
     )
 
     await state.clear()
-    await message.answer('✅ Профіль постачальника збережено.')
+    await message.answer('Profil dodávateľa bol uložený.')

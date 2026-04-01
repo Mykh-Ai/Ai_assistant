@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
 
 
-SCHEMA = """
+SUPPLIER_SCHEMA = """
 CREATE TABLE IF NOT EXISTS supplier (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     telegram_id INTEGER NOT NULL UNIQUE,
@@ -25,7 +25,27 @@ CREATE TABLE IF NOT EXISTS supplier (
 );
 """
 
-EXPECTED_COLUMNS = {
+CONTACT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS contact (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplier_telegram_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    ico TEXT NOT NULL,
+    dic TEXT NOT NULL,
+    ic_dph TEXT,
+    address TEXT NOT NULL,
+    email TEXT NOT NULL,
+    contact_person TEXT,
+    source_type TEXT NOT NULL,
+    source_note TEXT,
+    contract_path TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(supplier_telegram_id, name)
+);
+"""
+
+SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'telegram_id': 'INTEGER NOT NULL UNIQUE',
     'name': 'TEXT NOT NULL',
@@ -44,6 +64,23 @@ EXPECTED_COLUMNS = {
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
 
+CONTACT_EXPECTED_COLUMNS = {
+    'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'supplier_telegram_id': 'INTEGER NOT NULL',
+    'name': 'TEXT NOT NULL',
+    'ico': 'TEXT NOT NULL',
+    'dic': 'TEXT NOT NULL',
+    'ic_dph': 'TEXT',
+    'address': 'TEXT NOT NULL',
+    'email': 'TEXT NOT NULL',
+    'contact_person': 'TEXT',
+    'source_type': 'TEXT NOT NULL',
+    'source_note': 'TEXT',
+    'contract_path': 'TEXT',
+    'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+    'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+}
+
 
 def _bootstrap_supplier_table(connection: sqlite3.Connection) -> None:
     existing_columns = {
@@ -51,10 +88,10 @@ def _bootstrap_supplier_table(connection: sqlite3.Connection) -> None:
     }
 
     if not existing_columns:
-        connection.execute(SCHEMA)
+        connection.execute(SUPPLIER_SCHEMA)
         return
 
-    if set(existing_columns.keys()) == set(EXPECTED_COLUMNS.keys()):
+    if set(existing_columns.keys()) == set(SUPPLIER_EXPECTED_COLUMNS.keys()):
         return
 
     raise RuntimeError(
@@ -63,10 +100,28 @@ def _bootstrap_supplier_table(connection: sqlite3.Connection) -> None:
     )
 
 
+def _bootstrap_contact_table(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1]: row[2] for row in connection.execute('PRAGMA table_info(contact)')
+    }
+
+    if not existing_columns:
+        connection.execute(CONTACT_SCHEMA)
+        return
+
+    if set(existing_columns.keys()) == set(CONTACT_EXPECTED_COLUMNS.keys()):
+        return
+
+    raise RuntimeError(
+        'Incompatible local schema for table contact. '
+        'Manual migration/intervention is required; automatic DROP is disabled.'
+    )
+
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     with sqlite3.connect(db_path) as connection:
         _bootstrap_supplier_table(connection)
+        _bootstrap_contact_table(connection)
         connection.commit()

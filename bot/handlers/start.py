@@ -8,7 +8,8 @@ router = Router(name='start')
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     await message.answer(
-        'FakturaBot skeleton is running.\n\n'
-        'Available now: basic startup, config, SQLite bootstrap, and /start.\n'
-        'Next phases: onboarding, voice-to-draft, invoices.'
+        'FakturaBot je spustený.\n\n'
+        'Aktuálne je pripravený základ aplikácie, konfigurácia, SQLite bootstrap a príkaz /start.\n'
+        'Ďalšie fázy: onboarding, voice-to-draft a faktúry.'
     )
+
