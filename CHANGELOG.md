@@ -54,3 +54,6 @@
 
 ### Changed
 - contact save path now stores per-supplier records (`supplier_telegram_id`) with exact-name upsert behavior
+- follow-up: supplier onboarding confirm flow now uses Slovak `ano`/`nie` instead of `yes`/`no`
+- follow-up: manual contact confirm flow now uses Slovak `ano`/`nie` instead of `yes`/`no`
+- follow-up: user-facing wording in relevant confirm flows aligned closer to Slovak consistency

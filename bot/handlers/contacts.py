@@ -30,7 +30,7 @@ def _summary(data: dict[str, str]) -> str:
     if data.get('existing_match') == '1':
         duplicate_note = (
             '\n\nUpozornenie: kontakt s týmto presným názvom už existuje v profile dodávateľa. '
-            'Potvrdením odpoveďou yes tento kontakt prepíšete.'
+            'Potvrdením odpoveďou ano tento kontakt prepíšete.'
         )
 
     return (
@@ -43,7 +43,7 @@ def _summary(data: dict[str, str]) -> str:
         f'Email: {data["email"]}\n'
         f'Kontaktná osoba: {data["contact_person"] or "-"}'
         f'{duplicate_note}\n\n'
-        'Napíšte yes pre uloženie alebo no pre zrušenie.'
+        'Napíšte ano pre uloženie alebo nie pre zrušenie.'
     )
 
 
@@ -163,11 +163,11 @@ async def contact_person(message: Message, state: FSMContext) -> None:
 @router.message(ContactStates.confirm)
 async def contact_confirm(message: Message, state: FSMContext, config: Config) -> None:
     answer = (message.text or '').strip().lower()
-    if answer not in {'yes', 'no'}:
-        await message.answer('Napíšte yes alebo no.')
+    if answer not in {'ano', 'nie'}:
+        await message.answer('Napíšte ano alebo nie.')
         return
 
-    if answer == 'no':
+    if answer == 'nie':
         await state.clear()
         await message.answer('Vytvorenie kontaktu bolo zrušené. Pre nový pokus spustite /contact.')
         return
