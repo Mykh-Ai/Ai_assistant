@@ -281,3 +281,12 @@ Implement minimal manual customer contact creation required for next invoice pha
 
 ### Decision
 Phase 3 remains intentionally simple and chat-based; contract extraction and external lookup stay deferred to later phases.
+
+### Follow-up note (language consistency)
+- Text confirmation in supplier onboarding aligned to Slovak: `ano / nie` instead of `yes / no`.
+- Text confirmation in manual contact flow aligned to Slovak: `ano / nie` instead of `yes / no`.
+- User-facing language consistency improved across `/start`, voice preview, supplier onboarding, and manual contact flow.
+- Why this matters:
+  - bot is oriented to a Slovak interface;
+  - mixed-language confirmations create product inconsistency;
+  - language consistency is better fixed early while flows are still small.

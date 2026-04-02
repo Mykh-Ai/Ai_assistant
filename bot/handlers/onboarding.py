@@ -51,7 +51,7 @@ def _summary(data: dict[str, str]) -> str:
         f'• SMTP user: {data["smtp_user"]}\n'
         '• SMTP heslo: ********\n'
         f'• Splatnosť: {data["days_due"]} dní\n\n'
-        'Napíšte <b>yes</b> pre potvrdenie alebo <b>no</b> pre zrušenie.'
+        'Napíšte <b>ano</b> pre potvrdenie alebo <b>nie</b> pre zrušenie.'
     )
 
 
@@ -222,11 +222,11 @@ async def onboarding_confirm(
     config: Config,
 ) -> None:
     answer = (message.text or '').strip().lower()
-    if answer not in {'yes', 'no'}:
-        await message.answer('Napíšte yes alebo no.')
+    if answer not in {'ano', 'nie'}:
+        await message.answer('Napíšte ano alebo nie.')
         return
 
-    if answer == 'no':
+    if answer == 'nie':
         await state.clear()
         await message.answer('Onboarding bol zrušený. Pre nový pokus spustite /supplier.')
         return
