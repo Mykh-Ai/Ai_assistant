@@ -18,6 +18,7 @@ class ContactProfile:
     source_type: str
     source_note: str | None
     contract_path: str | None
+    id: int | None = None
 
 
 class ContactService:
@@ -29,7 +30,7 @@ class ContactService:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
                 (
-                    'SELECT supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
                     'contact_person, source_type, source_note, contract_path '
                     'FROM contact '
                     'WHERE supplier_telegram_id = ? '
@@ -45,10 +46,28 @@ class ContactService:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
-                    'SELECT supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
                     'contact_person, source_type, source_note, contract_path '
                     'FROM contact '
                     'WHERE supplier_telegram_id = ? AND name = ?'
+                ),
+                (telegram_id, name),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_profile(row)
+
+    def get_by_name_case_insensitive(self, telegram_id: int, name: str) -> ContactProfile | None:
+        with sqlite3.connect(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                (
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'contact_person, source_type, source_note, contract_path '
+                    'FROM contact '
+                    'WHERE supplier_telegram_id = ? AND lower(name) = lower(?)'
                 ),
                 (telegram_id, name),
             ).fetchone()
@@ -133,4 +152,5 @@ class ContactService:
             source_type=row['source_type'],
             source_note=row['source_note'],
             contract_path=row['contract_path'],
+            id=row['id'],
         )

@@ -13,8 +13,9 @@ _EMPTY_DRAFT: dict = {
     'unit': None,
     'amount': None,
     'currency': None,
-    'issue_date': None,
+    'delivery_date': None,
     'due_days': None,
+    'due_date': None,
 }
 
 

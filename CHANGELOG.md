@@ -1,5 +1,26 @@
 ﻿# CHANGELOG
 
+## [0.4.0] - 2026-04-03
+
+### Added
+- Phase 4 invoice persistence: new `invoice` and `invoice_item` bootstrap schema with fail-loud compatibility checks
+- `InvoiceService` with sequential invoice numbering format `RRRRNNNN`, save/get operations, and `pdf_path` assignment
+- `/invoice` text flow: draft parse, local contact resolution, preview, confirm (`ano`/`nie`), save, PDF generation, and PDF preview
+- shared voice-to-invoice integration so STT output can continue through the same Phase 4 invoice flow
+- PDF generation service (ReportLab + QR block placeholder) with one-page business layout and Slovak labels
+
+### Changed
+- invoice draft prompt/schema now expects `delivery_date` (user-mentioned date) and not `issue_date` from LLM
+- due date is computed in code from issue date plus due days
+
+### Not in scope
+- email sending
+- external contact lookup
+- contract extraction
+- fuzzy contact matching
+- multi-item UI/edit workflow
+- production-ready Pay by Square payload compatibility (moved to next technical step)
+
 ## [0.2.0] - 2026-03-31
 
 ### Added

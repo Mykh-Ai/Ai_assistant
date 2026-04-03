@@ -5,6 +5,95 @@
 
 ---
 
+## 2026-04-03 — Session 007 — Phase 4: invoice draft → confirm → PDF preview
+
+### Ціль
+
+Реалізувати перший повний invoice flow для text/voice input:
+draft → local contact resolution → preview → confirm → save → PDF preview.
+
+### Що реалізовано
+
+- додано persistence для faktúr:
+  - таблиця `invoice`,
+  - таблиця `invoice_item`,
+  - fail-loud schema compatibility checks без auto-drop;
+- додано `bot/services/invoice_service.py`:
+  - генерація номеру `RRRRNNNN`,
+  - save faktúry з одним рядком позиції,
+  - get by id/number,
+  - save `pdf_path`;
+- додано `bot/services/pdf_generator.py` (reportlab + qrcode):
+  - one-page business invoice layout,
+  - Dodávateľ/Odberateľ block,
+  - meta/dates block,
+  - payment block,
+  - items table,
+  - strong `Na úhradu` block,
+  - QR block;
+- реалізовано `bot/handlers/invoice.py`:
+  - `/invoice` text entry point,
+  - preview словацькою,
+  - confirm (`ano`/`nie`),
+  - PDF decision step (`schváliť`/`upraviť`);
+- voice flow інтегровано у той самий invoice path:
+  - STT text далі обробляється через спільний Phase 4 flow;
+- реалізовано local contact-only resolution:
+  - exact match,
+  - case-insensitive exact match;
+- зафіксовано date semantics в коді:
+  - `issue_date` = auto today,
+  - дата з input трактується як `delivery_date`,
+  - якщо відсутня — `delivery_date = issue_date`,
+  - `due_date = issue_date + due_days`.
+
+### Що свідомо не робилось
+
+- email send;
+- external lookup / FinStat;
+- contract extraction;
+- fuzzy matching;
+- multi-item UI;
+- advanced edit workflow;
+- migration framework.
+
+### Follow-up note (QR scope honesty)
+
+- Phase 4 merge не блокується через QR subsystem.
+- Поточний QR block у PDF вважається тимчасовим placeholder-рішенням для payment QR.
+- Окремий наступний технічний крок:
+  - дослідити/інтегрувати справжній Pay by Square payload generator;
+  - перевірити сумісність payload із реальним скануванням.
+
+---
+
+
+## 2026-04-03 — Session 006 — PDF Layout Spec (docs-only)
+
+### Ціль
+
+Підготувати окрему docs-only специфікацію візуальної структури PDF-фактури для наступної фази реалізації генератора.
+
+### Що реалізовано
+
+- створено новий документ `docs/FakturaBot_PDF_Layout_Spec.md`;
+- зафіксовано purpose PDF як частини wow-ефекту продукту;
+- описано design principles (clean, restrained, readability-first);
+- зафіксовано color principles з вимогою двох приємних фонових тонів без перевантаження;
+- формалізовано порядок обов’язкових layout-блоків:
+  header, Dodávateľ/Odberateľ, meta/dates, payment, items table, total, QR, footer;
+- додано date semantics для `Dátum vystavenia`, `Dátum dodania`, `Dátum splatnosti`;
+- зафіксовано preview/approval rule (`schváliť` / `upraviť`);
+- додано typography/spacing guidelines та секцію “Do not”.
+
+### Що свідомо не робилось
+
+- не реалізовувався PDF generator;
+- не змінювалося ТЗ;
+- не додавалися нові продуктові фічі поза межами layout specification.
+
+---
+
 ## 2026-03-31 — Session 004 — Phase 2: supplier onboarding (chat-based)
 
 ### Ціль
