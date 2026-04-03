@@ -379,7 +379,6 @@ Phase 3 remains intentionally simple and chat-based; contract extraction and ext
   - bot is oriented to a Slovak interface;
   - mixed-language confirmations create product inconsistency;
   - language consistency is better fixed early while flows are still small.
-
 ## 2026-04-03 - Session 006 - Research spike: real PAY by square integration path
 
 ### Goal
@@ -436,3 +435,9 @@ Phase 3 remains intentionally simple and chat-based; contract extraction and ext
 ### Manual verification status
 - У цьому середовищі не виконувалась реальна перевірка сканування QR банківськими мобільними апками.
 - Після deploy потрібна manual verification на реальних SK banking clients.
+=======
+### Follow-up note (семантика дат у faktúre)
+- Плутанину між `Dátum vystavenia` і `Dátum dodania` у специфікації усунуто.
+- Дата, вказана користувачем у voice/text input, тепер інтерпретується як `Dátum dodania`.
+- `Dátum vystavenia` завжди встановлюється ботом автоматично в момент створення фактури.
+>>>>>>> 04b8f9f (docs: clarify invoice date semantics and approval flow)
