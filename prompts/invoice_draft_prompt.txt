@@ -14,8 +14,9 @@ Return ONLY a JSON object with these fields:
   "unit": <string or null>,
   "amount": <number or null>,
   "currency": <ISO 4217 currency code string or null>,
-  "issue_date": <date string YYYY-MM-DD or null>,
-  "due_days": <integer or null>
+  "delivery_date": <date string YYYY-MM-DD or null>,
+  "due_days": <integer or null>,
+  "due_date": <date string YYYY-MM-DD or null>
 }
 
 Rules:
@@ -23,5 +24,6 @@ Rules:
 - Do not invent or guess values not present in the text
 - Normalize currency to ISO 4217 code (EUR, USD, CZK, etc.)
 - Normalize dates to YYYY-MM-DD format
+- If user says a date, map it to delivery_date (never force issue_date)
 - Extract item_name_raw exactly as the speaker said it, do not rephrase
 - Return only the JSON object, no explanation or additional text
