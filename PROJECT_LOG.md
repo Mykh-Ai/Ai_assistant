@@ -379,3 +379,60 @@ Phase 3 remains intentionally simple and chat-based; contract extraction and ext
   - bot is oriented to a Slovak interface;
   - mixed-language confirmations create product inconsistency;
   - language consistency is better fixed early while flows are still small.
+
+## 2026-04-03 - Session 006 - Research spike: real PAY by square integration path
+
+### Goal
+Провести technical research spike для реальної інтеграції PAY by square QR у FakturaBot без blind implementation.
+
+### Implemented
+- Підготовлено окремий research artifact: `docs/PayBySquare_Research_Spike.md`.
+- Зібрано та порівняно джерела:
+  - офіційна специфікація PAY by square 1.2.0,
+  - by square API docs,
+  - Python package `pay-by-square`,
+  - активні non-Python implementation repos (TS/Go/PHP) як референси.
+- Зафіксовано практичний технічний вердикт для repo:
+  - рекомендований шлях: власна мінімальна Python-реалізація payload encoder (spec-driven),
+  - без введення зовнішнього SaaS як критичної залежності,
+  - без cross-runtime адаптера як базового шляху.
+- Зафіксовано мінімальний required payload і field constraints для першої інтеграції.
+- Підготовлено implementation recommendation для майбутнього окремого PR (без змін runtime логіки у цій сесії).
+
+### Explicitly not included in this session
+- Немає змін у `bot/services/pdf_generator.py`.
+- Немає production integration patch для PAY by square.
+- Немає розширення scope на email / external bank API / інші модулі.
+
+### Decision
+Спочатку завершуємо research + decision record, після чого окремим PR робимо мінімальну production інтеграцію реального PAY by square payload у PDF flow.
+
+
+## 2026-04-03 - Session 007 - Implementation: real PAY by square payload in PDF flow
+
+### Goal
+Замінити QR placeholder у Phase 4 на реальний PAY by square payload generator для invoice payment use case.
+
+### Implemented
+- Додано `bot/services/pay_by_square.py` з internal spec-driven encoder pipeline:
+  1) mapping paymentorder даних,
+  2) CRC32,
+  3) LZMA raw compression (LZMA1),
+  4) header/length prepend,
+  5) Base32hex payload output.
+- Додано strict validation: IBAN, amount, currency, VS, due date, beneficiary name (fail-loud через `PayBySquareValidationError`).
+- `bot/services/pdf_generator.py` переведено з placeholder рядка `PAYBYSQUARE|...` на виклик `build_pay_by_square_payload(...)`.
+- Додано unit tests:
+  - deterministic payload vector,
+  - validation failures,
+  - PDF integration smoke (QR payload looks encoded and PDF still written).
+- Оновлено `README.md`, `docs/TZ_FakturaBot.md`, `CHANGELOG.md` для чесного відображення статусу інтеграції.
+
+### Explicitly not included
+- Немає external SaaS generation path.
+- Немає Node/Go/PHP sidecar adaptation.
+- Немає email/bank API scope expansion.
+
+### Manual verification status
+- У цьому середовищі не виконувалась реальна перевірка сканування QR банківськими мобільними апками.
+- Після deploy потрібна manual verification на реальних SK banking clients.
