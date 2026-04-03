@@ -1,5 +1,19 @@
 ﻿# CHANGELOG
 
+## [0.5.0] - 2026-04-03
+
+### Added
+- internal spec-driven PAY by square encoder service (`bot/services/pay_by_square.py`) for invoice `paymentorder` payload generation
+- strict payload validation for IBAN, currency, amount, variable symbol, due date and beneficiary name
+- unit tests for deterministic payload generation, validation failures, and PDF integration smoke
+
+### Changed
+- PDF generator now uses real PAY by square payload encoding instead of temporary text placeholder
+- README/TZ/PROJECT_LOG updated to reflect real QR payload integration and current manual scan verification status
+
+### Notes
+- real banking-app scan verification still requires manual confirmation outside CI/runtime environment
+
 ## [0.4.0] - 2026-04-03
 
 ### Added
@@ -7,7 +21,7 @@
 - `InvoiceService` with sequential invoice numbering format `RRRRNNNN`, save/get operations, and `pdf_path` assignment
 - `/invoice` text flow: draft parse, local contact resolution, preview, confirm (`ano`/`nie`), save, PDF generation, and PDF preview
 - shared voice-to-invoice integration so STT output can continue through the same Phase 4 invoice flow
-- PDF generation service (ReportLab + QR block placeholder) with one-page business layout and Slovak labels
+- PDF generation service (ReportLab + initial QR block scaffold) with one-page business layout and Slovak labels
 
 ### Changed
 - invoice draft prompt/schema now expects `delivery_date` (user-mentioned date) and not `issue_date` from LLM
@@ -19,7 +33,7 @@
 - contract extraction
 - fuzzy contact matching
 - multi-item UI/edit workflow
-- production-ready Pay by Square payload compatibility (moved to next technical step)
+- production-ready Pay by Square payload compatibility (completed in 0.5.0)
 
 ## [0.2.0] - 2026-03-31
 

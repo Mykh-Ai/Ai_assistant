@@ -98,5 +98,5 @@ AI не є джерелом істини.
    - `/contact` or `/contact_add` - Phase 3 manual customer contact onboarding
    - `/invoice` — Phase 4 draft → confirm → PDF preview flow
 
-Примітка по Phase 4: QR block у PDF зараз є тимчасовим payment QR placeholder.
-Окрема задача — підтвердити та інтегрувати сумісний із реальним скануванням Pay by Square payload.
+Примітка по Phase 4: QR block у PDF використовує реальний PAY by square payload encoder (internal Python implementation) з валідацією полів платежу.
+Manual scan-перевірка у реальних банківських апках все ще обов’язкова перед повним production sign-off.

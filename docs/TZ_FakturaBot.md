@@ -114,7 +114,7 @@ AI не є джерелом істини. AI використовується я
 | STT | Whisper API |
 | LLM-парсинг | OpenAI API / Claude API |
 | PDF | reportlab |
-| QR-код (Pay by Square) | pay-by-square + qrcode |
+| QR-код (Pay by Square) | internal PAY by square encoder + qrcode |
 | Email | smtplib (SMTP/TLS) |
 | База даних | SQLite |
 | Деплой | Docker |
@@ -377,7 +377,17 @@ QR-код генерується автоматично з полів:
 - dátum splatnosti,
 - mena (EUR).
 
-Бібліотека: `pay-by-square` + `qrcode` (Python, PyPI).
+Реалізація: internal Python encoder (`bot/services/pay_by_square.py`) + `qrcode`.
+
+Мінімальні required поля для payload у FakturaBot:
+- IBAN,
+- Amount (> 0),
+- Currency (`^[A-Z]{3}$`),
+- Variable symbol (numeric, max 10),
+- Due date (`YYYY-MM-DD` → payload date),
+- Beneficiary name (non-empty).
+
+Якщо валідація не проходить — генерація payload зупиняється з явним exception (fail-loud), без fallback-placeholder.
 
 Клієнт контрагента сканує QR у банківській аплікації → платіжний príkaz заповнений автоматично.
 

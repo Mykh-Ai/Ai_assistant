@@ -13,6 +13,7 @@ from reportlab.pdfgen import canvas
 
 from bot.services.contact_service import ContactProfile
 from bot.services.supplier_service import SupplierProfile
+from bot.services.pay_by_square import PayBySquarePayment, build_pay_by_square_payload
 
 
 @dataclass
@@ -202,9 +203,17 @@ def generate_invoice_pdf(
     pdf.setFont('Helvetica-Bold', 16)
     pdf.drawRightString(total_x + total_w - 4 * mm, total_y - 15 * mm, _format_amount(invoice.total_amount, invoice.currency))
 
-    qr_payload = (
-        f'PAYBYSQUARE|IBAN={supplier.iban}|AM={invoice.total_amount:.2f}|CC={invoice.currency}'
-        f'|VS={invoice.variable_symbol}|DT={invoice.due_date}'
+    qr_payload = build_pay_by_square_payload(
+        PayBySquarePayment(
+            iban=supplier.iban,
+            amount=invoice.total_amount,
+            currency=invoice.currency,
+            variable_symbol=invoice.variable_symbol,
+            due_date=invoice.due_date,
+            beneficiary_name=supplier.name,
+            payment_note=f'Faktura {invoice.invoice_number}',
+            swift=supplier.swift,
+        )
     )
     qr_size = 28 * mm
     _draw_qr(pdf, qr_payload, total_x - qr_size - 8 * mm, total_y - qr_size, qr_size)
