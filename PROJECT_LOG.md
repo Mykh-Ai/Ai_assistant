@@ -435,9 +435,34 @@ Phase 3 remains intentionally simple and chat-based; contract extraction and ext
 ### Manual verification status
 - У цьому середовищі не виконувалась реальна перевірка сканування QR банківськими мобільними апками.
 - Після deploy потрібна manual verification на реальних SK banking clients.
-=======
 ### Follow-up note (семантика дат у faktúre)
 - Плутанину між `Dátum vystavenia` і `Dátum dodania` у специфікації усунуто.
 - Дата, вказана користувачем у voice/text input, тепер інтерпретується як `Dátum dodania`.
 - `Dátum vystavenia` завжди встановлюється ботом автоматично в момент створення фактури.
->>>>>>> 04b8f9f (docs: clarify invoice date semantics and approval flow)
+
+## 2026-04-03 - Session 008 - Verification support: PAY by square manual scan checklist
+
+### Goal
+Prepare a local verification-task plan for manual validation of the real PAY by square QR after merge, without runtime code changes.
+
+### Implemented
+- Added a short verification artifact: `docs/PayBySquare_Manual_Verification_Checklist.md`.
+- Documented the local verification flow:
+  - how to generate a PDF invoice locally;
+  - where to find the generated PDF;
+  - which fields must be checked after scanning in a banking app.
+- Added expected outcomes:
+  - success,
+  - partial success,
+  - fail.
+- Added a short record checklist for the post-test note so follow-up patch decisions are explicit.
+
+### Explicitly not included
+- No runtime code changes.
+- No new feature work.
+- No email flow changes.
+- No Phase 5 work.
+
+### Decision
+Before PAY by square production sign-off, a separate manual scan verification in a real banking mobile app must be completed and recorded in `PROJECT_LOG.md`.
+
