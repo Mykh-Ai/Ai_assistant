@@ -6,6 +6,7 @@
 venv/
 env/
 .env
+faktura.env
 
 storage/uploads/*
 storage/invoices/*

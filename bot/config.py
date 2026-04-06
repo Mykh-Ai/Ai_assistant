@@ -5,7 +5,12 @@ import os
 from dotenv import load_dotenv
 
 
-load_dotenv()
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+if (REPO_ROOT / 'faktura.env').exists():
+    load_dotenv(REPO_ROOT / 'faktura.env')
+else:
+    load_dotenv(REPO_ROOT / '.env')
 
 
 @dataclass(frozen=True)
