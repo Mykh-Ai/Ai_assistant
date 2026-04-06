@@ -20,6 +20,7 @@ class SupplierProfile:
     smtp_user: str
     smtp_pass: str
     days_due: int
+    id: int | None = None
 
 
 class SupplierService:
@@ -31,7 +32,7 @@ class SupplierService:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
-                    'SELECT telegram_id, name, ico, dic, ic_dph, address, iban, swift, '
+                    'SELECT id, telegram_id, name, ico, dic, ic_dph, address, iban, swift, '
                     'email, smtp_host, smtp_user, smtp_pass, days_due '
                     'FROM supplier WHERE telegram_id = ?'
                 ),
@@ -42,6 +43,7 @@ class SupplierService:
             return None
 
         return SupplierProfile(
+            id=row['id'],
             telegram_id=row['telegram_id'],
             name=row['name'],
             ico=row['ico'],
