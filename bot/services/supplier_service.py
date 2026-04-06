@@ -16,9 +16,9 @@ class SupplierProfile:
     iban: str
     swift: str
     email: str
-    smtp_host: str
-    smtp_user: str
-    smtp_pass: str
+    smtp_host: str | None
+    smtp_user: str | None
+    smtp_pass: str | None
     days_due: int
     id: int | None = None
 
@@ -26,6 +26,25 @@ class SupplierProfile:
 class SupplierService:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
+
+    @staticmethod
+    def normalize_optional_smtp(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        return normalized
+
+    @staticmethod
+    def has_complete_smtp_config(profile: SupplierProfile) -> bool:
+        return all(
+            (
+                SupplierService.normalize_optional_smtp(profile.smtp_host),
+                SupplierService.normalize_optional_smtp(profile.smtp_user),
+                SupplierService.normalize_optional_smtp(profile.smtp_pass),
+            )
+        )
 
     def get_by_telegram_id(self, telegram_id: int) -> SupplierProfile | None:
         with sqlite3.connect(self._db_path) as connection:
@@ -53,9 +72,9 @@ class SupplierService:
             iban=row['iban'],
             swift=row['swift'],
             email=row['email'],
-            smtp_host=row['smtp_host'],
-            smtp_user=row['smtp_user'],
-            smtp_pass=row['smtp_pass'],
+            smtp_host=self.normalize_optional_smtp(row['smtp_host']),
+            smtp_user=self.normalize_optional_smtp(row['smtp_user']),
+            smtp_pass=self.normalize_optional_smtp(row['smtp_pass']),
             days_due=row['days_due'],
         )
 
@@ -83,9 +102,9 @@ class SupplierService:
                     profile.iban,
                     profile.swift,
                     profile.email,
-                    profile.smtp_host,
-                    profile.smtp_user,
-                    profile.smtp_pass,
+                    self.normalize_optional_smtp(profile.smtp_host),
+                    self.normalize_optional_smtp(profile.smtp_user),
+                    self.normalize_optional_smtp(profile.smtp_pass),
                     profile.days_due,
                 ),
             )

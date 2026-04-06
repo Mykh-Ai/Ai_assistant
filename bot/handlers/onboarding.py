@@ -36,7 +36,14 @@ class OnboardingStates(StatesGroup):
     confirm = State()
 
 
-def _summary(data: dict[str, str]) -> str:
+def _normalize_optional_input(value: str) -> str | None:
+    normalized = value.strip()
+    if not normalized or normalized in {'-', '/skip'}:
+        return None
+    return normalized
+
+
+def _summary(data: dict[str, object]) -> str:
     return (
         '<b>Prehľad profilu dodávateľa</b>\n\n'
         f'• Názov: {data["name"]}\n'
@@ -47,9 +54,9 @@ def _summary(data: dict[str, str]) -> str:
         f'• IBAN: {data["iban"]}\n'
         f'• SWIFT: {data["swift"]}\n'
         f'• Email: {data["email"]}\n'
-        f'• SMTP host: {data["smtp_host"]}\n'
-        f'• SMTP user: {data["smtp_user"]}\n'
-        '• SMTP heslo: ********\n'
+        f'• SMTP host: {data["smtp_host"] or "-"}\n'
+        f'• SMTP user: {data["smtp_user"] or "-"}\n'
+        f'• SMTP heslo: {"********" if data["smtp_pass"] else "-"}\n'
         f'• Splatnosť: {data["days_due"]} dní\n\n'
         'Napíšte <b>ano</b> pre potvrdenie alebo <b>nie</b> pre zrušenie.'
     )
@@ -167,37 +174,28 @@ async def onboarding_email(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(email=value)
     await state.set_state(OnboardingStates.smtp_host)
-    await message.answer('9/12 Zadajte SMTP host:')
+    await message.answer('9/12 Zadajte SMTP host (voliteľné, "-" alebo /skip pre preskočenie):')
 
 
 @router.message(OnboardingStates.smtp_host)
 async def onboarding_smtp_host(message: Message, state: FSMContext) -> None:
-    value = (message.text or '').strip()
-    if not value:
-        await message.answer('SMTP host nemôže byť prázdny. Skúste znova:')
-        return
+    value = _normalize_optional_input(message.text or '')
     await state.update_data(smtp_host=value)
     await state.set_state(OnboardingStates.smtp_user)
-    await message.answer('10/12 Zadajte SMTP user:')
+    await message.answer('10/12 Zadajte SMTP user (voliteľné, "-" alebo /skip pre preskočenie):')
 
 
 @router.message(OnboardingStates.smtp_user)
 async def onboarding_smtp_user(message: Message, state: FSMContext) -> None:
-    value = (message.text or '').strip()
-    if not value:
-        await message.answer('SMTP user nemôže byť prázdny. Skúste znova:')
-        return
+    value = _normalize_optional_input(message.text or '')
     await state.update_data(smtp_user=value)
     await state.set_state(OnboardingStates.smtp_pass)
-    await message.answer('11/12 Zadajte SMTP heslo:')
+    await message.answer('11/12 Zadajte SMTP heslo (voliteľné, "-" alebo /skip pre preskočenie):')
 
 
 @router.message(OnboardingStates.smtp_pass)
 async def onboarding_smtp_pass(message: Message, state: FSMContext) -> None:
-    value = (message.text or '').strip()
-    if not value:
-        await message.answer('SMTP heslo nemôže byť prázdne. Skúste znova:')
-        return
+    value = _normalize_optional_input(message.text or '')
     await state.update_data(smtp_pass=value)
     await state.set_state(OnboardingStates.days_due)
     await message.answer('12/12 Zadajte štandardnú splatnosť v dňoch (celé číslo > 0):')
@@ -248,9 +246,9 @@ async def onboarding_confirm(
             iban=data['iban'],
             swift=data['swift'],
             email=data['email'],
-            smtp_host=data['smtp_host'],
-            smtp_user=data['smtp_user'],
-            smtp_pass=data['smtp_pass'],
+            smtp_host=data.get('smtp_host'),
+            smtp_user=data.get('smtp_user'),
+            smtp_pass=data.get('smtp_pass'),
             days_due=int(data['days_due']),
         )
     )
