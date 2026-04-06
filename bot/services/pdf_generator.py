@@ -9,11 +9,17 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+import reportlab
 
 from bot.services.contact_service import ContactProfile
 from bot.services.supplier_service import SupplierProfile
 from bot.services.pay_by_square import PayBySquarePayment, build_pay_by_square_payload
+
+FONT_REGULAR = 'FakturaBot-Regular'
+FONT_BOLD = 'FakturaBot-Bold'
 
 
 @dataclass
@@ -41,6 +47,21 @@ def _format_amount(value: float, currency: str) -> str:
     return f'{value:,.2f} {currency}'.replace(',', ' ')
 
 
+def _register_unicode_fonts() -> None:
+    try:
+        pdfmetrics.getFont(FONT_REGULAR)
+        pdfmetrics.getFont(FONT_BOLD)
+        return
+    except KeyError:
+        pass
+
+    reportlab_fonts = Path(reportlab.__file__).resolve().parent / 'fonts'
+    regular_font_path = reportlab_fonts / 'Vera.ttf'
+    bold_font_path = reportlab_fonts / 'VeraBd.ttf'
+    pdfmetrics.registerFont(TTFont(FONT_REGULAR, str(regular_font_path)))
+    pdfmetrics.registerFont(TTFont(FONT_BOLD, str(bold_font_path)))
+
+
 def _draw_party_block(
     pdf: canvas.Canvas,
     x: float,
@@ -54,10 +75,10 @@ def _draw_party_block(
     pdf.setFillColor(block_fill)
     pdf.roundRect(x, y_top - block_height, width, block_height, 4, fill=1, stroke=0)
     pdf.setFillColor(colors.HexColor('#1f2937'))
-    pdf.setFont('Helvetica-Bold', 11)
+    pdf.setFont(FONT_BOLD, 11)
     pdf.drawString(x + 4 * mm, y_top - 7 * mm, title)
 
-    pdf.setFont('Helvetica', 9)
+    pdf.setFont(FONT_REGULAR, 9)
     line_y = y_top - 13 * mm
     for line in lines:
         pdf.drawString(x + 4 * mm, line_y, line)
@@ -80,6 +101,7 @@ def generate_invoice_pdf(
     invoice: PdfInvoiceData,
     items: list[PdfInvoiceItem],
 ) -> None:
+    _register_unicode_fonts()
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
     page_width, page_height = A4
@@ -98,10 +120,10 @@ def generate_invoice_pdf(
     pdf.rect(margin, page_height - margin - header_height, page_width - 2 * margin, header_height, fill=1, stroke=0)
 
     pdf.setFillColor(accent)
-    pdf.setFont('Helvetica-Bold', 24)
+    pdf.setFont(FONT_BOLD, 24)
     pdf.drawString(margin + 6 * mm, page_height - margin - 10 * mm, 'Faktúra')
 
-    pdf.setFont('Helvetica-Bold', 12)
+    pdf.setFont(FONT_BOLD, 12)
     pdf.drawRightString(page_width - margin - 6 * mm, page_height - margin - 10 * mm, f'Číslo: {invoice.invoice_number}')
 
     left_x = margin
@@ -133,29 +155,29 @@ def generate_invoice_pdf(
     pdf.roundRect(margin, meta_top - meta_h, page_width - 2 * margin, meta_h, 4, fill=1, stroke=0)
 
     pdf.setFillColor(colors.HexColor('#111827'))
-    pdf.setFont('Helvetica-Bold', 10)
+    pdf.setFont(FONT_BOLD, 10)
     pdf.drawString(margin + 4 * mm, meta_top - 6 * mm, 'Dátum vystavenia')
     pdf.drawString(margin + 50 * mm, meta_top - 6 * mm, 'Dátum dodania')
     pdf.drawString(margin + 96 * mm, meta_top - 6 * mm, 'Dátum splatnosti')
     pdf.drawString(margin + 142 * mm, meta_top - 6 * mm, 'Variabilný symbol')
 
-    pdf.setFont('Helvetica', 10)
+    pdf.setFont(FONT_REGULAR, 10)
     pdf.drawString(margin + 4 * mm, meta_top - 13 * mm, invoice.issue_date)
     pdf.drawString(margin + 50 * mm, meta_top - 13 * mm, invoice.delivery_date)
     pdf.drawString(margin + 96 * mm, meta_top - 13 * mm, invoice.due_date)
     pdf.drawString(margin + 142 * mm, meta_top - 13 * mm, invoice.variable_symbol)
 
     pay_top = meta_top - meta_h - 5 * mm
-    pay_h = 18 * mm
+    pay_h = 24 * mm
     pdf.setFillColor(bg_secondary)
     pdf.roundRect(margin, pay_top - pay_h, page_width - 2 * margin, pay_h, 4, fill=1, stroke=0)
     pdf.setFillColor(colors.HexColor('#111827'))
-    pdf.setFont('Helvetica-Bold', 10)
+    pdf.setFont(FONT_BOLD, 10)
     pdf.drawString(margin + 4 * mm, pay_top - 6 * mm, 'Platobné údaje')
-    pdf.setFont('Helvetica', 10)
+    pdf.setFont(FONT_REGULAR, 9.5)
     pdf.drawString(margin + 4 * mm, pay_top - 12 * mm, f'IBAN: {supplier.iban}')
-    pdf.drawString(margin + 90 * mm, pay_top - 12 * mm, f'SWIFT/BIC: {supplier.swift}')
-    pdf.drawString(margin + 145 * mm, pay_top - 12 * mm, f'Spôsob úhrady: {invoice.payment_method}')
+    pdf.drawString(margin + 4 * mm, pay_top - 17 * mm, f'SWIFT/BIC: {supplier.swift}')
+    pdf.drawString(margin + 90 * mm, pay_top - 12 * mm, f'Spôsob úhrady: {invoice.payment_method}')
 
     table_top = pay_top - pay_h - 8 * mm
     headers = ['položka', 'množstvo', 'm.j.', 'cena za m.j.', 'spolu']
@@ -166,14 +188,14 @@ def generate_invoice_pdf(
     pdf.setFillColor(accent)
     pdf.roundRect(margin, y - 8 * mm, sum(col_widths), 8 * mm, 2, fill=1, stroke=0)
     pdf.setFillColor(colors.white)
-    pdf.setFont('Helvetica-Bold', 9)
+    pdf.setFont(FONT_BOLD, 9)
     for idx, header in enumerate(headers):
         pdf.drawString(x + 2 * mm, y - 5.5 * mm, header)
         x += col_widths[idx]
 
     row_h = 10 * mm
     y -= 8 * mm
-    pdf.setFont('Helvetica', 9)
+    pdf.setFont(FONT_REGULAR, 9)
     for item in items:
         pdf.setFillColor(bg_secondary)
         pdf.rect(margin, y - row_h, sum(col_widths), row_h, fill=1, stroke=0)
@@ -198,9 +220,9 @@ def generate_invoice_pdf(
     pdf.setFillColor(accent)
     pdf.roundRect(total_x, total_y - total_h, total_w, total_h, 4, fill=1, stroke=0)
     pdf.setFillColor(colors.white)
-    pdf.setFont('Helvetica-Bold', 11)
+    pdf.setFont(FONT_BOLD, 11)
     pdf.drawString(total_x + 4 * mm, total_y - 7 * mm, 'Na úhradu')
-    pdf.setFont('Helvetica-Bold', 16)
+    pdf.setFont(FONT_BOLD, 16)
     pdf.drawRightString(total_x + total_w - 4 * mm, total_y - 15 * mm, _format_amount(invoice.total_amount, invoice.currency))
 
     qr_payload = build_pay_by_square_payload(
@@ -219,7 +241,7 @@ def generate_invoice_pdf(
     _draw_qr(pdf, qr_payload, total_x - qr_size - 8 * mm, total_y - qr_size, qr_size)
 
     pdf.setFillColor(colors.HexColor('#4b5563'))
-    pdf.setFont('Helvetica', 8)
+    pdf.setFont(FONT_REGULAR, 8)
     pdf.drawString(margin, 12 * mm, 'Dokument bol vygenerovaný systémom FakturaBot.')
 
     pdf.showPage()
