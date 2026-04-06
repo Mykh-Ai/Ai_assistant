@@ -5,6 +5,33 @@
 
 ---
 
+## 2026-04-06 — Session 011 — PDF polish (Unicode font + payment block spacing)
+
+### Ціль
+
+Виправити артефакти в PDF-рендері без редизайну: словацькі діакритики, стабільність payment блоку та консистентність фінальної назви позиції.
+
+### Що змінено
+
+- `bot/services/pdf_generator.py`:
+  - додано реєстрацію Unicode TTF-шрифтів через ReportLab (`Vera.ttf`, `VeraBd.ttf` із пакета `reportlab`);
+  - усі видимі текстові `setFont(...)` переведені на ці шрифти (замість Helvetica), щоб коректно рендерити словацькі символи;
+  - payment block перероблено у більш читабельний stacked layout:
+    - `IBAN` і `SWIFT/BIC` у лівій колонці на різних рядках;
+    - `Spôsob úhrady` винесено окремо в праву частину без перетину;
+  - висоту payment block збільшено помірно (`18mm` → `24mm`) для стабільного spacing.
+- додано regression-тест `tests/test_invoice_service_item_normalized.py`:
+  - перевіряє, що `description_normalized` реально зберігається в `invoice_item` і доступний для PDF/fallback логіки.
+
+### Результат
+
+PDF лишився в поточній структурі (без major redesign), але став стабільнішим в рендері:
+- словацький текст рендериться Unicode-шрифтом;
+- payment block не стикається по полях;
+- фінальна canonical назва позиції залишається збереженою в persistence-шарі для використання в PDF.
+
+---
+
 ## 2026-04-06 — Session 010 — Optional SMTP in supplier onboarding/storage
 
 ### Ціль
