@@ -14,6 +14,7 @@ from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
 from bot.services.llm_invoice_parser import parse_invoice_draft
 from bot.services.pdf_generator import PdfInvoiceData, PdfInvoiceItem, generate_invoice_pdf
+from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierService
 
 router = Router(name='invoice')
@@ -66,7 +67,8 @@ def _format_preview(recognized_text: str | None, data: dict[str, object]) -> str
         f'{text_part}'
         '<b>Náhľad faktúry:</b>\n'
         f'• Odberateľ: {data["customer_name"]}\n'
-        f'• Položka: {data["item_name_raw"]}\n'
+        f'• Položka (raw): {data["item_name_raw"]}\n'
+        f'• Položka (finálna): {data["item_name_final"]}\n'
         f'• Množstvo: {data["quantity"]} {data["unit"] or ""}\n'
         f'• Suma: {data["amount"]:.2f} {data["currency"]}\n'
         f'• Dátum vystavenia: {data["issue_date"]}\n'
@@ -136,12 +138,18 @@ async def _build_and_store_preview(
             pass
 
     due_date_obj = issue_date_obj + timedelta(days=due_days)
+    item_name_final = item_name_raw
+    if supplier.id is not None:
+        resolved = ServiceAliasService(config.db_path).resolve_alias(supplier.id, item_name_raw)
+        if resolved:
+            item_name_final = resolved
 
     normalized = {
         'raw_text': raw_text,
         'customer_name': contact.name,
         'contact_id': contact.id,
         'item_name_raw': item_name_raw,
+        'item_name_final': item_name_final,
         'quantity': quantity,
         'unit': unit,
         'amount': amount,
@@ -263,7 +271,7 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
                 currency=str(draft['currency']),
                 status='draft_pdf_ready',
                 item_description_raw=str(draft['item_name_raw']),
-                item_description_normalized=None,
+                item_description_normalized=str(draft['item_name_final']),
                 item_quantity=float(draft['quantity']),
                 item_unit=str(draft['unit']) if draft['unit'] else None,
                 item_unit_price=float(draft['amount']) / float(draft['quantity']),
@@ -302,7 +310,7 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
             ),
             items=[
                 PdfInvoiceItem(
-                    description=item.description_raw,
+                    description=item.description_normalized or item.description_raw,
                     quantity=float(item.quantity),
                     unit=item.unit,
                     unit_price=float(item.unit_price),

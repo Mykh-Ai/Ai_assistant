@@ -5,6 +5,81 @@
 
 ---
 
+## 2026-04-06 — Session 009 — Service alias list cleanup (inactive hidden by default)
+
+### Ціль
+
+Прибрати деактивовані alias mappings зі стандартного `/service` списку без зміни UX flow.
+
+### Що змінено
+
+- `ServiceAliasService.list_mappings(...)` оновлено:
+  - default тепер повертає тільки активні записи (`is_active = 1`);
+  - порядок сортування збережено (`canonical_title`, `alias`);
+  - додано опційний `include_inactive=True` для технічного використання;
+- `/service` handler лишився без змін по виклику і тепер автоматично показує лише активні alias;
+- тести доповнено:
+  - перевірка, що після `deactivate_mapping` запис не з’являється у default list;
+  - перевірка, що активний alias лишається в list;
+  - перевірка, що `resolve_alias` не повертає деактивований alias;
+  - перевірка `include_inactive=True`.
+
+### Результат
+
+Normal `/service` list тепер приховує неактивні mappings, а нормалізація invoice не використовує деактивовані alias.
+
+---
+
+## 2026-04-06 — Session 008 — Service alias → canonical invoice title normalization
+
+### Ціль
+
+Додати детермінований normalization layer для invoice item:
+alias (коротка spoken/text назва) → canonical full title, керований постачальником.
+
+### Що реалізовано
+
+- додано нову persistence-таблицю `supplier_service_alias`:
+  - поля `id`, `supplier_id`, `alias`, `canonical_title`, `is_active`, `created_at`;
+  - `alias` з case-insensitive унікальністю в межах постачальника (`UNIQUE(supplier_id, alias)` + `COLLATE NOCASE`);
+  - bootstrap/schema-check інтегровано в `init_db` з fail-loud поведінкою при несумісній схемі;
+- додано `bot/services/service_alias_service.py`:
+  - `create_mapping`,
+  - `list_mappings`,
+  - `resolve_alias` (exact + trimmed + case-insensitive),
+  - `deactivate_mapping` (MVP-safe optional helper);
+- додано supplier-side chat flow `/service` (`bot/handlers/supplier.py`):
+  - показ поточного списку alias mappings,
+  - крок 1: введення alias,
+  - крок 2: введення canonical title,
+  - збереження і повторний список;
+- invoice flow (`bot/handlers/invoice.py`) оновлено:
+  - зберігається `item_name_raw`,
+  - перед preview/save/PDF виконується deterministic alias resolution через Python/SQLite,
+  - при match використовується canonical title як `item_name_final`,
+  - при miss зберігається fallback на raw text;
+- preview оновлено: показує `raw` і `finálna` назву позиції;
+- save/PDF оновлено:
+  - у `invoice_item.description_normalized` записується фінальна назва (canonical або fallback raw),
+  - PDF використовує фінальну назву (`description_normalized` з fallback на `description_raw`);
+- додано тести `tests/test_service_alias_service.py`:
+  - alias resolution success,
+  - fallback when alias not found,
+  - case-insensitive + trimmed match.
+
+### Що свідомо не робилось
+
+- fuzzy matching;
+- auto-canonicalization через LLM;
+- складний admin/settings UI для mappings.
+
+### Рішення
+
+Final service/item title для invoice preview/save/PDF тепер визначається детерміновано
+через supplier-defined mapping у Python/storage, а не через LLM paraphrasing.
+
+---
+
 ## 2026-04-03 — Session 007 — Phase 4: invoice draft → confirm → PDF preview
 
 ### Ціль
@@ -465,4 +540,3 @@ Prepare a local verification-task plan for manual validation of the real PAY by 
 
 ### Decision
 Before PAY by square production sign-off, a separate manual scan verification in a real banking mobile app must be completed and recorded in `PROJECT_LOG.md`.
-

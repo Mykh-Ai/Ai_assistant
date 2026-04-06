@@ -95,6 +95,7 @@ AI не є джерелом істини.
    - `/start` — health check
    - voice message — Phase 1 draft preview
    - `/supplier` або `/onboarding` — Phase 2 supplier onboarding
+   - `/service` — správa aliasov služieb (alias → canonical názov položky)
    - `/contact` or `/contact_add` - Phase 3 manual customer contact onboarding
    - `/invoice` — Phase 4 draft → confirm → PDF preview flow
 
