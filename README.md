@@ -99,5 +99,9 @@ AI не є джерелом істини.
    - `/contact` or `/contact_add` - Phase 3 manual customer contact onboarding
    - `/invoice` — Phase 4 draft → confirm → PDF preview flow
 
+Poznámka pre onboarding dodávateľa:
+- SMTP host/user/pass sú v MVP voliteľné (môžete preskočiť cez `-` alebo `/skip`);
+- email sending sa má používať iba pri kompletnej SMTP konfigurácii.
+
 Примітка по Phase 4: QR block у PDF використовує реальний PAY by square payload encoder (internal Python implementation) з валідацією полів платежу.
 Manual scan-перевірка у реальних банківських апках все ще обов’язкова перед повним production sign-off.

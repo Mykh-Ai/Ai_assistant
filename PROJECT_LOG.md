@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-04-06 — Session 010 — Optional SMTP in supplier onboarding/storage
+
+### Ціль
+
+Зняти блокуючу вимогу SMTP host/user/pass у supplier onboarding для MVP, щоб профіль постачальника можна було зберігати без email-конфігурації.
+
+### Що змінено
+
+- `supplier` schema в `bot/services/db.py` оновлено: `smtp_host`, `smtp_user`, `smtp_pass` тепер nullable (`TEXT` без `NOT NULL`);
+- `SupplierProfile` в `bot/services/supplier_service.py` оновлено на optional SMTP-поля (`str | None`);
+- додано нормалізацію optional SMTP значень у service layer:
+  - порожні/whitespace значення зберігаються як `NULL`,
+  - читання старих рядків з порожніми SMTP значеннями нормалізується до `None`;
+- додано явний контракт helper `SupplierService.has_complete_smtp_config(profile)`:
+  - email send повинен запускатись тільки коли всі 3 SMTP поля задані;
+- onboarding flow (`bot/handlers/onboarding.py`) оновлено:
+  - SMTP кроки мають текст `voliteľné, "-" alebo /skip pre preskočenie`,
+  - `-`, `/skip` і порожні значення нормалізуються як `None`,
+  - summary показує `-` для відсутніх SMTP значень.
+- додано тести `tests/test_supplier_smtp_optional.py`:
+  - save/load supplier без SMTP;
+  - save/load supplier з SMTP;
+  - нормалізація skip token/empty значень.
+
+### Результат
+
+`/supplier` може завершитися без SMTP налаштувань; профіль успішно зберігається і використовується в invoice/PDF flow без змін критичного MVP шляху.
+
+---
+
 ## 2026-04-06 — Session 009 — Service alias list cleanup (inactive hidden by default)
 
 ### Ціль
