@@ -5,6 +5,43 @@
 
 ---
 
+## 2026-04-06 — Session 012 — PDF wrapping polish (items + identity blocks + Slovak glyph coverage)
+
+### Ціль
+
+Закрити залишкові seam-и PDF рендера без редизайну:
+- перенос довгих назв позицій у таблиці;
+- динамічні висоти рядків/identity block-ів;
+- стабільний рендер словацьких символів (включно з `ľ`, `ť`) у практичних текстах.
+
+### Що змінено
+
+- `bot/services/pdf_generator.py`:
+  - додано helper `_wrap_text_lines(...)` на базі `pdfmetrics.stringWidth(...)` для word-wrap в обмеженій ширині;
+  - додано helper `_measure_party_block_height(...)` для розрахунку динамічної висоти identity block;
+  - `_draw_party_block(...)` оновлено:
+    - підтримує wrapped multi-line lines,
+    - повертає фактичну висоту блоку;
+  - секцію `Dodávateľ` / `Odberateľ` переведено на спільний baseline:
+    - нижня межа наступного блоку рахується від `max(height_left, height_right)`,
+    - прибрано ризик візуального overlap між блоками;
+  - items table оновлено:
+    - `položka` переноситься по словах в межах колонки,
+    - висота row динамічно зростає при 2+ рядках опису,
+    - числові колонки (`množstvo`, `m.j.`, `cena za m.j.`, `spolu`) залишені фіксованими та вертикально вирівняні по центру рядка.
+- додано regression-тести `tests/test_pdf_generator_layout_wrapping.py`:
+  - перевірка, що довгий description реально розбивається на кілька рядків;
+  - перевірка, що висота identity block збільшується для довгої адреси.
+
+### Результат
+
+- довгі назви позицій більше не в’їжджають у колонку `množstvo`;
+- адресні рядки в `Dodávateľ`/`Odberateľ` переносяться в межах блоку;
+- висоти блоків і рядків адаптивні, без зміни загальної структури one-page invoice;
+- Unicode TTF шлях через ReportLab (`Vera.ttf`, `VeraBd.ttf`) лишається базовим механізмом рендера словацьких діакритик.
+
+---
+
 ## 2026-04-06 — Session 011 — PDF polish (Unicode font + payment block spacing)
 
 ### Ціль

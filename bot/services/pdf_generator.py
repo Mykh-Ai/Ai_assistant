@@ -62,6 +62,40 @@ def _register_unicode_fonts() -> None:
     pdfmetrics.registerFont(TTFont(FONT_BOLD, str(bold_font_path)))
 
 
+def _wrap_text_lines(text: str, max_width: float, font_name: str, font_size: float) -> list[str]:
+    normalized = ' '.join((text or '').split())
+    if not normalized:
+        return ['-']
+
+    words = normalized.split(' ')
+    wrapped: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f'{current} {word}'
+        if pdfmetrics.stringWidth(candidate, font_name, font_size) <= max_width:
+            current = candidate
+            continue
+        wrapped.append(current)
+        current = word
+    wrapped.append(current)
+    return wrapped
+
+
+def _measure_party_block_height(lines: list[str], width: float) -> float:
+    title_top_offset = 7 * mm
+    line_start_offset = 13 * mm
+    line_height = 5 * mm
+    bottom_padding = 5 * mm
+    text_width = width - 8 * mm
+
+    wrapped_count = 0
+    for line in lines:
+        wrapped_count += len(_wrap_text_lines(line, text_width, FONT_REGULAR, 9))
+
+    text_height = line_start_offset + (wrapped_count * line_height) + bottom_padding
+    return max(52 * mm, title_top_offset + text_height)
+
+
 def _draw_party_block(
     pdf: canvas.Canvas,
     x: float,
@@ -70,8 +104,9 @@ def _draw_party_block(
     title: str,
     lines: list[str],
     block_fill: colors.Color,
-) -> None:
-    block_height = 52 * mm
+) -> float:
+    block_height = _measure_party_block_height(lines, width)
+    text_width = width - 8 * mm
     pdf.setFillColor(block_fill)
     pdf.roundRect(x, y_top - block_height, width, block_height, 4, fill=1, stroke=0)
     pdf.setFillColor(colors.HexColor('#1f2937'))
@@ -81,8 +116,11 @@ def _draw_party_block(
     pdf.setFont(FONT_REGULAR, 9)
     line_y = y_top - 13 * mm
     for line in lines:
-        pdf.drawString(x + 4 * mm, line_y, line)
-        line_y -= 5 * mm
+        wrapped_lines = _wrap_text_lines(line, text_width, FONT_REGULAR, 9)
+        for wrapped_line in wrapped_lines:
+            pdf.drawString(x + 4 * mm, line_y, wrapped_line)
+            line_y -= 5 * mm
+    return block_height
 
 
 def _draw_qr(pdf: canvas.Canvas, payload: str, x: float, y: float, size: float) -> None:
@@ -146,10 +184,13 @@ def generate_invoice_pdf(
         f'Email: {customer.email}',
     ]
 
-    _draw_party_block(pdf, left_x, block_top, col_width, 'Dodávateľ', supplier_lines, bg_secondary)
-    _draw_party_block(pdf, left_x + col_width + col_gap, block_top, col_width, 'Odberateľ', customer_lines, bg_secondary)
+    supplier_block_h = _draw_party_block(pdf, left_x, block_top, col_width, 'Dodávateľ', supplier_lines, bg_secondary)
+    customer_block_h = _draw_party_block(
+        pdf, left_x + col_width + col_gap, block_top, col_width, 'Odberateľ', customer_lines, bg_secondary
+    )
+    block_bottom_y = block_top - max(supplier_block_h, customer_block_h)
 
-    meta_top = block_top - 56 * mm
+    meta_top = block_bottom_y - 4 * mm
     meta_h = 24 * mm
     pdf.setFillColor(bg_secondary)
     pdf.roundRect(margin, meta_top - meta_h, page_width - 2 * margin, meta_h, 4, fill=1, stroke=0)
@@ -193,24 +234,33 @@ def generate_invoice_pdf(
         pdf.drawString(x + 2 * mm, y - 5.5 * mm, header)
         x += col_widths[idx]
 
-    row_h = 10 * mm
+    row_min_h = 10 * mm
+    row_line_h = 4.2 * mm
+    desc_text_width = col_widths[0] - 4 * mm
     y -= 8 * mm
     pdf.setFont(FONT_REGULAR, 9)
     for item in items:
+        desc_lines = _wrap_text_lines(item.description, desc_text_width, FONT_REGULAR, 9)
+        row_h = max(row_min_h, (len(desc_lines) * row_line_h) + 4 * mm)
         pdf.setFillColor(bg_secondary)
         pdf.rect(margin, y - row_h, sum(col_widths), row_h, fill=1, stroke=0)
         pdf.setFillColor(colors.HexColor('#111827'))
         row_vals = [
-            item.description,
             str(item.quantity),
             item.unit or '-',
             _format_amount(item.unit_price, invoice.currency),
             _format_amount(item.total_price, invoice.currency),
         ]
-        x = margin
+        desc_y = y - 4 * mm - row_line_h
+        for desc_line in desc_lines:
+            pdf.drawString(margin + 2 * mm, desc_y, desc_line)
+            desc_y -= row_line_h
+
+        numeric_y = y - (row_h / 2) + 1.4 * mm
+        x = margin + col_widths[0]
         for idx, value in enumerate(row_vals):
-            pdf.drawString(x + 2 * mm, y - 6.5 * mm, value)
-            x += col_widths[idx]
+            pdf.drawString(x + 2 * mm, numeric_y, value)
+            x += col_widths[idx + 1]
         y -= row_h
 
     total_w = 62 * mm
