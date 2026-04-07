@@ -15,11 +15,17 @@ from reportlab.pdfgen import canvas
 import reportlab
 
 from bot.services.contact_service import ContactProfile
-from bot.services.supplier_service import SupplierProfile
 from bot.services.pay_by_square import PayBySquarePayment, build_pay_by_square_payload
+from bot.services.supplier_service import SupplierProfile
 
 FONT_REGULAR = 'FakturaBot-Regular'
 FONT_BOLD = 'FakturaBot-Bold'
+REQUIRED_GLYPHS = ('ľ', 'ť', 'á', 'č', 'ú', 'ž', 'ý')
+WINDOWS_FONT_CANDIDATES = [
+    (Path('C:/Windows/Fonts/arial.ttf'), Path('C:/Windows/Fonts/arialbd.ttf')),
+    (Path('C:/Windows/Fonts/calibri.ttf'), Path('C:/Windows/Fonts/calibrib.ttf')),
+    (Path('C:/Windows/Fonts/CEARIAL.TTF'), Path('C:/Windows/Fonts/arialbd.ttf')),
+]
 
 
 @dataclass
@@ -47,6 +53,28 @@ def _format_amount(value: float, currency: str) -> str:
     return f'{value:,.2f} {currency}'.replace(',', ' ')
 
 
+def _font_supports_glyphs(font_path: Path, glyphs: tuple[str, ...] = REQUIRED_GLYPHS) -> bool:
+    font = TTFont('FakturaBot-Glyph-Probe', str(font_path))
+    cmap = font.face.charToGlyph
+    return all(ord(glyph) in cmap for glyph in glyphs)
+
+
+def _resolve_unicode_font_paths() -> tuple[Path, Path]:
+    for regular_font_path, bold_font_path in WINDOWS_FONT_CANDIDATES:
+        if not regular_font_path.exists() or not bold_font_path.exists():
+            continue
+        if _font_supports_glyphs(regular_font_path) and _font_supports_glyphs(bold_font_path):
+            return regular_font_path, bold_font_path
+
+    reportlab_fonts = Path(reportlab.__file__).resolve().parent / 'fonts'
+    fallback_regular = reportlab_fonts / 'Vera.ttf'
+    fallback_bold = reportlab_fonts / 'VeraBd.ttf'
+    if _font_supports_glyphs(fallback_regular) and _font_supports_glyphs(fallback_bold):
+        return fallback_regular, fallback_bold
+
+    raise RuntimeError('No available PDF font with required Slovak glyph support (ľ, ť).')
+
+
 def _register_unicode_fonts() -> None:
     try:
         pdfmetrics.getFont(FONT_REGULAR)
@@ -55,9 +83,7 @@ def _register_unicode_fonts() -> None:
     except KeyError:
         pass
 
-    reportlab_fonts = Path(reportlab.__file__).resolve().parent / 'fonts'
-    regular_font_path = reportlab_fonts / 'Vera.ttf'
-    bold_font_path = reportlab_fonts / 'VeraBd.ttf'
+    regular_font_path, bold_font_path = _resolve_unicode_font_paths()
     pdfmetrics.registerFont(TTFont(FONT_REGULAR, str(regular_font_path)))
     pdfmetrics.registerFont(TTFont(FONT_BOLD, str(bold_font_path)))
 

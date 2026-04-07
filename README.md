@@ -104,4 +104,5 @@ Poznámka pre onboarding dodávateľa:
 - email sending sa má používať iba pri kompletnej SMTP konfigurácii.
 
 Примітка по Phase 4: QR block у PDF використовує реальний PAY by square payload encoder (internal Python implementation) з валідацією полів платежу.
-Manual scan-перевірка у реальних банківських апках все ще обов’язкова перед повним production sign-off.
+Є щонайменше один успішний локальний manual scan-тест у реальній банківській апці для поточного PAY by square flow.
+Додаткові перевірки в інших банківських апках усе ще бажані перед повним production sign-off.

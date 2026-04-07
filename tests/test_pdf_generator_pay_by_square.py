@@ -18,11 +18,11 @@ class PdfGeneratorPayBySquareSmokeTests(unittest.TestCase):
 
         supplier = SupplierProfile(
             telegram_id=1,
-            name='Dodavatel s.r.o.',
+            name='Dodávateľ s.r.o.',
             ico='12345678',
             dic='1234567890',
             ic_dph=None,
-            address='Bratislava 1',
+            address='mestská časť Rača, Bratislava 1',
             iban='SK7700000000000000000000',
             swift='FIOZSKBAXXX',
             email='supplier@example.com',
@@ -33,11 +33,11 @@ class PdfGeneratorPayBySquareSmokeTests(unittest.TestCase):
         )
         customer = ContactProfile(
             supplier_telegram_id=1,
-            name='Customer s.r.o.',
+            name='Odberateľ s.r.o.',
             ico='87654321',
             dic='0987654321',
             ic_dph=None,
-            address='Kosice 2',
+            address='mestská časť Rača, Košice 2',
             email='customer@example.com',
             contact_person=None,
             source_type='manual',

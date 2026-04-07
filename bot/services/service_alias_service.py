@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 
+from bot.services.db import managed_connection
+
 
 @dataclass
 class ServiceAliasMapping:
@@ -31,7 +33,7 @@ class ServiceAliasService:
         if not canonical_clean:
             raise ValueError('Canonical title cannot be empty.')
 
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.execute(
                 (
                     'INSERT INTO supplier_service_alias '
@@ -49,7 +51,7 @@ class ServiceAliasService:
         if not include_inactive:
             where_clause += ' AND is_active = 1'
 
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
                 (
@@ -78,7 +80,7 @@ class ServiceAliasService:
         if not normalized_alias:
             return None
 
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             row = connection.execute(
                 (
                     'SELECT canonical_title '
@@ -95,7 +97,7 @@ class ServiceAliasService:
         return str(row[0])
 
     def deactivate_mapping(self, mapping_id: int, supplier_id: int) -> bool:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             cursor = connection.execute(
                 (
                     'UPDATE supplier_service_alias '
