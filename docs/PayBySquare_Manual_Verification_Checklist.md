@@ -76,3 +76,20 @@ Scope:
 Keep one short note per banking app test:
 
 `<bank app> | scan: yes/no | IBAN: ok/fail | amount: ok/fail | currency: ok/fail | VS: ok/fail | due date: ok/fail | beneficiary: ok/fail | note: ok/missing/n-a | follow-up patch: yes/no`
+
+## Verified Result
+
+Status for currently tested local FakturaBot flow: passed.
+
+Completed items:
+- [x] Local supplier/contact/invoice flow completed successfully.
+- [x] PDF invoice generated and reviewed successfully.
+- [x] Real banking mobile app accepted the PAY by square QR scan.
+- [x] Recipient account data matched in the banking app.
+- [x] Amount populated correctly.
+- [x] Due date populated correctly.
+
+Result note:
+- One real local end-to-end banking-app scan has passed for the currently tested flow.
+- This closes the previously pending manual scan verification milestone for that flow only.
+- No broader bank-compatibility claim is implied by this checklist result.

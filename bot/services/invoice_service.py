@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 
+from bot.services.db import managed_connection
+
 
 @dataclass
 class InvoiceRecord:
@@ -57,7 +59,7 @@ class InvoiceService:
         self._db_path = db_path
 
     def generate_next_invoice_number(self, issue_year: int) -> str:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             return self._generate_next_invoice_number(connection, issue_year)
 
 
@@ -83,7 +85,7 @@ class InvoiceService:
     def create_invoice_with_one_item(self, payload: CreateInvoicePayload) -> int:
         issue_year = int(payload.issue_date[:4])
 
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             invoice_number = self._generate_next_invoice_number(connection, issue_year)
             cursor = connection.execute(
                 (
@@ -130,7 +132,7 @@ class InvoiceService:
         return int(invoice_id)
 
     def get_invoice_by_id(self, invoice_id: int) -> InvoiceRecord | None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
@@ -160,7 +162,7 @@ class InvoiceService:
         )
 
     def get_invoice_by_number(self, invoice_number: str) -> InvoiceRecord | None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
@@ -190,7 +192,7 @@ class InvoiceService:
         )
 
     def get_items_by_invoice_id(self, invoice_id: int) -> list[InvoiceItemRecord]:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
                 (
@@ -215,7 +217,7 @@ class InvoiceService:
         ]
 
     def save_pdf_path(self, invoice_id: int, pdf_path: str) -> None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.execute(
                 'UPDATE invoice SET pdf_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
                 (pdf_path, invoice_id),

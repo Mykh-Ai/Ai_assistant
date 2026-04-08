@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 
+from bot.services.db import managed_connection
+
 
 @dataclass
 class SupplierProfile:
@@ -47,7 +49,7 @@ class SupplierService:
         )
 
     def get_by_telegram_id(self, telegram_id: int) -> SupplierProfile | None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
@@ -79,7 +81,7 @@ class SupplierService:
         )
 
     def create_or_replace(self, profile: SupplierProfile) -> None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.execute(
                 (
                     'INSERT INTO supplier '

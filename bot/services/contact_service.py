@@ -6,6 +6,8 @@ import re
 import sqlite3
 from typing import Literal
 
+from bot.services.db import managed_connection
+
 
 @dataclass
 class ContactProfile:
@@ -41,7 +43,7 @@ class ContactService:
         self._db_path = db_path
 
     def get_all_by_supplier(self, telegram_id: int) -> list[ContactProfile]:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
                 (
@@ -57,7 +59,7 @@ class ContactService:
         return [self._row_to_profile(row) for row in rows]
 
     def get_by_name(self, telegram_id: int, name: str) -> ContactProfile | None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
@@ -75,7 +77,7 @@ class ContactService:
         return self._row_to_profile(row)
 
     def get_by_name_case_insensitive(self, telegram_id: int, name: str) -> ContactProfile | None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
@@ -93,7 +95,7 @@ class ContactService:
         return self._row_to_profile(row)
 
     def create_contact(self, profile: ContactProfile) -> None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.execute(
                 (
                     'INSERT INTO contact '
@@ -118,7 +120,7 @@ class ContactService:
             connection.commit()
 
     def create_or_replace(self, profile: ContactProfile) -> None:
-        with sqlite3.connect(self._db_path) as connection:
+        with managed_connection(self._db_path) as connection:
             connection.execute(
                 (
                     'INSERT INTO contact '

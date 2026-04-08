@@ -1,4 +1,4 @@
-﻿# CHANGELOG
+# CHANGELOG
 
 ## [0.5.0] - 2026-04-03
 
@@ -12,7 +12,8 @@
 - README/TZ/PROJECT_LOG updated to reflect real QR payload integration and current manual scan verification status
 
 ### Notes
-- real banking-app scan verification still requires manual confirmation outside CI/runtime environment
+- one real local banking-app PAY by square scan has since been recorded as passed for the currently tested FakturaBot flow
+- broader banking-app compatibility still requires additional manual confirmation outside CI/runtime environment
 
 ## [0.4.0] - 2026-04-03
 

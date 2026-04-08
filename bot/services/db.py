@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 import sqlite3
 from pathlib import Path
 
@@ -253,10 +255,19 @@ def _bootstrap_supplier_service_alias_table(connection: sqlite3.Connection) -> N
     )
 
 
+@contextmanager
+def managed_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
+    connection = sqlite3.connect(db_path)
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with sqlite3.connect(db_path) as connection:
+    with managed_connection(db_path) as connection:
         _bootstrap_supplier_table(connection)
         _bootstrap_contact_table(connection)
         _bootstrap_invoice_table(connection)

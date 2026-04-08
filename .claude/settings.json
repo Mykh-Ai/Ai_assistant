@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh -o ConnectTimeout=10 root@95.216.139.172 \"echo ''=== DISK ==='' && df -h / && echo ''=== RAM ==='' && free -h && echo ''=== CPU ==='' && nproc && cat /proc/cpuinfo | grep ''model name'' | head -1 && echo ''=== OS ==='' && cat /etc/os-release | head -5 && echo ''=== DOCKER ==='' && docker --version 2>/dev/null || echo ''Docker not installed'' && echo ''=== RUNNING CONTAINERS ==='' && docker ps 2>/dev/null || echo ''no docker''\")",
+      "Bash(ls d:/AI_Model/Ai_assistant/.env*)",
+      "Bash(find /d/AI_Model/Ai_assistant -not -path */__pycache__/* -not -path */.git/* -type f)"
+    ]
+  }
+}

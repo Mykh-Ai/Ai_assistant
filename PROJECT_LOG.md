@@ -659,7 +659,6 @@ Allow FakturaBot to run locally from a dedicated repo-root `faktura.env` file wi
 ### Decision
 Local FakturaBot setup now supports a dedicated non-committed `faktura.env` file while preserving `.env` compatibility.
 
-
 ## 2026-04-08 - Session 010 - Docs ownership split: Implementation Plan vs LLM Contract
 
 ### Goal
@@ -718,3 +717,72 @@ Remove ambiguity between legacy unittest habits and current pytest workflow.
 
 ### Scope
 - Docs/tooling only; no runtime code changes.
+=======
+---
+
+## 2026-04-06 - Session 013 - Windows-safe SQLite connection closing in tests
+
+### Goal
+Eliminate Windows test-suite failures during `TemporaryDirectory` cleanup by ensuring SQLite connections are explicitly closed after each DB access path.
+
+### Implemented
+- Added `managed_connection(...)` in `bot/services/db.py` to guarantee `connection.close()` in `finally`.
+- Switched SQLite usage in `bot/services/supplier_service.py`, `bot/services/service_alias_service.py`, `bot/services/invoice_service.py`, `bot/services/contact_service.py`, and DB bootstrap in `bot/services/db.py` from direct `sqlite3.connect(...)` context usage to the shared managed helper.
+- Preserved existing transaction behavior (`commit()` remains where it already existed).
+- Preserved `row_factory = sqlite3.Row` behavior on read paths.
+- Verified with `python -m unittest discover -s tests -p "test_*.py" -v`: 18 tests passed on Windows, including the previously affected temp SQLite DB cleanup paths.
+
+### Explicitly not included
+- No schema changes.
+- No business logic changes.
+- No test behavior changes beyond the connection lifecycle fix.
+
+### Decision
+SQLite connection lifetime in services/bootstrap is now treated as an explicit resource lifecycle concern, not only a transaction context concern, to remain Windows-safe for temporary DB files.
+
+---
+
+## 2026-04-06 - Session 014 - PDF Slovak glyph completion (ľ, ť)
+
+### Goal
+Finish PDF glyph coverage for the remaining Slovak characters (`ľ`, `ť`) without changing the existing layout.
+
+### Implemented
+- Confirmed that bundled ReportLab `Vera.ttf` / `VeraBd.ttf` do not contain `ľ` and `ť`.
+- Updated `bot/services/pdf_generator.py` to resolve a Unicode-capable font pair from installed Windows fonts first (`arial.ttf` / `arialbd.ttf`, with fallbacks), and only use a fallback font if it actually covers the required Slovak glyphs.
+- Normalized visible Slovak PDF literals in `bot/services/pdf_generator.py` to proper Unicode text so headers and labels render correctly with the selected font.
+- Added a regression test to verify the selected regular and bold PDF fonts cover `ľ` and `ť`, while keeping existing wrapping/layout tests intact.
+- Re-verified the full test suite after the font-selection change.
+
+### Explicitly not included
+- No layout redesign.
+- No payment block or table layout refactor.
+- No schema or business logic changes.
+
+### Decision
+PDF rendering now depends on an explicitly validated Unicode font path instead of assuming bundled ReportLab Vera fonts are sufficient for Slovak invoice text.
+
+---
+
+## 2026-04-07 - Session 015 - Manual PAY by square banking-app verification passed for one local FakturaBot flow
+
+### Goal
+Record the completed local end-to-end FakturaBot verification session for the currently tested PAY by square PDF flow.
+
+### Verified
+- Local supplier -> contact -> invoice flow completed successfully.
+- A PDF invoice artifact was generated successfully and reviewed.
+- Latest local generated PDF artifact present at `storage/invoices/20260006.pdf` (timestamp observed locally before this log update: 2026-04-07 18:45).
+- The PAY by square QR from the tested PDF was scanned successfully in a real banking mobile app.
+- Manual user confirmation states the bank-app recipient account data matched the expected recipient account data.
+- Manual user confirmation states the amount was populated correctly.
+- Manual user confirmation states the due date (`datum splatnosti`) was populated correctly.
+
+### Scope note
+- This log entry records one successful real local end-to-end verification case for the currently tested FakturaBot flow.
+- This closes the previously pending manual scan verification milestone for that tested flow.
+- This does not claim universal compatibility across all banking apps or full production sign-off.
+
+### Decision
+The PAY by square PDF flow now has at least one recorded successful real banking-app verification milestone in addition to local code/test validation.
+
