@@ -10,11 +10,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile, Message
 
 from bot.config import Config
-from bot.services.contact_service import ContactProfile, ContactService
+from bot.services.contact_service import ContactLookupResult, ContactService
 from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
 from bot.services.llm_invoice_parser import parse_invoice_draft
 from bot.services.pdf_generator import PdfInvoiceData, PdfInvoiceItem, generate_invoice_pdf
 from bot.services.service_alias_service import ServiceAliasService
+from bot.services.service_term_normalizer import normalize_service_term
 from bot.services.supplier_service import SupplierService
 
 router = Router(name='invoice')
@@ -51,11 +52,24 @@ def _parse_positive_float(value: object) -> float | None:
     return parsed
 
 
-def _resolve_contact_by_name(contact_service: ContactService, telegram_id: int, name: str) -> ContactProfile | None:
-    exact = contact_service.get_by_name(telegram_id, name)
-    if exact is not None:
-        return exact
-    return contact_service.get_by_name_case_insensitive(telegram_id, name)
+def _resolve_contact_lookup(contact_service: ContactService, telegram_id: int, name: str) -> ContactLookupResult:
+    return contact_service.resolve_contact_lookup(telegram_id, name)
+
+
+def _contact_lookup_feedback(result: ContactLookupResult) -> str:
+    if result.state == 'multiple_candidates':
+        top_names = ', '.join(contact.name for contact in result.candidates[:3])
+        return (
+            'Našiel som viac podobných kontaktov'
+            + (f' ({top_names}). ' if top_names else '. ')
+            + 'Prosím, upresnite názov odberateľa a skúste to znova.'
+        )
+
+    return (
+        'Odberateľa sa nepodarilo spoľahlivo nájsť v lokálnej databáze kontaktov. '
+        'Skontrolujte názov a skúste to znova. '
+        'Ak kontakt ešte nemáte uložený, pridajte ho cez /contact.'
+    )
 
 
 def _format_preview(recognized_text: str | None, data: dict[str, object]) -> str:
@@ -103,14 +117,12 @@ async def _build_and_store_preview(
         return
 
     contact_service = ContactService(config.db_path)
-    contact = _resolve_contact_by_name(contact_service, message.from_user.id, customer_name)
-    if contact is None:
-        await message.answer(
-            'Odberateľ bol rozpoznaný, ale kontakt sa nenašiel v lokálnej databáze. '
-            'Pridajte ho cez /contact.'
-        )
+    lookup_result = _resolve_contact_lookup(contact_service, message.from_user.id, customer_name)
+    if lookup_result.state not in {'exact_match', 'normalized_match'} or lookup_result.matched_contact is None:
+        await message.answer(_contact_lookup_feedback(lookup_result))
         await state.clear()
         return
+    contact = lookup_result.matched_contact
 
     item_name_raw = (parsed_draft.get('item_name_raw') or '').strip()
     amount = _parse_positive_float(parsed_draft.get('amount'))
@@ -138,6 +150,7 @@ async def _build_and_store_preview(
             pass
 
     due_date_obj = issue_date_obj + timedelta(days=due_days)
+    service_term_internal = normalize_service_term(item_name_raw)
     item_name_final = item_name_raw
     if supplier.id is not None:
         resolved = ServiceAliasService(config.db_path).resolve_alias(supplier.id, item_name_raw)
@@ -149,6 +162,7 @@ async def _build_and_store_preview(
         'customer_name': contact.name,
         'contact_id': contact.id,
         'item_name_raw': item_name_raw,
+        'item_term_canonical_internal': service_term_internal,
         'item_name_final': item_name_final,
         'quantity': quantity,
         'unit': unit,

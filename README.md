@@ -61,6 +61,8 @@ FakturaBot — перша вітрина цього підходу.
 ## Структура документації
 
 - `docs/TZ_FakturaBot.md` — головне ТЗ
+- `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md` — rollout/implementation план (що/коли/в якій фазі)
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md` — детальний LLM/orchestrator контракт (як саме AI шар взаємодіє з Python)
 - `AGENTS.md` — правила роботи агентів і помічників
 - `PROJECT_LOG.md` — журнал ходу проєкту
 - `CHANGELOG.md` — зміни по продукту / коду
