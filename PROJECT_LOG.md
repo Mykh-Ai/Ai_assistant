@@ -659,3 +659,62 @@ Allow FakturaBot to run locally from a dedicated repo-root `faktura.env` file wi
 ### Decision
 Local FakturaBot setup now supports a dedicated non-committed `faktura.env` file while preserving `.env` compatibility.
 
+
+## 2026-04-08 - Session 010 - Docs ownership split: Implementation Plan vs LLM Contract
+
+### Goal
+Remove overlap risk between planning and contract docs by clarifying document ownership.
+
+### Implemented
+- `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md` kept as rollout document (phase scope/order/risks/acceptance) and Phase 2 detail reduced to planning-level with explicit reference to LLM contract.
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md` marked as detailed Phase 2 AI contract and cross-referenced back to the implementation plan for sequencing.
+- `README.md` docs structure updated with concise role distinction for both docs.
+
+### Scope
+- Docs-only clarification; no code changes.
+
+## 2026-04-08 - Session 011 - Phase 1 implementation: deterministic contact lookup + service-term canonicalization
+
+### Goal
+Implement Phase 1 Python-side canonicalization only (no AI/orchestrator changes).
+
+### Implemented
+- Added deterministic contact lookup normalization in `ContactService` with structured states:
+  - `exact_match`, `normalized_match`, `multiple_candidates`, `no_match`.
+- Added lookup-only company normalization for case/punctuation/separator/legal-form variants.
+- Added conservative legal-form support (token-boundary):
+  - `s.r.o.` variants (`sro`, `s r o`, `s. r. o.`),
+  - `a.s.` variants (`as`, `a s`),
+  - conservative `spol` + `sro` / `s r o` tail variants.
+- Integrated invoice flow with lookup-state branching:
+  - continue on exact/normalized,
+  - explicit fail-loud message on multiple candidates,
+  - explicit non-assumptive guidance on no match (retry or `/contact`, no auto-create).
+- Added deterministic internal service-term normalizer:
+  - `opravy -> oprava`, `ремонт -> oprava`, `монтаж -> montáž`.
+- Kept alias precedence unchanged: supplier alias mapping remains source of truth for final preview/PDF title.
+
+### Tests
+- Added `tests/test_contact_lookup_normalization.py`.
+- Added `tests/test_service_term_normalizer.py`.
+- Added `tests/test_invoice_contact_lookup_feedback.py`.
+- Full test suite passes with `PYTHONPATH=. pytest -q`.
+
+### Scope
+- No DB migration.
+- No LLM/prompt/orchestrator schema changes.
+
+## 2026-04-08 - Session 012 - Test runner expectation clarified (pytest)
+
+### Goal
+Remove ambiguity between legacy unittest habits and current pytest workflow.
+
+### Implemented
+- Added explicit test-runner note in `README.md`:
+  - canonical runner is `pytest`,
+  - command: `PYTHONPATH=. pytest -q`,
+  - unittest is not the default expected workflow.
+- Added minimal `pytest.ini` with `testpaths = tests` as repo tooling baseline.
+
+### Scope
+- Docs/tooling only; no runtime code changes.
