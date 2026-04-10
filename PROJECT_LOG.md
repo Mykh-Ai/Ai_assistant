@@ -812,3 +812,31 @@ Align service naming wording in `/service` and related code to user-friendly Slo
 ### Compatibility / DB
 - DB schema intentionally left unchanged (`alias`, `canonical_title` stay as storage columns in `supplier_service_alias`).
 - No migration introduced.
+
+## 2026-04-10 — Session 013 — Phase 2 minimal AI layer (invoice draft only)
+
+### Goal
+- Added minimal Phase 2 AI entrypoint for invoice draft flow only.
+- LLM now returns Slovak-facing business payload (`vstup`, `zamer`, `biznis_sk`, `stopa`) and Python continues deterministic truth flow.
+
+### What changed
+- Updated `prompts/invoice_draft_prompt.txt` to require strict JSON payload for Phase 2 invoice-only schema.
+- Reworked `bot/services/llm_invoice_parser.py`:
+  - added strict payload validator `validate_invoice_phase2_payload(...)`;
+  - added explicit error `LlmInvoicePayloadError` for malformed payload;
+  - added `parse_invoice_phase2_payload(...)` that fails loud on shape violations.
+- Updated `bot/handlers/invoice.py`:
+  - integrated new parser path before deterministic preview flow;
+  - mapped Phase 2 `biznis_sk` into existing Python invoice draft fields;
+  - preserved original text from `vstup.povodny_text` in preview context;
+  - added clear retry message when AI payload is invalid or key fields are missing.
+- Added `tests/test_invoice_phase2_ai_layer.py` covering:
+  - multilingual/mixed payload validation path,
+  - original text preservation,
+  - malformed payload handling,
+  - preview flow still using Python truth for contact lookup and service display mapping,
+  - missing amount handling with clean retry message.
+
+### Notes
+- Scope is intentionally invoice-flow only (no contact onboarding redesign, no supplier/document AI expansion).
+- No DB migration required.
