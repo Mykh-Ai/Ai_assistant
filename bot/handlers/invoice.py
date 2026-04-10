@@ -81,8 +81,8 @@ def _format_preview(recognized_text: str | None, data: dict[str, object]) -> str
         f'{text_part}'
         '<b>Náhľad faktúry:</b>\n'
         f'• Odberateľ: {data["customer_name"]}\n'
-        f'• Položka (raw): {data["item_name_raw"]}\n'
-        f'• Položka (finálna): {data["item_name_final"]}\n'
+        f'• Krátky názov služby: {data["service_short_name"]}\n'
+        f'• Plný názov služby: {data["service_display_name"]}\n'
         f'• Množstvo: {data["quantity"]} {data["unit"] or ""}\n'
         f'• Suma: {data["amount"]:.2f} {data["currency"]}\n'
         f'• Dátum vystavenia: {data["issue_date"]}\n'
@@ -124,11 +124,11 @@ async def _build_and_store_preview(
         return
     contact = lookup_result.matched_contact
 
-    item_name_raw = (parsed_draft.get('item_name_raw') or '').strip()
+    service_short_name = (parsed_draft.get('item_name_raw') or '').strip()
     amount = _parse_positive_float(parsed_draft.get('amount'))
     quantity = _parse_positive_float(parsed_draft.get('quantity')) or 1.0
 
-    if not item_name_raw or amount is None:
+    if not service_short_name or amount is None:
         await message.answer('Nepodarilo sa pripraviť návrh faktúry. Skontrolujte položku a sumu.')
         await state.clear()
         return
@@ -150,20 +150,20 @@ async def _build_and_store_preview(
             pass
 
     due_date_obj = issue_date_obj + timedelta(days=due_days)
-    service_term_internal = normalize_service_term(item_name_raw)
-    item_name_final = item_name_raw
+    service_term_internal = normalize_service_term(service_short_name)
+    service_display_name = service_short_name
     if supplier.id is not None:
-        resolved = ServiceAliasService(config.db_path).resolve_alias(supplier.id, item_name_raw)
+        resolved = ServiceAliasService(config.db_path).resolve_service_display_name(supplier.id, service_short_name)
         if resolved:
-            item_name_final = resolved
+            service_display_name = resolved
 
     normalized = {
         'raw_text': raw_text,
         'customer_name': contact.name,
         'contact_id': contact.id,
-        'item_name_raw': item_name_raw,
+        'service_short_name': service_short_name,
         'item_term_canonical_internal': service_term_internal,
-        'item_name_final': item_name_final,
+        'service_display_name': service_display_name,
         'quantity': quantity,
         'unit': unit,
         'amount': amount,
@@ -284,8 +284,8 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
                 total_amount=float(draft['amount']),
                 currency=str(draft['currency']),
                 status='draft_pdf_ready',
-                item_description_raw=str(draft['item_name_raw']),
-                item_description_normalized=str(draft['item_name_final']),
+                item_description_raw=str(draft['service_short_name']),
+                item_description_normalized=str(draft['service_display_name']),
                 item_quantity=float(draft['quantity']),
                 item_unit=str(draft['unit']) if draft['unit'] else None,
                 item_unit_price=float(draft['amount']) / float(draft['quantity']),
