@@ -165,6 +165,7 @@ def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_
         openai_api_key='key',
         openai_stt_model='whisper-1',
         openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
         db_path=db_path,
         storage_dir=db_path.parent,
     )
@@ -178,6 +179,7 @@ def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_
         message=message,
         state=state,
         config=config,
+        request_id='test-request-id',
         raw_text=payload['vstup']['povodny_text'],
         parsed_draft=parsed,
     ))
@@ -196,6 +198,7 @@ def test_preview_returns_clean_retry_message_when_amount_missing(configured_db: 
         openai_api_key='key',
         openai_stt_model='whisper-1',
         openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
         db_path=db_path,
         storage_dir=db_path.parent,
     )
@@ -210,6 +213,7 @@ def test_preview_returns_clean_retry_message_when_amount_missing(configured_db: 
         message=message,
         state=state,
         config=config,
+        request_id='test-request-id',
         raw_text=payload['vstup']['povodny_text'],
         parsed_draft=parsed,
     ))
