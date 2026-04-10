@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -26,9 +27,78 @@ class LlmInvoicePayloadError(ValueError):
     pass
 
 
+_CYRILLIC_RE = re.compile(r'[\u0400-\u04FF]')
+_LOOKUP_FRAGMENT_BLOCKLIST = {
+    'на техкомпании',
+    'для компании',
+    'pre firmu',
+    'kompanii',
+}
+_LOOKUP_PREFIX_WORDS = {
+    'pre',
+    'для',
+    'dla',
+    'na',
+    'на',
+    'za',
+    'firma',
+    'firmu',
+    'firmy',
+    'kompanii',
+}
+
+
 def _require_dict(value: Any, path: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise LlmInvoicePayloadError(f'Invalid LLM payload: {path} must be an object.')
+    return value
+
+
+def _validate_lookup_ready_customer_candidate(candidate: Any) -> str:
+    if candidate is None or not isinstance(candidate, str):
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat must be a non-empty lookup-ready string.'
+        )
+
+    value = candidate.strip()
+    if not value:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat must not be empty/whitespace.'
+        )
+
+    lowered = re.sub(r'\s+', ' ', value.lower())
+    if lowered in _LOOKUP_FRAGMENT_BLOCKLIST:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat looks like a raw phrase fragment, not a company candidate.'
+        )
+
+    if _CYRILLIC_RE.search(value):
+        latin_chars = re.sub(r'[^A-Za-zÀ-ÖØ-öø-ÿ]', '', value)
+        if not latin_chars:
+            raise LlmInvoicePayloadError(
+                'Invalid LLM payload: biznis_sk.odberatel_kandidat must not be Cyrillic-only.'
+            )
+
+    tokens = [token for token in re.split(r'[\s,.;:!?()\-/]+', lowered) if token]
+    if tokens and tokens[0] in {'pre', 'для', 'dla', 'na', 'на'}:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat must not start with preposition-like raw phrase token.'
+        )
+    if tokens and all(token in _LOOKUP_PREFIX_WORDS for token in tokens):
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat contains only preposition/filler tokens.'
+        )
+
+    if len(tokens) > 6:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too long/noisy for deterministic lookup.'
+        )
+
+    if sum(ch.isalpha() for ch in value) < 3:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too short/noisy for deterministic lookup.'
+        )
+
     return value
 
 
@@ -60,6 +130,8 @@ def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
             raise LlmInvoicePayloadError(
                 f'Invalid LLM payload: stopa.{trace_field} must be present and must be an array.'
             )
+
+    biznis_sk['odberatel_kandidat'] = _validate_lookup_ready_customer_candidate(biznis_sk['odberatel_kandidat'])
 
     return data
 

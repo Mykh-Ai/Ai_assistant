@@ -35,6 +35,11 @@ Pravidlá:
 - JSON only. Žiadny markdown, žiadny komentár.
 - Zachovaj pôvodný text v `vstup.povodny_text`.
 - Normalize business význam do slovenčiny v `biznis_sk`.
+- `biznis_sk.odberatel_kandidat` je lookup-ready kandidát na názov firmy/odberateľa pre deterministický Python lookup.
+- `biznis_sk.odberatel_kandidat` NESMIE byť surový fragment zo vstupu (najmä nie cyrilika, pádové tvary, predložky, filler frázy).
+- Odstráň predložky/filler (napr. `для`, `на`, `pre`, `za`, `kompanii`) a vráť neutrálny business názov vhodný na DB lookup.
+- `vstup.povodny_text` nechaj vždy v pôvodnej podobe (môže byť SK/UA/RU/mixed/noisy).
+- Ak surový fragment potrebuješ evidovať, daj ho iba do `stopa.poznamky_normalizacie`, nie do `biznis_sk`.
 - Nepotvrdzuj, že kontakt bol nájdený v databáze.
 - Nevymýšľaj IČO/DIČ/adresy/právne identifikátory.
 - `termin_sluzby_sk` je interný slovenský termín draft (napr. ремонт -> oprava), nie finálny PDF názov.
@@ -42,3 +47,14 @@ Pravidlá:
 - `zamer.nazov` nastav na `vytvor_fakturu` ak je vstup faktúra-like (`invoice`, `faktura`, `рахунок`, `фактура`).
 - `datum_dodania` a `datum_splatnosti` normalizuj na `YYYY-MM-DD` iba ak sú explicitne/iste.
 - `mena` normalizuj na ISO kód (napr. EUR, USD), ak je jasná.
+
+Príklady normalizácie `biznis_sk.odberatel_kandidat`:
+1) Vstup (RU/mixed, spoken): "сделай фактуру на техкомпании за ремонт"
+   - Správne: `"odberatel_kandidat": "Tech Company"`
+   - Nesprávne: `"odberatel_kandidat": "техкомпании"` alebo `"на техкомпании"`
+2) Vstup (s.r.o./sro variant): "faktura pre tech company sro 220 eur"
+   - Správne: `"odberatel_kandidat": "Tech Company s.r.o."` (alebo `"Tech Company"`, ak právna forma nie je istá)
+   - Nesprávne: `"odberatel_kandidat": "pre tech company sro"`
+3) Vstup (imperfect STT): "uh sprav fakturu dla kompanii tek kompani servis 150"
+   - Správne: `"odberatel_kandidat": "Tek Kompani"` (neutrálny názov bez `dla kompanii`)
+   - Nesprávne: `"odberatel_kandidat": "dla kompanii tek kompani"`

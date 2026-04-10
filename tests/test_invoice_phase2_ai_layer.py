@@ -157,6 +157,35 @@ def test_validate_payload_fails_loudly_on_malformed_shape() -> None:
         validate_invoice_phase2_payload({'vstup': {'povodny_text': 'x', 'zisteny_jazyk': 'sk'}})
 
 
+@pytest.mark.parametrize(
+    'bad_candidate',
+    [
+        'техкомпании',
+        '   ',
+        'на техкомпании',
+        'для компании',
+        'pre firmu',
+        'kompanii',
+    ],
+)
+def test_validate_payload_rejects_non_lookup_ready_customer_candidate(bad_candidate: str) -> None:
+    payload = _valid_payload('сделай фактуру на техкомпании за ремонт 150 eur')
+    payload['biznis_sk']['odberatel_kandidat'] = bad_candidate
+
+    with pytest.raises(LlmInvoicePayloadError):
+        validate_invoice_phase2_payload(payload)
+
+
+def test_validate_payload_accepts_lookup_ready_latin_customer_candidate() -> None:
+    payload = _valid_payload('сделай фактуру на техкомпании за ремонт 150 eur')
+    payload['biznis_sk']['odberatel_kandidat'] = 'Tech Company s.r.o.'
+
+    validated = validate_invoice_phase2_payload(payload)
+
+    assert validated['biznis_sk']['odberatel_kandidat'] == 'Tech Company s.r.o.'
+    assert validated['vstup']['povodny_text'] == 'сделай фактуру на техкомпании за ремонт 150 eur'
+
+
 def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_db: tuple[Path, int, int]) -> None:
     db_path, telegram_id, contact_id = configured_db
 
