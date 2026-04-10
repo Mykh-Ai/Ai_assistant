@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import json
 import logging
+from uuid import uuid4
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -112,14 +114,41 @@ def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict
     return raw_text, parsed_draft
 
 
+def _emit_invoice_debug_log(
+    *,
+    config: Config,
+    event: str,
+    request_id: str,
+    telegram_update_id: int | None,
+    telegram_message_id: int | None,
+    payload: dict[str, object],
+) -> None:
+    if not config.debug_invoice_transparency:
+        return
+    logger.info(
+        json.dumps(
+            {
+                'event': event,
+                'request_id': request_id,
+                'telegram_update_id': telegram_update_id,
+                'telegram_message_id': telegram_message_id,
+                **payload,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
 async def _build_and_store_preview(
     *,
     message: Message,
     state: FSMContext,
     config: Config,
+    request_id: str,
     raw_text: str,
     parsed_draft: dict,
 ) -> None:
+    message_id = getattr(message, 'message_id', None)
     if message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
@@ -137,7 +166,36 @@ async def _build_and_store_preview(
         return
 
     contact_service = ContactService(config.db_path)
+    normalized_lookup, _compressed_lookup = contact_service.normalize_lookup_forms(customer_name)
+    _emit_invoice_debug_log(
+        config=config,
+        event='invoice_lookup_before',
+        request_id=request_id,
+        telegram_update_id=getattr(message, 'update_id', None),
+        telegram_message_id=message_id,
+        payload={
+            'lookup_raw_input': customer_name,
+            'lookup_normalized_input': normalized_lookup,
+        },
+    )
     lookup_result = _resolve_contact_lookup(contact_service, message.from_user.id, customer_name)
+    _emit_invoice_debug_log(
+        config=config,
+        event='invoice_lookup_after',
+        request_id=request_id,
+        telegram_update_id=getattr(message, 'update_id', None),
+        telegram_message_id=message_id,
+        payload={
+            'lookup_state': lookup_result.state,
+            'matched_contact_id': lookup_result.matched_contact.id if lookup_result.matched_contact else None,
+            'candidate_count': len(lookup_result.candidates) if lookup_result.state == 'multiple_candidates' else None,
+            'candidate_names': (
+                [candidate.name for candidate in lookup_result.candidates]
+                if lookup_result.state == 'multiple_candidates'
+                else None
+            ),
+        },
+    )
     if lookup_result.state not in {'exact_match', 'normalized_match'} or lookup_result.matched_contact is None:
         await message.answer(_contact_lookup_feedback(lookup_result))
         await state.clear()
@@ -193,6 +251,22 @@ async def _build_and_store_preview(
         'due_days': due_days,
         'due_date': due_date_obj.isoformat(),
     }
+    _emit_invoice_debug_log(
+        config=config,
+        event='invoice_preview_before_save',
+        request_id=request_id,
+        telegram_update_id=getattr(message, 'update_id', None),
+        telegram_message_id=message_id,
+        payload={
+            'original_text': raw_text,
+            'final_contact_id': contact.id,
+            'final_contact_name': contact.name,
+            'service_short_name': service_short_name,
+            'service_display_name': service_display_name,
+            'service_term_canonical_internal': service_term_internal,
+            'lookup_state': lookup_result.state,
+        },
+    )
 
     await state.update_data(invoice_draft=normalized)
     await state.set_state(InvoiceStates.waiting_confirm)
@@ -205,7 +279,10 @@ async def process_invoice_text(
     state: FSMContext,
     config: Config,
     invoice_text: str,
+    request_id: str | None = None,
 ) -> None:
+    flow_request_id = request_id or str(uuid4())
+    message_id = getattr(message, 'message_id', None)
     if not config.openai_api_key:
         await message.answer('Bot nie je nakonfigurovaný: chýba OPENAI_API_KEY.')
         await state.clear()
@@ -213,6 +290,21 @@ async def process_invoice_text(
 
     try:
         payload = await parse_invoice_phase2_payload(invoice_text, config.openai_api_key, config.openai_llm_model)
+        payload_vstup = payload.get('vstup') if isinstance(payload, dict) else {}
+        payload_biznis = payload.get('biznis_sk') if isinstance(payload, dict) else {}
+        _emit_invoice_debug_log(
+            config=config,
+            event='invoice_phase2_payload_validated',
+            request_id=flow_request_id,
+            telegram_update_id=getattr(message, 'update_id', None),
+            telegram_message_id=message_id,
+            payload={
+                'vstup_povodny_text': (payload_vstup or {}).get('povodny_text'),
+                'biznis_sk_odberatel_kandidat': (payload_biznis or {}).get('odberatel_kandidat'),
+                'biznis_sk_polozka_povodna': (payload_biznis or {}).get('polozka_povodna'),
+                'biznis_sk_termin_sluzby_sk': (payload_biznis or {}).get('termin_sluzby_sk'),
+            },
+        )
         raw_text, parsed = _extract_invoice_draft_from_phase2_payload(payload)
     except LlmInvoicePayloadError:
         logger.exception('LLM returned invalid Phase 2 invoice payload')
@@ -229,6 +321,7 @@ async def process_invoice_text(
         message=message,
         state=state,
         config=config,
+        request_id=flow_request_id,
         raw_text=raw_text or invoice_text,
         parsed_draft=parsed,
     )

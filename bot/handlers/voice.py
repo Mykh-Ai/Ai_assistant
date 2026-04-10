@@ -1,4 +1,6 @@
 import logging
+import json
+from uuid import uuid4
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
@@ -31,9 +33,23 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
         await bot.download_file(file.file_path, destination=voice_path)
 
         try:
+            request_id = str(uuid4())
             recognized_text = await transcribe_audio(
                 voice_path, config.openai_api_key, config.openai_stt_model
             )
+            if config.debug_invoice_transparency:
+                logger.info(
+                    json.dumps(
+                        {
+                            'event': 'invoice_stt_result',
+                            'request_id': request_id,
+                            'telegram_update_id': getattr(message, 'update_id', None),
+                            'telegram_message_id': getattr(message, 'message_id', None),
+                            'stt_text': recognized_text,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
         except Exception:
             logger.exception('STT failed')
             await message.answer('Nepodarilo sa rozpoznať hlasovú správu. Skúste znova.')
@@ -48,6 +64,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             state=state,
             config=config,
             invoice_text=recognized_text,
+            request_id=request_id,
         )
 
     finally:

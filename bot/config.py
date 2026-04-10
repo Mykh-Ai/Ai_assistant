@@ -19,6 +19,7 @@ class Config:
     openai_api_key: str | None
     openai_stt_model: str
     openai_llm_model: str
+    debug_invoice_transparency: bool
     db_path: Path
     storage_dir: Path
 
@@ -38,6 +39,12 @@ def load_config() -> Config:
     openai_api_key = os.getenv('OPENAI_API_KEY', '').strip() or None
     openai_stt_model = os.getenv('OPENAI_STT_MODEL', '').strip() or 'whisper-1'
     openai_llm_model = os.getenv('OPENAI_LLM_MODEL', '').strip() or 'gpt-4o'
+    debug_invoice_transparency = os.getenv('DEBUG_INVOICE_TRANSPARENCY', '').strip().lower() in {
+        '1',
+        'true',
+        'yes',
+        'on',
+    }
     db_path = Path(os.getenv('DB_PATH', 'storage/fakturabot.db')).resolve()
     storage_dir = Path(os.getenv('STORAGE_DIR', 'storage')).resolve()
     ensure_storage_dirs(storage_dir)
@@ -47,6 +54,7 @@ def load_config() -> Config:
         openai_api_key=openai_api_key,
         openai_stt_model=openai_stt_model,
         openai_llm_model=openai_llm_model,
+        debug_invoice_transparency=debug_invoice_transparency,
         db_path=db_path,
         storage_dir=storage_dir,
     )

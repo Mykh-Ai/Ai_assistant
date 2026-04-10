@@ -840,3 +840,30 @@ Align service naming wording in `/service` and related code to user-friendly Slo
 ### Notes
 - Scope is intentionally invoice-flow only (no contact onboarding redesign, no supplier/document AI expansion).
 - No DB migration required.
+
+## 2026-04-10 — Session 017 — Temporary structured debug transparency for voice → STT → Phase 2 invoice flow
+
+### Goal
+- Add temporary, env-flagged structured debug trace to identify where customer name is lost/corrupted across STT, validated LLM payload, and deterministic Python contact lookup.
+
+### What changed
+- Added `DEBUG_INVOICE_TRANSPARENCY` config flag in `bot/config.py` (default off).
+- Added JSON debug event in voice handler after successful STT with:
+  - `request_id`
+  - `telegram_update_id`
+  - `telegram_message_id`
+  - `stt_text`
+- Added JSON debug event in invoice flow right after validated Phase 2 payload with:
+  - `vstup.povodny_text`
+  - `biznis_sk.odberatel_kandidat`
+  - `biznis_sk.polozka_povodna`
+  - `biznis_sk.termin_sluzby_sk`
+- Added JSON debug events around deterministic contact lookup:
+  - before lookup (`lookup_raw_input`, `lookup_normalized_input`),
+  - after lookup (`lookup_state`, `matched_contact_id`, and candidate metadata when multiple matches).
+- Added JSON debug event before preview/save handoff with final resolved contact and service title fields.
+- `request_id` is propagated across voice STT → Phase 2 parse → lookup → preview path.
+
+### Safety / constraints
+- No business logic, fallback behavior, or contact auto-fix/auto-create behavior changed.
+- Lookup debug normalization reuses existing `ContactService.normalize_lookup_forms(...)` (no duplicate debug-only normalization logic).
