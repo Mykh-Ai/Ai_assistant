@@ -12,7 +12,7 @@ from aiogram.types import FSInputFile, Message
 from bot.config import Config
 from bot.services.contact_service import ContactLookupResult, ContactService
 from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
-from bot.services.llm_invoice_parser import parse_invoice_draft
+from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import PdfInvoiceData, PdfInvoiceItem, generate_invoice_pdf
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.service_term_normalizer import normalize_service_term
@@ -92,6 +92,26 @@ def _format_preview(recognized_text: str | None, data: dict[str, object]) -> str
     )
 
 
+def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict[str, object]]:
+    vstup = payload.get('vstup') if isinstance(payload, dict) else {}
+    biznis_sk = payload.get('biznis_sk') if isinstance(payload, dict) else {}
+
+    raw_text = str((vstup or {}).get('povodny_text') or '').strip()
+    parsed_draft = {
+        'customer_name': (biznis_sk or {}).get('odberatel_kandidat'),
+        'item_name_raw': (biznis_sk or {}).get('polozka_povodna'),
+        'service_term_sk': (biznis_sk or {}).get('termin_sluzby_sk'),
+        'quantity': (biznis_sk or {}).get('mnozstvo'),
+        'unit': (biznis_sk or {}).get('jednotka'),
+        'amount': (biznis_sk or {}).get('suma'),
+        'currency': (biznis_sk or {}).get('mena'),
+        'delivery_date': (biznis_sk or {}).get('datum_dodania'),
+        'due_days': (biznis_sk or {}).get('splatnost_dni'),
+        'due_date': (biznis_sk or {}).get('datum_splatnosti'),
+    }
+    return raw_text, parsed_draft
+
+
 async def _build_and_store_preview(
     *,
     message: Message,
@@ -129,7 +149,7 @@ async def _build_and_store_preview(
     quantity = _parse_positive_float(parsed_draft.get('quantity')) or 1.0
 
     if not service_short_name or amount is None:
-        await message.answer('Nepodarilo sa pripraviť návrh faktúry. Skontrolujte položku a sumu.')
+        await message.answer('AI návrh je neúplný (chýba položka alebo suma). Doplňte údaje a skúste to znova.')
         await state.clear()
         return
 
@@ -192,7 +212,13 @@ async def process_invoice_text(
         return
 
     try:
-        parsed = await parse_invoice_draft(invoice_text, config.openai_api_key, config.openai_llm_model)
+        payload = await parse_invoice_phase2_payload(invoice_text, config.openai_api_key, config.openai_llm_model)
+        raw_text, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+    except LlmInvoicePayloadError:
+        logger.exception('LLM returned invalid Phase 2 invoice payload')
+        await message.answer('AI návrh faktúry bol neplatný. Skúste vstup poslať znova.')
+        await state.clear()
+        return
     except Exception:
         logger.exception('LLM parsing failed in invoice flow')
         await message.answer('Nepodarilo sa spracovať návrh faktúry.')
@@ -203,7 +229,7 @@ async def process_invoice_text(
         message=message,
         state=state,
         config=config,
-        raw_text=invoice_text,
+        raw_text=raw_text or invoice_text,
         parsed_draft=parsed,
     )
 
