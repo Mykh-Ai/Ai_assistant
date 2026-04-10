@@ -867,3 +867,28 @@ Align service naming wording in `/service` and related code to user-friendly Slo
 ### Safety / constraints
 - No business logic, fallback behavior, or contact auto-fix/auto-create behavior changed.
 - Lookup debug normalization reuses existing `ContactService.normalize_lookup_forms(...)` (no duplicate debug-only normalization logic).
+
+## 2026-04-10 — Session 018 — Phase 2 odberateľ candidate contract hardening
+
+### Goal
+- Harden invoice Phase 2 AI contract so `biznis_sk.odberatel_kandidat` is canonical, lookup-ready, and fail-loud if raw/noisy fragments leak from multilingual voice/STT input.
+
+### What changed
+- Prompt (`prompts/invoice_draft_prompt.txt`) now explicitly requires lookup-ready canonical candidate in `biznis_sk.odberatel_kandidat`:
+  - disallows cyrillic/raw inflected fragments and preposition/filler phrases,
+  - keeps original multilingual input only in `vstup.povodny_text`,
+  - allows raw extraction notes only in trace (`stopa`),
+  - adds multilingual voice-like examples (RU/mixed, s.r.o./sro, imperfect STT).
+- Validator (`bot/services/llm_invoice_parser.py`) now fail-loud rejects non lookup-ready candidates:
+  - empty/whitespace values,
+  - obvious raw phrase fragments (`на техкомпании`, `для компании`, `pre firmu`, `kompanii`),
+  - cyrillic-only values,
+  - preposition-start and too noisy candidates for deterministic lookup.
+- Tests (`tests/test_invoice_phase2_ai_layer.py`) extended for:
+  - rejection of Cyrillic/raw candidate variants,
+  - acceptance of valid Latin/Slovak lookup-ready candidate,
+  - preservation of original multilingual text in `vstup.povodny_text`.
+
+### Notes
+- No DB migrations, no contact auto-create, no fuzzy matching.
+- Existing Python source-of-truth preview/contact flow remains unchanged for valid payloads.
