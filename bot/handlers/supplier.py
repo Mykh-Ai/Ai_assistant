@@ -14,17 +14,17 @@ router = Router(name='supplier_service_alias')
 
 
 class ServiceAliasStates(StatesGroup):
-    waiting_alias = State()
-    waiting_canonical = State()
+    waiting_short_name = State()
+    waiting_display_name = State()
 
 
 def _mappings_preview(mappings: list[tuple[str, str]]) -> str:
     if not mappings:
-        return 'Zatiaľ nemáte žiadne aliasy služieb.'
+        return 'Zatiaľ nemáte žiadne názvy služieb.'
 
-    lines = ['<b>Aktuálne aliasy služieb:</b>']
-    for alias, canonical in mappings:
-        lines.append(f'• <code>{alias}</code> → {canonical}')
+    lines = ['<b>Aktuálne názvy služieb:</b>']
+    for service_short_name, service_display_name in mappings:
+        lines.append(f'• <code>{service_short_name}</code> → {service_display_name}')
     return '\n'.join(lines)
 
 
@@ -43,35 +43,35 @@ async def cmd_service(message: Message, state: FSMContext, config: Config) -> No
     mappings = alias_service.list_mappings(supplier.id)
 
     await state.clear()
-    await state.set_state(ServiceAliasStates.waiting_alias)
+    await state.set_state(ServiceAliasStates.waiting_short_name)
     await message.answer(
-        _mappings_preview([(entry.alias, entry.canonical_title) for entry in mappings])
+        _mappings_preview([(entry.service_short_name, entry.service_display_name) for entry in mappings])
         + '\n\n'
-        'Pridanie aliasu (krok 1/2): napíšte krátky alias služby.\n'
+        'Pridanie názvu služby (krok 1/2): napíšte krátky názov služby.\n'
         'Príklad: <code>opravy</code>'
     )
 
 
-@router.message(ServiceAliasStates.waiting_alias)
-async def service_alias_input(message: Message, state: FSMContext) -> None:
-    alias = (message.text or '').strip()
-    if not alias:
-        await message.answer('Alias nemôže byť prázdny. Skúste znova:')
+@router.message(ServiceAliasStates.waiting_short_name)
+async def service_short_name_input(message: Message, state: FSMContext) -> None:
+    service_short_name = (message.text or '').strip()
+    if not service_short_name:
+        await message.answer('Krátky názov služby nemôže byť prázdny. Skúste znova:')
         return
 
-    await state.update_data(service_alias=alias)
-    await state.set_state(ServiceAliasStates.waiting_canonical)
+    await state.update_data(service_short_name=service_short_name)
+    await state.set_state(ServiceAliasStates.waiting_display_name)
     await message.answer(
-        'Krok 2/2: napíšte plný canonical názov služby, '
+        'Krok 2/2: napíšte plný názov služby, '
         'ktorý sa má použiť vo faktúre/PDF.'
     )
 
 
-@router.message(ServiceAliasStates.waiting_canonical)
-async def service_canonical_input(message: Message, state: FSMContext, config: Config) -> None:
-    canonical_title = (message.text or '').strip()
-    if not canonical_title:
-        await message.answer('Canonical názov nemôže byť prázdny. Skúste znova:')
+@router.message(ServiceAliasStates.waiting_display_name)
+async def service_display_name_input(message: Message, state: FSMContext, config: Config) -> None:
+    service_display_name = (message.text or '').strip()
+    if not service_display_name:
+        await message.answer('Plný názov služby nemôže byť prázdny. Skúste znova:')
         return
 
     if message.from_user is None:
@@ -80,9 +80,9 @@ async def service_canonical_input(message: Message, state: FSMContext, config: C
         return
 
     data = await state.get_data()
-    alias = (data.get('service_alias') or '').strip()
-    if not alias:
-        await message.answer('Alias sa stratil zo stavu. Spustite /service znova.')
+    service_short_name = (data.get('service_short_name') or '').strip()
+    if not service_short_name:
+        await message.answer('Krátky názov služby sa stratil zo stavu. Spustite /service znova.')
         await state.clear()
         return
 
@@ -93,12 +93,12 @@ async def service_canonical_input(message: Message, state: FSMContext, config: C
         return
 
     alias_service = ServiceAliasService(config.db_path)
-    alias_service.create_mapping(supplier.id, alias, canonical_title)
+    alias_service.create_mapping(supplier.id, service_short_name, service_display_name)
     mappings = alias_service.list_mappings(supplier.id)
 
     await state.clear()
     await message.answer(
-        'Alias služby bol uložený.\n\n'
-        + _mappings_preview([(entry.alias, entry.canonical_title) for entry in mappings])
-        + '\n\nPre ďalší alias spustite /service.'
+        'Názov služby bol uložený.\n\n'
+        + _mappings_preview([(entry.service_short_name, entry.service_display_name) for entry in mappings])
+        + '\n\nPre ďalší názov služby spustite /service.'
     )

@@ -38,73 +38,73 @@ class ServiceAliasServiceTests(unittest.TestCase):
 
         return db_path, supplier_service, ServiceAliasService(db_path), supplier.id
 
-    def test_alias_resolution_success(self) -> None:
-        _, _, alias_service, supplier_id = self._bootstrap_services()
+    def test_service_short_name_resolution_success(self) -> None:
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
 
-        alias_service.create_mapping(
+        service_name_service.create_mapping(
             supplier_id=supplier_id,
-            alias='opravy',
-            canonical_title='opravy vyhradených technických zariadení elektrických',
+            service_short_name='opravy',
+            service_display_name='opravy vyhradených technických zariadení elektrických',
         )
 
-        resolved = alias_service.resolve_alias(supplier_id, 'opravy')
+        resolved = service_name_service.resolve_service_display_name(supplier_id, 'opravy')
         self.assertEqual(resolved, 'opravy vyhradených technických zariadení elektrických')
 
-    def test_alias_resolution_fallback_when_missing(self) -> None:
-        _, _, alias_service, supplier_id = self._bootstrap_services()
+    def test_service_short_name_resolution_fallback_when_missing(self) -> None:
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
 
-        resolved = alias_service.resolve_alias(supplier_id, 'unknown')
+        resolved = service_name_service.resolve_service_display_name(supplier_id, 'unknown')
         self.assertIsNone(resolved)
 
-    def test_alias_resolution_is_case_insensitive_and_trimmed(self) -> None:
-        _, _, alias_service, supplier_id = self._bootstrap_services()
+    def test_service_short_name_resolution_is_case_insensitive_and_trimmed(self) -> None:
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
 
-        alias_service.create_mapping(
+        service_name_service.create_mapping(
             supplier_id=supplier_id,
-            alias='Opravy',
-            canonical_title='Canonical Opravy',
+            service_short_name='Opravy',
+            service_display_name='Canonical Opravy',
         )
 
-        resolved = alias_service.resolve_alias(supplier_id, '  oPRAvy  ')
+        resolved = service_name_service.resolve_service_display_name(supplier_id, '  oPRAvy  ')
         self.assertEqual(resolved, 'Canonical Opravy')
 
     def test_list_mappings_hides_inactive_by_default(self) -> None:
-        _, _, alias_service, supplier_id = self._bootstrap_services()
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
 
-        alias_service.create_mapping(
+        service_name_service.create_mapping(
             supplier_id=supplier_id,
-            alias='opravy',
-            canonical_title='Canonical Opravy',
+            service_short_name='opravy',
+            service_display_name='Canonical Opravy',
         )
-        alias_service.create_mapping(
+        service_name_service.create_mapping(
             supplier_id=supplier_id,
-            alias='montaz',
-            canonical_title='Canonical Montaz',
+            service_short_name='montaz',
+            service_display_name='Canonical Montaz',
         )
 
-        all_before = alias_service.list_mappings(supplier_id)
-        mapping_to_deactivate = next(entry for entry in all_before if entry.alias == 'opravy')
-        self.assertTrue(alias_service.deactivate_mapping(mapping_to_deactivate.id, supplier_id))
-        self.assertIsNone(alias_service.resolve_alias(supplier_id, 'opravy'))
+        all_before = service_name_service.list_mappings(supplier_id)
+        mapping_to_deactivate = next(entry for entry in all_before if entry.service_short_name == 'opravy')
+        self.assertTrue(service_name_service.deactivate_mapping(mapping_to_deactivate.id, supplier_id))
+        self.assertIsNone(service_name_service.resolve_service_display_name(supplier_id, 'opravy'))
 
-        active_only = alias_service.list_mappings(supplier_id)
-        self.assertEqual([entry.alias for entry in active_only], ['montaz'])
+        active_only = service_name_service.list_mappings(supplier_id)
+        self.assertEqual([entry.service_short_name for entry in active_only], ['montaz'])
 
     def test_list_mappings_can_include_inactive_when_requested(self) -> None:
-        _, _, alias_service, supplier_id = self._bootstrap_services()
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
 
-        alias_service.create_mapping(
+        service_name_service.create_mapping(
             supplier_id=supplier_id,
-            alias='opravy',
-            canonical_title='Canonical Opravy',
+            service_short_name='opravy',
+            service_display_name='Canonical Opravy',
         )
 
-        mapping = alias_service.list_mappings(supplier_id)[0]
-        self.assertTrue(alias_service.deactivate_mapping(mapping.id, supplier_id))
+        mapping = service_name_service.list_mappings(supplier_id)[0]
+        self.assertTrue(service_name_service.deactivate_mapping(mapping.id, supplier_id))
 
-        all_entries = alias_service.list_mappings(supplier_id, include_inactive=True)
+        all_entries = service_name_service.list_mappings(supplier_id, include_inactive=True)
         self.assertEqual(len(all_entries), 1)
-        self.assertEqual(all_entries[0].alias, 'opravy')
+        self.assertEqual(all_entries[0].service_short_name, 'opravy')
         self.assertEqual(all_entries[0].is_active, 0)
 
 

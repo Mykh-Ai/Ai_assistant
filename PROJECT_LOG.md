@@ -786,3 +786,29 @@ Record the completed local end-to-end FakturaBot verification session for the cu
 ### Decision
 The PAY by square PDF flow now has at least one recorded successful real banking-app verification milestone in addition to local code/test validation.
 
+
+## 2026-04-10 — Session 016 — Service naming terminology audit + safe refactor
+
+### Goal
+Align service naming wording in `/service` and related code to user-friendly Slovak and consistent internal English names.
+
+### Audit findings
+- User-facing texts still used technical wording `alias` / `canonical názov` in `/service` flow and README.
+- Internal Python naming mixed old terms (`alias`, `canonical_title`, `item_name_final`) with business semantics.
+- Persistence schema used `supplier_service_alias(alias, canonical_title)` and related bootstrap checks.
+- Tests reflected old naming (`test_alias_resolution_*`, `entry.alias`).
+
+### What changed
+- User-facing Slovak wording in `/service` and invoice preview now uses:
+  - `krátky názov služby`
+  - `plný názov služby`
+- Internal naming in service/handlers moved to:
+  - `service_short_name`
+  - `service_display_name`
+- Service layer added explicit method `resolve_service_display_name(...)`; kept compatibility wrapper `resolve_alias(...)`.
+- README `/service` command description updated to new wording.
+- Tests renamed/updated to new internal naming.
+
+### Compatibility / DB
+- DB schema intentionally left unchanged (`alias`, `canonical_title` stay as storage columns in `supplier_service_alias`).
+- No migration introduced.
