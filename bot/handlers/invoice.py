@@ -58,6 +58,41 @@ def _resolve_contact_lookup(contact_service: ContactService, telegram_id: int, n
     return contact_service.resolve_contact_lookup(telegram_id, name)
 
 
+def _service_alias_bridge_forms(service_term_internal: str | None) -> tuple[str, ...]:
+    if not service_term_internal:
+        return ()
+
+    deterministic_bridge_forms = {
+        'oprava': ('opravy',),
+    }
+    return deterministic_bridge_forms.get(service_term_internal, ())
+
+
+def _resolve_service_display_name(
+    *,
+    alias_service: ServiceAliasService,
+    supplier_id: int,
+    service_short_name: str,
+    service_term_internal: str | None,
+) -> str:
+    lookup_candidates: list[str] = [service_short_name]
+    if service_term_internal:
+        lookup_candidates.append(service_term_internal)
+        lookup_candidates.extend(_service_alias_bridge_forms(service_term_internal))
+
+    seen: set[str] = set()
+    for candidate in lookup_candidates:
+        normalized_candidate = candidate.strip().lower()
+        if not normalized_candidate or normalized_candidate in seen:
+            continue
+        seen.add(normalized_candidate)
+        resolved = alias_service.resolve_service_display_name(supplier_id, candidate)
+        if resolved:
+            return resolved
+
+    return service_short_name
+
+
 def _contact_lookup_feedback(result: ContactLookupResult) -> str:
     if result.state == 'multiple_candidates':
         top_names = ', '.join(contact.name for contact in result.candidates[:3])
@@ -231,9 +266,12 @@ async def _build_and_store_preview(
     service_term_internal = normalize_service_term(service_short_name)
     service_display_name = service_short_name
     if supplier.id is not None:
-        resolved = ServiceAliasService(config.db_path).resolve_service_display_name(supplier.id, service_short_name)
-        if resolved:
-            service_display_name = resolved
+        service_display_name = _resolve_service_display_name(
+            alias_service=ServiceAliasService(config.db_path),
+            supplier_id=supplier.id,
+            service_short_name=service_short_name,
+            service_term_internal=service_term_internal,
+        )
 
     normalized = {
         'raw_text': raw_text,

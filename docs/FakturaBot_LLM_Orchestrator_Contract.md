@@ -25,6 +25,12 @@ This contract is intentionally grounded in what is already implemented.
 
 Python currently remains authoritative for:
 
+### 1.2.1 Boundary reminder for service naming layers
+
+- `biznis_sk.termin_sluzby_sk` is an internal Slovak-normalized business term used for deterministic Python logic.
+- It is not the final preview/PDF service display title by itself.
+- Python resolves final display title through supplier alias cascade (raw alias -> internal canonical term alias -> deterministic bridge-form alias -> raw fallback last).
+
 - user/session orchestration (FSM states in handlers),
 - supplier/contact existence checks in local DB,
 - alias resolution of services (`ServiceAliasService`),
