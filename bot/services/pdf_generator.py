@@ -157,6 +157,16 @@ def _draw_qr(pdf: canvas.Canvas, payload: str, x: float, y: float, size: float) 
     pdf.drawImage(ImageReader(buffer), x, y, width=size, height=size)
 
 
+def _measure_item_row(description: str, *, desc_text_width: float, row_min_h: float, row_line_h: float) -> tuple[list[str], float]:
+    desc_lines = _wrap_text_lines(description, desc_text_width, FONT_REGULAR, 9)
+    row_h = max(row_min_h, (len(desc_lines) * row_line_h) + 4 * mm)
+    return desc_lines, row_h
+
+
+def _item_row_numeric_baseline(y_top: float, row_h: float) -> float:
+    return y_top - (row_h / 2) - 0.6 * mm
+
+
 def generate_invoice_pdf(
     *,
     target_path: Path,
@@ -266,8 +276,9 @@ def generate_invoice_pdf(
     y -= 8 * mm
     pdf.setFont(FONT_REGULAR, 9)
     for item in items:
-        desc_lines = _wrap_text_lines(item.description, desc_text_width, FONT_REGULAR, 9)
-        row_h = max(row_min_h, (len(desc_lines) * row_line_h) + 4 * mm)
+        desc_lines, row_h = _measure_item_row(
+            item.description, desc_text_width=desc_text_width, row_min_h=row_min_h, row_line_h=row_line_h
+        )
         pdf.setFillColor(bg_secondary)
         pdf.rect(margin, y - row_h, sum(col_widths), row_h, fill=1, stroke=0)
         pdf.setFillColor(colors.HexColor('#111827'))
@@ -282,7 +293,7 @@ def generate_invoice_pdf(
             pdf.drawString(margin + 2 * mm, desc_y, desc_line)
             desc_y -= row_line_h
 
-        numeric_y = y - (row_h / 2) + 1.4 * mm
+        numeric_y = _item_row_numeric_baseline(y, row_h)
         x = margin + col_widths[0]
         for idx, value in enumerate(row_vals):
             pdf.drawString(x + 2 * mm, numeric_y, value)

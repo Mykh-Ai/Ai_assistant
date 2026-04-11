@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 from bot.config import Config
-from bot.handlers.invoice import _build_and_store_preview, _extract_invoice_draft_from_phase2_payload
+from bot.handlers.invoice import _build_and_store_preview, _extract_invoice_draft_from_phase2_payload, _format_preview
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, validate_invoice_phase2_payload
@@ -90,7 +90,7 @@ def configured_db(tmp_path: Path) -> tuple[Path, int, int]:
     assert supplier.id is not None
     ServiceAliasService(db_path).create_mapping(
         supplier.id,
-        service_short_name='ремонт',
+        service_short_name='oprava',
         service_display_name='Servis a oprava zariadenia',
     )
 
@@ -107,11 +107,12 @@ def _valid_payload(original_text: str) -> dict:
         'zamer': {'nazov': 'vytvor_fakturu', 'istota': 0.93},
         'biznis_sk': {
             'odberatel_kandidat': 'Tech Company',
-            'polozka_povodna': 'ремонт',
+            'polozka_povodna': 'oprava',
             'termin_sluzby_sk': 'oprava',
             'mnozstvo': 1,
             'jednotka': 'ks',
             'suma': 150,
+            'cena_za_jednotku': 150,
             'mena': 'EUR',
             'datum_dodania': None,
             'splatnost_dni': 7,
@@ -128,9 +129,10 @@ def test_extract_payload_preserves_original_text_and_sk_fields() -> None:
 
     assert raw_text == 'сделай фактуру для Tech Company, ремонт 150 EUR'
     assert parsed['customer_name'] == 'Tech Company'
-    assert parsed['item_name_raw'] == 'ремонт'
+    assert parsed['item_name_raw'] == 'oprava'
     assert parsed['service_term_sk'] == 'oprava'
     assert parsed['amount'] == 150
+    assert parsed['unit_price'] == 150
 
 
 @pytest.mark.parametrize(
@@ -186,6 +188,15 @@ def test_validate_payload_accepts_lookup_ready_latin_customer_candidate() -> Non
     assert validated['vstup']['povodny_text'] == 'сделай фактуру на техкомпании за ремонт 150 eur'
 
 
+@pytest.mark.parametrize('bad_text', ['ремонт', 'монтаж'])
+def test_validate_payload_rejects_cyrillic_in_biznis_sk_fields(bad_text: str) -> None:
+    payload = _valid_payload('сделай фактуру на техкомпании за ремонт 150 eur')
+    payload['biznis_sk']['polozka_povodna'] = bad_text
+
+    with pytest.raises(LlmInvoicePayloadError):
+        validate_invoice_phase2_payload(payload)
+
+
 def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_db: tuple[Path, int, int]) -> None:
     db_path, telegram_id, contact_id = configured_db
 
@@ -217,6 +228,7 @@ def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_
     assert draft['contact_id'] == contact_id
     assert draft['customer_name'] == 'Tech Company s.r.o.'
     assert draft['item_term_canonical_internal'] == 'oprava'
+    assert draft['service_short_name'] == 'oprava'
     assert draft['service_display_name'] == 'Servis a oprava zariadenia'
 
 
@@ -236,6 +248,7 @@ def test_preview_returns_clean_retry_message_when_amount_missing(configured_db: 
 
     payload = _valid_payload('invoice for Tech Company without amount')
     payload['biznis_sk']['suma'] = None
+    payload['biznis_sk']['cena_za_jednotku'] = None
     _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
 
     asyncio.run(_build_and_store_preview(
@@ -249,3 +262,111 @@ def test_preview_returns_clean_retry_message_when_amount_missing(configured_db: 
 
     assert state.cleared is True
     assert any('AI návrh je neúplný' in text for text in message.answers)
+
+
+@pytest.mark.parametrize(
+    'text,quantity,unit_price,total',
+    [
+        ('za opravu 2 razy po 1500', 2.0, 1500.0, 3000.0),
+        ('za opravu 2 kusy po 1500 eur', 2.0, 1500.0, 3000.0),
+        ('za opravu 2x 1500', 2.0, 1500.0, 3000.0),
+        ('za opravu 2 krát po 1500 eur', 2.0, 1500.0, 3000.0),
+        ('za opravu 2 раза по 1500', 2.0, 1500.0, 3000.0),
+        ('za opravu 2 рази по 1500', 2.0, 1500.0, 3000.0),
+        ('za opravu 2 крат по 1500', 2.0, 1500.0, 3000.0),
+        ('za opravu 2 по 1500', 2.0, 1500.0, 3000.0),
+        ('сделай fakturu за ремонт 2 рази по 1500 євро', 2.0, 1500.0, 3000.0),
+    ],
+)
+def test_preview_amount_semantics_follow_n_times_unit_price_patterns(
+    configured_db: tuple[Path, int, int], text: str, quantity: float, unit_price: float, total: float
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload(text)
+    payload['biznis_sk']['mnozstvo'] = 2
+    payload['biznis_sk']['suma'] = 1500
+    payload['biznis_sk']['cena_za_jednotku'] = None
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text=text,
+        parsed_draft=parsed,
+    ))
+
+    draft = state.data['invoice_draft']
+    assert draft['quantity'] == quantity
+    assert draft['unit_price'] == unit_price
+    assert draft['amount'] == total
+
+
+def test_preview_amount_semantics_fail_loud_on_multiplier_hint_without_unit_price(
+    configured_db: tuple[Path, int, int]
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('za opravu 2 po sume 1500')
+    payload['biznis_sk']['mnozstvo'] = 2
+    payload['biznis_sk']['suma'] = 1500
+    payload['biznis_sk']['cena_za_jednotku'] = None
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text='za opravu 2 po sume 1500',
+        parsed_draft=parsed,
+    ))
+
+    assert state.cleared is True
+    assert any('Nejednoznačná suma' in text for text in message.answers)
+
+
+def test_preview_message_hides_short_service_name_field() -> None:
+    preview = _format_preview(
+        'test input',
+        {
+            'customer_name': 'Tech Company s.r.o.',
+            'service_short_name': 'oprava',
+            'service_display_name': 'Servis a oprava zariadenia',
+            'quantity': 2.0,
+            'unit_price': 1500.0,
+            'unit': 'ks',
+            'amount': 3000.0,
+            'currency': 'EUR',
+            'issue_date': '2026-04-11',
+            'delivery_date': '2026-04-03',
+            'due_date': '2026-04-25',
+        },
+    )
+
+    assert 'Krátky názov služby' not in preview
+    assert 'Plný názov služby' in preview

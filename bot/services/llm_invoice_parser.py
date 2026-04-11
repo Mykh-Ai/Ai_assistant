@@ -21,6 +21,7 @@ _REQUIRED_BIZNIS_FIELDS = {
     'splatnost_dni',
     'datum_splatnosti',
 }
+_OPTIONAL_BIZNIS_FIELDS = {'cena_za_jednotku'}
 
 
 class LlmInvoicePayloadError(ValueError):
@@ -132,6 +133,24 @@ def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
             )
 
     biznis_sk['odberatel_kandidat'] = _validate_lookup_ready_customer_candidate(biznis_sk['odberatel_kandidat'])
+    for text_field in ('polozka_povodna', 'termin_sluzby_sk'):
+        value = biznis_sk.get(text_field)
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise LlmInvoicePayloadError(f'Invalid LLM payload: biznis_sk.{text_field} must be a string or null.')
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise LlmInvoicePayloadError(f'Invalid LLM payload: biznis_sk.{text_field} must not be empty string.')
+        if _CYRILLIC_RE.search(normalized_value):
+            raise LlmInvoicePayloadError(
+                f'Invalid LLM payload: biznis_sk.{text_field} must be Slovak-normalized (no Cyrillic text).'
+            )
+        biznis_sk[text_field] = normalized_value
+
+    for key in tuple(biznis_sk.keys()):
+        if key not in _REQUIRED_BIZNIS_FIELDS and key not in _OPTIONAL_BIZNIS_FIELDS:
+            del biznis_sk[key]
 
     return data
 

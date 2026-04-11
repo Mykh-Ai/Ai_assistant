@@ -924,3 +924,30 @@ Align service naming wording in `/service` and related code to user-friendly Slo
 ### Notes
 - No DB migrations, no contact auto-create, no fuzzy matching.
 - Existing Python source-of-truth preview/contact flow remains unchanged for valid payloads.
+
+## 2026-04-11 — Session 014 — Invoice Phase 2 regression fixes (amount semantics + SK text boundary + PDF row alignment)
+
+### Bug shape
+- Voice/text phrases with multiplier semantics (e.g. `2 razy po 1500`) could be persisted as `quantity=2`, `total=1500`, causing wrong unit price derivation in PDF.
+- `biznis_sk` service short text could still contain raw Cyrillic (`ремонт`) and leak into preview short title.
+- PDF item rows with wrapped descriptions looked visually split because numeric columns sat too high relative to multiline description blocks.
+
+### Root cause
+- Amount pipeline had only one numeric `suma` path and derived `unit_price` as `total/quantity` without deterministic multiplier normalization.
+- Invoice preview trusted `polozka_povodna` too directly, so multilingual/raw text could pass through instead of canonical Slovak term.
+- Item-row vertical baseline used a static offset tuned for single-line rows.
+
+### Decision
+- Add optional invoice-only payload field `biznis_sk.cena_za_jednotku`, keep Python as numeric source of truth, and enforce deterministic normalization for `N × unit-price` phrases.
+- Make preview short title prefer Slovak-normalized term (`termin_sluzby_sk` / deterministic canonical map), with fail-loud validation when `biznis_sk` text fields contain Cyrillic.
+- Keep PDF design unchanged and fix only row measurement + numeric baseline helper logic for wrapped rows.
+
+### Tests added/updated
+- Amount semantics tests for:
+  - `2 razy po 1500`
+  - `2 kusy po 1500 eur`
+  - `2x 1500`
+  - `2 krát po 1500 eur`
+  and fail-loud path for ambiguous multiplier hints.
+- Service text normalization tests proving `biznis_sk` Cyrillic rejection and Slovak short-title in preview while preserving original multilingual `vstup.povodny_text`.
+- PDF layout helper tests for wrapped row height expansion and numeric baseline staying inside row block.
