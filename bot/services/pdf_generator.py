@@ -53,6 +53,10 @@ def _format_amount(value: float, currency: str) -> str:
     return f'{value:,.2f} {currency}'.replace(',', ' ')
 
 
+def _format_supplier_ic_dph_line(ic_dph: str | None) -> str:
+    return f'IČ DPH: {ic_dph or "Nie je platiteľ DPH"}'
+
+
 def _font_supports_glyphs(font_path: Path, glyphs: tuple[str, ...] = REQUIRED_GLYPHS) -> bool:
     font = TTFont('FakturaBot-Glyph-Probe', str(font_path))
     cmap = font.face.charToGlyph
@@ -167,6 +171,13 @@ def _item_row_numeric_baseline(y_top: float, row_h: float) -> float:
     return y_top - (row_h / 2) - 0.6 * mm
 
 
+def _item_row_description_first_baseline(y_top: float, row_h: float, line_count: int, row_line_h: float) -> float:
+    center_baseline = _item_row_numeric_baseline(y_top, row_h)
+    if line_count <= 1:
+        return center_baseline
+    return center_baseline + ((line_count - 1) * row_line_h / 2)
+
+
 def generate_invoice_pdf(
     *,
     target_path: Path,
@@ -208,7 +219,7 @@ def generate_invoice_pdf(
     supplier_lines = [
         supplier.name,
         f'IČO: {supplier.ico}   DIČ: {supplier.dic}',
-        f'IČ DPH: {supplier.ic_dph or "-"}',
+        _format_supplier_ic_dph_line(supplier.ic_dph),
         supplier.address,
         f'Email: {supplier.email}',
     ]
@@ -288,7 +299,7 @@ def generate_invoice_pdf(
             _format_amount(item.unit_price, invoice.currency),
             _format_amount(item.total_price, invoice.currency),
         ]
-        desc_y = y - 4 * mm - row_line_h
+        desc_y = _item_row_description_first_baseline(y, row_h, len(desc_lines), row_line_h)
         for desc_line in desc_lines:
             pdf.drawString(margin + 2 * mm, desc_y, desc_line)
             desc_y -= row_line_h

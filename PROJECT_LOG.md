@@ -1,5 +1,27 @@
 # PROJECT_LOG
 
+## 2026-04-11 — Session 014 — PDF row alignment + supplier VAT wording follow-up
+
+### Goal
+Polish two remaining PDF output seams without redesign:
+- visually align item description with numeric columns in item rows;
+- improve supplier VAT fallback wording when supplier is not VAT registered.
+
+### Changes
+- `bot/services/pdf_generator.py`:
+  - added `_item_row_description_first_baseline(...)` and used it for item description drawing so single-line descriptions share baseline alignment with quantity/unit/unit-price/total columns, while wrapped descriptions stay centered in the row block;
+  - extracted `_format_supplier_ic_dph_line(...)` and changed supplier fallback from `IČ DPH: -` to `IČ DPH: Nie je platiteľ DPH`.
+- `tests/test_pdf_generator_layout_wrapping.py`:
+  - added regression checks for description baseline behavior (single-line parity with numeric baseline and wrapped text staying inside row bounds);
+  - added regression checks for supplier VAT fallback wording.
+
+### Constraints preserved
+- No PDF redesign.
+- Amount semantics in preview/save/PDF path unchanged.
+- Current preview/save flow unchanged.
+
+---
+
 ## 2026-04-11 — Session 013 — Invoice service display title regression guard
 
 ### Goal

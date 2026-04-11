@@ -3,6 +3,8 @@ import unittest
 from bot.services.pdf_generator import (
     FONT_BOLD,
     FONT_REGULAR,
+    _format_supplier_ic_dph_line,
+    _item_row_description_first_baseline,
     _font_supports_glyphs,
     _item_row_numeric_baseline,
     _measure_item_row,
@@ -73,6 +75,34 @@ class PdfGeneratorLayoutWrappingTests(unittest.TestCase):
 
         self.assertLess(baseline, y_top)
         self.assertGreater(baseline, y_top - row_h)
+
+    def test_item_row_description_baseline_matches_numeric_for_single_line(self) -> None:
+        y_top = 180 * mm
+        row_h = 10 * mm
+        row_line_h = 4.2 * mm
+
+        numeric_baseline = _item_row_numeric_baseline(y_top, row_h)
+        description_baseline = _item_row_description_first_baseline(y_top, row_h, line_count=1, row_line_h=row_line_h)
+
+        self.assertEqual(description_baseline, numeric_baseline)
+
+    def test_item_row_description_baseline_for_wrapped_text_stays_inside_row(self) -> None:
+        y_top = 180 * mm
+        row_h = 20 * mm
+        row_line_h = 4.2 * mm
+
+        first_baseline = _item_row_description_first_baseline(y_top, row_h, line_count=3, row_line_h=row_line_h)
+        last_baseline = first_baseline - (2 * row_line_h)
+
+        self.assertLess(first_baseline, y_top)
+        self.assertGreater(last_baseline, y_top - row_h)
+
+    def test_supplier_ic_dph_wording_for_non_vat_supplier(self) -> None:
+        self.assertEqual(_format_supplier_ic_dph_line(None), 'IČ DPH: Nie je platiteľ DPH')
+        self.assertEqual(_format_supplier_ic_dph_line(''), 'IČ DPH: Nie je platiteľ DPH')
+
+    def test_supplier_ic_dph_wording_for_vat_supplier(self) -> None:
+        self.assertEqual(_format_supplier_ic_dph_line('SK1234567890'), 'IČ DPH: SK1234567890')
 
 
 if __name__ == '__main__':
