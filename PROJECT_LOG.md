@@ -1,5 +1,37 @@
 # PROJECT_LOG
 
+## 2026-04-11 — Session 013 — Invoice service display title regression guard
+
+### Goal
+Fix invoice runtime regression where service display title could fall back to raw multilingual text despite existing supplier alias mapping under a deterministic related form.
+
+### Regression shape
+- Raw item input: `ремонт`
+- Internal canonical term: `oprava`
+- Supplier alias stored only as: `opravy -> <full Slovak display title>`
+- Previous runtime checked only raw alias key and then fell back to raw text in preview/PDF.
+
+### Root cause
+Cross-layer bridge was incomplete: internal canonicalization and supplier alias mapping are separate deterministic layers, but invoice runtime used only raw `service_short_name` for final alias lookup.
+
+### Decision
+Keep supplier alias mapping as source of truth for final preview/PDF title and implement deterministic, explicit lookup cascade in invoice handler:
+1. raw alias (`service_short_name`)
+2. canonical internal term alias (`service_term_internal`)
+3. deterministic bridge forms (`oprava -> opravy`)
+4. raw fallback as last resort
+
+No fuzzy search, no LLM, no DB/schema changes, no auto-creation of aliases.
+
+### Safeguard
+Added regression tests to lock behavior:
+- bridge-form resolution (`ремонт -> oprava -> opravy`)
+- raw alias priority over fallback stages
+- raw fallback when no deterministic alias matches
+
+---
+
+
 Р В РІР‚вЂњР РЋРЎвЂњР РЋР вЂљР В Р вЂ¦Р В Р’В°Р В Р’В» Р РЋРІР‚В¦Р В РЎвЂўР В РўвЂР РЋРЎвЂњ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР РЋРІР‚СњР В РЎвЂќР РЋРІР‚С™Р РЋРЎвЂњ.
 Р В Р’В¤Р РЋРІР‚вЂњР В РЎвЂќР РЋР С“Р РЋРЎвЂњР РЋРІР‚Сњ Р В Р вЂ¦Р В Р’Вµ Р В Р’В»Р В РЎвЂР РЋРІвЂљВ¬Р В Р’Вµ Р В Р’В·Р В РЎВР РЋРІР‚вЂњР В Р вЂ¦Р РЋРЎвЂњ Р В РЎвЂќР В РЎвЂўР В РўвЂР РЋРЎвЂњ, Р В Р’В° Р В РІвЂћвЂ“ Р В Р’В·Р В РЎВР РЋРІР‚вЂњР В Р вЂ¦Р РЋРЎвЂњ Р РЋР вЂљР РЋРІР‚вЂњР РЋРІвЂљВ¬Р В Р’ВµР В Р вЂ¦Р РЋР Р‰, Р В Р’В»Р В РЎвЂўР В РЎвЂ“Р РЋРІР‚вЂњР В РЎвЂќР В РЎвЂ, scope Р РЋРІР‚С™Р В Р’В° Р В РЎвЂќР В РЎвЂўР В Р вЂ¦Р РЋРІР‚В Р В Р’ВµР В РЎвЂ”Р РЋРІР‚В Р РЋРІР‚вЂњР РЋРІР‚вЂќ.
 

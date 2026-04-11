@@ -79,6 +79,20 @@ Usage in Phase 1:
 - keep current alias resolution precedence for final output title.
 - explicit precedence: deterministic service-term normalization is internal-only; supplier alias mapping remains source of truth for final invoice title shown in preview/PDF.
 
+### 2.4.1 Cross-layer invariant: internal canonicalization vs supplier display mapping
+
+Internal service-term normalization and supplier alias mapping are two separate deterministic layers and must be bridged explicitly in runtime resolution.
+
+- `service_term_internal` / `termin_sluzby_sk` is internal-only normalization for logic and traceability.
+- Final preview/PDF service title remains supplier-scoped alias truth (`supplier_service_alias.canonical_title`).
+- Final display title resolution must use deterministic cascade:
+  1. supplier alias by raw `service_short_name`,
+  2. supplier alias by canonical internal term,
+  3. supplier alias by deterministic canonical-equivalent bridge forms (for current family: `oprava -> opravy`),
+  4. raw `service_short_name` fallback only when all previous deterministic stages miss.
+
+Regression example that motivates this invariant: raw multilingual input `ремонт` normalized internally to `oprava`, while supplier alias exists only under `opravy`; runtime must still resolve the final Slovak supplier title and must not fall back early to raw multilingual text.
+
 ### 2.5 Proposed function/data boundaries
 
 - `normalize_company_lookup_key(name: str) -> str`
