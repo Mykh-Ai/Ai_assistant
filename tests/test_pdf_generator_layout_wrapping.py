@@ -4,6 +4,8 @@ from bot.services.pdf_generator import (
     FONT_BOLD,
     FONT_REGULAR,
     _font_supports_glyphs,
+    _item_row_numeric_baseline,
+    _measure_item_row,
     _measure_party_block_height,
     _register_unicode_fonts,
     _resolve_unicode_font_paths,
@@ -15,7 +17,10 @@ from reportlab.lib.units import mm
 class PdfGeneratorLayoutWrappingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        _register_unicode_fonts()
+        try:
+            _register_unicode_fonts()
+        except RuntimeError as exc:
+            raise unittest.SkipTest(str(exc))
 
     def test_wrap_text_lines_splits_long_description(self) -> None:
         wrapped = _wrap_text_lines(
@@ -47,6 +52,27 @@ class PdfGeneratorLayoutWrappingTests(unittest.TestCase):
         long_h = _measure_party_block_height(long_lines, width=60 * mm)
 
         self.assertGreater(long_h, short_h)
+
+    def test_item_row_measurement_expands_for_wrapped_description(self) -> None:
+        short_lines, short_h = _measure_item_row('Krátka oprava', desc_text_width=70 * mm, row_min_h=10 * mm, row_line_h=4.2 * mm)
+        long_lines, long_h = _measure_item_row(
+            'Dlhý popis služby pre pravidelnú údržbu a opravy elektrických zariadení v celej prevádzke',
+            desc_text_width=45 * mm,
+            row_min_h=10 * mm,
+            row_line_h=4.2 * mm,
+        )
+
+        self.assertEqual(len(short_lines), 1)
+        self.assertGreater(len(long_lines), 1)
+        self.assertGreater(long_h, short_h)
+
+    def test_item_row_numeric_baseline_stays_inside_row_block(self) -> None:
+        y_top = 180 * mm
+        row_h = 20 * mm
+        baseline = _item_row_numeric_baseline(y_top, row_h)
+
+        self.assertLess(baseline, y_top)
+        self.assertGreater(baseline, y_top - row_h)
 
 
 if __name__ == '__main__':

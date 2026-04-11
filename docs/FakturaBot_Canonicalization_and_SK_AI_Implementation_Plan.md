@@ -159,6 +159,8 @@ Decision rule: LLM suggests; Python canonical dictionary decides final normalize
 - Ambiguity is explicit in payload; no hidden guesses.
 - Python can ignore/override LLM draft fields when deterministic rules disagree.
 - No side effect is executed from LLM output without Python validation + user confirmation.
+- Short service title shown in preview must not leak raw Cyrillic when Slovak canonical term exists.
+- `quantity`, `unit_price`, and `total` distinction is a protected invariant in preview/PDF path and must be validated in Python.
 
 ---
 

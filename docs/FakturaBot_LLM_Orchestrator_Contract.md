@@ -40,6 +40,19 @@ Python currently remains authoritative for:
 - PDF generation and file persistence,
 - final commit of data only after explicit user confirmation (`ano`).
 
+### 1.2.2 Financial invariant for invoice item amounts
+
+- Invoice normalization must keep explicit distinction between:
+  - `quantity` (`mnozstvo`)
+  - `unit_price` (`cena_za_jednotku`)
+  - `total_amount` (`suma`)
+- For deterministic multiplier phrases (`2x 1500`, `2 razy po 1500`, `2 kusy po 1500`), the normalized meaning is:
+  - quantity = `2`
+  - unit_price = `1500`
+  - total_amount = `3000`
+- Python must validate this invariant before preview/PDF.
+- If text suggests multiplier semantics but unit-price meaning is not confident, flow must fail-loud and ask for retry/clarification (no silent reinterpretation).
+
 ### 1.3 Where LLM is currently allowed to help
 
 Current implemented LLM role in repo:
@@ -85,6 +98,13 @@ To avoid mixing concerns, language policy is split into three layers:
 1. **Input handling language:** SK/UA/RU/mixed/noisy transliteration accepted (this section).
 2. **Internal machine contract language:** output JSON keys and enum values are always **English**.
 3. **Bot reply language strategy:** user-facing clarification/confirmation text should follow the user’s latest message language when reliably detectable; otherwise fall back to Slovak default bot UX wording already used in handlers.
+
+### 2.2 Business-text normalization boundary
+
+- `vstup.povodny_text` keeps original multilingual input (including Cyrillic).
+- `biznis_sk` is Slovak-normalized business output layer.
+- Raw Cyrillic/multilingual fragments must not leak into `biznis_sk` text fields when canonical Slovak form exists.
+- If raw fragment trace is needed, keep it in `stopa` only.
 
 ---
 

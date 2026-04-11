@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 import json
 import logging
+import re
 from uuid import uuid4
 
 from aiogram import Router
@@ -118,10 +119,10 @@ def _format_preview(recognized_text: str | None, data: dict[str, object]) -> str
         f'{text_part}'
         '<b>Náhľad faktúry:</b>\n'
         f'• Odberateľ: {data["customer_name"]}\n'
-        f'• Krátky názov služby: {data["service_short_name"]}\n'
         f'• Plný názov služby: {data["service_display_name"]}\n'
         f'• Množstvo: {data["quantity"]} {data["unit"] or ""}\n'
-        f'• Suma: {data["amount"]:.2f} {data["currency"]}\n'
+        f'• Cena za m.j.: {data["unit_price"]:.2f} {data["currency"]}\n'
+        f'• Suma spolu: {data["amount"]:.2f} {data["currency"]}\n'
         f'• Dátum vystavenia: {data["issue_date"]}\n'
         f'• Dátum dodania: {data["delivery_date"]}\n'
         f'• Dátum splatnosti: {data["due_date"]}\n\n'
@@ -141,12 +142,73 @@ def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict
         'quantity': (biznis_sk or {}).get('mnozstvo'),
         'unit': (biznis_sk or {}).get('jednotka'),
         'amount': (biznis_sk or {}).get('suma'),
+        'unit_price': (biznis_sk or {}).get('cena_za_jednotku'),
         'currency': (biznis_sk or {}).get('mena'),
         'delivery_date': (biznis_sk or {}).get('datum_dodania'),
         'due_days': (biznis_sk or {}).get('splatnost_dni'),
         'due_date': (biznis_sk or {}).get('datum_splatnosti'),
     }
     return raw_text, parsed_draft
+
+
+_UNIT_PRICE_PATTERN = re.compile(
+    r'(?P<qty>\d+(?:[.,]\d+)?)\s*(?:x|kr[aá]t|крат|razi|razy|раз|раза|рази|kusy|kus|ks|по)\s*(?:po|по)?\s*(?P<unit>\d+(?:[.,]\d+)?)',
+    flags=re.IGNORECASE,
+)
+_MULTIPLIER_HINT_PATTERN = re.compile(
+    r'\b(?:x|kr[aá]t|крат|razi|razy|раз|раза|рази|kusy|kus|ks|po|по)\b',
+    flags=re.IGNORECASE,
+)
+
+
+def _parse_confident_unit_price_pattern(raw_text: str) -> tuple[float, float] | None:
+    match = _UNIT_PRICE_PATTERN.search(raw_text)
+    if not match:
+        return None
+
+    qty = _parse_positive_float(match.group('qty'))
+    unit_price = _parse_positive_float(match.group('unit'))
+    if qty is None or unit_price is None:
+        return None
+    return qty, unit_price
+
+
+def _normalize_invoice_amount_semantics(
+    *,
+    raw_text: str,
+    quantity_value: object,
+    total_value: object,
+    unit_price_value: object,
+) -> tuple[float, float, float]:
+    quantity = _parse_positive_float(quantity_value) or 1.0
+    total_amount = _parse_positive_float(total_value)
+    unit_price = _parse_positive_float(unit_price_value)
+
+    explicit_pattern = _parse_confident_unit_price_pattern(raw_text)
+    if explicit_pattern is not None:
+        pattern_qty, pattern_unit_price = explicit_pattern
+        expected_total = round(pattern_qty * pattern_unit_price, 2)
+        if unit_price is not None and abs(unit_price - pattern_unit_price) > 0.01:
+            raise ValueError('Konfliktná cena za jednotku (text vs. AI payload).')
+        return pattern_qty, pattern_unit_price, expected_total
+
+    has_multiplier_hint = bool(_MULTIPLIER_HINT_PATTERN.search(raw_text))
+    if has_multiplier_hint and unit_price is None:
+        raise ValueError('Nejednoznačná suma: vstup naznačuje násobenie, ale chýba spoľahlivá cena za jednotku.')
+
+    if unit_price is not None and total_amount is not None:
+        expected_total = round(quantity * unit_price, 2)
+        if abs(expected_total - total_amount) > 0.01:
+            raise ValueError('Nekonzistentné finančné údaje: množstvo × cena za jednotku != suma.')
+        return quantity, unit_price, total_amount
+
+    if unit_price is not None:
+        return quantity, unit_price, round(quantity * unit_price, 2)
+
+    if total_amount is None:
+        raise ValueError('AI návrh je neúplný (chýba suma).')
+
+    return quantity, round(total_amount / quantity, 2), total_amount
 
 
 def _emit_invoice_debug_log(
@@ -237,11 +299,23 @@ async def _build_and_store_preview(
         return
     contact = lookup_result.matched_contact
 
-    service_short_name = (parsed_draft.get('item_name_raw') or '').strip()
-    amount = _parse_positive_float(parsed_draft.get('amount'))
-    quantity = _parse_positive_float(parsed_draft.get('quantity')) or 1.0
+    service_short_name_input = (parsed_draft.get('service_term_sk') or parsed_draft.get('item_name_raw') or '').strip()
+    service_term_internal = normalize_service_term(service_short_name_input)
+    service_short_name = service_term_internal or service_short_name_input
 
-    if not service_short_name or amount is None:
+    try:
+        quantity, unit_price, amount = _normalize_invoice_amount_semantics(
+            raw_text=raw_text,
+            quantity_value=parsed_draft.get('quantity'),
+            total_value=parsed_draft.get('amount'),
+            unit_price_value=parsed_draft.get('unit_price'),
+        )
+    except ValueError as exc:
+        await message.answer(f'{exc} Skúste formuláciu typu "2x po 1500 EUR".')
+        await state.clear()
+        return
+
+    if not service_short_name:
         await message.answer('AI návrh je neúplný (chýba položka alebo suma). Doplňte údaje a skúste to znova.')
         await state.clear()
         return
@@ -263,7 +337,6 @@ async def _build_and_store_preview(
             pass
 
     due_date_obj = issue_date_obj + timedelta(days=due_days)
-    service_term_internal = normalize_service_term(service_short_name)
     service_display_name = service_short_name
     if supplier.id is not None:
         service_display_name = _resolve_service_display_name(
@@ -281,6 +354,7 @@ async def _build_and_store_preview(
         'item_term_canonical_internal': service_term_internal,
         'service_display_name': service_display_name,
         'quantity': quantity,
+        'unit_price': unit_price,
         'unit': unit,
         'amount': amount,
         'currency': currency,
@@ -445,7 +519,7 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
                 item_description_normalized=str(draft['service_display_name']),
                 item_quantity=float(draft['quantity']),
                 item_unit=str(draft['unit']) if draft['unit'] else None,
-                item_unit_price=float(draft['amount']) / float(draft['quantity']),
+                item_unit_price=float(draft['unit_price']),
                 item_total_price=float(draft['amount']),
             )
         )

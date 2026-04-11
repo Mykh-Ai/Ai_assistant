@@ -7,6 +7,7 @@ def normalize_service_term(raw_item: str) -> str | None:
         return None
 
     mapping = {
+        'oprava': 'oprava',
         'opravy': 'oprava',
         'ремонт': 'oprava',
         'монтаж': 'montáž',

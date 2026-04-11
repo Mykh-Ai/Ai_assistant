@@ -18,6 +18,7 @@ Vráť STRICTNE iba jeden JSON objekt v tomto tvare:
     "termin_sluzby_sk": null,
     "mnozstvo": null,
     "jednotka": null,
+    "cena_za_jednotku": null,
     "suma": null,
     "mena": null,
     "datum_dodania": null,
@@ -43,6 +44,12 @@ Pravidlá:
 - Nepotvrdzuj, že kontakt bol nájdený v databáze.
 - Nevymýšľaj IČO/DIČ/adresy/právne identifikátory.
 - `termin_sluzby_sk` je interný slovenský termín draft (napr. ремонт -> oprava), nie finálny PDF názov.
+- `biznis_sk.polozka_povodna` a `biznis_sk.termin_sluzby_sk` musia byť v slovenčine (bez cyriliky); raw cyriliku nechávaj len vo `vstup.povodny_text`/`stopa`.
+- Pri frázach typu `2x 1500`, `2 razy po 1500`, `2 kusy po 1500` nastav:
+  - `mnozstvo` = 2
+  - `cena_za_jednotku` = 1500
+  - `suma` = 3000
+- Ak si pri rozlíšení `cena_za_jednotku` vs `suma` neistý, nevymýšľaj čísla; nechaj pole `null` a uveď nejasnosť v `stopa.nejasnosti`.
 - Ak pole nevieš určiť spoľahlivo, daj null a uveď dôvod v `stopa.chyba_udaje` alebo `stopa.nejasnosti`.
 - `zamer.nazov` nastav na `vytvor_fakturu` ak je vstup faktúra-like (`invoice`, `faktura`, `рахунок`, `фактура`).
 - `datum_dodania` a `datum_splatnosti` normalizuj na `YYYY-MM-DD` iba ak sú explicitne/iste.
