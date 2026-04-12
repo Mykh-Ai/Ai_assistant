@@ -1,5 +1,57 @@
 # PROJECT_LOG
 
+## 2026-04-12 — Session 018 — Post-PDF fail-loud guard + cleanup-order hardening
+
+### Goal
+Close two correctness gaps in deterministic post-PDF lifecycle:
+- fail loud when post-PDF FSM state misses `last_invoice_id`;
+- prioritize invoice-number release by running DB cleanup before PDF-file cleanup.
+
+### Changes
+- `bot/handlers/invoice.py`:
+  - `process_invoice_postpdf_decision(...)` now validates `last_invoice_id` at start and fails loud (`Návrh faktúry už nie je dostupný...`) instead of claiming success;
+  - post-PDF `upraviť`/`zrušiť` cleanup order reversed to DB-first then file-unlink, with isolated error handling so unlink failure no longer blocks DB cleanup;
+  - preview-confirm failure cleanup path (after invoice insert) now also does DB cleanup first and performs file cleanup in a separate guarded block.
+- `tests/test_invoice_state_decisions.py`:
+  - added regression for missing `last_invoice_id` in post-PDF state (no fake success);
+  - added regression for unlink failure on post-PDF cancel ensuring invoice row is still deleted;
+  - added regression for preview-confirm failure path with unlink failure ensuring invoice row is still deleted.
+
+## 2026-04-12 — Session 017 — Deterministic post-PDF decision FSM + voice state routing
+
+### Goal
+Implement deterministic state-based command handling after invoice preview and after PDF send, while keeping existing top-level invoice pre-router unchanged.
+
+### Changes
+- `bot/handlers/invoice.py`:
+  - kept top-level pre-router as-is (`_normalize_intent_token`, `_detect_invoice_intent`);
+  - added deterministic preview parser for `InvoiceStates.waiting_confirm` (`confirm_preview` / `cancel_preview` / `unknown`) with SK/UA/RU yes-no coverage;
+  - added deterministic post-PDF parser for `InvoiceStates.waiting_pdf_decision` (`approve_pdf_invoice` / `edit_pdf_invoice` / `cancel_pdf_invoice` / `unknown`) with SK/UA/RU command coverage;
+  - extracted reusable handlers:
+    - `process_invoice_preview_confirmation(...)`
+    - `process_invoice_postpdf_decision(...)`
+  - after PDF send, FSM now stores `last_invoice_id`, `last_invoice_number`, `last_pdf_path`;
+  - added cleanup on PDF generation/send failure after invoice insert: remove PDF (if exists), delete invoice items + invoice row, clear FSM.
+- `bot/handlers/voice.py`:
+  - after STT, routes command deterministically by current FSM state:
+    - `waiting_confirm` -> preview confirmation processor,
+    - `waiting_pdf_decision` -> post-PDF decision processor,
+    - otherwise -> existing generic invoice text flow.
+- `bot/services/invoice_service.py`:
+  - added lifecycle helpers:
+    - `update_invoice_status(invoice_id, status)`
+    - `delete_invoice_with_items(invoice_id)`
+  - cleanup path now fully deletes invoice items + invoice row so invoice number is freed for reuse on `upraviť` / `zrušiť`.
+- `tests/`:
+  - extended parser tests for required multilingual preview/post-PDF commands;
+  - added state-flow tests for preview confirm and post-PDF approve/edit/cancel behaviors, including cleanup and number release;
+  - added voice routing tests to verify FSM-aware deterministic dispatch.
+
+### Constraints preserved
+- Top-level create/edit/send pre-router behavior remains unchanged.
+- LLM still only drafts invoice payload; state command interpretation is deterministic Python.
+- User-facing replies introduced/changed in this session are Slovak-only.
+
 ## 2026-04-12 — Session 016 — Delivery-date anchor follow-up (UA months + local year scope)
 
 ### Goal

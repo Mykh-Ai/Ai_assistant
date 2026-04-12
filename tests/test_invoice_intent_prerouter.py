@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 
 from bot.config import Config
-from bot.handlers.invoice import process_invoice_text, _detect_invoice_intent
+from bot.handlers.invoice import (
+    _detect_invoice_intent,
+    _detect_invoice_postpdf_decision,
+    _detect_invoice_preview_confirmation,
+    process_invoice_text,
+)
 
 
 class _DummyMessage:
@@ -73,6 +78,50 @@ def test_detects_reserved_send_invoice_intent(text: str) -> None:
 
 def test_returns_unknown_when_no_known_intent_detected() -> None:
     assert _detect_invoice_intent('faktura pre Tech Company') == 'unknown'
+
+
+@pytest.mark.parametrize(
+    ('text', 'expected'),
+    [
+        ('áno', 'confirm_preview'),
+        ('ano', 'confirm_preview'),
+        ('так', 'confirm_preview'),
+        ('да', 'confirm_preview'),
+        ('nie', 'cancel_preview'),
+        ('ні', 'cancel_preview'),
+        ('нет', 'cancel_preview'),
+    ],
+)
+def test_preview_confirmation_parser_handles_multilingual_variants(text: str, expected: str) -> None:
+    assert _detect_invoice_preview_confirmation(text) == expected
+
+
+@pytest.mark.parametrize(
+    ('text', 'expected'),
+    [
+        ('schváliť', 'approve_pdf_invoice'),
+        ('potvrdiť', 'approve_pdf_invoice'),
+        ('схвалити', 'approve_pdf_invoice'),
+        ('подтвердить', 'approve_pdf_invoice'),
+        ('áno', 'approve_pdf_invoice'),
+        ('так', 'approve_pdf_invoice'),
+        ('да', 'approve_pdf_invoice'),
+        ('upraviť', 'edit_pdf_invoice'),
+        ('управить', 'edit_pdf_invoice'),
+        ('исправь', 'edit_pdf_invoice'),
+        ('редагувати', 'edit_pdf_invoice'),
+        ('zrušiť', 'cancel_pdf_invoice'),
+        ('vymazať', 'cancel_pdf_invoice'),
+        ('зрушити', 'cancel_pdf_invoice'),
+        ('скасувати', 'cancel_pdf_invoice'),
+        ('удалить', 'cancel_pdf_invoice'),
+        ('nie', 'cancel_pdf_invoice'),
+        ('ні', 'cancel_pdf_invoice'),
+        ('нет', 'cancel_pdf_invoice'),
+    ],
+)
+def test_postpdf_parser_handles_required_multilingual_variants(text: str, expected: str) -> None:
+    assert _detect_invoice_postpdf_decision(text) == expected
 
 
 @pytest.mark.parametrize(
