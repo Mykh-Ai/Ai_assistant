@@ -81,6 +81,9 @@ FakturaBot використовує **Bounded Semantic Canonicalization** чер
 - in-state reply resolution,
 - structured value canonicalization.
 
+Додатковий runtime принцип для structured flows:
+- якщо неясне лише одне поле, бот переходить у slot clarification, зберігає partial draft і просить тільки це поле (без повного reset workflow).
+
 ## Довгострокова ідея
 
 Після FakturaBot на цьому ж підході можуть будуватись:

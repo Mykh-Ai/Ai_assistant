@@ -1,5 +1,32 @@
 # PROJECT_LOG
 
+## 2026-04-12 — Session 020 — Generalized invoice slot clarification + project-wide partial-draft contract
+
+### Goal
+Expand already-merged service-slot clarification pattern to other critical invoice slots and formalize slot-level clarification/partial-draft retention as a structured workflow principle.
+
+### Changes
+- `bot/handlers/invoice.py`:
+  - generalized unresolved-slot handling for invoice draft build with partial retention in FSM (`invoice_partial_draft`);
+  - added slot-specific clarification prompts (Slovak-only) for customer, delivery date, due days, quantity, and unit price;
+  - added unified continuation path for slot clarification replies that updates one slot and resumes preview build;
+  - preserved existing service clarification behavior and compatibility state;
+  - improved debug transparency for recoverable unresolved-slot cases.
+- `bot/services/llm_invoice_parser.py`:
+  - customer-candidate payload failures now emit recoverable `customer_unresolved` with partial payload snapshot.
+- tests:
+  - added focused invoice clarification coverage for customer/date/due-days/amount slot continuation;
+  - preserved service-slot regression path and fatal payload fail-loud behavior checks.
+- docs:
+  - updated orchestrator contract + TZ + README + CHANGELOG for project-level slot clarification principle.
+
+### Architectural decision
+For structured workflows, fail one slot—not whole workflow:
+- preserve partial state,
+- clarify only unresolved slot,
+- continue from current step,
+- reserve full reset for fatal errors only.
+
 ## 2026-04-12 — Session 019 — AI orchestration contract shift to bounded canonicalization
 
 ### Goal

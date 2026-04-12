@@ -7,6 +7,7 @@ from bot.handlers.invoice import (
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
     process_invoice_service_clarification,
+    process_invoice_slot_clarification,
     process_invoice_text,
 )
 from bot.services.semantic_action_resolver import resolve_semantic_action
@@ -238,6 +239,58 @@ def test_process_invoice_text_keeps_partial_draft_when_only_service_slot_is_unkn
     assert message.answers[-1] == 'Nepodarilo sa jednoznačne určiť typ služby. Spresnite ho, prosím.'
 
 
+def test_process_invoice_text_keeps_partial_draft_when_customer_slot_is_unknown(tmp_path: Path, monkeypatch) -> None:
+    message = _DummyMessage('sprav fakturu')
+    state = _DummyState()
+
+    async def _fake_action(**kwargs):
+        return 'create_invoice'
+
+    async def _fake_parse(*args, **kwargs):
+        from bot.services.llm_invoice_parser import LlmInvoicePayloadError
+
+        partial_payload = {
+            'vstup': {'povodny_text': 'faktura za opravu 150 EUR', 'zisteny_jazyk': 'sk'},
+            'zamer': {'nazov': 'vytvor_fakturu', 'istota': 0.9},
+            'biznis_sk': {
+                'odberatel_kandidat': 'pre firmu',
+                'polozka_povodna': 'oprava',
+                'termin_sluzby_sk': 'oprava',
+                'mnozstvo': 1,
+                'jednotka': 'ks',
+                'suma': 150,
+                'cena_za_jednotku': 150,
+                'mena': 'EUR',
+                'datum_dodania': '2026-04-12',
+                'splatnost_dni': 14,
+                'datum_splatnosti': None,
+            },
+            'stopa': {'chyba_udaje': [], 'nejasnosti': [], 'poznamky_normalizacie': []},
+        }
+        raise LlmInvoicePayloadError(
+            'customer unresolved',
+            error_code='customer_unresolved',
+            partial_payload=partial_payload,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _fake_action)
+    monkeypatch.setattr('bot.handlers.invoice.parse_invoice_phase2_payload', _fake_parse)
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=_config_with_api_key(tmp_path),
+            invoice_text='sprav fakturu',
+        )
+    )
+
+    assert state.cleared is False
+    assert state.current_state == InvoiceStates.waiting_slot_clarification
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'customer_name'
+    assert message.answers[-1] == 'Nepodarilo sa jednoznačne určiť odberateľa. Spresnite názov firmy, prosím.'
+
+
 def test_service_clarification_continues_to_preview_without_restart(tmp_path: Path, monkeypatch) -> None:
     message = _DummyMessage('oprava')
     state = _DummyState()
@@ -277,6 +330,154 @@ def test_service_clarification_continues_to_preview_without_restart(tmp_path: Pa
     assert captured['parsed_draft']['service_term_sk'] == 'oprava'
     assert captured['parsed_draft']['item_name_raw'] == 'oprava'
     assert captured['raw_text'] == 'faktura pre Tech Company 150 EUR'
+
+
+def test_slot_clarification_applies_delivery_date_and_continues_to_preview(tmp_path: Path, monkeypatch) -> None:
+    message = _DummyMessage('13.04.2026')
+    state = _DummyState()
+    state.data['invoice_partial_draft'] = {
+        'request_id': 'req-2',
+        'raw_text': 'faktura pre Tech Company oprava',
+        'unresolved_slot': 'delivery_date',
+        'parsed_draft': {
+            'customer_name': 'Tech Company',
+            'item_name_raw': 'oprava',
+            'service_term_sk': 'oprava',
+            'quantity': 1,
+            'unit': 'ks',
+            'amount': 150,
+            'unit_price': 150,
+            'currency': 'EUR',
+            'delivery_date': None,
+            'due_days': 14,
+            'due_date': None,
+        },
+    }
+    captured: dict = {}
+
+    async def _fake_build_and_store_preview(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr('bot.handlers.invoice._build_and_store_preview', _fake_build_and_store_preview)
+
+    asyncio.run(
+        process_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            clarification_text='13.04.2026',
+        )
+    )
+
+    assert captured['parsed_draft']['delivery_date'] == '2026-04-13'
+
+
+def test_slot_clarification_applies_due_days_and_continues_to_preview(tmp_path: Path, monkeypatch) -> None:
+    message = _DummyMessage('21')
+    state = _DummyState()
+    state.data['invoice_partial_draft'] = {
+        'request_id': 'req-3',
+        'raw_text': 'faktura pre Tech Company oprava',
+        'unresolved_slot': 'due_days',
+        'parsed_draft': {
+            'customer_name': 'Tech Company',
+            'item_name_raw': 'oprava',
+            'service_term_sk': 'oprava',
+            'quantity': 1,
+            'unit': 'ks',
+            'amount': 150,
+            'unit_price': 150,
+            'currency': 'EUR',
+            'delivery_date': '2026-04-12',
+            'due_days': None,
+            'due_date': None,
+        },
+    }
+    captured: dict = {}
+
+    async def _fake_build_and_store_preview(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr('bot.handlers.invoice._build_and_store_preview', _fake_build_and_store_preview)
+
+    asyncio.run(
+        process_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            clarification_text='21',
+        )
+    )
+
+    assert captured['parsed_draft']['due_days'] == 21
+
+
+def test_slot_clarification_applies_unit_price_and_continues_to_preview(tmp_path: Path, monkeypatch) -> None:
+    message = _DummyMessage('250')
+    state = _DummyState()
+    state.data['invoice_partial_draft'] = {
+        'request_id': 'req-4',
+        'raw_text': 'faktura pre Tech Company oprava 2x',
+        'unresolved_slot': 'unit_price',
+        'parsed_draft': {
+            'customer_name': 'Tech Company',
+            'item_name_raw': 'oprava',
+            'service_term_sk': 'oprava',
+            'quantity': 2,
+            'unit': 'ks',
+            'amount': None,
+            'unit_price': None,
+            'currency': 'EUR',
+            'delivery_date': '2026-04-12',
+            'due_days': 14,
+            'due_date': None,
+        },
+    }
+    captured: dict = {}
+
+    async def _fake_build_and_store_preview(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr('bot.handlers.invoice._build_and_store_preview', _fake_build_and_store_preview)
+
+    asyncio.run(
+        process_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            clarification_text='250',
+        )
+    )
+
+    assert captured['parsed_draft']['unit_price'] == 250.0
+
+
+def test_process_invoice_text_fails_loudly_on_fatal_payload_error(tmp_path: Path, monkeypatch) -> None:
+    message = _DummyMessage('sprav fakturu')
+    state = _DummyState()
+
+    async def _fake_action(**kwargs):
+        return 'create_invoice'
+
+    async def _fake_parse(*args, **kwargs):
+        from bot.services.llm_invoice_parser import LlmInvoicePayloadError
+
+        raise LlmInvoicePayloadError('fatal shape issue', error_code='fatal_payload')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _fake_action)
+    monkeypatch.setattr('bot.handlers.invoice.parse_invoice_phase2_payload', _fake_parse)
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=_config_with_api_key(tmp_path),
+            invoice_text='sprav fakturu',
+        )
+    )
+
+    assert state.cleared is True
+    assert message.answers[-1] == 'AI návrh faktúry bol neplatný. Skúste vstup poslať znova.'
 
 
 def test_preview_unknown_reply(tmp_path: Path) -> None:

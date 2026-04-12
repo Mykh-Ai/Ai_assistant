@@ -38,8 +38,26 @@ _UNKNOWN_INVOICE_INTENT = 'unknown'
 class InvoiceStates(StatesGroup):
     waiting_input = State()
     waiting_service_clarification = State()
+    waiting_slot_clarification = State()
     waiting_confirm = State()
     waiting_pdf_decision = State()
+
+
+_SLOT_SERVICE = 'service_term'
+_SLOT_CUSTOMER = 'customer_name'
+_SLOT_DELIVERY_DATE = 'delivery_date'
+_SLOT_DUE_DAYS = 'due_days'
+_SLOT_QUANTITY = 'quantity'
+_SLOT_UNIT_PRICE = 'unit_price'
+
+_SLOT_PROMPTS = {
+    _SLOT_CUSTOMER: 'Nepodarilo sa jednoznačne určiť odberateľa. Spresnite názov firmy, prosím.',
+    _SLOT_SERVICE: 'Nepodarilo sa jednoznačne určiť typ služby. Spresnite ho, prosím.',
+    _SLOT_DELIVERY_DATE: 'Nepodarilo sa jednoznačne určiť dátum dodania. Spresnite ho, prosím.',
+    _SLOT_DUE_DAYS: 'Nepodarilo sa jednoznačne určiť splatnosť. Zadajte počet dní, prosím.',
+    _SLOT_QUANTITY: 'Nepodarilo sa jednoznačne určiť množstvo. Spresnite ho, prosím.',
+    _SLOT_UNIT_PRICE: 'Nepodarilo sa jednoznačne určiť cenu. Spresnite ju, prosím.',
+}
 
 
 def _parse_date(value: object) -> date | None:
@@ -466,8 +484,15 @@ async def _build_and_store_preview(
 
     customer_name = (parsed_draft.get('customer_name') or '').strip()
     if not customer_name:
-        await message.answer('Z vašej správy sa nepodarilo rozpoznať odberateľa.')
-        await state.clear()
+        await _start_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            request_id=request_id,
+            raw_text=raw_text,
+            parsed_draft=parsed_draft,
+            unresolved_slot=_SLOT_CUSTOMER,
+        )
         return
 
     contact_service = ContactService(config.db_path)
@@ -502,8 +527,22 @@ async def _build_and_store_preview(
         },
     )
     if lookup_result.state not in {'exact_match', 'normalized_match'} or lookup_result.matched_contact is None:
-        await message.answer(_contact_lookup_feedback(lookup_result))
-        await state.clear()
+        await _start_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            request_id=request_id,
+            raw_text=raw_text,
+            parsed_draft=parsed_draft,
+            unresolved_slot=_SLOT_CUSTOMER,
+            bounded_choices=[candidate.name for candidate in lookup_result.candidates[:3]],
+            debug_payload={
+                'lookup_feedback': _contact_lookup_feedback(lookup_result),
+                'lookup_state': lookup_result.state,
+            },
+            prefer_service_state=False,
+            update_hint='Prosím, spresnite názov odberateľa a skúste to znova.',
+        )
         return
     contact = lookup_result.matched_contact
 
@@ -511,14 +550,57 @@ async def _build_and_store_preview(
     service_term_internal = normalize_service_term(service_short_name_input)
     service_short_name = service_term_internal or service_short_name_input
 
+    quantity_value = parsed_draft.get('quantity')
+    quantity_raw = _parse_positive_float(quantity_value)
+    if quantity_value is not None and quantity_raw is None:
+        await _start_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            request_id=request_id,
+            raw_text=raw_text,
+            parsed_draft=parsed_draft,
+            unresolved_slot=_SLOT_QUANTITY,
+        )
+        return
+
+    total_raw = _parse_positive_float(parsed_draft.get('amount'))
+    unit_price_raw = _parse_positive_float(parsed_draft.get('unit_price'))
+    has_multiplier_hint = bool(_MULTIPLIER_HINT_PATTERN.search(raw_text))
+    explicit_amount_pattern = _parse_confident_unit_price_pattern(raw_text)
+    if (total_raw is None and unit_price_raw is None) or (
+        has_multiplier_hint and unit_price_raw is None and explicit_amount_pattern is None
+    ):
+        await _start_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            request_id=request_id,
+            raw_text=raw_text,
+            parsed_draft=parsed_draft,
+            unresolved_slot=_SLOT_UNIT_PRICE,
+        )
+        return
+
     try:
         quantity, unit_price, amount = _normalize_invoice_amount_semantics(
             raw_text=raw_text,
-            quantity_value=parsed_draft.get('quantity'),
+            quantity_value=quantity_value,
             total_value=parsed_draft.get('amount'),
             unit_price_value=parsed_draft.get('unit_price'),
         )
     except ValueError as exc:
+        if 'chýba suma' in str(exc):
+            await _start_invoice_slot_clarification(
+                message=message,
+                state=state,
+                config=config,
+                request_id=request_id,
+                raw_text=raw_text,
+                parsed_draft=parsed_draft,
+                unresolved_slot=_SLOT_UNIT_PRICE,
+            )
+            return
         await message.answer(f'{exc} Skúste formuláciu typu "2x po 1500 EUR".')
         await state.clear()
         return
@@ -539,8 +621,16 @@ async def _build_and_store_preview(
             llm_delivery_value=parsed_draft.get('delivery_date'),
         )
     except ValueError as exc:
-        await message.answer(f'{exc} Uveďte dátum dodania znova.')
-        await state.clear()
+        await _start_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            request_id=request_id,
+            raw_text=raw_text,
+            parsed_draft=parsed_draft,
+            unresolved_slot=_SLOT_DELIVERY_DATE,
+            debug_payload={'delivery_error': str(exc)},
+        )
         return
 
     draft_due_days = parsed_draft.get('due_days')
@@ -550,8 +640,28 @@ async def _build_and_store_preview(
             parsed_due = int(str(draft_due_days))
             if parsed_due > 0:
                 due_days = parsed_due
+            else:
+                await _start_invoice_slot_clarification(
+                    message=message,
+                    state=state,
+                    config=config,
+                    request_id=request_id,
+                    raw_text=raw_text,
+                    parsed_draft=parsed_draft,
+                    unresolved_slot=_SLOT_DUE_DAYS,
+                )
+                return
         except ValueError:
-            pass
+            await _start_invoice_slot_clarification(
+                message=message,
+                state=state,
+                config=config,
+                request_id=request_id,
+                raw_text=raw_text,
+                parsed_draft=parsed_draft,
+                unresolved_slot=_SLOT_DUE_DAYS,
+            )
+            return
 
     due_date_obj = issue_date_obj + timedelta(days=due_days)
     service_display_name = service_short_name
@@ -606,19 +716,186 @@ async def _start_service_slot_clarification(
     *,
     message: Message,
     state: FSMContext,
+    config: Config,
     request_id: str,
     raw_text: str,
     parsed_draft: dict[str, object],
 ) -> None:
-    await state.update_data(
-        invoice_partial_draft={
-            'request_id': request_id,
-            'raw_text': raw_text,
-            'parsed_draft': parsed_draft,
-        }
+    await _start_invoice_slot_clarification(
+        message=message,
+        state=state,
+        config=config,
+        request_id=request_id,
+        raw_text=raw_text,
+        parsed_draft=parsed_draft,
+        unresolved_slot=_SLOT_SERVICE,
+        prefer_service_state=True,
     )
-    await state.set_state(InvoiceStates.waiting_service_clarification)
-    await message.answer('Nepodarilo sa jednoznačne určiť typ služby. Spresnite ho, prosím.')
+
+
+async def _start_invoice_slot_clarification(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    request_id: str,
+    raw_text: str,
+    parsed_draft: dict[str, object],
+    unresolved_slot: str,
+    bounded_choices: list[str] | None = None,
+    debug_payload: dict[str, object] | None = None,
+    prefer_service_state: bool = False,
+    update_hint: str | None = None,
+) -> None:
+    partial_payload = {
+        'request_id': request_id,
+        'raw_text': raw_text,
+        'parsed_draft': parsed_draft,
+        'unresolved_slot': unresolved_slot,
+    }
+    if bounded_choices:
+        partial_payload['bounded_choices'] = bounded_choices
+
+    _emit_invoice_debug_log(
+        config=config,
+        event='invoice_slot_clarification_started',
+        request_id=request_id,
+        telegram_update_id=getattr(message, 'update_id', None),
+        telegram_message_id=getattr(message, 'message_id', None),
+        payload={
+            'unresolved_slot': unresolved_slot,
+            'raw_values': {
+                'customer_name': parsed_draft.get('customer_name'),
+                'service_term_sk': parsed_draft.get('service_term_sk'),
+                'delivery_date': parsed_draft.get('delivery_date'),
+                'due_days': parsed_draft.get('due_days'),
+                'quantity': parsed_draft.get('quantity'),
+                'unit_price': parsed_draft.get('unit_price'),
+                'amount': parsed_draft.get('amount'),
+            },
+            'partial_draft_snapshot': parsed_draft,
+            'clarification_entered': True,
+            **(debug_payload or {}),
+        },
+    )
+
+    await state.update_data(
+        invoice_partial_draft=partial_payload
+    )
+    if prefer_service_state:
+        await state.set_state(InvoiceStates.waiting_service_clarification)
+    else:
+        await state.set_state(InvoiceStates.waiting_slot_clarification)
+
+    prompt = _SLOT_PROMPTS.get(unresolved_slot, 'Nepodarilo sa jednoznačne určiť údaj. Spresnite ho, prosím.')
+    if bounded_choices:
+        prompt = f'{prompt}\nMožnosti: {", ".join(bounded_choices)}.'
+    if update_hint:
+        prompt = f'{prompt}\n{update_hint}'
+    await message.answer(prompt)
+
+
+def _parse_date_clarification(value: str, *, issue_date_obj: date) -> str | None:
+    raw = value.strip()
+    if not raw:
+        return None
+    iso = _parse_date(raw)
+    if iso is not None:
+        return iso.isoformat()
+
+    compact = raw.replace(' ', '')
+    for separator in ('.', '/', '-'):
+        parts = compact.split(separator)
+        if len(parts) == 3:
+            try:
+                day = int(parts[0])
+                month = int(parts[1])
+                year = int(parts[2])
+                return date(year, month, day).isoformat()
+            except ValueError:
+                return None
+        if len(parts) == 2:
+            try:
+                day = int(parts[0])
+                month = int(parts[1])
+                return date(issue_date_obj.year, month, day).isoformat()
+            except ValueError:
+                return None
+    return None
+
+
+def _apply_slot_clarification(parsed_draft: dict[str, object], unresolved_slot: str, clarification_text: str) -> bool:
+    normalized_text = clarification_text.strip()
+    if unresolved_slot == _SLOT_SERVICE:
+        canonical_service_term = normalize_service_term(normalized_text)
+        if canonical_service_term is None:
+            return False
+        parsed_draft['service_term_sk'] = canonical_service_term
+        parsed_draft['item_name_raw'] = canonical_service_term
+        return True
+    if unresolved_slot == _SLOT_CUSTOMER:
+        if not normalized_text:
+            return False
+        parsed_draft['customer_name'] = normalized_text
+        return True
+    if unresolved_slot == _SLOT_DELIVERY_DATE:
+        parsed_date = _parse_date_clarification(normalized_text, issue_date_obj=date.today())
+        if parsed_date is None:
+            return False
+        parsed_draft['delivery_date'] = parsed_date
+        return True
+    if unresolved_slot == _SLOT_DUE_DAYS:
+        try:
+            due_days = int(normalized_text)
+        except ValueError:
+            return False
+        if due_days <= 0:
+            return False
+        parsed_draft['due_days'] = due_days
+        return True
+    if unresolved_slot in {_SLOT_QUANTITY, _SLOT_UNIT_PRICE}:
+        parsed = _parse_positive_float(normalized_text)
+        if parsed is None:
+            return False
+        target_key = 'quantity' if unresolved_slot == _SLOT_QUANTITY else 'unit_price'
+        parsed_draft[target_key] = parsed
+        return True
+    return False
+
+
+async def process_invoice_slot_clarification(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    clarification_text: str,
+) -> None:
+    state_data = await state.get_data()
+    partial = state_data.get('invoice_partial_draft')
+    if not isinstance(partial, dict):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    parsed_draft = partial.get('parsed_draft')
+    unresolved_slot = str(partial.get('unresolved_slot') or '')
+    if not isinstance(parsed_draft, dict) or not unresolved_slot:
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    if not _apply_slot_clarification(parsed_draft, unresolved_slot, clarification_text):
+        await message.answer(_SLOT_PROMPTS.get(unresolved_slot, 'Spresnite údaj, prosím.'))
+        return
+
+    await _build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id=str(partial.get('request_id') or uuid4()),
+        raw_text=str(partial.get('raw_text') or clarification_text),
+        parsed_draft=parsed_draft,
+    )
 
 
 async def process_invoice_text(
@@ -697,16 +974,20 @@ async def process_invoice_text(
                 'raw_biznis_sk_termin_sluzby_sk': payload_details.get('raw_biznis_sk_termin_sluzby_sk'),
                 'repaired_biznis_sk_polozka_povodna': payload_details.get('repaired_biznis_sk_polozka_povodna'),
                 'repaired_service_term_canonical_internal': payload_details.get('repaired_service_term_canonical_internal'),
+                'unresolved_slot': exc.error_code,
             },
         )
-        if exc.error_code == 'service_term_unresolved' and isinstance(exc.partial_payload, dict):
+        if exc.error_code in {'service_term_unresolved', 'customer_unresolved'} and isinstance(exc.partial_payload, dict):
             raw_text, parsed = _extract_invoice_draft_from_phase2_payload(exc.partial_payload)
-            await _start_service_slot_clarification(
+            await _start_invoice_slot_clarification(
                 message=message,
                 state=state,
+                config=config,
                 request_id=flow_request_id,
                 raw_text=raw_text or invoice_text,
                 parsed_draft=parsed,
+                unresolved_slot=_SLOT_SERVICE if exc.error_code == 'service_term_unresolved' else _SLOT_CUSTOMER,
+                prefer_service_state=exc.error_code == 'service_term_unresolved',
             )
             return
         logger.exception('LLM returned invalid Phase 2 invoice payload')
@@ -738,31 +1019,14 @@ async def process_invoice_service_clarification(
 ) -> None:
     state_data = await state.get_data()
     partial = state_data.get('invoice_partial_draft')
-    if not isinstance(partial, dict):
-        await state.clear()
-        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
-        return
-
-    parsed_draft = partial.get('parsed_draft')
-    if not isinstance(parsed_draft, dict):
-        await state.clear()
-        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
-        return
-
-    canonical_service_term = normalize_service_term(clarification_text.strip())
-    if canonical_service_term is None:
-        await message.answer('Typ služby stále nie je jasný. Spresnite ho, prosím (napr. oprava alebo montáž).')
-        return
-
-    parsed_draft['service_term_sk'] = canonical_service_term
-    parsed_draft['item_name_raw'] = canonical_service_term
-    await _build_and_store_preview(
+    if isinstance(partial, dict) and not partial.get('unresolved_slot'):
+        partial['unresolved_slot'] = _SLOT_SERVICE
+        await state.update_data(invoice_partial_draft=partial)
+    await process_invoice_slot_clarification(
         message=message,
         state=state,
         config=config,
-        request_id=str(partial.get('request_id') or uuid4()),
-        raw_text=str(partial.get('raw_text') or clarification_text),
-        parsed_draft=parsed_draft,
+        clarification_text=clarification_text,
     )
 
 
@@ -1008,6 +1272,16 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
 @router.message(InvoiceStates.waiting_service_clarification)
 async def invoice_service_clarification(message: Message, state: FSMContext, config: Config) -> None:
     await process_invoice_service_clarification(
+        message=message,
+        state=state,
+        config=config,
+        clarification_text=(message.text or ''),
+    )
+
+
+@router.message(InvoiceStates.waiting_slot_clarification)
+async def invoice_slot_clarification(message: Message, state: FSMContext, config: Config) -> None:
+    await process_invoice_slot_clarification(
         message=message,
         state=state,
         config=config,

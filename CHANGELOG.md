@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [0.6.1] - 2026-04-12
+
+### Changed
+- invoice flow generalized from service-slot-only clarification to broader slot-level clarification (customer, delivery date, due days, quantity/unit price)
+- partial draft retention is now enforced as a project-level structured workflow principle (not invoice-only)
+
 ## [0.6.0] - 2026-04-12
 
 ### Changed

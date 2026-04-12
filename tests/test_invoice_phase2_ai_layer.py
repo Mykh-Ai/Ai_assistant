@@ -9,6 +9,7 @@ import pytest
 
 from bot.config import Config
 from bot.handlers.invoice import (
+    InvoiceStates,
     _build_and_store_preview,
     _extract_invoice_draft_from_phase2_payload,
     _format_preview,
@@ -120,7 +121,7 @@ def _valid_payload(original_text: str) -> dict:
             'suma': 150,
             'cena_za_jednotku': 150,
             'mena': 'EUR',
-            'datum_dodania': None,
+            'datum_dodania': '2026-04-12',
             'splatnost_dni': 7,
             'datum_splatnosti': None,
         },
@@ -180,8 +181,10 @@ def test_validate_payload_rejects_non_lookup_ready_customer_candidate(bad_candid
     payload = _valid_payload('сделай фактуру на техкомпании за ремонт 150 eur')
     payload['biznis_sk']['odberatel_kandidat'] = bad_candidate
 
-    with pytest.raises(LlmInvoicePayloadError):
+    with pytest.raises(LlmInvoicePayloadError) as exc_info:
         validate_invoice_phase2_payload(payload)
+    assert exc_info.value.error_code == 'customer_unresolved'
+    assert exc_info.value.partial_payload is not None
 
 
 def test_validate_payload_accepts_lookup_ready_latin_customer_candidate() -> None:
@@ -280,8 +283,140 @@ def test_preview_returns_clean_retry_message_when_amount_missing(configured_db: 
         parsed_draft=parsed,
     ))
 
-    assert state.cleared is True
-    assert any('AI návrh je neúplný' in text for text in message.answers)
+    assert state.cleared is False
+    assert state.last_state == InvoiceStates.waiting_slot_clarification
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'unit_price'
+    assert message.answers[-1] == 'Nepodarilo sa jednoznačne určiť cenu. Spresnite ju, prosím.'
+
+
+def test_preview_missing_delivery_date_uses_issue_date_without_clarification(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('invoice for Tech Company')
+    payload['biznis_sk']['datum_dodania'] = None
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text=payload['vstup']['povodny_text'],
+        parsed_draft=parsed,
+    ))
+
+    assert 'invoice_draft' in state.data
+    draft = state.data['invoice_draft']
+    assert draft['delivery_date'] == draft['issue_date']
+    assert state.last_state == InvoiceStates.waiting_confirm
+
+
+def test_preview_missing_due_days_uses_supplier_default_without_clarification(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('invoice for Tech Company')
+    payload['biznis_sk']['splatnost_dni'] = None
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text=payload['vstup']['povodny_text'],
+        parsed_draft=parsed,
+    ))
+
+    assert 'invoice_draft' in state.data
+    draft = state.data['invoice_draft']
+    assert draft['due_days'] == 14
+    assert state.last_state == InvoiceStates.waiting_confirm
+
+
+def test_preview_invalid_due_days_keeps_clarification_path(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('invoice for Tech Company')
+    payload['biznis_sk']['splatnost_dni'] = 'abc'
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text=payload['vstup']['povodny_text'],
+        parsed_draft=parsed,
+    ))
+
+    assert state.last_state == InvoiceStates.waiting_slot_clarification
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'due_days'
+    assert message.answers[-1] == 'Nepodarilo sa jednoznačne určiť splatnosť. Zadajte počet dní, prosím.'
+
+
+def test_preview_inconsistent_delivery_date_keeps_clarification_path(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('dodanie 4 apríla pre Tech Company')
+    payload['biznis_sk']['datum_dodania'] = '2026-05-04'
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text=payload['vstup']['povodny_text'],
+        parsed_draft=parsed,
+    ))
+
+    assert state.last_state == InvoiceStates.waiting_slot_clarification
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'delivery_date'
+    assert message.answers[-1] == 'Nepodarilo sa jednoznačne určiť dátum dodania. Spresnite ho, prosím.'
 
 
 @pytest.mark.parametrize(
@@ -366,8 +501,10 @@ def test_preview_amount_semantics_fail_loud_on_multiplier_hint_without_unit_pric
         parsed_draft=parsed,
     ))
 
-    assert state.cleared is True
-    assert any('Nejednoznačná suma' in text for text in message.answers)
+    assert state.cleared is False
+    assert state.last_state == InvoiceStates.waiting_slot_clarification
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'unit_price'
+    assert message.answers[-1] == 'Nepodarilo sa jednoznačne určiť cenu. Spresnite ju, prosím.'
 
 
 def test_preview_message_hides_short_service_name_field() -> None:

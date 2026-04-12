@@ -131,3 +131,19 @@ Unified resolver principle for FakturaBot AI layer:
 In short:
 
 **Python defines bounds and executes. LLM canonicalizes within bounds.**
+
+---
+
+## 10) Slot-level clarification and partial draft retention
+
+Slot-level clarification is mandatory for all structured workflows in this project.
+
+Rules:
+- one unresolved slot must not collapse the whole workflow when the rest of the draft is usable;
+- Python must preserve partial draft/state for the current workflow step;
+- bot asks only for the unresolved slot (Slovak user-facing prompt);
+- user reply updates only that slot in preserved draft;
+- continuation resumes from current workflow (no full restart from zero);
+- full reset is reserved only for fatal errors (unusable payload structure, internal runtime failure, or impossible recovery path).
+
+This is a project-wide contract, not invoice-only. The same behavior applies to existing and future structured flows.
