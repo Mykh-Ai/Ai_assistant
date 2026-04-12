@@ -1129,3 +1129,117 @@ Align service naming wording in `/service` and related code to user-friendly Slo
 ### Notes
 - No edit flow or send flow implementation added.
 - Existing create flow after routing remains unchanged.
+
+## 2026-04-12 — Session 021 — Unified bounded semantic resolver + contact intake with contract PDF branch
+
+### Goal
+- Align runtime with documented LLM orchestrator contract: one bounded semantic resolution layer for top-level action, in-state decisions, and reusable value canonicalization contract.
+- Add `add_contact` runtime path for text/voice and document-assisted intake while preserving Python execution authority and fail-loud behavior.
+
+### What changed
+- Added reusable semantic resolver service (`bot/services/semantic_action_resolver.py`):
+  - bounded API: `context_name` + `allowed_actions/values` + user text + optional context,
+  - structured output contract (`canonical_action` or `unknown`),
+  - runtime guard: Python validates/executes, LLM only canonicalizes,
+  - minimal deterministic fallback for resilience when LLM is unavailable.
+- Integrated semantic resolver into invoice runtime:
+  - top-level routing now resolves `create_invoice` / `add_contact` / `send_invoice` / `edit_invoice` / `unknown`,
+  - preview confirmation now semantic `ano` / `nie`,
+  - post-PDF decision now semantic `schvalit` / `upravit` / `zrusit`.
+- Added top-level semantic text entry handler (non-command text in idle state) to route through unified runtime path.
+- Added contact intake runtime extensions in `bot/handlers/contacts.py`:
+  - new intake states for missing-fields clarification and confirmation,
+  - Slovak fail-loud prompts for missing critical fields,
+  - semantic yes/no confirmation before DB save,
+  - reuse of existing `ContactService.create_or_replace(...)` persistence.
+- Added document intake service (`bot/services/document_intake.py`):
+  - detects and downloads Telegram attachment,
+  - handles text-PDF extraction path,
+  - distinguishes scan-PDF (no text layer) and returns explicit fallback status,
+  - unsupported type handling.
+- Added contact field extraction service (`bot/services/llm_contact_parser.py`):
+  - bounded structured extraction target for company/contact fields,
+  - optional role-ambiguity signal,
+  - deterministic fallback parser for critical fields.
+- Extended voice routing (`bot/handlers/voice.py`) so voice also routes in contact intake states (`missing`, `confirm`) and does not leak back into invoice flow.
+
+### OCR/vision note
+- Scan-PDF branch is implemented as explicit detection + fail-loud user message + pluggable fallback point.
+- Full OCR runtime is not wired in this session due current project constraints/tooling baseline.
+
+### Tests
+- Added/updated tests for:
+  - semantic top-level action resolver and in-state mapping,
+  - voice routing into contact clarification state,
+  - contact intake with missing email/address clarification,
+  - document intake branches: text-PDF, scan-PDF detection, unsupported type,
+  - invoice post-PDF cleanup regressions retained in focused suite.
+
+## 2026-04-12 — Session 022 — Stabilization fixes for unified semantic/contact intake patch
+
+### Goal
+- Close concrete correctness gaps before merge without redesigning architecture.
+
+### Fixes
+- Tightened top-level fallback priority in semantic resolver:
+  - reserved `edit/send` stay higher priority than generic invoice nouns,
+  - `create_invoice` keeps precedence over `add_contact` when invoice evidence is present,
+  - `add_contact` now requires explicit add/store verb + contact/company target evidence.
+- Prevented accidental contact import from random idle documents:
+  - document intake now starts only when caption/intent semantically resolves to `add_contact`,
+  - otherwise bot responds with bounded Slovak guidance and does not guess side effects.
+- Preserved explicit company hint path:
+  - added deterministic hint extraction from text/caption,
+  - passed hint into contact draft extraction.
+- Fixed deterministic `ic_dph` extraction bug:
+  - extractor now returns actual VAT value token (e.g. `SK1234567890`) instead of label fragment.
+- Extended focused regression tests for:
+  - fallback top-level create/edit/send/unknown behavior with `api_key=None`,
+  - create-vs-add_contact misroute guard when company token is present,
+  - idle document rejection (no implicit contact intake),
+  - company_hint propagation path,
+  - deterministic `ic_dph` extraction correctness.
+
+## 2026-04-12 — Session 023 — Contact wizard step-1 dual input (text or PDF)
+
+### Goal
+- Reuse existing `/contact` onboarding UX naturally for semantic `add_contact` while allowing contract PDF as an alternative input at step 1.
+
+### What changed
+- `start_add_contact_intake(...)` now enters the existing contact wizard at step 1 instead of launching separate intake UX.
+- Step 1 prompt changed to dual-input Slovak wording:
+  - `1/7 Zadajte názov firmy odberateľa alebo pošlite zmluvu/PDF.`
+- Added dual-step handler (`ContactStates.name_or_document`) so first input can be:
+  - text company name -> continue existing 2/7..7/7 manual wizard,
+  - PDF/document -> branch into extraction draft flow, then missing-fields/confirm path.
+- Kept idle-document safety guard: document is only imported when semantic intent resolves to `add_contact`; otherwise bounded guidance is returned.
+- Updated focused tests to cover wizard entry behavior and preserved document extraction regressions.
+
+## 2026-04-12 — Session 024 — Contact onboarding order fix: manual company name first
+
+### Goal
+- Correct add-contact onboarding sequence so company name is entered manually first, then user chooses source via next input (PDF or IČO), while preserving semantic/document safety improvements.
+
+### What changed
+- Contact flow state order updated to `name_hint -> source_after_name -> (PDF extraction branch OR manual ICO branch)`.
+- `start_add_contact_intake(...)` now only enters onboarding and sends:
+  - `V poriadku, vytvoríme nový kontakt. Najprv napíšte názov firmy.`
+- Company hint is stored from manual text (`contact_company_hint`) and reused for PDF extraction even when PDF has no caption.
+- After company name step bot prompts:
+  - `Pošlite zmluvu/PDF alebo zadajte IČO.`
+- In `source_after_name`:
+  - text is treated as IČO (validated), then manual wizard continues from DIČ,
+  - document goes through existing intake/extraction flow.
+- Voice safety tightened:
+  - `name_hint` and `source_after_name` reject voice with bounded Slovak messages,
+  - existing invoice and intake_missing/intake_confirm voice routing preserved.
+- Role ambiguity path now preserves partial extracted draft in FSM state instead of dropping extracted fields.
+
+### Tests
+- Added/updated focused tests for:
+  - semantic add-contact entry to `name_hint`,
+  - name-hint transition and company-hint storage,
+  - source-after-name manual IČO path valid/invalid,
+  - source-after-name PDF path with no caption using saved company hint,
+  - role-ambiguity partial draft retention,
+  - voice restrictions in `name_hint` and `source_after_name`.

@@ -100,3 +100,22 @@
 - follow-up: supplier onboarding confirm flow now uses Slovak `ano`/`nie` instead of `yes`/`no`
 - follow-up: manual contact confirm flow now uses Slovak `ano`/`nie` instead of `yes`/`no`
 - follow-up: user-facing wording in relevant confirm flows aligned closer to Slovak consistency
+
+## [0.6.0] - 2026-04-12
+
+### Added
+- unified bounded semantic resolver service for canonical action/value mapping (`bot/services/semantic_action_resolver.py`)
+- contact intake extraction service for structured draft parsing (`bot/services/llm_contact_parser.py`)
+- document intake pipeline for contract attachments with text-PDF extraction and scan-PDF detection (`bot/services/document_intake.py`)
+- contact intake states for missing-field clarification + confirmation and save through existing contact service
+- tests for semantic resolver, contact intake flow, voice state routing into contact clarification, and document intake branches
+
+### Changed
+- invoice runtime now uses bounded semantic resolution for:
+  - top-level action routing,
+  - preview confirmation (`ano`/`nie`),
+  - post-PDF decision (`schvalit`/`upravit`/`zrusit`)
+- voice handler now routes into contact-intake clarification/confirmation states
+
+### Notes
+- scan-PDF OCR branch currently fail-loud and pluggable; full OCR provider is not yet wired in runtime

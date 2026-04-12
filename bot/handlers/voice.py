@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.config import Config
+from bot.handlers.contacts import ContactStates, process_contact_intake_confirm, process_contact_missing_fields
 from bot.handlers.invoice import (
     InvoiceStates,
     process_invoice_postpdf_decision,
@@ -79,6 +80,23 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 config=config,
                 decision_text=recognized_text,
             )
+        elif current_state == ContactStates.intake_missing.state:
+            await process_contact_missing_fields(
+                message=message,
+                state=state,
+                user_text=recognized_text,
+            )
+        elif current_state == ContactStates.intake_confirm.state:
+            await process_contact_intake_confirm(
+                message=message,
+                state=state,
+                config=config,
+                answer_text=recognized_text,
+            )
+        elif current_state == ContactStates.name_hint.state:
+            await message.answer('V tomto kroku zadajte názov firmy textom.')
+        elif current_state == ContactStates.source_after_name.state:
+            await message.answer('V tomto kroku pošlite zmluvu/PDF alebo zadajte IČO textom.')
         else:
             await process_invoice_text(
                 message=message,

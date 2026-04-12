@@ -5,7 +5,6 @@ import json
 import logging
 from pathlib import Path
 import re
-import unicodedata
 from uuid import uuid4
 
 from aiogram import Router
@@ -15,12 +14,14 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile, Message
 
 from bot.config import Config
+from bot.handlers.contacts import start_add_contact_intake
 from bot.services.contact_service import ContactLookupResult, ContactService
 from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import PdfInvoiceData, PdfInvoiceItem, generate_invoice_pdf
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.service_term_normalizer import normalize_service_term
+from bot.services.semantic_action_resolver import resolve_semantic_action
 from bot.services.supplier_service import SupplierService
 
 router = Router(name='invoice')
@@ -30,177 +31,14 @@ logger = logging.getLogger(__name__)
 _CREATE_INVOICE_INTENT = 'create_invoice'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _SEND_INVOICE_INTENT = 'send_invoice'
+_ADD_CONTACT_INTENT = 'add_contact'
 _UNKNOWN_INVOICE_INTENT = 'unknown'
-_CONFIRM_PREVIEW = 'confirm_preview'
-_CANCEL_PREVIEW = 'cancel_preview'
-_APPROVE_PDF_INVOICE = 'approve_pdf_invoice'
-_EDIT_PDF_INVOICE = 'edit_pdf_invoice'
-_CANCEL_PDF_INVOICE = 'cancel_pdf_invoice'
-
-_CREATE_INVOICE_VERBS_RAW = {
-    'vytvor',
-    'vytvorit',
-    'sprav',
-    'urob',
-    'створи',
-    'створити',
-    'зроби',
-    'зробити',
-    'витвори',
-    'витворить',
-    'сделай',
-    'сделать',
-    'создать',
-    'создай',
-    'выпиши',
-    'сформируй',
-    'выстави',
-}
-
-_RESERVED_EDIT_INVOICE_VERBS_RAW = {
-    'upravit',
-    'управить',
-    'исправь',
-    'отредактируй',
-}
-
-_RESERVED_SEND_INVOICE_VERBS_RAW = {
-    'posli',
-    'poslat',
-    'відправ',
-    'надішли',
-    'отправь',
-}
 
 
 class InvoiceStates(StatesGroup):
     waiting_input = State()
     waiting_confirm = State()
     waiting_pdf_decision = State()
-
-
-def _normalize_intent_token(token: str) -> str:
-    lowered = token.strip().lower()
-    if not lowered:
-        return ''
-
-    normalized = unicodedata.normalize('NFKD', lowered)
-    return ''.join(char for char in normalized if not unicodedata.combining(char))
-
-
-_CREATE_INVOICE_VERBS = {_normalize_intent_token(verb) for verb in _CREATE_INVOICE_VERBS_RAW}
-_RESERVED_EDIT_INVOICE_VERBS = {_normalize_intent_token(verb) for verb in _RESERVED_EDIT_INVOICE_VERBS_RAW}
-_RESERVED_SEND_INVOICE_VERBS = {_normalize_intent_token(verb) for verb in _RESERVED_SEND_INVOICE_VERBS_RAW}
-
-
-def _detect_invoice_intent(text: str) -> str:
-    tokens = re.findall(r'[^\W\d_]+', text.lower(), flags=re.UNICODE)
-    if not tokens:
-        return _UNKNOWN_INVOICE_INTENT
-
-    for token in tokens[:3]:
-        normalized_token = _normalize_intent_token(token)
-        if normalized_token in _RESERVED_EDIT_INVOICE_VERBS:
-            return _EDIT_INVOICE_INTENT
-        if normalized_token in _RESERVED_SEND_INVOICE_VERBS:
-            return _SEND_INVOICE_INTENT
-        if normalized_token in _CREATE_INVOICE_VERBS:
-            return _CREATE_INVOICE_INTENT
-
-    return _UNKNOWN_INVOICE_INTENT
-
-
-def _detect_invoice_preview_confirmation(text: str) -> str:
-    tokens = re.findall(r'[^\W\d_]+', text.lower(), flags=re.UNICODE)
-    if not tokens:
-        return _UNKNOWN_INVOICE_INTENT
-
-    confirm_tokens = {
-        _normalize_intent_token(token)
-        for token in {'áno', 'ano', 'так', 'да', 'ok', 'okej', 'yes'}
-    }
-    cancel_tokens = {
-        _normalize_intent_token(token)
-        for token in {'nie', 'ні', 'нет', 'no'}
-    }
-
-    for token in tokens[:3]:
-        normalized_token = _normalize_intent_token(token)
-        if normalized_token in confirm_tokens:
-            return _CONFIRM_PREVIEW
-        if normalized_token in cancel_tokens:
-            return _CANCEL_PREVIEW
-
-    return _UNKNOWN_INVOICE_INTENT
-
-
-def _detect_invoice_postpdf_decision(text: str) -> str:
-    tokens = re.findall(r'[^\W\d_]+', text.lower(), flags=re.UNICODE)
-    if not tokens:
-        return _UNKNOWN_INVOICE_INTENT
-
-    approve_tokens = {
-        _normalize_intent_token(token)
-        for token in {
-            'schváliť',
-            'schvalit',
-            'potvrdiť',
-            'potvrdit',
-            'схвалити',
-            'підтвердити',
-            'одобрить',
-            'подтвердить',
-            'áno',
-            'ano',
-            'так',
-            'да',
-        }
-    }
-    edit_tokens = {
-        _normalize_intent_token(token)
-        for token in {
-            'upraviť',
-            'upravit',
-            'zmeniť',
-            'zmenit',
-            'управить',
-            'редагувати',
-            'змінити',
-            'исправь',
-            'отредактируй',
-            'изменить',
-        }
-    }
-    cancel_tokens = {
-        _normalize_intent_token(token)
-        for token in {
-            'zrušiť',
-            'zrusit',
-            'vymazať',
-            'vymazat',
-            'zmazať',
-            'zmazat',
-            'зрушити',
-            'скасувати',
-            'видалити',
-            'удалить',
-            'отменить',
-            'nie',
-            'ні',
-            'нет',
-        }
-    }
-
-    for token in tokens[:3]:
-        normalized_token = _normalize_intent_token(token)
-        if normalized_token in approve_tokens:
-            return _APPROVE_PDF_INVOICE
-        if normalized_token in edit_tokens:
-            return _EDIT_PDF_INVOICE
-        if normalized_token in cancel_tokens:
-            return _CANCEL_PDF_INVOICE
-
-    return _UNKNOWN_INVOICE_INTENT
 
 
 def _parse_date(value: object) -> date | None:
@@ -774,11 +612,29 @@ async def process_invoice_text(
     flow_request_id = request_id or str(uuid4())
     message_id = getattr(message, 'message_id', None)
 
-    top_level_intent = _detect_invoice_intent(invoice_text)
-    if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT}:
+    top_level_intent = await resolve_semantic_action(
+        context_name='top_level_action',
+        allowed_actions=[
+            _CREATE_INVOICE_INTENT,
+            _ADD_CONTACT_INTENT,
+            _SEND_INVOICE_INTENT,
+            _EDIT_INVOICE_INTENT,
+            _UNKNOWN_INVOICE_INTENT,
+        ],
+        user_input_text=invoice_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if top_level_intent == _ADD_CONTACT_INTENT:
+        await start_add_contact_intake(
+            message=message,
+            state=state,
+            config=config,
+        )
+        return
+    if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT, _UNKNOWN_INVOICE_INTENT}:
         await message.answer(
-            'Táto akcia s faktúrou zatiaľ nie je podporovaná. '
-            'Spustite /invoice pre vytvorenie novej faktúry.'
+            'Nerozumiem požadovanej akcii. Skúste to, prosím, povedať inak.'
         )
         await state.clear()
         return
@@ -834,12 +690,18 @@ async def process_invoice_preview_confirmation(
     config: Config,
     confirmation_text: str,
 ) -> None:
-    answer = _detect_invoice_preview_confirmation(confirmation_text)
-    if answer == _UNKNOWN_INVOICE_INTENT:
+    answer = await resolve_semantic_action(
+        context_name='invoice_preview_confirmation',
+        allowed_actions=['ano', 'nie', 'unknown'],
+        user_input_text=confirmation_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if answer == 'unknown':
         await message.answer('Prosím, odpovedzte áno alebo nie.')
         return
 
-    if answer == _CANCEL_PREVIEW:
+    if answer == 'nie':
         await state.clear()
         await message.answer('Vytvorenie faktúry bolo zrušené.')
         return
@@ -971,8 +833,14 @@ async def process_invoice_postpdf_decision(
     config: Config,
     decision_text: str,
 ) -> None:
-    answer = _detect_invoice_postpdf_decision(decision_text)
-    if answer == _UNKNOWN_INVOICE_INTENT:
+    answer = await resolve_semantic_action(
+        context_name='invoice_postpdf_decision',
+        allowed_actions=['schvalit', 'upravit', 'zrusit', 'unknown'],
+        user_input_text=decision_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if answer == 'unknown':
         await message.answer('Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.')
         return
 
@@ -988,7 +856,7 @@ async def process_invoice_postpdf_decision(
     if isinstance(pdf_path_value, str) and pdf_path_value.strip():
         pdf_path = Path(pdf_path_value)
 
-    if answer == _APPROVE_PDF_INVOICE:
+    if answer == 'schvalit':
         try:
             InvoiceService(config.db_path).update_invoice_status(invoice_id, 'pripravena')
         except Exception:
@@ -1014,7 +882,7 @@ async def process_invoice_postpdf_decision(
             logger.exception('PDF cleanup after cancel/edit failed')
 
     await state.clear()
-    if answer == _EDIT_PDF_INVOICE:
+    if answer == 'upravit':
         await message.answer(
             'Funkcia úpravy zatiaľ nie je dostupná. Faktúra bola zrušená. '
             'Prosím, vytvorte novú faktúru.'
@@ -1061,4 +929,16 @@ async def invoice_pdf_decision(message: Message, state: FSMContext, config: Conf
         state=state,
         config=config,
         decision_text=(message.text or ''),
+    )
+
+
+@router.message(lambda message: bool((message.text or '').strip()) and not (message.text or '').startswith('/'))
+async def semantic_top_level_input(message: Message, state: FSMContext, config: Config) -> None:
+    if await state.get_state() is not None:
+        return
+    await process_invoice_text(
+        message=message,
+        state=state,
+        config=config,
+        invoice_text=message.text or '',
     )
