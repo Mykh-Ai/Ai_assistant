@@ -194,13 +194,27 @@ def test_validate_payload_accepts_lookup_ready_latin_customer_candidate() -> Non
     assert validated['vstup']['povodny_text'] == 'сделай фактуру на техкомпании за ремонт 150 eur'
 
 
-@pytest.mark.parametrize('bad_text', ['ремонт', 'монтаж'])
-def test_validate_payload_rejects_cyrillic_in_biznis_sk_fields(bad_text: str) -> None:
+@pytest.mark.parametrize('bad_text', ['ремонт', 'управы', 'оправы'])
+def test_validate_payload_repairs_non_slovak_item_name_when_service_term_is_known(bad_text: str) -> None:
     payload = _valid_payload('сделай фактуру на техкомпании за ремонт 150 eur')
     payload['biznis_sk']['polozka_povodna'] = bad_text
 
-    with pytest.raises(LlmInvoicePayloadError):
+    validated = validate_invoice_phase2_payload(payload)
+
+    assert validated['biznis_sk']['termin_sluzby_sk'] == 'oprava'
+    assert validated['biznis_sk']['polozka_povodna'] == 'oprava'
+
+
+def test_validate_payload_returns_slot_error_when_service_term_still_unknown() -> None:
+    payload = _valid_payload('faktura pre Tech Company, random service 150 eur')
+    payload['biznis_sk']['polozka_povodna'] = 'какаято'
+    payload['biznis_sk']['termin_sluzby_sk'] = 'random service'
+
+    with pytest.raises(LlmInvoicePayloadError) as exc_info:
         validate_invoice_phase2_payload(payload)
+
+    assert exc_info.value.error_code == 'service_term_unresolved'
+    assert exc_info.value.partial_payload is not None
 
 
 def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_db: tuple[Path, int, int]) -> None:

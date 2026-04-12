@@ -37,6 +37,7 @@ _UNKNOWN_INVOICE_INTENT = 'unknown'
 
 class InvoiceStates(StatesGroup):
     waiting_input = State()
+    waiting_service_clarification = State()
     waiting_confirm = State()
     waiting_pdf_decision = State()
 
@@ -601,6 +602,25 @@ async def _build_and_store_preview(
     await message.answer(_format_preview(raw_text if raw_text else None, normalized))
 
 
+async def _start_service_slot_clarification(
+    *,
+    message: Message,
+    state: FSMContext,
+    request_id: str,
+    raw_text: str,
+    parsed_draft: dict[str, object],
+) -> None:
+    await state.update_data(
+        invoice_partial_draft={
+            'request_id': request_id,
+            'raw_text': raw_text,
+            'parsed_draft': parsed_draft,
+        }
+    )
+    await state.set_state(InvoiceStates.waiting_service_clarification)
+    await message.answer('Nepodarilo sa jednoznačne určiť typ služby. Spresnite ho, prosím.')
+
+
 async def process_invoice_text(
     *,
     message: Message,
@@ -662,7 +682,33 @@ async def process_invoice_text(
             },
         )
         raw_text, parsed = _extract_invoice_draft_from_phase2_payload(payload)
-    except LlmInvoicePayloadError:
+    except LlmInvoicePayloadError as exc:
+        payload_details = exc.details or {}
+        _emit_invoice_debug_log(
+            config=config,
+            event='invoice_phase2_payload_invalid',
+            request_id=flow_request_id,
+            telegram_update_id=getattr(message, 'update_id', None),
+            telegram_message_id=message_id,
+            payload={
+                'error': str(exc),
+                'error_code': exc.error_code,
+                'raw_biznis_sk_polozka_povodna': payload_details.get('raw_biznis_sk_polozka_povodna'),
+                'raw_biznis_sk_termin_sluzby_sk': payload_details.get('raw_biznis_sk_termin_sluzby_sk'),
+                'repaired_biznis_sk_polozka_povodna': payload_details.get('repaired_biznis_sk_polozka_povodna'),
+                'repaired_service_term_canonical_internal': payload_details.get('repaired_service_term_canonical_internal'),
+            },
+        )
+        if exc.error_code == 'service_term_unresolved' and isinstance(exc.partial_payload, dict):
+            raw_text, parsed = _extract_invoice_draft_from_phase2_payload(exc.partial_payload)
+            await _start_service_slot_clarification(
+                message=message,
+                state=state,
+                request_id=flow_request_id,
+                raw_text=raw_text or invoice_text,
+                parsed_draft=parsed,
+            )
+            return
         logger.exception('LLM returned invalid Phase 2 invoice payload')
         await message.answer('AI návrh faktúry bol neplatný. Skúste vstup poslať znova.')
         await state.clear()
@@ -680,6 +726,43 @@ async def process_invoice_text(
         request_id=flow_request_id,
         raw_text=raw_text or invoice_text,
         parsed_draft=parsed,
+    )
+
+
+async def process_invoice_service_clarification(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    clarification_text: str,
+) -> None:
+    state_data = await state.get_data()
+    partial = state_data.get('invoice_partial_draft')
+    if not isinstance(partial, dict):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    parsed_draft = partial.get('parsed_draft')
+    if not isinstance(parsed_draft, dict):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    canonical_service_term = normalize_service_term(clarification_text.strip())
+    if canonical_service_term is None:
+        await message.answer('Typ služby stále nie je jasný. Spresnite ho, prosím (napr. oprava alebo montáž).')
+        return
+
+    parsed_draft['service_term_sk'] = canonical_service_term
+    parsed_draft['item_name_raw'] = canonical_service_term
+    await _build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id=str(partial.get('request_id') or uuid4()),
+        raw_text=str(partial.get('raw_text') or clarification_text),
+        parsed_draft=parsed_draft,
     )
 
 
@@ -919,6 +1002,16 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
         state=state,
         config=config,
         confirmation_text=(message.text or ''),
+    )
+
+
+@router.message(InvoiceStates.waiting_service_clarification)
+async def invoice_service_clarification(message: Message, state: FSMContext, config: Config) -> None:
+    await process_invoice_service_clarification(
+        message=message,
+        state=state,
+        config=config,
+        clarification_text=(message.text or ''),
     )
 
 
