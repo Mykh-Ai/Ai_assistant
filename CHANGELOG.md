@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [0.6.0] - 2026-04-12
+
+### Changed
+- AI orchestration contract updated to **Bounded Semantic Canonicalization** via **Semantic Action Resolver**
+- architecture moved away from narrow “LLM drafts payload + deterministic token routing” toward unified canonical action/value resolution
+- Python explicitly remains the only execution authority (validation, state checks, side effects)
+
 ## [0.5.0] - 2026-04-03
 
 ### Added
