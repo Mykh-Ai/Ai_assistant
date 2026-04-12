@@ -1243,3 +1243,27 @@ Align service naming wording in `/service` and related code to user-friendly Slo
   - source-after-name PDF path with no caption using saved company hint,
   - role-ambiguity partial draft retention,
   - voice restrictions in `name_hint` and `source_after_name`.
+
+## 2026-04-12 — Session 025 — Invoice Phase 2 service-slot repair and clarification retention
+
+### Goal
+- Fix Phase 2 invoice payload handling so noisy/non-Slovak `biznis_sk.polozka_povodna` does not drop full draft when service meaning is recoverable, and add slot-level clarification path when only service term is unresolved.
+
+### What changed
+- Added deterministic service-slot repair in `validate_invoice_phase2_payload(...)`:
+  - canonical service term is now resolved primarily from `biznis_sk.termin_sluzby_sk` (fallback to `polozka_povodna`),
+  - when canonical term is recognized, payload is repaired in-place (`termin_sluzby_sk` canonical, safe Slovak `polozka_povodna`) instead of fail-loud on Cyrillic/noisy item text,
+  - when service term remains unresolved after repair attempt, validator raises structured `LlmInvoicePayloadError` with `error_code=service_term_unresolved` and partial payload for continuation.
+- Improved Phase 2 invalid-payload observability in invoice handler:
+  - added focused debug log event `invoice_phase2_payload_invalid` with raw/repaired service fields and structured error code.
+- Added slot-level clarification FSM branch:
+  - new state `InvoiceStates.waiting_service_clarification`,
+  - when parser returns `service_term_unresolved`, bot preserves partial draft (`invoice_partial_draft`) and asks Slovak-only clarification: `Nepodarilo sa jednoznačne určiť typ služby. Spresnite ho, prosím.`,
+  - clarification reply is normalized via existing service normalizer and flow continues directly to preview build without restarting full invoice input.
+
+### Tests
+- Updated focused tests to cover:
+  - repair path for noisy/Cyrillic-like service item tokens (`ремонт`, `управы`, `оправы`) with recognized service concept,
+  - unresolved service slot structured error behavior,
+  - partial draft retention + clarification prompt path in `process_invoice_text`,
+  - continuation from clarification reply to preview build without full restart.
