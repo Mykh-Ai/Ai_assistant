@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from bot.config import Config
+from bot.handlers.contacts import ContactStates
 from bot.handlers.invoice import InvoiceStates
 from bot.handlers.voice import handle_voice
 
@@ -132,3 +133,44 @@ def test_voice_non_decision_state_routes_to_generic_create_flow(monkeypatch, tmp
 
     asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
     assert calls == ['generic']
+
+
+def test_voice_contact_missing_state_routes_to_contact_missing_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'kontakt@zs.sk'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_preview_confirmation', lambda **kwargs: None)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_postpdf_decision', lambda **kwargs: None)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', lambda **kwargs: None)
+
+    async def _contact_missing(**kwargs) -> None:
+        calls.append('contact_missing')
+
+    monkeypatch.setattr('bot.handlers.voice.process_contact_missing_fields', _contact_missing)
+    monkeypatch.setattr('bot.handlers.voice.process_contact_intake_confirm', lambda **kwargs: None)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(ContactStates.intake_missing.state)))
+    assert calls == ['contact_missing']
+
+
+def test_voice_name_hint_state_requires_text_input(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'ZS'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    msg = _DummyMessage()
+    asyncio.run(handle_voice(msg, _DummyBot(), _config(tmp_path), _DummyState(ContactStates.name_hint.state)))
+    assert msg.answers[-1] == 'V tomto kroku zadajte názov firmy textom.'
+
+
+def test_voice_source_after_name_state_requires_text_or_pdf(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return '12345678'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    msg = _DummyMessage()
+    asyncio.run(handle_voice(msg, _DummyBot(), _config(tmp_path), _DummyState(ContactStates.source_after_name.state)))
+    assert msg.answers[-1] == 'V tomto kroku pošlite zmluvu/PDF alebo zadajte IČO textom.'
