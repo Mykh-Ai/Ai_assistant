@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import json
 import logging
 import re
+import unicodedata
 from uuid import uuid4
 
 from aiogram import Router
@@ -25,10 +26,82 @@ router = Router(name='invoice')
 logger = logging.getLogger(__name__)
 
 
+_CREATE_INVOICE_INTENT = 'create_invoice'
+_EDIT_INVOICE_INTENT = 'edit_invoice'
+_SEND_INVOICE_INTENT = 'send_invoice'
+_UNKNOWN_INVOICE_INTENT = 'unknown'
+
+_CREATE_INVOICE_VERBS_RAW = {
+    'vytvor',
+    'vytvorit',
+    'sprav',
+    'urob',
+    'створи',
+    'створити',
+    'зроби',
+    'зробити',
+    'витвори',
+    'витворить',
+    'сделай',
+    'сделать',
+    'создать',
+    'создай',
+    'выпиши',
+    'сформируй',
+    'выстави',
+}
+
+_RESERVED_EDIT_INVOICE_VERBS_RAW = {
+    'upravit',
+    'управить',
+    'исправь',
+    'отредактируй',
+}
+
+_RESERVED_SEND_INVOICE_VERBS_RAW = {
+    'posli',
+    'poslat',
+    'відправ',
+    'надішли',
+    'отправь',
+}
+
+
 class InvoiceStates(StatesGroup):
     waiting_input = State()
     waiting_confirm = State()
     waiting_pdf_decision = State()
+
+
+def _normalize_intent_token(token: str) -> str:
+    lowered = token.strip().lower()
+    if not lowered:
+        return ''
+
+    normalized = unicodedata.normalize('NFKD', lowered)
+    return ''.join(char for char in normalized if not unicodedata.combining(char))
+
+
+_CREATE_INVOICE_VERBS = {_normalize_intent_token(verb) for verb in _CREATE_INVOICE_VERBS_RAW}
+_RESERVED_EDIT_INVOICE_VERBS = {_normalize_intent_token(verb) for verb in _RESERVED_EDIT_INVOICE_VERBS_RAW}
+_RESERVED_SEND_INVOICE_VERBS = {_normalize_intent_token(verb) for verb in _RESERVED_SEND_INVOICE_VERBS_RAW}
+
+
+def _detect_invoice_intent(text: str) -> str:
+    tokens = re.findall(r'[^\W\d_]+', text.lower(), flags=re.UNICODE)
+    if not tokens:
+        return _UNKNOWN_INVOICE_INTENT
+
+    for token in tokens[:3]:
+        normalized_token = _normalize_intent_token(token)
+        if normalized_token in _RESERVED_EDIT_INVOICE_VERBS:
+            return _EDIT_INVOICE_INTENT
+        if normalized_token in _RESERVED_SEND_INVOICE_VERBS:
+            return _SEND_INVOICE_INTENT
+        if normalized_token in _CREATE_INVOICE_VERBS:
+            return _CREATE_INVOICE_INTENT
+
+    return _UNKNOWN_INVOICE_INTENT
 
 
 def _parse_date(value: object) -> date | None:
@@ -601,6 +674,16 @@ async def process_invoice_text(
 ) -> None:
     flow_request_id = request_id or str(uuid4())
     message_id = getattr(message, 'message_id', None)
+
+    top_level_intent = _detect_invoice_intent(invoice_text)
+    if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT}:
+        await message.answer(
+            'Táto akcia s faktúrou zatiaľ nie je podporovaná. '
+            'Spustite /invoice pre vytvorenie novej faktúry.'
+        )
+        await state.clear()
+        return
+
     if not config.openai_api_key:
         await message.answer('Bot nie je nakonfigurovaný: chýba OPENAI_API_KEY.')
         await state.clear()

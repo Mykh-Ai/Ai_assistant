@@ -1025,3 +1025,38 @@ Align service naming wording in `/service` and related code to user-friendly Slo
   and fail-loud path for ambiguous multiplier hints.
 - Service text normalization tests proving `biznis_sk` Cyrillic rejection and Slovak short-title in preview while preserving original multilingual `vstup.povodny_text`.
 - PDF layout helper tests for wrapped row height expansion and numeric baseline staying inside row block.
+
+## 2026-04-12 — Session 019 — Deterministic top-level create-invoice pre-router
+
+### Goal
+- Add deterministic pre-routing before current invoice Phase 2 parsing so create-invoice starts are recognized reliably from multilingual/noisy action verbs.
+- Reserve edit-intent verbs for future branching without implementing edit flow now.
+
+### What changed
+- Added top-level deterministic intent detector in `bot/handlers/invoice.py`:
+  - normalizes first action tokens (Latin diacritics-safe + Cyrillic-safe),
+  - maps supported Slovak/Ukrainian/Russian create verbs to single intent `create_invoice`,
+  - recognizes reserved edit placeholders (`upraviť/upravit/управить/исправь/отредактируй`) as `edit_invoice`.
+- Inserted pre-router guard at the start of `process_invoice_text(...)`:
+  - `edit_invoice` is explicitly blocked from entering current create flow,
+  - current create Phase 2 flow is kept unchanged after routing.
+- Added focused tests in `tests/test_invoice_intent_prerouter.py` covering required mixed/noisy create examples and ensuring edit-like verbs are not misrouted into create.
+
+### Notes
+- No invoice parsing logic moved into intent layer.
+- No edit flow implemented; only placeholder recognition for future branching.
+
+## 2026-04-12 — Session 020 — Intent pre-router final minimal verb set (create/edit/send)
+
+### Goal
+- Extend deterministic top-level invoice intent pre-router to explicitly separate create/edit/send starts before Phase 2 parsing.
+
+### What changed
+- Added deterministic `send_invoice` placeholder intent and `unknown` fallback return in `_detect_invoice_intent(...)`.
+- Extended create verb set with required `сделать` and ensured all required create/edit/send verbs are normalized and recognized.
+- Updated pre-routing in `process_invoice_text(...)` so both reserved `edit_invoice` and `send_invoice` are blocked from entering current create flow.
+- Extended focused tests to cover required create/edit/send examples plus misrouting guards proving edit/send verbs never call Phase 2 parser.
+
+### Notes
+- No edit flow or send flow implementation added.
+- Existing create flow after routing remains unchanged.
