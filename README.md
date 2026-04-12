@@ -71,9 +71,15 @@ FakturaBot — перша вітрина цього підходу.
 
 AI не є джерелом істини.
 
-Усі критичні сценарії працюють так:
+FakturaBot використовує **Bounded Semantic Canonicalization** через **Semantic Action Resolver**:
+- Python задає поточний контекст і дозволені канонічні виходи,
+- LLM зводить шумний ввід до одного дозволеного канонічного значення або `unknown`,
+- Python валідовує результат і тільки Python виконує дії.
 
-**AI / parser → draft → validation → user confirmation → save**
+Це однаково застосовується для:
+- top-level action selection,
+- in-state reply resolution,
+- structured value canonicalization.
 
 ## Довгострокова ідея
 

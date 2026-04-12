@@ -1,5 +1,22 @@
 # PROJECT_LOG
 
+## 2026-04-12 — Session 019 — AI orchestration contract shift to bounded canonicalization
+
+### Goal
+Record architecture milestone: transition from narrow draft/token-routing model to unified semantic resolver contract.
+
+### Decision
+- Adopt **Bounded Semantic Canonicalization** as the AI orchestration contract baseline.
+- Introduce a unified **Semantic Action Resolver** concept for:
+  - top-level action resolution,
+  - in-state reply resolution,
+  - value/slot canonicalization.
+- Keep Python as the only execution authority for validation, context checks, and side effects.
+
+### Notes
+- LLM role is semantic canonicalization within Python-defined bounds (allowed set + context), returning one canonical token or `unknown`.
+- This is a documentation/architecture alignment milestone; execution authority boundaries remain fail-loud on Python side.
+
 ## 2026-04-12 — Session 018 — Post-PDF fail-loud guard + cleanup-order hardening
 
 ### Goal
