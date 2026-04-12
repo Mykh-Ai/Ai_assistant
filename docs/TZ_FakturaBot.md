@@ -323,6 +323,22 @@ LLM не має права:
 - Сирий transcript може зберігатися окремо як trace/debug.
 - Внутрішні канонічні виходи — тільки project-defined canonical tokens.
 
+### 5.5 Обов’язкова вимога для structured workflows: slot-level clarification
+
+Для кожного structured workflow (invoice, contact intake, create contract, майбутні structured assistant actions) обов’язково визначати:
+- required slots;
+- recoverable slot failures;
+- fatal failures;
+- partial draft retention behavior;
+- clarification continuation behavior.
+
+Обов’язковий контракт:
+- якщо unresolved лише один slot і решта draft придатна — workflow не скидається повністю;
+- Python зберігає partial draft/state;
+- бот просить тільки unresolved slot;
+- після уточнення workflow продовжується з поточного кроку;
+- full reset дозволений тільки для fatal помилок.
+
 ---
 
 ## 6. Структура чернетки фактури
@@ -709,4 +725,3 @@ FakturaBot v1.0 — це не спроба побудувати великий S
 8. PDF-фактура обов’язково містить QR-код Pay by Square.  
 9. Email-відправка є частиною MVP (не відкладений модуль).  
 10. Продукт мислиться як частина ширшої моделі кастомних ботів для малого бізнесу.  
-

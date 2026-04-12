@@ -12,6 +12,8 @@ from bot.handlers.invoice import (
     InvoiceStates,
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
+    process_invoice_service_clarification,
+    process_invoice_slot_clarification,
     process_invoice_text,
 )
 from bot.services.speech_to_text import transcribe_audio
@@ -72,6 +74,20 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 state=state,
                 config=config,
                 confirmation_text=recognized_text,
+            )
+        elif current_state == InvoiceStates.waiting_service_clarification.state:
+            await process_invoice_service_clarification(
+                message=message,
+                state=state,
+                config=config,
+                clarification_text=recognized_text,
+            )
+        elif current_state == InvoiceStates.waiting_slot_clarification.state:
+            await process_invoice_slot_clarification(
+                message=message,
+                state=state,
+                config=config,
+                clarification_text=recognized_text,
             )
         elif current_state == InvoiceStates.waiting_pdf_decision.state:
             await process_invoice_postpdf_decision(

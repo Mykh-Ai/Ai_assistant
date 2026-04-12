@@ -68,49 +68,79 @@ def _require_dict(value: Any, path: str) -> dict[str, Any]:
     return value
 
 
-def _validate_lookup_ready_customer_candidate(candidate: Any) -> str:
+def _raise_customer_unresolved(
+    message: str,
+    *,
+    candidate: Any,
+    payload_snapshot: dict[str, Any] | None,
+) -> None:
+    raise LlmInvoicePayloadError(
+        message,
+        error_code='customer_unresolved',
+        details={'raw_biznis_sk_odberatel_kandidat': candidate},
+        partial_payload=payload_snapshot,
+    )
+
+
+def _validate_lookup_ready_customer_candidate(candidate: Any, *, payload_snapshot: dict[str, Any] | None) -> str:
     if candidate is None or not isinstance(candidate, str):
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat must be a non-empty lookup-ready string.'
+        _raise_customer_unresolved(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat must be a non-empty lookup-ready string.',
+            candidate=candidate,
+            payload_snapshot=payload_snapshot,
         )
 
     value = candidate.strip()
     if not value:
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat must not be empty/whitespace.'
+        _raise_customer_unresolved(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat must not be empty/whitespace.',
+            candidate=candidate,
+            payload_snapshot=payload_snapshot,
         )
 
     lowered = re.sub(r'\s+', ' ', value.lower())
     if lowered in _LOOKUP_FRAGMENT_BLOCKLIST:
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat looks like a raw phrase fragment, not a company candidate.'
+        _raise_customer_unresolved(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat looks like a raw phrase fragment, not a company candidate.',
+            candidate=candidate,
+            payload_snapshot=payload_snapshot,
         )
 
     if _CYRILLIC_RE.search(value):
         latin_chars = re.sub(r'[^A-Za-zÀ-ÖØ-öø-ÿ]', '', value)
         if not latin_chars:
-            raise LlmInvoicePayloadError(
-                'Invalid LLM payload: biznis_sk.odberatel_kandidat must not be Cyrillic-only.'
+            _raise_customer_unresolved(
+                'Invalid LLM payload: biznis_sk.odberatel_kandidat must not be Cyrillic-only.',
+                candidate=candidate,
+                payload_snapshot=payload_snapshot,
             )
 
     tokens = [token for token in re.split(r'[\s,.;:!?()\-/]+', lowered) if token]
     if tokens and tokens[0] in {'pre', 'для', 'dla', 'na', 'на'}:
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat must not start with preposition-like raw phrase token.'
+        _raise_customer_unresolved(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat must not start with preposition-like raw phrase token.',
+            candidate=candidate,
+            payload_snapshot=payload_snapshot,
         )
     if tokens and all(token in _LOOKUP_PREFIX_WORDS for token in tokens):
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat contains only preposition/filler tokens.'
+        _raise_customer_unresolved(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat contains only preposition/filler tokens.',
+            candidate=candidate,
+            payload_snapshot=payload_snapshot,
         )
 
     if len(tokens) > 6:
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too long/noisy for deterministic lookup.'
+        _raise_customer_unresolved(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too long/noisy for deterministic lookup.',
+            candidate=candidate,
+            payload_snapshot=payload_snapshot,
         )
 
     if sum(ch.isalpha() for ch in value) < 3:
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too short/noisy for deterministic lookup.'
+        _raise_customer_unresolved(
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too short/noisy for deterministic lookup.',
+            candidate=candidate,
+            payload_snapshot=payload_snapshot,
         )
 
     return value
@@ -186,14 +216,16 @@ def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
                 f'Invalid LLM payload: stopa.{trace_field} must be present and must be an array.'
             )
 
-    biznis_sk['odberatel_kandidat'] = _validate_lookup_ready_customer_candidate(biznis_sk['odberatel_kandidat'])
-
     payload_snapshot = {
         'vstup': dict(vstup),
         'zamer': dict(zamer),
         'biznis_sk': dict(biznis_sk),
         'stopa': dict(stopa),
     }
+    biznis_sk['odberatel_kandidat'] = _validate_lookup_ready_customer_candidate(
+        biznis_sk['odberatel_kandidat'],
+        payload_snapshot=payload_snapshot,
+    )
     _resolve_service_slots_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
 
     for key in tuple(biznis_sk.keys()):
