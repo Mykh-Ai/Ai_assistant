@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 import json
 import logging
+from pathlib import Path
 import re
 import unicodedata
 from uuid import uuid4
@@ -30,6 +31,11 @@ _CREATE_INVOICE_INTENT = 'create_invoice'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _SEND_INVOICE_INTENT = 'send_invoice'
 _UNKNOWN_INVOICE_INTENT = 'unknown'
+_CONFIRM_PREVIEW = 'confirm_preview'
+_CANCEL_PREVIEW = 'cancel_preview'
+_APPROVE_PDF_INVOICE = 'approve_pdf_invoice'
+_EDIT_PDF_INVOICE = 'edit_pdf_invoice'
+_CANCEL_PDF_INVOICE = 'cancel_pdf_invoice'
 
 _CREATE_INVOICE_VERBS_RAW = {
     'vytvor',
@@ -100,6 +106,99 @@ def _detect_invoice_intent(text: str) -> str:
             return _SEND_INVOICE_INTENT
         if normalized_token in _CREATE_INVOICE_VERBS:
             return _CREATE_INVOICE_INTENT
+
+    return _UNKNOWN_INVOICE_INTENT
+
+
+def _detect_invoice_preview_confirmation(text: str) -> str:
+    tokens = re.findall(r'[^\W\d_]+', text.lower(), flags=re.UNICODE)
+    if not tokens:
+        return _UNKNOWN_INVOICE_INTENT
+
+    confirm_tokens = {
+        _normalize_intent_token(token)
+        for token in {'áno', 'ano', 'так', 'да', 'ok', 'okej', 'yes'}
+    }
+    cancel_tokens = {
+        _normalize_intent_token(token)
+        for token in {'nie', 'ні', 'нет', 'no'}
+    }
+
+    for token in tokens[:3]:
+        normalized_token = _normalize_intent_token(token)
+        if normalized_token in confirm_tokens:
+            return _CONFIRM_PREVIEW
+        if normalized_token in cancel_tokens:
+            return _CANCEL_PREVIEW
+
+    return _UNKNOWN_INVOICE_INTENT
+
+
+def _detect_invoice_postpdf_decision(text: str) -> str:
+    tokens = re.findall(r'[^\W\d_]+', text.lower(), flags=re.UNICODE)
+    if not tokens:
+        return _UNKNOWN_INVOICE_INTENT
+
+    approve_tokens = {
+        _normalize_intent_token(token)
+        for token in {
+            'schváliť',
+            'schvalit',
+            'potvrdiť',
+            'potvrdit',
+            'схвалити',
+            'підтвердити',
+            'одобрить',
+            'подтвердить',
+            'áno',
+            'ano',
+            'так',
+            'да',
+        }
+    }
+    edit_tokens = {
+        _normalize_intent_token(token)
+        for token in {
+            'upraviť',
+            'upravit',
+            'zmeniť',
+            'zmenit',
+            'управить',
+            'редагувати',
+            'змінити',
+            'исправь',
+            'отредактируй',
+            'изменить',
+        }
+    }
+    cancel_tokens = {
+        _normalize_intent_token(token)
+        for token in {
+            'zrušiť',
+            'zrusit',
+            'vymazať',
+            'vymazat',
+            'zmazať',
+            'zmazat',
+            'зрушити',
+            'скасувати',
+            'видалити',
+            'удалить',
+            'отменить',
+            'nie',
+            'ні',
+            'нет',
+        }
+    }
+
+    for token in tokens[:3]:
+        normalized_token = _normalize_intent_token(token)
+        if normalized_token in approve_tokens:
+            return _APPROVE_PDF_INVOICE
+        if normalized_token in edit_tokens:
+            return _EDIT_PDF_INVOICE
+        if normalized_token in cancel_tokens:
+            return _CANCEL_PDF_INVOICE
 
     return _UNKNOWN_INVOICE_INTENT
 
@@ -728,36 +827,21 @@ async def process_invoice_text(
     )
 
 
-@router.message(Command('invoice'))
-async def cmd_invoice(message: Message, state: FSMContext) -> None:
-    await state.clear()
-    await state.set_state(InvoiceStates.waiting_input)
-    await message.answer(
-        'Pošlite text faktúry (odberateľ, položka, suma, prípadne dátum dodania). '\
-        'Potom vám ukážem náhľad pred uložením.'
-    )
-
-
-@router.message(InvoiceStates.waiting_input)
-async def invoice_input(message: Message, state: FSMContext, config: Config) -> None:
-    text = (message.text or '').strip()
-    if not text:
-        await message.answer('Pošlite prosím textový vstup pre návrh faktúry.')
+async def process_invoice_preview_confirmation(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    confirmation_text: str,
+) -> None:
+    answer = _detect_invoice_preview_confirmation(confirmation_text)
+    if answer == _UNKNOWN_INVOICE_INTENT:
+        await message.answer('Prosím, odpovedzte áno alebo nie.')
         return
 
-    await process_invoice_text(message=message, state=state, config=config, invoice_text=text)
-
-
-@router.message(InvoiceStates.waiting_confirm)
-async def invoice_confirm(message: Message, state: FSMContext, config: Config) -> None:
-    answer = (message.text or '').strip().lower()
-    if answer not in {'ano', 'nie'}:
-        await message.answer('Napíšte ano alebo nie.')
-        return
-
-    if answer == 'nie':
+    if answer == _CANCEL_PREVIEW:
         await state.clear()
-        await message.answer('Ukladanie faktúry bolo zrušené. Spustite /invoice pre nový pokus.')
+        await message.answer('Vytvorenie faktúry bolo zrušené.')
         return
 
     if message.from_user is None:
@@ -791,6 +875,8 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
         return
 
     invoice_service = InvoiceService(config.db_path)
+    invoice_id: int | None = None
+    pdf_path = None
 
     try:
         invoice_id = invoice_service.create_invoice_with_one_item(
@@ -812,22 +898,13 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
                 item_total_price=float(draft['amount']),
             )
         )
-    except Exception:
-        logger.exception('Invoice save failed')
-        await message.answer('Nepodarilo sa uložiť faktúru.')
-        await state.clear()
-        return
 
-    invoice = invoice_service.get_invoice_by_id(invoice_id)
-    if invoice is None:
-        await message.answer('Faktúra bola uložená neúplne. Skúste to znova.')
-        await state.clear()
-        return
+        invoice = invoice_service.get_invoice_by_id(invoice_id)
+        if invoice is None:
+            raise RuntimeError('Invoice save succeeded, but invoice cannot be loaded.')
 
-    items = invoice_service.get_items_by_invoice_id(invoice_id)
-    pdf_path = config.storage_dir / 'invoices' / f'{invoice.invoice_number}.pdf'
-
-    try:
+        items = invoice_service.get_items_by_invoice_id(invoice_id)
+        pdf_path = config.storage_dir / 'invoices' / f'{invoice.invoice_number}.pdf'
         generate_invoice_pdf(
             target_path=pdf_path,
             supplier=supplier,
@@ -853,34 +930,135 @@ async def invoice_confirm(message: Message, state: FSMContext, config: Config) -
                 for item in items
             ],
         )
+        invoice_service.save_pdf_path(invoice.id, str(pdf_path))
+        await message.answer_document(
+            FSInputFile(pdf_path),
+            caption=f'PDF faktúra {invoice.invoice_number} je pripravená na kontrolu.',
+        )
+        await state.set_state(InvoiceStates.waiting_pdf_decision)
+        await state.update_data(
+            last_invoice_id=invoice.id,
+            last_invoice_number=invoice.invoice_number,
+            last_pdf_path=str(pdf_path),
+        )
+        await message.answer('Ďalší krok: napíšte schváliť, upraviť alebo zrušiť.')
     except Exception:
-        logger.exception('PDF generation failed')
-        await message.answer('Nepodarilo sa vygenerovať PDF faktúry.')
+        logger.exception('Invoice save/pdf send failed')
+        db_cleanup_failed = False
+        if invoice_id is not None:
+            try:
+                invoice_service.delete_invoice_with_items(invoice_id)
+            except Exception:
+                logger.exception('Cleanup after failed PDF generation failed')
+                db_cleanup_failed = True
+        if pdf_path is not None:
+            try:
+                pdf_path.unlink(missing_ok=True)
+            except Exception:
+                logger.exception('PDF cleanup after failed generation/sending failed')
+        if db_cleanup_failed:
+            await state.clear()
+            await message.answer('Nepodarilo sa dokončiť zrušenie neúplnej faktúry. Spustite /invoice znova.')
+            return
         await state.clear()
+        await message.answer('Nepodarilo sa dokončiť vytvorenie PDF faktúry. Skúste to znova.')
+
+
+async def process_invoice_postpdf_decision(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    decision_text: str,
+) -> None:
+    answer = _detect_invoice_postpdf_decision(decision_text)
+    if answer == _UNKNOWN_INVOICE_INTENT:
+        await message.answer('Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.')
         return
 
-    invoice_service.save_pdf_path(invoice.id, str(pdf_path))
+    state_data = await state.get_data()
+    invoice_id = state_data.get('last_invoice_id')
+    if not isinstance(invoice_id, int):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
 
-    await message.answer_document(FSInputFile(pdf_path), caption=f'PDF faktúra {invoice.invoice_number} je pripravená na kontrolu.')
-    await state.set_state(InvoiceStates.waiting_pdf_decision)
-    await state.update_data(last_invoice_number=invoice.invoice_number)
-    await message.answer('Ďalší krok: napíšte schváliť alebo upraviť.')
+    pdf_path_value = state_data.get('last_pdf_path')
+    pdf_path = None
+    if isinstance(pdf_path_value, str) and pdf_path_value.strip():
+        pdf_path = Path(pdf_path_value)
+
+    if answer == _APPROVE_PDF_INVOICE:
+        try:
+            InvoiceService(config.db_path).update_invoice_status(invoice_id, 'pripravena')
+        except Exception:
+            logger.exception('Invoice status update failed')
+            await state.clear()
+            await message.answer('Nepodarilo sa potvrdiť faktúru.')
+            return
+        await state.clear()
+        await message.answer('Faktúra bola potvrdená.')
+        return
+
+    try:
+        InvoiceService(config.db_path).delete_invoice_with_items(invoice_id)
+    except Exception:
+        logger.exception('Invoice cleanup failed')
+        await state.clear()
+        await message.answer('Nepodarilo sa zrušiť faktúru.')
+        return
+    if pdf_path is not None:
+        try:
+            pdf_path.unlink(missing_ok=True)
+        except Exception:
+            logger.exception('PDF cleanup after cancel/edit failed')
+
+    await state.clear()
+    if answer == _EDIT_PDF_INVOICE:
+        await message.answer(
+            'Funkcia úpravy zatiaľ nie je dostupná. Faktúra bola zrušená. '
+            'Prosím, vytvorte novú faktúru.'
+        )
+        return
+
+    await message.answer('Faktúra bola zrušená. Číslo faktúry nebolo finálne potvrdené.')
+
+
+@router.message(Command('invoice'))
+async def cmd_invoice(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(InvoiceStates.waiting_input)
+    await message.answer(
+        'Pošlite text faktúry (odberateľ, položka, suma, prípadne dátum dodania). '\
+        'Potom vám ukážem náhľad pred uložením.'
+    )
+
+
+@router.message(InvoiceStates.waiting_input)
+async def invoice_input(message: Message, state: FSMContext, config: Config) -> None:
+    text = (message.text or '').strip()
+    if not text:
+        await message.answer('Pošlite prosím textový vstup pre návrh faktúry.')
+        return
+
+    await process_invoice_text(message=message, state=state, config=config, invoice_text=text)
+
+
+@router.message(InvoiceStates.waiting_confirm)
+async def invoice_confirm(message: Message, state: FSMContext, config: Config) -> None:
+    await process_invoice_preview_confirmation(
+        message=message,
+        state=state,
+        config=config,
+        confirmation_text=(message.text or ''),
+    )
 
 
 @router.message(InvoiceStates.waiting_pdf_decision)
-async def invoice_pdf_decision(message: Message, state: FSMContext) -> None:
-    answer = (message.text or '').strip().lower()
-    if answer not in {'schváliť', 'upraviť'}:
-        await message.answer('Napíšte schváliť alebo upraviť.')
-        return
-
-    data = await state.get_data()
-    invoice_number = data.get('last_invoice_number', '-')
-
-    if answer == 'schváliť':
-        await state.clear()
-        await message.answer(f'Faktúra {invoice_number} je označená ako pripravená.')
-        return
-
-    await state.clear()
-    await message.answer('Úpravy spravíte opätovným spustením /invoice v tejto fáze.')
+async def invoice_pdf_decision(message: Message, state: FSMContext, config: Config) -> None:
+    await process_invoice_postpdf_decision(
+        message=message,
+        state=state,
+        config=config,
+        decision_text=(message.text or ''),
+    )

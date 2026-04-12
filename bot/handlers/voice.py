@@ -7,7 +7,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.config import Config
-from bot.handlers.invoice import process_invoice_text
+from bot.handlers.invoice import (
+    InvoiceStates,
+    process_invoice_postpdf_decision,
+    process_invoice_preview_confirmation,
+    process_invoice_text,
+)
 from bot.services.speech_to_text import transcribe_audio
 
 router = Router(name='voice')
@@ -59,13 +64,29 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             await message.answer('Nepodarilo sa rozpoznať obsah hlasovej správy. Skúste znova.')
             return
 
-        await process_invoice_text(
-            message=message,
-            state=state,
-            config=config,
-            invoice_text=recognized_text,
-            request_id=request_id,
-        )
+        current_state = await state.get_state()
+        if current_state == InvoiceStates.waiting_confirm.state:
+            await process_invoice_preview_confirmation(
+                message=message,
+                state=state,
+                config=config,
+                confirmation_text=recognized_text,
+            )
+        elif current_state == InvoiceStates.waiting_pdf_decision.state:
+            await process_invoice_postpdf_decision(
+                message=message,
+                state=state,
+                config=config,
+                decision_text=recognized_text,
+            )
+        else:
+            await process_invoice_text(
+                message=message,
+                state=state,
+                config=config,
+                invoice_text=recognized_text,
+                request_id=request_id,
+            )
 
     finally:
         voice_path.unlink(missing_ok=True)

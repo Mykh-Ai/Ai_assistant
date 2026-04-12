@@ -223,3 +223,17 @@ class InvoiceService:
                 (pdf_path, invoice_id),
             )
             connection.commit()
+
+    def update_invoice_status(self, invoice_id: int, status: str) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                'UPDATE invoice SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (status, invoice_id),
+            )
+            connection.commit()
+
+    def delete_invoice_with_items(self, invoice_id: int) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute('DELETE FROM invoice_item WHERE invoice_id = ?', (invoice_id,))
+            connection.execute('DELETE FROM invoice WHERE id = ?', (invoice_id,))
+            connection.commit()
