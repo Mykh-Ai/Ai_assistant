@@ -53,6 +53,7 @@ Pravidlá:
 - Ak pole nevieš určiť spoľahlivo, daj null a uveď dôvod v `stopa.chyba_udaje` alebo `stopa.nejasnosti`.
 - `zamer.nazov` nastav na `vytvor_fakturu` ak je vstup faktúra-like (`invoice`, `faktura`, `рахунок`, `фактура`).
 - `datum_dodania` a `datum_splatnosti` normalizuj na `YYYY-MM-DD` iba ak sú explicitne/iste.
+- Ak používateľ povie deň+mesiac bez roka (napr. `4 апреля`, `4 apríla`, `4 apr`), pri `datum_dodania` použi rok aktuálneho invoice-flow (rok dátumu vystavenia) a nevymýšľaj iný minulý/budúci rok.
 - `mena` normalizuj na ISO kód (napr. EUR, USD), ak je jasná.
 
 Príklady normalizácie `biznis_sk.odberatel_kandidat`:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import asyncio
@@ -7,7 +8,12 @@ import asyncio
 import pytest
 
 from bot.config import Config
-from bot.handlers.invoice import _build_and_store_preview, _extract_invoice_draft_from_phase2_payload, _format_preview
+from bot.handlers.invoice import (
+    _build_and_store_preview,
+    _extract_invoice_draft_from_phase2_payload,
+    _format_preview,
+    _resolve_delivery_date,
+)
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, validate_invoice_phase2_payload
@@ -370,3 +376,73 @@ def test_preview_message_hides_short_service_name_field() -> None:
 
     assert 'Krátky názov služby' not in preview
     assert 'Plný názov služby' in preview
+
+
+def test_delivery_date_year_anchor_for_ru_day_month_without_year() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='додания 4 апреля',
+        issue_date_obj=date(2026, 4, 11),
+        llm_delivery_value='2023-04-04',
+    )
+
+    assert resolved.isoformat() == '2026-04-04'
+
+
+def test_delivery_date_year_anchor_for_sk_day_month_without_year() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='datum dodania 4 apríla',
+        issue_date_obj=date(2026, 4, 11),
+        llm_delivery_value='2025-04-04',
+    )
+
+    assert resolved.isoformat() == '2026-04-04'
+
+
+def test_delivery_date_year_anchor_for_mixed_voice_like_input_without_year() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='ok sprav fakturu tech company, dodania 4 apríla po servise',
+        issue_date_obj=date(2026, 4, 11),
+        llm_delivery_value=None,
+    )
+
+    assert resolved.isoformat() == '2026-04-04'
+
+
+def test_delivery_date_explicit_year_is_respected() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='datum dodania 4 apríla 2025',
+        issue_date_obj=date(2026, 4, 11),
+        llm_delivery_value='2025-04-04',
+    )
+
+    assert resolved.isoformat() == '2025-04-04'
+
+
+def test_delivery_date_year_anchor_still_applies_when_unrelated_year_exists_elsewhere() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='faktura za rok 2023, ale dodania 4 apríla',
+        issue_date_obj=date(2026, 4, 11),
+        llm_delivery_value='2023-04-04',
+    )
+
+    assert resolved.isoformat() == '2026-04-04'
+
+
+def test_delivery_date_year_anchor_supports_ukrainian_month_form() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='додання 4 квітня',
+        issue_date_obj=date(2026, 4, 11),
+        llm_delivery_value='2023-04-04',
+    )
+
+    assert resolved.isoformat() == '2026-04-04'
+
+
+def test_delivery_date_explicit_local_year_disables_anchoring() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='додання 4 квітня 2025',
+        issue_date_obj=date(2026, 4, 11),
+        llm_delivery_value='2025-04-04',
+    )
+
+    assert resolved.isoformat() == '2025-04-04'

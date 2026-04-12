@@ -159,6 +159,141 @@ _MULTIPLIER_HINT_PATTERN = re.compile(
     r'\b(?:x|kr[aá]t|крат|razi|razy|раз|раза|рази|kusy|kus|ks|po|по)\b',
     flags=re.IGNORECASE,
 )
+_EXPLICIT_YEAR_PATTERN = re.compile(r'(?<!\d)(?:19|20)\d{2}(?!\d)')
+_DELIVERY_DAY_MONTH_PATTERN = re.compile(
+    r'(?<!\d)(?P<day>0?[1-9]|[12]\d|3[01])\s*(?:[.\-/]\s*|\s+)'
+    r'(?P<month>'
+    r'janu[aá]r[a]?|jan'
+    r'|febru[aá]r[a]?|feb'
+    r'|marec|marca|mar'
+    r'|apr[ií]l[a]?|apr'
+    r'|m[aá]j[a]?'
+    r'|j[uú]n[a]?'
+    r'|j[uú]l[a]?'
+    r'|august[a]?|aug'
+    r'|sept(?:ember|embra)?|sep'
+    r'|okt(?:[oó]ber|[oó]bra)?|okt'
+    r'|nov(?:ember|embra)?|nov'
+    r'|dec(?:ember|embra)?|dec'
+    r'|январ[ья]|янв'
+    r'|феврал[ья]|фев'
+    r'|март[ае]?|марта|мар'
+    r'|апрел[ья]|апр'
+    r'|ма[йя]'
+    r'|июн[ья]|июн'
+    r'|июл[ья]|июл'
+    r'|август[ае]?|авг'
+    r'|сентябр[ья]|сен'
+    r'|октябр[ья]|окт'
+    r'|ноябр[ья]|ноя'
+    r'|декабр[ья]|дек'
+    r'|січня|січ'
+    r'|лютого|лют'
+    r'|березня|бер'
+    r'|квітня|квіт'
+    r'|травня|трав'
+    r'|червня|черв'
+    r'|липня|лип'
+    r'|серпня|серп'
+    r'|вересня|вер'
+    r'|жовтня|жовт'
+    r'|листопада|лист'
+    r'|грудня|груд'
+    r')\b',
+    flags=re.IGNORECASE,
+)
+_MONTH_TOKEN_TO_NUMBER = {
+    'januar': 1,
+    'jan': 1,
+    'februar': 2,
+    'februara': 2,
+    'feb': 2,
+    'marec': 3,
+    'marca': 3,
+    'mar': 3,
+    'april': 4,
+    'aprila': 4,
+    'apr': 4,
+    'maj': 5,
+    'maja': 5,
+    'jun': 6,
+    'juna': 6,
+    'jul': 7,
+    'jula': 7,
+    'august': 8,
+    'augusta': 8,
+    'aug': 8,
+    'september': 9,
+    'septembra': 9,
+    'sep': 9,
+    'oktober': 10,
+    'oktobra': 10,
+    'okt': 10,
+    'november': 11,
+    'novembra': 11,
+    'nov': 11,
+    'december': 12,
+    'decembra': 12,
+    'dec': 12,
+    'январь': 1,
+    'января': 1,
+    'янв': 1,
+    'февраль': 2,
+    'февраля': 2,
+    'фев': 2,
+    'март': 3,
+    'марта': 3,
+    'апрель': 4,
+    'апреля': 4,
+    'апр': 4,
+    'май': 5,
+    'мая': 5,
+    'июнь': 6,
+    'июня': 6,
+    'июн': 6,
+    'июль': 7,
+    'июля': 7,
+    'июл': 7,
+    'август': 8,
+    'августа': 8,
+    'авг': 8,
+    'сентябрь': 9,
+    'сентября': 9,
+    'сен': 9,
+    'октябрь': 10,
+    'октября': 10,
+    'окт': 10,
+    'ноябрь': 11,
+    'ноября': 11,
+    'ноя': 11,
+    'декабрь': 12,
+    'декабря': 12,
+    'дек': 12,
+    'січня': 1,
+    'січ': 1,
+    'лютого': 2,
+    'лют': 2,
+    'березня': 3,
+    'бер': 3,
+    'квітня': 4,
+    'квіт': 4,
+    'травня': 5,
+    'трав': 5,
+    'червня': 6,
+    'черв': 6,
+    'липня': 7,
+    'лип': 7,
+    'серпня': 8,
+    'серп': 8,
+    'вересня': 9,
+    'вер': 9,
+    'жовтня': 10,
+    'жовт': 10,
+    'листопада': 11,
+    'лист': 11,
+    'грудня': 12,
+    'груд': 12,
+}
 
 
 def _parse_confident_unit_price_pattern(raw_text: str) -> tuple[float, float] | None:
@@ -171,6 +306,68 @@ def _parse_confident_unit_price_pattern(raw_text: str) -> tuple[float, float] | 
     if qty is None or unit_price is None:
         return None
     return qty, unit_price
+
+
+def _normalize_month_token(token: str) -> str:
+    return (
+        token.strip()
+        .lower()
+        .replace('á', 'a')
+        .replace('í', 'i')
+        .replace('ú', 'u')
+        .replace('ó', 'o')
+    )
+
+
+def _has_explicit_year_near_day_month(raw_text: str, start: int, end: int) -> bool:
+    local_window_start = max(0, start - 8)
+    local_window_end = min(len(raw_text), end + 12)
+    local_window = raw_text[local_window_start:local_window_end]
+    return bool(_EXPLICIT_YEAR_PATTERN.search(local_window))
+
+
+def _extract_day_month_without_explicit_year(raw_text: str) -> tuple[int, int] | None:
+    match = _DELIVERY_DAY_MONTH_PATTERN.search(raw_text)
+    if not match:
+        return None
+    if _has_explicit_year_near_day_month(raw_text, match.start(), match.end()):
+        return None
+    day = int(match.group('day'))
+    month_token = _normalize_month_token(match.group('month'))
+    month = _MONTH_TOKEN_TO_NUMBER.get(month_token)
+    if month is None:
+        return None
+    return day, month
+
+
+def _resolve_delivery_date(
+    *,
+    raw_text: str,
+    issue_date_obj: date,
+    llm_delivery_value: object,
+) -> date:
+    day_month_without_year = _extract_day_month_without_explicit_year(raw_text)
+    parsed_delivery_date = _parse_date(llm_delivery_value)
+
+    if day_month_without_year is None:
+        return parsed_delivery_date or issue_date_obj
+
+    anchor_day, anchor_month = day_month_without_year
+    try:
+        anchored_date = date(issue_date_obj.year, anchor_month, anchor_day)
+    except ValueError as exc:
+        raise ValueError('Neplatný dátum dodania vo vstupe.') from exc
+
+    if parsed_delivery_date is None:
+        return anchored_date
+
+    if (parsed_delivery_date.month, parsed_delivery_date.day) != (anchor_month, anchor_day):
+        raise ValueError('Nekonzistentný dátum dodania: AI payload nezodpovedá explicitnému dňu/mesiacu vo vstupe.')
+
+    if parsed_delivery_date.year != issue_date_obj.year:
+        return anchored_date
+
+    return parsed_delivery_date
 
 
 def _normalize_invoice_amount_semantics(
@@ -324,7 +521,16 @@ async def _build_and_store_preview(
     currency = (parsed_draft.get('currency') or 'EUR').strip().upper() or 'EUR'
 
     issue_date_obj = date.today()
-    delivery_date_obj = _parse_date(parsed_draft.get('delivery_date')) or issue_date_obj
+    try:
+        delivery_date_obj = _resolve_delivery_date(
+            raw_text=raw_text,
+            issue_date_obj=issue_date_obj,
+            llm_delivery_value=parsed_draft.get('delivery_date'),
+        )
+    except ValueError as exc:
+        await message.answer(f'{exc} Uveďte dátum dodania znova.')
+        await state.clear()
+        return
 
     draft_due_days = parsed_draft.get('due_days')
     due_days = supplier.days_due

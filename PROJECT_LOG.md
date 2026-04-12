@@ -1,5 +1,57 @@
 # PROJECT_LOG
 
+## 2026-04-12 — Session 016 — Delivery-date anchor follow-up (UA months + local year scope)
+
+### Goal
+Harden delivery-date year anchoring after review:
+- add Ukrainian month forms for day/month-without-year detection;
+- avoid disabling anchoring when an unrelated year appears elsewhere in the same message.
+
+### Changes
+- `bot/handlers/invoice.py`:
+  - added Ukrainian month forms and common short forms to date phrase detection (`січня...грудня`, plus short forms);
+  - added `_has_explicit_year_near_day_month(...)` and narrowed explicit-year detection to a local span around matched day+month phrase;
+  - anchoring is now kept active when a year is present outside the local delivery-date phrase.
+- `tests/test_invoice_phase2_ai_layer.py`:
+  - added regression for unrelated-year-in-message case (anchoring must still apply);
+  - added regression for Ukrainian month form (`4 квітня`);
+  - added regression for explicit local year near day+month (anchoring must be disabled and explicit year respected).
+
+### Constraints preserved
+- Deterministic behavior only (no fuzzy parsing, no silent heuristics beyond explicit local-span rule).
+- Fail-loud behavior unchanged for inconsistent explicit day/month vs payload date.
+
+---
+
+## 2026-04-11 — Session 015 — Invoice Phase 2 delivery-date year anchoring guardrail
+
+### Goal
+Stop LLM-induced wrong-year drift for delivery dates when user says only day+month (no explicit year), e.g. `4 апреля` incorrectly becoming `2023-04-04`.
+
+### Changes
+- `prompts/invoice_draft_prompt.txt`:
+  - hardened instruction for `datum_dodania`: for explicit day+month without year, use current invoice-flow year (issue-date year), and do not invent arbitrary past/future year.
+- `bot/handlers/invoice.py`:
+  - added deterministic day+month-without-year detector (SK/RU month forms and common short forms);
+  - added `_resolve_delivery_date(...)` guardrail:
+    - anchors such inputs to `issue_date.year`,
+    - corrects mismatched LLM year when month/day match but year drifts,
+    - fails loud on inconsistent day/month mismatch between user input and LLM payload.
+  - wired preview build flow to use the new guardrail and clear state on fail-loud date inconsistency.
+- `tests/test_invoice_phase2_ai_layer.py`:
+  - added regression tests for:
+    - `4 апреля` → `2026-04-04`,
+    - `4 apríla` → `2026-04-04`,
+    - mixed voice-like multilingual input without year,
+    - explicit year input remains respected.
+
+### Constraints preserved
+- Deterministic Python remains source of truth for final invoice draft normalization.
+- No schema changes.
+- No hidden auto-fix outside deterministic date anchoring rules.
+
+---
+
 ## 2026-04-11 — Session 014 — PDF row alignment + supplier VAT wording follow-up
 
 ### Goal
