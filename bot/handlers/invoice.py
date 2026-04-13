@@ -22,6 +22,7 @@ from bot.services.pdf_generator import PdfInvoiceData, PdfInvoiceItem, generate_
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.service_term_normalizer import normalize_service_term
 from bot.services.semantic_action_resolver import resolve_semantic_action
+from bot.services.semantic_action_resolver import resolve_quantity_unit_price_pair
 from bot.services.supplier_service import SupplierService
 
 router = Router(name='invoice')
@@ -49,6 +50,7 @@ _SLOT_DELIVERY_DATE = 'delivery_date'
 _SLOT_DUE_DAYS = 'due_days'
 _SLOT_QUANTITY = 'quantity'
 _SLOT_UNIT_PRICE = 'unit_price'
+_SLOT_QUANTITY_UNIT_PRICE = 'quantity_unit_price_pair'
 
 _SLOT_PROMPTS = {
     _SLOT_CUSTOMER: 'Nepodarilo sa jednoznačne určiť odberateľa. Spresnite názov firmy, prosím.',
@@ -57,6 +59,10 @@ _SLOT_PROMPTS = {
     _SLOT_DUE_DAYS: 'Nepodarilo sa jednoznačne určiť splatnosť. Zadajte počet dní, prosím.',
     _SLOT_QUANTITY: 'Nepodarilo sa jednoznačne určiť množstvo. Spresnite ho, prosím.',
     _SLOT_UNIT_PRICE: 'Nepodarilo sa jednoznačne určiť cenu. Spresnite ju, prosím.',
+    _SLOT_QUANTITY_UNIT_PRICE: (
+        'Uveďte množstvo a cenu za jednotku, napr. 3 po 1500 alebo 3 1500. '
+        'Ak je množstvo 1, môžete zadať len cenu, napr. 1500.'
+    ),
 }
 
 
@@ -578,7 +584,7 @@ async def _build_and_store_preview(
             request_id=request_id,
             raw_text=raw_text,
             parsed_draft=parsed_draft,
-            unresolved_slot=_SLOT_UNIT_PRICE,
+            unresolved_slot=_SLOT_QUANTITY_UNIT_PRICE,
         )
         return
 
@@ -598,7 +604,7 @@ async def _build_and_store_preview(
                 request_id=request_id,
                 raw_text=raw_text,
                 parsed_draft=parsed_draft,
-                unresolved_slot=_SLOT_UNIT_PRICE,
+                unresolved_slot=_SLOT_QUANTITY_UNIT_PRICE,
             )
             return
         await message.answer(f'{exc} Skúste formuláciu typu "2x po 1500 EUR".')
@@ -884,7 +890,23 @@ async def process_invoice_slot_clarification(
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
-    if not _apply_slot_clarification(parsed_draft, unresolved_slot, clarification_text):
+    if unresolved_slot == _SLOT_QUANTITY_UNIT_PRICE:
+        resolution = await resolve_quantity_unit_price_pair(
+            user_input_text=clarification_text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            clarification_context={
+                'request_id': str(partial.get('request_id') or ''),
+                'unresolved_slot': unresolved_slot,
+                'raw_text': str(partial.get('raw_text') or ''),
+            },
+        )
+        if resolution.get('canonical') != _SLOT_QUANTITY_UNIT_PRICE:
+            await message.answer(_SLOT_PROMPTS[_SLOT_QUANTITY_UNIT_PRICE])
+            return
+        parsed_draft['quantity'] = float(resolution['quantity'])
+        parsed_draft['unit_price'] = float(resolution['unit_price'])
+    elif not _apply_slot_clarification(parsed_draft, unresolved_slot, clarification_text):
         await message.answer(_SLOT_PROMPTS.get(unresolved_slot, 'Spresnite údaj, prosím.'))
         return
 

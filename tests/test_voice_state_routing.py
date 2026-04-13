@@ -217,15 +217,17 @@ def test_voice_waiting_service_clarification_routes_to_service_handler(monkeypat
 
 def test_voice_waiting_slot_clarification_routes_to_slot_handler(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
+    captured_text: list[str] = []
 
     async def _stt(*args, **kwargs) -> str:
-        return 'Tech Company s.r.o.'
+        return 'два крат по 1500'
 
     async def _service(**kwargs) -> None:
         calls.append('service')
 
     async def _slot(**kwargs) -> None:
         calls.append('slot')
+        captured_text.append(kwargs.get('clarification_text'))
 
     async def _generic(**kwargs) -> None:
         calls.append('generic')
@@ -246,3 +248,4 @@ def test_voice_waiting_slot_clarification_routes_to_slot_handler(monkeypatch, tm
         )
     )
     assert calls == ['slot']
+    assert captured_text == ['два крат по 1500']

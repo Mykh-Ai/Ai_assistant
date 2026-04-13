@@ -1,6 +1,8 @@
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from bot.config import Config
 from bot.handlers.invoice import (
     InvoiceStates,
@@ -450,6 +452,65 @@ def test_slot_clarification_applies_unit_price_and_continues_to_preview(tmp_path
     )
 
     assert captured['parsed_draft']['unit_price'] == 250.0
+
+
+@pytest.mark.parametrize(
+    'clarification_text,expected_quantity,expected_unit_price',
+    [
+        ('3 1500', 3.0, 1500.0),
+        ('3 * 1500', 3.0, 1500.0),
+        ('3 po 1500', 3.0, 1500.0),
+        ('три kusy по 1500', 3.0, 1500.0),
+        ('množstvo 3, cena za kus 1500', 3.0, 1500.0),
+        ('количество 3, цена 1500', 3.0, 1500.0),
+        ('2 крат по 1500', 2.0, 1500.0),
+        ('два крат по 1500', 2.0, 1500.0),
+        ('dva krát po 1500', 2.0, 1500.0),
+        ('1500', 1.0, 1500.0),
+        ('3000', 1.0, 3000.0),
+    ],
+)
+def test_slot_clarification_applies_quantity_unit_price_pair_and_continues_to_preview(
+    tmp_path: Path, monkeypatch, clarification_text: str, expected_quantity: float, expected_unit_price: float
+) -> None:
+    message = _DummyMessage(clarification_text)
+    state = _DummyState()
+    state.data['invoice_partial_draft'] = {
+        'request_id': 'req-qp',
+        'raw_text': 'faktura pre Tech Company oprava',
+        'unresolved_slot': 'quantity_unit_price_pair',
+        'parsed_draft': {
+            'customer_name': 'Tech Company',
+            'item_name_raw': 'oprava',
+            'service_term_sk': 'oprava',
+            'quantity': None,
+            'unit': 'ks',
+            'amount': None,
+            'unit_price': None,
+            'currency': 'EUR',
+            'delivery_date': '2026-04-12',
+            'due_days': 14,
+            'due_date': None,
+        },
+    }
+    captured: dict = {}
+
+    async def _fake_build_and_store_preview(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr('bot.handlers.invoice._build_and_store_preview', _fake_build_and_store_preview)
+
+    asyncio.run(
+        process_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            clarification_text=clarification_text,
+        )
+    )
+
+    assert captured['parsed_draft']['quantity'] == expected_quantity
+    assert captured['parsed_draft']['unit_price'] == expected_unit_price
 
 
 def test_process_invoice_text_fails_loudly_on_fatal_payload_error(tmp_path: Path, monkeypatch) -> None:

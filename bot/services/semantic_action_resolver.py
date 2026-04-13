@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 
 
 _UNKNOWN = 'unknown'
+_QUANTITY_UNIT_PRICE_CANONICAL = 'quantity_unit_price_pair'
 
 
 def _tokenize(value: str) -> set[str]:
@@ -110,6 +111,88 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
     return _UNKNOWN
 
 
+_NUMBER_WORDS_TO_FLOAT = {
+    'jeden': 1.0,
+    'jedna': 1.0,
+    'jedno': 1.0,
+    'raz': 1.0,
+    'один': 1.0,
+    'одна': 1.0,
+    'одно': 1.0,
+    'два': 2.0,
+    'две': 2.0,
+    'дві': 2.0,
+    'dva': 2.0,
+    'dve': 2.0,
+    'tri': 3.0,
+    'три': 3.0,
+    'styri': 4.0,
+    'štyri': 4.0,
+    'четыре': 4.0,
+    'чотири': 4.0,
+}
+
+_QTY_TOKEN_PATTERN = (
+    r'\d+(?:[.,]\d+)?|'
+    r'jeden|jedna|jedno|raz|dva|dve|tri|styri|štyri|'
+    r'один|одна|одно|два|две|дві|три|четыре|чотири'
+)
+_PRICE_NUMBER_PATTERN = r'\d+(?:[.,]\d+)?'
+_PAIR_SPACED_PATTERN = re.compile(
+    rf'^\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s+(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
+    flags=re.IGNORECASE,
+)
+_PAIR_MULTIPLIER_PATTERN = re.compile(
+    rf'^\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*(?:\*|x|kr[aá]t|крат|razi|razy|раз|раза|рази|kusy|kus|ks)?\s*(?:po|по)?\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
+    flags=re.IGNORECASE,
+)
+_PAIR_LABELED_PATTERN = re.compile(
+    rf'^\s*(?:mno[zž]stvo|koli[cč]estvo|количество)\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*[,;]?\s*(?:cena(?:\s+za\s+(?:kus|ks|jednotku))?|цена(?:\s+за\s+(?:штуку|единицу|ед))?)\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
+    flags=re.IGNORECASE,
+)
+_SINGLE_PRICE_PATTERN = re.compile(r'^\s*(?P<unit>\d+(?:[.,]\d+)?)\s*$')
+
+
+def _parse_positive_float(value: str) -> float | None:
+    try:
+        parsed = float(value.replace(',', '.').strip())
+    except ValueError:
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def _parse_quantity_token(value: str) -> float | None:
+    parsed = _parse_positive_float(value)
+    if parsed is not None:
+        return parsed
+    return _NUMBER_WORDS_TO_FLOAT.get(value.strip().lower())
+
+
+def _fallback_quantity_unit_price_pair(text: str) -> tuple[float, float] | None:
+    normalized_text = text.strip()
+    if not normalized_text:
+        return None
+
+    for pattern in (_PAIR_SPACED_PATTERN, _PAIR_MULTIPLIER_PATTERN, _PAIR_LABELED_PATTERN):
+        match = pattern.match(normalized_text)
+        if not match:
+            continue
+        quantity = _parse_quantity_token(match.group('qty'))
+        unit_price = _parse_positive_float(match.group('unit'))
+        if quantity is not None and unit_price is not None:
+            return quantity, unit_price
+
+    single_match = _SINGLE_PRICE_PATTERN.match(normalized_text)
+    if single_match:
+        unit_price = _parse_positive_float(single_match.group('unit'))
+        if unit_price is not None:
+            return 1.0, unit_price
+
+    return None
+
+
 async def resolve_semantic_action(
     *,
     context_name: str,
@@ -185,3 +268,79 @@ async def resolve_semantic_value(
         model=model,
         auxiliary_context=auxiliary_context,
     )
+
+
+async def resolve_quantity_unit_price_pair(
+    *,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    clarification_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    cleaned = user_input_text.strip()
+    if not cleaned:
+        return {'canonical': _UNKNOWN}
+
+    if api_key and api_key.startswith('sk-'):
+        try:
+            client = AsyncOpenAI(api_key=api_key)
+            response = await client.chat.completions.create(
+                model=model,
+                temperature=0,
+                response_format={'type': 'json_object'},
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': (
+                            'You are a bounded semantic canonicalizer for invoice slot clarification. '
+                            'Supported input languages: uk, ru, sk. '
+                            'You parse only quantity and unit_price replies. '
+                            'Valid inputs are either quantity+unit_price or unit_price-only; '
+                            'for unit_price-only set quantity=1. '
+                            'Return strict JSON only in one of two shapes: '
+                            '{"canonical":"quantity_unit_price_pair","quantity":<number>,"unit_price":<number>} '
+                            'or {"canonical":"unknown"}.'
+                        ),
+                    },
+                    {
+                        'role': 'user',
+                        'content': json.dumps(
+                            {
+                                'context_name': 'invoice_slot_clarification',
+                                'expected_reply_type': 'quantity_times_unit_price',
+                                'supported_input_languages': ['uk', 'ru', 'sk'],
+                                'clarification_context': clarification_context or {},
+                                'user_input_text': cleaned,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                ],
+            )
+            raw = response.choices[0].message.content or '{}'
+            parsed = json.loads(raw)
+            canonical = str(parsed.get('canonical', _UNKNOWN)).strip()
+            if canonical == _QUANTITY_UNIT_PRICE_CANONICAL:
+                quantity = _parse_positive_float(str(parsed.get('quantity', '')))
+                unit_price = _parse_positive_float(str(parsed.get('unit_price', '')))
+                if quantity is not None and unit_price is not None:
+                    return {
+                        'canonical': _QUANTITY_UNIT_PRICE_CANONICAL,
+                        'quantity': quantity,
+                        'unit_price': unit_price,
+                    }
+            if canonical == _UNKNOWN:
+                return {'canonical': _UNKNOWN}
+        except Exception:
+            pass
+
+    fallback = _fallback_quantity_unit_price_pair(cleaned)
+    if fallback is None:
+        return {'canonical': _UNKNOWN}
+
+    quantity, unit_price = fallback
+    return {
+        'canonical': _QUANTITY_UNIT_PRICE_CANONICAL,
+        'quantity': quantity,
+        'unit_price': unit_price,
+    }
