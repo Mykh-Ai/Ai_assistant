@@ -285,8 +285,12 @@ def test_preview_returns_clean_retry_message_when_amount_missing(configured_db: 
 
     assert state.cleared is False
     assert state.last_state == InvoiceStates.waiting_slot_clarification
-    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'unit_price'
-    assert message.answers[-1] == 'Nepodarilo sa jednoznačne určiť cenu. Spresnite ju, prosím.'
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'quantity_unit_price_pair'
+    assert (
+        message.answers[-1]
+        == 'Uveďte množstvo a cenu za jednotku, napr. 3 po 1500 alebo 3 1500. '
+        'Ak je množstvo 1, môžete zadať len cenu, napr. 1500.'
+    )
 
 
 def test_preview_missing_delivery_date_uses_issue_date_without_clarification(configured_db: tuple[Path, int, int]) -> None:
@@ -503,8 +507,49 @@ def test_preview_amount_semantics_fail_loud_on_multiplier_hint_without_unit_pric
 
     assert state.cleared is False
     assert state.last_state == InvoiceStates.waiting_slot_clarification
-    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'unit_price'
-    assert message.answers[-1] == 'Nepodarilo sa jednoznačne určiť cenu. Spresnite ju, prosím.'
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'quantity_unit_price_pair'
+    assert (
+        message.answers[-1]
+        == 'Uveďte množstvo a cenu za jednotku, napr. 3 po 1500 alebo 3 1500. '
+        'Ak je množstvo 1, môžete zadať len cenu, napr. 1500.'
+    )
+
+
+def test_preview_amount_semantics_total_only_defaults_to_one_times_total(
+    configured_db: tuple[Path, int, int]
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('za opravu spolu 1500')
+    payload['biznis_sk']['mnozstvo'] = None
+    payload['biznis_sk']['suma'] = 1500
+    payload['biznis_sk']['cena_za_jednotku'] = None
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text='za opravu spolu 1500',
+        parsed_draft=parsed,
+    ))
+
+    draft = state.data['invoice_draft']
+    assert draft['quantity'] == 1.0
+    assert draft['unit_price'] == 1500.0
+    assert draft['amount'] == 1500.0
 
 
 def test_preview_message_hides_short_service_name_field() -> None:

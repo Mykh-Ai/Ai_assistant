@@ -1,5 +1,69 @@
 # PROJECT_LOG
 
+## 2026-04-13 — Session 022 — Quantity/unit-price clarification semantics broadened
+
+### Goal
+Broaden existing bounded slot `quantity_unit_price_pair` from pair-only handling to natural clarification semantics:
+- accept quantity + unit-price forms,
+- accept price-only fallback (`quantity=1`),
+while keeping current architecture and FSM flow unchanged.
+
+### Changes
+- `bot/handlers/invoice.py`:
+  - updated Slovak clarification prompt to explicitly allow either:
+    - quantity + unit price,
+    - or price-only when quantity is 1.
+- `bot/services/semantic_action_resolver.py`:
+  - expanded bounded resolver instruction for `resolve_quantity_unit_price_pair(...)` to support:
+    - pair input,
+    - single-number input (maps to `quantity=1`);
+  - expanded deterministic fallback parser to support additional natural forms:
+    - `3 1500`, `3 * 1500`, `3 po 1500`, `3x po 1500`,
+    - `три kusy по 1500`, `dva krát po 1500`,
+    - `množstvo 3, cena za kus 1500`,
+    - `количество 3, цена 1500`,
+    - single-number price fallback (`1500` -> `1 × 1500`).
+- tests:
+  - added/extended slot-clarification tests for pair forms and price-only fallback;
+  - kept existing pair regressions and voice routing regression.
+
+### Constraints preserved
+- Same slot token (`quantity_unit_price_pair`) and same FSM state (`waiting_slot_clarification`).
+- No contact-flow changes, no service-slot repair changes, no generalized slot-clarification redesign.
+- Python remains execution authority and source of truth.
+
+## 2026-04-13 — Session 021 — Bounded quantity × unit_price slot clarification in invoice flow
+
+### Goal
+Add a dedicated bounded clarification path for missing financial breakdown in invoice flow (`quantity × unit_price`) without architecture redesign and without touching contact/service flows.
+
+### Changes
+- `bot/handlers/invoice.py`:
+  - added dedicated slot `quantity_unit_price_pair` (reusing existing `waiting_slot_clarification` FSM state);
+  - when financial breakdown is unresolved, clarification now targets this dedicated slot;
+  - added slot-specific Slovak clarification prompt: `Uveďte množstvo a cenu za jednotku, napr. 2x po 1500.`;
+  - wired bounded quantity/unit-price resolver in slot continuation path and update of partial draft fields (`quantity`, `unit_price`) only.
+- `bot/services/semantic_action_resolver.py`:
+  - added bounded resolver `resolve_quantity_unit_price_pair(...)` with strict structured output contract:
+    - `{"canonical":"quantity_unit_price_pair","quantity":...,"unit_price":...}`
+    - or `{"canonical":"unknown"}`;
+  - LLM request now includes clarification context, `expected_reply_type=quantity_times_unit_price`, and supported languages `uk/ru/sk`;
+  - deterministic fallback parser supports multilingual examples including numeric and small-number-word variants.
+- tests:
+  - added text clarification coverage for:
+    - `2 крат по 1500`,
+    - `два крат по 1500`,
+    - `dva krát po 1500`;
+  - added voice routing assertion that STT transcript in `waiting_slot_clarification` is passed unchanged to slot clarification path;
+  - added regression for explicit-total-only invoice semantics (`1 × total`) to remain stable;
+  - kept/updated existing generalized clarification expectations for the new dedicated financial slot prompt.
+
+### Constraints preserved
+- No new FSM state for clarification.
+- No contact flow changes.
+- Service-slot repair behavior preserved.
+- Python remains source of truth for validation, draft update, amount computation, and preview lifecycle.
+
 ## 2026-04-12 — Session 020 — Generalized invoice slot clarification + project-wide partial-draft contract
 
 ### Goal
