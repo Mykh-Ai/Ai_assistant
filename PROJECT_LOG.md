@@ -1,5 +1,41 @@
 # PROJECT_LOG
 
+## 2026-04-13 — Session 024 — `add_service_alias` ambiguous-action documentation prep
+
+### Goal
+Prepare docs before runtime work so `add_service_alias` can be introduced as a canonical ambiguous top-level action (manual flow exists now, semantic/voice invoke later).
+
+### Changes
+- updated orchestrator contract with optional semantic action hints section for ambiguous actions;
+- added `docs/llm/Bounded_Resolver_Prompt_Template.md` with optional `action_hints` format and compact examples for `create_invoice` and `add_service_alias`;
+- added `docs/llm/New_Action_Design_Checklist.md` with ambiguity/hints/canonical-vs-noisy wording checklist items;
+- updated canonical action registry to explicitly mark `add_service_alias` as ambiguous, manual implemented, voice top-level invoke not yet, and hint support recommended for future bounded resolution;
+- updated TZ with concise optional-hints requirement and canonical-vs-noisy wording separation rule;
+- updated README doc pointers.
+
+### Notes
+- semantic action hints are documented as optional and selective (not mandatory for every action);
+- no runtime code changes were made.
+
+## 2026-04-13 — Session 023 — Canonical action audit repair (manual `/service` flow included)
+
+### Goal
+Repair canonical action audit after detecting that previous inventory missed at least one already implemented manual user-facing flow (`add_service_alias` via `/service`).
+
+### Changes
+- created `docs/llm/Canonical_Action_Registry.md` with corrected evidence-based inventory:
+  - top-level user-facing actions,
+  - bootstrap/admin flows,
+  - explicit reserved placeholders (`send_invoice`, `edit_invoice`),
+  - explicit correction note for implemented manual `/service` flow;
+- created `docs/llm/In_Action_Response_Registry.md` with bounded in-action groups, deterministic confirmations, and slot-clarification groups;
+- updated `docs/FakturaBot_LLM_Orchestrator_Contract.md` with registry linkage discipline;
+- updated `README.md` with pointers to new audit registries.
+
+### Audit correction note
+`/service` flow is implemented-manual (command + in-flow text) and persists service alias mappings.  
+It is not part of top-level semantic resolver list, but it is still a real user-facing action and must be tracked in canonical action audit.
+
 ## 2026-04-13 — Session 022 — Quantity/unit-price clarification semantics broadened
 
 ### Goal
