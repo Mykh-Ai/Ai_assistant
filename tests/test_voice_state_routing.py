@@ -6,6 +6,7 @@ from pathlib import Path
 from bot.config import Config
 from bot.handlers.contacts import ContactStates
 from bot.handlers.invoice import InvoiceStates
+from bot.handlers.supplier import ServiceAliasStates
 from bot.handlers.voice import handle_voice
 
 
@@ -249,3 +250,39 @@ def test_voice_waiting_slot_clarification_routes_to_slot_handler(monkeypatch, tm
     )
     assert calls == ['slot']
     assert captured_text == ['два крат по 1500']
+
+
+def test_voice_top_level_add_service_alias_routes_to_existing_service_flow(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'pridaj novú položku'
+
+    calls: list[str] = []
+
+    async def _invoice_text(**kwargs) -> None:
+        calls.append('invoice_text')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _invoice_text)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+    assert calls == ['invoice_text']
+
+
+def test_voice_service_short_name_state_rejects_voice(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'opravy'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    msg = _DummyMessage()
+    asyncio.run(handle_voice(msg, _DummyBot(), _config(tmp_path), _DummyState(ServiceAliasStates.waiting_short_name.state)))
+    assert msg.answers[-1] == 'Napíšte krátky názov položky textom.'
+
+
+def test_voice_service_display_name_state_rejects_voice(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'Servis elektromotora'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    msg = _DummyMessage()
+    asyncio.run(handle_voice(msg, _DummyBot(), _config(tmp_path), _DummyState(ServiceAliasStates.waiting_display_name.state)))
+    assert msg.answers[-1] == 'Napíšte plný názov služby textom.'

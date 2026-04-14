@@ -28,8 +28,7 @@ def _mappings_preview(mappings: list[tuple[str, str]]) -> str:
     return '\n'.join(lines)
 
 
-@router.message(Command('service'))
-async def cmd_service(message: Message, state: FSMContext, config: Config) -> None:
+async def start_add_service_alias_intake(message: Message, state: FSMContext, config: Config) -> None:
     if message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
@@ -50,6 +49,11 @@ async def cmd_service(message: Message, state: FSMContext, config: Config) -> No
         'Pridanie názvu služby (krok 1/2): napíšte krátky názov služby.\n'
         'Príklad: <code>opravy</code>'
     )
+
+
+@router.message(Command('service'))
+async def cmd_service(message: Message, state: FSMContext, config: Config) -> None:
+    await start_add_service_alias_intake(message=message, state=state, config=config)
 
 
 @router.message(ServiceAliasStates.waiting_short_name)

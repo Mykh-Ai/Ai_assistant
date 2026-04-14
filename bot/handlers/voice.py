@@ -16,6 +16,7 @@ from bot.handlers.invoice import (
     process_invoice_slot_clarification,
     process_invoice_text,
 )
+from bot.handlers.supplier import ServiceAliasStates
 from bot.services.speech_to_text import transcribe_audio
 
 router = Router(name='voice')
@@ -113,6 +114,10 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             await message.answer('V tomto kroku zadajte názov firmy textom.')
         elif current_state == ContactStates.source_after_name.state:
             await message.answer('V tomto kroku pošlite zmluvu/PDF alebo zadajte IČO textom.')
+        elif current_state == ServiceAliasStates.waiting_short_name.state:
+            await message.answer('Napíšte krátky názov položky textom.')
+        elif current_state == ServiceAliasStates.waiting_display_name.state:
+            await message.answer('Napíšte plný názov služby textom.')
         else:
             await process_invoice_text(
                 message=message,
