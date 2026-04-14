@@ -22,7 +22,7 @@ from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoic
 from bot.services.pdf_generator import PdfInvoiceData, PdfInvoiceItem, generate_invoice_pdf
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.service_term_normalizer import normalize_service_term
-from bot.services.semantic_action_resolver import resolve_semantic_action
+from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
 from bot.services.semantic_action_resolver import resolve_quantity_unit_price_pair
 from bot.services.supplier_service import SupplierService
 
@@ -1087,9 +1087,10 @@ async def process_invoice_preview_confirmation(
     config: Config,
     confirmation_text: str,
 ) -> None:
-    answer = await resolve_semantic_action(
+    answer = await resolve_bounded_confirmation_reply(
         context_name='invoice_preview_confirmation',
-        allowed_actions=['ano', 'nie', 'unknown'],
+        expected_reply_type='yes_no_confirmation',
+        allowed_outputs=['ano', 'nie', 'unknown'],
         user_input_text=confirmation_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
@@ -1230,9 +1231,10 @@ async def process_invoice_postpdf_decision(
     config: Config,
     decision_text: str,
 ) -> None:
-    answer = await resolve_semantic_action(
+    answer = await resolve_bounded_confirmation_reply(
         context_name='invoice_postpdf_decision',
-        allowed_actions=['schvalit', 'upravit', 'zrusit', 'unknown'],
+        expected_reply_type='postpdf_decision',
+        allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
         user_input_text=decision_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,

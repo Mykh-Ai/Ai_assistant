@@ -12,7 +12,7 @@ from bot.handlers.invoice import (
     process_invoice_slot_clarification,
     process_invoice_text,
 )
-from bot.services.semantic_action_resolver import resolve_semantic_action
+from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
 
 
 class _DummyMessage:
@@ -211,6 +211,62 @@ def test_state_semantic_resolver_actions() -> None:
             context_name='invoice_postpdf_decision',
             allowed_actions=['schvalit', 'upravit', 'zrusit', 'unknown'],
             user_input_text='подтвердить',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'schvalit'
+
+
+def test_bounded_confirmation_resolver_is_conservative_for_noisy_short_replies() -> None:
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_preview_confirmation',
+            expected_reply_type='yes_no_confirmation',
+            allowed_outputs=['ano', 'nie', 'unknown'],
+            user_input_text='Ah, não.',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'unknown'
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_postpdf_decision',
+            expected_reply_type='postpdf_decision',
+            allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
+            user_input_text='Ah, não.',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'unknown'
+
+
+def test_bounded_confirmation_resolver_positive_regressions() -> None:
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_preview_confirmation',
+            expected_reply_type='yes_no_confirmation',
+            allowed_outputs=['ano', 'nie', 'unknown'],
+            user_input_text='áno',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'ano'
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_preview_confirmation',
+            expected_reply_type='yes_no_confirmation',
+            allowed_outputs=['ano', 'nie', 'unknown'],
+            user_input_text='нет',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'nie'
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_postpdf_decision',
+            expected_reply_type='postpdf_decision',
+            allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
+            user_input_text='schváliť',
             api_key=None,
             model='gpt-4o',
         )

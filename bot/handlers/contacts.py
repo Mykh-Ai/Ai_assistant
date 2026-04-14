@@ -11,7 +11,7 @@ from bot.config import Config
 from bot.services.document_intake import extract_message_document_text
 from bot.services.llm_contact_parser import extract_contact_draft
 from bot.services.contact_service import ContactProfile, ContactService
-from bot.services.semantic_action_resolver import resolve_semantic_action
+from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
 from bot.services.supplier_service import SupplierService
 from bot.services.validation import validate_dic, validate_email, validate_ic_dph, validate_ico
 
@@ -239,9 +239,10 @@ async def process_contact_intake_confirm(
     config: Config,
     answer_text: str,
 ) -> None:
-    answer = await resolve_semantic_action(
+    answer = await resolve_bounded_confirmation_reply(
         context_name='contact_confirm',
-        allowed_actions=['ano', 'nie', 'unknown'],
+        expected_reply_type='yes_no_confirmation',
+        allowed_outputs=['ano', 'nie', 'unknown'],
         user_input_text=answer_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,

@@ -198,6 +198,38 @@ def test_contact_saved_after_confirmation(tmp_path: Path) -> None:
     assert saved.contract_path == 'storage/contracts/test.pdf'
 
 
+def test_contact_semantic_confirm_noisy_transcript_returns_unknown_retry(tmp_path: Path) -> None:
+    from bot.handlers.contacts import process_contact_intake_confirm
+
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    state.data['contact_intake_draft'] = {
+        'name': 'ZS s.r.o.',
+        'ico': '12345678',
+        'dic': '1234567890',
+        'ic_dph': '',
+        'address': 'Hlavná 1, Košice',
+        'email': 'kontakt@zs.sk',
+        'contact_person': '',
+        'contract_path': 'storage/contracts/test.pdf',
+    }
+    message = _DummyMessage()
+
+    asyncio.run(
+        process_contact_intake_confirm(
+            message=message,
+            state=state,
+            config=config,
+            answer_text='Ah, não.',
+        )
+    )
+
+    assert state.data.get('contact_intake_draft', {}).get('name') == 'ZS s.r.o.'
+    assert message.answers[-1] == 'Napíšte ano alebo nie.'
+    assert ContactService(config.db_path).get_by_name(111, 'ZS s.r.o.') is None
+
+
 def test_idle_document_without_add_contact_intent_is_rejected(monkeypatch, tmp_path: Path) -> None:
     config = _config(tmp_path)
     _setup_supplier(config.db_path)

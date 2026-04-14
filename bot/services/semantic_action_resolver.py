@@ -10,6 +10,7 @@ from openai import AsyncOpenAI
 
 _UNKNOWN = 'unknown'
 _QUANTITY_UNIT_PRICE_CANONICAL = 'quantity_unit_price_pair'
+_SUPPORTED_CONFIRM_LANGUAGES = ['sk', 'uk', 'ru']
 
 
 def _tokenize(value: str) -> set[str]:
@@ -131,6 +132,61 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'ano'
         if 'nie' in allowed and tokens.intersection({'nie', 'ні', 'нет', 'no', 'cancel'}):
             return 'nie'
+        return _UNKNOWN
+
+    return _UNKNOWN
+
+
+def _normalize_bounded_reply_text(value: str) -> str:
+    cleaned = value.strip().lower()
+    cleaned = re.sub(r'[^\w\s\u0400-\u04FF-]', ' ', cleaned, flags=re.UNICODE)
+    cleaned = ' '.join(cleaned.split())
+    if not cleaned:
+        return ''
+    normalized = unicodedata.normalize('NFKD', cleaned)
+    return ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def _fallback_bounded_confirmation_reply(
+    *,
+    context_name: str,
+    expected_reply_type: str,
+    text: str,
+    allowed_outputs: set[str],
+) -> str:
+    normalized = _normalize_bounded_reply_text(text)
+    if not normalized:
+        return _UNKNOWN
+
+    if context_name == 'invoice_preview_confirmation' and expected_reply_type == 'yes_no_confirmation':
+        positive = {'ano', 'tak', 'da', 'так', 'да'}
+        negative = {'nie', 'net', 'ні', 'нет'}
+        if normalized in positive and 'ano' in allowed_outputs:
+            return 'ano'
+        if normalized in negative and 'nie' in allowed_outputs:
+            return 'nie'
+        return _UNKNOWN
+
+    if context_name == 'contact_confirm' and expected_reply_type == 'yes_no_confirmation':
+        positive = {'ano', 'tak', 'da', 'так', 'да'}
+        negative = {'nie', 'net', 'ні', 'нет'}
+        if normalized in positive and 'ano' in allowed_outputs:
+            return 'ano'
+        if normalized in negative and 'nie' in allowed_outputs:
+            return 'nie'
+        return _UNKNOWN
+
+    if context_name == 'invoice_postpdf_decision' and expected_reply_type == 'postpdf_decision':
+        approve_values = {'schvalit', 'potvrdit', 'схвалити', 'подтвердить'}
+        edit_values = {'upravit', 'изменить', 'исправить', 'редагувати', 'зміни'}
+        cancel_values = {'zrusit', 'отменить', 'скасувати', 'нет', 'ні', 'nie'}
+
+        if normalized in approve_values and 'schvalit' in allowed_outputs:
+            return 'schvalit'
+        if normalized in edit_values and 'upravit' in allowed_outputs:
+            return 'upravit'
+        if normalized in cancel_values and 'zrusit' in allowed_outputs:
+            return 'zrusit'
         return _UNKNOWN
 
     return _UNKNOWN
@@ -294,6 +350,72 @@ async def resolve_semantic_value(
         api_key=api_key,
         model=model,
         auxiliary_context=auxiliary_context,
+    )
+
+
+async def resolve_bounded_confirmation_reply(
+    *,
+    context_name: str,
+    expected_reply_type: str,
+    allowed_outputs: list[str],
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+) -> str:
+    allowed = {value.strip() for value in allowed_outputs if value and value.strip()}
+    if _UNKNOWN not in allowed:
+        allowed.add(_UNKNOWN)
+
+    cleaned = user_input_text.strip()
+    if not cleaned:
+        return _UNKNOWN
+
+    if api_key and api_key.startswith('sk-'):
+        try:
+            client = AsyncOpenAI(api_key=api_key)
+            response = await client.chat.completions.create(
+                model=model,
+                temperature=0,
+                response_format={'type': 'json_object'},
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': (
+                            'You are a strict bounded resolver for short in-action confirmations/decisions. '
+                            'Input may be noisy/STT-distorted. '
+                            'Return JSON only in format {"canonical":"..."} where value is one allowed output or "unknown". '
+                            'If reply is ambiguous, noisy, malformed, mixed/off-language, or not clearly one bounded choice, return "unknown". '
+                            'Do not best-guess destructive outcomes.'
+                        ),
+                    },
+                    {
+                        'role': 'user',
+                        'content': json.dumps(
+                            {
+                                'context_name': context_name,
+                                'expected_reply_type': expected_reply_type,
+                                'supported_input_languages': _SUPPORTED_CONFIRM_LANGUAGES,
+                                'allowed_canonical_outputs': sorted(allowed),
+                                'user_input_text': cleaned,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                ],
+            )
+            raw = response.choices[0].message.content or '{}'
+            parsed = json.loads(raw)
+            canonical = str(parsed.get('canonical', _UNKNOWN)).strip()
+            if canonical in allowed:
+                return canonical
+        except Exception:
+            pass
+
+    return _fallback_bounded_confirmation_reply(
+        context_name=context_name,
+        expected_reply_type=expected_reply_type,
+        text=cleaned,
+        allowed_outputs=allowed,
     )
 
 
