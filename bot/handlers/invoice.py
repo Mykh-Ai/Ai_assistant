@@ -15,6 +15,7 @@ from aiogram.types import FSInputFile, Message
 
 from bot.config import Config
 from bot.handlers.contacts import start_add_contact_intake
+from bot.handlers.supplier import start_add_service_alias_intake
 from bot.services.contact_service import ContactLookupResult, ContactService
 from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
@@ -33,6 +34,7 @@ _CREATE_INVOICE_INTENT = 'create_invoice'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _SEND_INVOICE_INTENT = 'send_invoice'
 _ADD_CONTACT_INTENT = 'add_contact'
+_ADD_SERVICE_ALIAS_INTENT = 'add_service_alias'
 _UNKNOWN_INVOICE_INTENT = 'unknown'
 
 
@@ -936,6 +938,7 @@ async def process_invoice_text(
         allowed_actions=[
             _CREATE_INVOICE_INTENT,
             _ADD_CONTACT_INTENT,
+            _ADD_SERVICE_ALIAS_INTENT,
             _SEND_INVOICE_INTENT,
             _EDIT_INVOICE_INTENT,
             _UNKNOWN_INVOICE_INTENT,
@@ -943,9 +946,34 @@ async def process_invoice_text(
         user_input_text=invoice_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
+        action_hints={
+            _CREATE_INVOICE_INTENT: {
+                'meaning': 'user wants to create a new invoice draft',
+                'not_this': ['edit existing invoice', 'send existing invoice'],
+            },
+            _ADD_SERVICE_ALIAS_INTENT: {
+                'meaning': 'user wants to create a new reusable invoice item/service label',
+                'positive_examples': [
+                    'pridaj novú položku',
+                    'pridaj novú službu',
+                    'додай нову положку',
+                    'додай нову службу',
+                    'додай нову живність',
+                    'предай новую живность',
+                ],
+                'not_this': ['create new invoice draft', 'edit existing invoice'],
+            },
+        },
     )
     if top_level_intent == _ADD_CONTACT_INTENT:
         await start_add_contact_intake(
+            message=message,
+            state=state,
+            config=config,
+        )
+        return
+    if top_level_intent == _ADD_SERVICE_ALIAS_INTENT:
+        await start_add_service_alias_intake(
             message=message,
             state=state,
             config=config,

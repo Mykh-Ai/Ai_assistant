@@ -53,6 +53,27 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             'добавить',
         }
         add_contact_targets = {'kontakt', 'контакт', 'контрагента', 'firmu', 'company', 'spolocnost', 'контрагент'}
+        add_service_alias_verbs = {
+            'pridaj',
+            'dodaj',
+            'add',
+            'создай',
+            'додай',
+            'добавь',
+            'predaj',
+            'предай',
+        }
+        add_service_alias_targets = {
+            'sluzbu',
+            'sluzba',
+            'polozku',
+            'polozka',
+            'службу',
+            'положку',
+            'живность',
+            'item',
+            'service',
+        }
 
         if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'відправ', 'отправь'}):
             return 'send_invoice'
@@ -62,6 +83,10 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'create_invoice'
         if 'add_contact' in allowed and tokens.intersection(add_contact_verbs) and tokens.intersection(add_contact_targets):
             return 'add_contact'
+        if 'add_service_alias' in allowed and tokens.intersection(add_service_alias_verbs) and tokens.intersection(
+            add_service_alias_targets
+        ):
+            return 'add_service_alias'
         return _UNKNOWN
 
     if context_name == 'invoice_preview_confirmation':
@@ -201,6 +226,7 @@ async def resolve_semantic_action(
     api_key: str | None,
     model: str,
     auxiliary_context: dict[str, Any] | None = None,
+    action_hints: dict[str, Any] | None = None,
 ) -> str:
     allowed = {value.strip() for value in allowed_actions if value and value.strip()}
     if _UNKNOWN not in allowed:
@@ -234,6 +260,7 @@ async def resolve_semantic_action(
                                 'allowed_actions': sorted(allowed),
                                 'user_input_text': cleaned,
                                 'auxiliary_context': auxiliary_context or {},
+                                'action_hints': action_hints or {},
                             },
                             ensure_ascii=False,
                         ),

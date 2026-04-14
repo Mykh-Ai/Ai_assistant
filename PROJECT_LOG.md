@@ -1,5 +1,34 @@
 # PROJECT_LOG
 
+## 2026-04-14 — Session 025 — `add_service_alias` top-level semantic+voice runtime wiring
+
+### Goal
+Make existing manual `/service` flow reachable as canonical top-level action `add_service_alias` from text semantics and voice (top-level), without introducing a second service architecture.
+
+### Changes
+- runtime routing:
+  - added canonical top-level action `add_service_alias` to top-level bounded resolver branch in `process_invoice_text(...)`;
+  - routed semantic `add_service_alias` into the existing `/service` flow entry (shared supplier handler intake), no new service flow created;
+- bounded resolver hints:
+  - added optional runtime `action_hints` support to resolver payload;
+  - used compact hints selectively for `add_service_alias` (ambiguous action) and minimal separation hint for `create_invoice`;
+- voice:
+  - top-level voice keeps current STT -> top-level semantic path; `add_service_alias` now reaches existing `/service` flow via that path;
+  - added explicit voice rejection in service precision-sensitive states:
+    - short alias: `Napíšte krátky názov položky textom.`
+    - full title: `Napíšte plný názov služby textom.`
+- tests:
+  - top-level semantic resolution coverage for `add_service_alias`;
+  - top-level semantic routing test into shared `/service` flow entry;
+  - voice top-level pass-through coverage for `add_service_alias` path;
+  - voice rejection coverage for service short/full text-only states;
+  - manual `/service` command flow regression test (2-step save flow persists mapping).
+
+### Notes
+- Python remains execution authority.
+- Bot-facing replies added/updated in runtime are Slovak-only.
+- Precision-sensitive service fields remain text-only; no STT guessing for these steps.
+
 ## 2026-04-13 — Session 024 — `add_service_alias` ambiguous-action documentation prep
 
 ### Goal

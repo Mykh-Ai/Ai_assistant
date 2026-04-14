@@ -86,7 +86,7 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'send_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
             user_input_text='витворить фактуру для Tech Company',
             api_key=None,
             model='gpt-4o',
@@ -95,7 +95,7 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'send_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
             user_input_text='сделай фактуру для Tech Company',
             api_key=None,
             model='gpt-4o',
@@ -104,7 +104,7 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'send_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
             user_input_text='sprav fakturu pre Tech Company',
             api_key=None,
             model='gpt-4o',
@@ -113,7 +113,7 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'send_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
             user_input_text='upraviť fakturu 20260001',
             api_key=None,
             model='gpt-4o',
@@ -122,7 +122,7 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'send_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
             user_input_text='pošli fakturu 20260001',
             api_key=None,
             model='gpt-4o',
@@ -131,7 +131,16 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'send_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
+            user_input_text='pridaj novú službu',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'add_service_alias'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
             user_input_text='blabla',
             api_key=None,
             model='gpt-4o',
@@ -143,12 +152,39 @@ def test_invoice_create_not_misrouted_to_add_contact_when_company_mentioned() ->
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'send_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
             user_input_text='sprav fakturu pre company ZS',
             api_key=None,
             model='gpt-4o',
         )
     ) == 'create_invoice'
+
+
+def test_process_invoice_text_routes_add_service_alias_to_existing_service_flow(tmp_path: Path, monkeypatch) -> None:
+    message = _DummyMessage('pridaj novú službu')
+    state = _DummyState()
+    calls: list[str] = []
+
+    async def _resolver(**kwargs):
+        return 'add_service_alias'
+
+    async def _start_service(**kwargs) -> None:
+        calls.append('service_flow')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.start_add_service_alias_intake', _start_service)
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            invoice_text='pridaj novú službu',
+        )
+    )
+
+    assert calls == ['service_flow']
+    assert message.answers == []
 
 
 def test_state_semantic_resolver_actions() -> None:
