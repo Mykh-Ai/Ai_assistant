@@ -1423,3 +1423,55 @@ Align service naming wording in `/service` and related code to user-friendly Slo
   - unresolved service slot structured error behavior,
   - partial draft retention + clarification prompt path in `process_invoice_text`,
   - continuation from clarification reply to preview build without full restart.
+
+## 2026-04-14 — Session 026 — Audit-only map for confirmation/decision resolver paths
+
+### Goal
+Produce a code-evidenced audit map for bounded short in-action confirmations/decisions (invoice preview, post-PDF decision, contact confirms, related deterministic confirms), including voice/STT routing and contract gaps before any runtime patch.
+
+### Changes
+- added audit document `docs/llm/Confirmation_Decision_Audit_2026-04-14.md` with:
+  - resolver/prompt inventory,
+  - voice call map,
+  - contract-gap notes against bounded template,
+  - STT-noise production-risk lens,
+  - test coverage note and likely repair surface pointers.
+
+### Notes
+- Audit-only session: no runtime behavior changes.
+- No architecture redesign introduced.
+
+## 2026-04-14 — Session 027 — Conservative bounded resolver for short in-action confirmations/decisions
+
+### Goal
+Implement targeted runtime hardening for short confirmation/decision states so noisy/ambiguous STT transcripts resolve to `unknown` (retry), with no architecture redesign.
+
+### Changes
+- `bot/services/semantic_action_resolver.py`:
+  - added dedicated strict resolver `resolve_bounded_confirmation_reply(...)` for short in-action confirmations/decisions;
+  - resolver payload now explicitly includes:
+    - `context_name`,
+    - `expected_reply_type`,
+    - `supported_input_languages=['sk','uk','ru']`,
+    - `allowed_canonical_outputs`,
+    - `user_input_text`;
+  - added conservative deterministic fallback for bounded short replies:
+    - accepts only clear one-token canonical equivalents,
+    - ambiguous/noisy/off-target inputs return `unknown`;
+  - left existing generic resolver and slot quantity/unit-price resolver intact.
+- `bot/handlers/invoice.py`:
+  - preview confirmation now uses strict bounded resolver (`yes_no_confirmation`);
+  - post-PDF decision now uses strict bounded resolver (`postpdf_decision`);
+  - existing retry UX/messages preserved.
+- `bot/handlers/contacts.py`:
+  - semantic intake confirm now uses strict bounded resolver (`yes_no_confirmation`);
+  - existing retry UX/message preserved.
+- tests:
+  - added noisy transcript regressions (`Ah, não.`) for preview confirmation, post-PDF decision, and contact semantic confirm;
+  - added guard that post-PDF noisy input does not trigger destructive cleanup;
+  - added positive regression tests for strict bounded resolver canonical outputs.
+
+### Notes
+- No STT model/transport changes.
+- No top-level action routing changes.
+- No invoice amount semantics or service-alias flow changes.

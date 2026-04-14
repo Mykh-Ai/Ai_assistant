@@ -175,6 +175,32 @@ def test_waiting_confirm_accepts_multilingual_no_and_clears_state(tmp_path: Path
     assert 'Vytvorenie faktúry bolo zrušené.' in message.answers[-1]
 
 
+def test_waiting_confirm_noisy_transcript_returns_retry_unknown(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'state.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='Ah, não.',
+        )
+    )
+
+    assert state.cleared is False
+    assert message.answers[-1] == 'Prosím, odpovedzte áno alebo nie.'
+
+
 def _create_invoice_with_pdf(db_path: Path, pdf_path: Path) -> int:
     service = InvoiceService(db_path)
     invoice_id = service.create_invoice_with_one_item(
@@ -346,6 +372,38 @@ def test_postpdf_cancel_db_cleanup_happens_even_when_unlink_fails(tmp_path: Path
 
     assert InvoiceService(db_path).get_invoice_by_id(invoice_id) is None
     assert message.answers[-1] == 'Faktúra bola zrušená. Číslo faktúry nebolo finálne potvrdené.'
+
+
+def test_waiting_pdf_decision_noisy_transcript_stays_unknown_without_cleanup(tmp_path: Path) -> None:
+    db_path = tmp_path / 'noisy-unknown.db'
+    init_db(db_path)
+    pdf_path = tmp_path / 'noisy-unknown.pdf'
+    invoice_id = _create_invoice_with_pdf(db_path, pdf_path)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(pdf_path)})
+
+    asyncio.run(
+        process_invoice_postpdf_decision(
+            message=message,
+            state=state,
+            config=config,
+            decision_text='Ah, não.',
+        )
+    )
+
+    assert state.cleared is False
+    assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
+    assert InvoiceService(db_path).get_invoice_by_id(invoice_id) is not None
+    assert pdf_path.exists()
 
 
 def test_pdf_generation_failure_rolls_back_invoice_and_number(tmp_path: Path, monkeypatch) -> None:
