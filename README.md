@@ -63,6 +63,10 @@ FakturaBot — перша вітрина цього підходу.
 - `docs/TZ_FakturaBot.md` — головне ТЗ
 - `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md` — rollout/implementation план (що/коли/в якій фазі)
 - `docs/FakturaBot_LLM_Orchestrator_Contract.md` — детальний LLM/orchestrator контракт (як саме AI шар взаємодіє з Python)
+- `docs/llm/Canonical_Action_Registry.md` — актуальний аудит top-level дій (включно з manual command flows)
+- `docs/llm/In_Action_Response_Registry.md` — реєстр bounded in-action responses і slot-clarification груп
+- `docs/llm/Bounded_Resolver_Prompt_Template.md` — шаблон bounded resolver payload + optional action hints
+- `docs/llm/New_Action_Design_Checklist.md` — чекліст додавання/формалізації нових canonical actions
 - `AGENTS.md` — правила роботи агентів і помічників
 - `PROJECT_LOG.md` — журнал ходу проєкту
 - `CHANGELOG.md` — зміни по продукту / коду

@@ -339,6 +339,15 @@ LLM не має права:
 - після уточнення workflow продовжується з поточного кроку;
 - full reset дозволений тільки для fatal помилок.
 
+### 5.6 Неоднозначні top-level actions: optional semantic hints
+
+Для top-level bounded action resolution дозволяється використовувати компактні semantic action hints, якщо дія семантично неоднозначна в шумному multilingual вводі.
+
+Правила:
+- це **опційний** інструмент, не обов’язковий для кожної дії;
+- застосовується вибірково, коли plain allowed-actions недостатньо для стабільного bounded розпізнавання;
+- canonical bot wording і noisy user examples повинні бути чітко розділені в документації.
+
 ---
 
 ## 6. Структура чернетки фактури

@@ -54,7 +54,27 @@ LLM must return one of allowed actions or `unknown`.
 
 ---
 
-## 4) Canonical in-state reply resolution
+## 4) Optional semantic action hints for ambiguous actions
+
+Some canonical actions are semantically ambiguous in multilingual/noisy user input.
+For such actions, Python may provide optional compact `action_hints` in resolver context.
+
+Rules:
+- hints are **optional** (not required for every action),
+- use them selectively when plain allowed-actions list is not stable enough,
+- hints are contextual guidance for bounded resolution, not ontology and not keyword-parser replacement.
+
+Reference ambiguous action:
+- `add_service_alias` (manual `/service` flow exists now; top-level semantic/voice invoke is future runtime work).
+
+Hint fields:
+- `meaning`
+- optional `positive_examples`
+- optional `not_this`
+
+---
+
+## 5) Canonical in-state reply resolution
 
 The same resolver pattern applies inside FSM states.
 
@@ -66,7 +86,7 @@ Even when LLM resolves `schvalit` / `upravit` / `zrusit`, Python still validates
 
 ---
 
-## 5) Canonical value resolution
+## 6) Canonical value resolution
 
 The same resolver pattern applies to structured values/slots.
 
@@ -79,7 +99,7 @@ Python provides allowed canonical values for the field; LLM returns exactly one 
 
 ---
 
-## 6) Output format
+## 7) Output format
 
 Resolver output for each bounded resolution must be machine-safe and minimal:
 
@@ -97,7 +117,7 @@ Rules:
 
 ---
 
-## 7) Safety and execution rule
+## 8) Safety and execution rule
 
 Non-negotiable rule:
 - **Python is the only execution authority.**
@@ -110,7 +130,7 @@ Therefore:
 
 ---
 
-## 8) Language policy
+## 9) Language policy
 
 - User input may be multilingual, mixed, noisy, transliterated, or STT-distorted.
 - User-facing bot replies remain Slovak-only.
@@ -119,7 +139,7 @@ Therefore:
 
 ---
 
-## 9) Design principle
+## 10) Design principle
 
 Unified resolver principle for FakturaBot AI layer:
 - one bounded semantic mechanism,
@@ -134,7 +154,18 @@ In short:
 
 ---
 
-## 10) Slot-level clarification and partial draft retention
+## 11) Registry linkage (audit discipline)
+
+Action/resolver audit must be synchronized with:
+- `docs/llm/Canonical_Action_Registry.md` (top-level + manual command flows + reserved placeholders),
+- `docs/llm/In_Action_Response_Registry.md` (bounded in-action responses and slot/value groups).
+
+Important:
+- command-only manual flows are still implemented user-facing actions and must not be treated as absent only because they bypass semantic top-level resolver.
+
+---
+
+## 12) Slot-level clarification and partial draft retention
 
 Slot-level clarification is mandatory for all structured workflows in this project.
 
