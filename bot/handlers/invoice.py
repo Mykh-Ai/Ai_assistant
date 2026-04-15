@@ -51,6 +51,7 @@ class InvoiceStates(StatesGroup):
     waiting_pdf_decision = State()
     waiting_edit_item_target = State()
     waiting_edit_operation = State()
+    waiting_edit_invoice_number_value = State()
     waiting_edit_service_value = State()
     waiting_edit_description_value = State()
 
@@ -64,10 +65,12 @@ _SLOT_UNIT_PRICE = 'unit_price'
 _SLOT_QUANTITY_UNIT_PRICE = 'quantity_unit_price_pair'
 _EDIT_ITEM_OPERATION_REPLACE_SERVICE = 'replace_service'
 _EDIT_ITEM_OPERATION_EDIT_DESCRIPTION = 'edit_item_description'
+_EDIT_INVOICE_OPERATION_NUMBER = 'edit_invoice_number'
 _EDIT_ITEM_OPERATION_UNKNOWN = 'unknown'
 _DESCRIPTION_MODE_SET = 'set'
 _DESCRIPTION_MODE_REPLACE = 'replace'
 _DESCRIPTION_MODE_CLEAR = 'clear'
+_INVOICE_NUMBER_PATTERN = re.compile(r'^(?:19|20)\d{6}$')
 
 _SLOT_PROMPTS = {
     _SLOT_CUSTOMER: 'Nepodarilo sa jednoznačne určiť odberateľa. Spresnite názov firmy, prosím.',
@@ -186,11 +189,27 @@ def _detect_edit_operation(value: str) -> str:
     normalized = ' '.join((value or '').casefold().split())
     if not normalized:
         return _EDIT_ITEM_OPERATION_UNKNOWN
+    if (
+        ('faktúr' in normalized or 'faktur' in normalized or 'invoice' in normalized)
+        and ('čísl' in normalized or 'cisl' in normalized or 'number' in normalized or 'num' in normalized)
+    ):
+        return _EDIT_INVOICE_OPERATION_NUMBER
     if any(token in normalized for token in ('služb', 'sluzb', 'service', 'položk', 'polozk')):
         return _EDIT_ITEM_OPERATION_REPLACE_SERVICE
     if any(token in normalized for token in ('opis', 'popis', 'detail', 'poznám', 'poznam', 'description')):
         return _EDIT_ITEM_OPERATION_EDIT_DESCRIPTION
     return _EDIT_ITEM_OPERATION_UNKNOWN
+
+
+def _is_valid_invoice_number_for_edit(*, invoice_issue_date: str, invoice_number_candidate: str) -> bool:
+    if not _INVOICE_NUMBER_PATTERN.fullmatch(invoice_number_candidate):
+        return False
+    issue_year = invoice_issue_date[:4]
+    if not issue_year.isdigit():
+        return False
+    if not invoice_number_candidate.startswith(issue_year):
+        return False
+    return invoice_number_candidate[4:] != '0000'
 
 
 def _detect_description_mode(value: str) -> str:
@@ -1448,14 +1467,15 @@ async def _start_invoice_item_edit_flow(
         await state.set_state(InvoiceStates.waiting_edit_operation)
         await message.answer(
             _format_item_edit_preview(invoice.invoice_number, items[0], 1)
-            + '\n\nVyberte úpravu: napíšte `zmeniť službu` alebo `upraviť opis položky`.',
+            + '\n\nVyberte úpravu: napíšte `upraviť číslo faktúry`, `zmeniť službu` alebo `upraviť opis položky`.',
         )
         return
 
     await state.set_state(InvoiceStates.waiting_edit_item_target)
     await message.answer(
         f'Faktúra {invoice.invoice_number} má viac položiek. '
-        'Napíšte číslo položky, ktorú chcete upraviť (napr. 1, 2, 3).'
+        'Napíšte číslo položky, ktorú chcete upraviť (napr. 1, 2, 3), '
+        'alebo napíšte `upraviť číslo faktúry`.'
     )
 
 
@@ -1522,8 +1542,31 @@ async def invoice_pdf_decision(message: Message, state: FSMContext, config: Conf
 @router.message(InvoiceStates.waiting_edit_item_target)
 async def invoice_edit_item_target(message: Message, state: FSMContext, config: Config) -> None:
     raw_value = (message.text or '').strip()
+    operation = _detect_edit_operation(raw_value)
+    if operation == _EDIT_INVOICE_OPERATION_NUMBER:
+        state_data = await state.get_data()
+        invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
+        if not isinstance(invoice_id, int):
+            await state.clear()
+            await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+            return
+        invoice = InvoiceService(config.db_path).get_invoice_by_id(invoice_id)
+        if invoice is None:
+            await state.clear()
+            await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+            return
+        await state.set_state(InvoiceStates.waiting_edit_invoice_number_value)
+        await message.answer(
+            f'Aktuálne číslo faktúry je {invoice.invoice_number}. '
+            'Napíšte nové číslo faktúry textom vo formáte RRRRNNNN.'
+        )
+        return
+
     if not raw_value.isdigit():
-        await message.answer('Prosím, zadajte číslo položky, ktorú chcete upraviť (napr. 1).')
+        await message.answer(
+            'Prosím, zadajte číslo položky, ktorú chcete upraviť (napr. 1), '
+            'alebo napíšte `upraviť číslo faktúry`.'
+        )
         return
     target_index = int(raw_value)
 
@@ -1551,7 +1594,7 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
     await state.set_state(InvoiceStates.waiting_edit_operation)
     await message.answer(
         _format_item_edit_preview(invoice.invoice_number, target_item, target_index)
-        + '\n\nVyberte úpravu: napíšte `zmeniť službu` alebo `upraviť opis položky`.',
+        + '\n\nVyberte úpravu: napíšte `upraviť číslo faktúry`, `zmeniť službu` alebo `upraviť opis položky`.',
     )
 
 
@@ -1559,13 +1602,33 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
 async def invoice_edit_operation(message: Message, state: FSMContext, config: Config) -> None:
     operation = _detect_edit_operation(message.text or '')
     if operation == _EDIT_ITEM_OPERATION_UNKNOWN:
-        await message.answer('Prosím, napíšte `zmeniť službu` alebo `upraviť opis položky`.')
+        await message.answer(
+            'Prosím, napíšte `upraviť číslo faktúry`, `zmeniť službu` alebo `upraviť opis položky`.'
+        )
         return
 
     state_data = await state.get_data()
     invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
     target_item_id = state_data.get('edit_target_item_id')
-    if not isinstance(invoice_id, int) or not isinstance(target_item_id, int):
+    if not isinstance(invoice_id, int):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    if operation == _EDIT_INVOICE_OPERATION_NUMBER:
+        invoice = InvoiceService(config.db_path).get_invoice_by_id(invoice_id)
+        if invoice is None:
+            await state.clear()
+            await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+            return
+        await state.set_state(InvoiceStates.waiting_edit_invoice_number_value)
+        await message.answer(
+            f'Aktuálne číslo faktúry je {invoice.invoice_number}. '
+            'Napíšte nové číslo faktúry textom vo formáte RRRRNNNN.'
+        )
+        return
+
+    if not isinstance(target_item_id, int):
         await state.clear()
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
@@ -1635,6 +1698,73 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
     )
     if rebuilt:
         await message.answer('Služba položky bola upravená. Napíšte: schváliť, upraviť alebo zrušiť.')
+
+
+@router.message(InvoiceStates.waiting_edit_invoice_number_value)
+async def invoice_edit_invoice_number_value(message: Message, state: FSMContext, config: Config) -> None:
+    candidate_number = (message.text or '').strip()
+    if not candidate_number:
+        await message.answer('Napíšte číslo faktúry textom vo formáte RRRRNNNN.')
+        return
+
+    state_data = await state.get_data()
+    invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
+    if not isinstance(invoice_id, int):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return
+
+    if not _is_valid_invoice_number_for_edit(
+        invoice_issue_date=invoice.issue_date,
+        invoice_number_candidate=candidate_number,
+    ):
+        await message.answer('Neplatné číslo faktúry. Zadajte prosím číslo vo formáte RRRRNNNN.')
+        return
+
+    if not invoice_service.is_invoice_number_available(
+        invoice_number=candidate_number,
+        exclude_invoice_id=invoice_id,
+    ):
+        await message.answer('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
+        return
+
+    previous_pdf_path_value = state_data.get('last_pdf_path')
+    previous_pdf_path = Path(previous_pdf_path_value) if isinstance(previous_pdf_path_value, str) and previous_pdf_path_value.strip() else None
+
+    updated = invoice_service.update_invoice_number(
+        invoice_id=invoice_id,
+        invoice_number=candidate_number,
+    )
+    if not updated:
+        await message.answer('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
+        return
+
+    rebuilt = await _rebuild_pdf_for_existing_invoice(
+        message=message,
+        state=state,
+        config=config,
+        invoice_id=invoice_id,
+    )
+    if rebuilt:
+        latest_state_data = await state.get_data()
+        new_pdf_path_value = latest_state_data.get('last_pdf_path')
+        if (
+            previous_pdf_path is not None
+            and isinstance(new_pdf_path_value, str)
+            and previous_pdf_path != Path(new_pdf_path_value)
+        ):
+            try:
+                previous_pdf_path.unlink(missing_ok=True)
+            except Exception:
+                logger.exception('Failed to cleanup previous invoice PDF after invoice-number edit')
+        await message.answer('Číslo faktúry bolo upravené. Napíšte: schváliť, upraviť alebo zrušiť.')
 
 
 @router.message(InvoiceStates.waiting_edit_description_value)

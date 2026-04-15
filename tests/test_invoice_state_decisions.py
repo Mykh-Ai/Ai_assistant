@@ -7,6 +7,7 @@ from bot.config import Config
 from bot.handlers.invoice import (
     InvoiceStates,
     invoice_edit_description_value,
+    invoice_edit_invoice_number_value,
     invoice_edit_item_target,
     invoice_edit_operation,
     invoice_edit_service_value,
@@ -560,6 +561,166 @@ def test_multi_item_missing_target_triggers_bounded_clarification(tmp_path: Path
 
     asyncio.run(invoice_edit_item_target(message=type('M', (), {'text': 'uprav to', 'answer': message.answer})(), state=state, config=config))
     assert message.answers[-1].startswith('Prosím, zadajte číslo položky')
+
+
+def test_edit_invoice_number_free_value_updates_invoice_and_rebuilds_pdf(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 601
+    db_path = tmp_path / 'edit-number-ok.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    old_invoice = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert old_invoice is not None
+    old_number = old_invoice.invoice_number
+    old_pdf = tmp_path / 'invoices' / f'{old_number}.pdf'
+    old_pdf.parent.mkdir(parents=True, exist_ok=True)
+    old_pdf.write_bytes(b'%PDF old')
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF edited-number')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(old_pdf)})
+
+    asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
+    asyncio.run(invoice_edit_operation(message=type('M', (), {'text': 'upraviť číslo faktúry', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(
+        invoice_edit_invoice_number_value(
+            message=type(
+                'M',
+                (),
+                {'text': '20260099', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user},
+            )(),
+            state=state,
+            config=config,
+        )
+    )
+
+    updated_invoice = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert updated_invoice is not None
+    assert updated_invoice.invoice_number == '20260099'
+    assert state.current_state == InvoiceStates.waiting_pdf_decision
+    assert message.documents
+    assert (tmp_path / 'invoices' / '20260099.pdf').exists()
+    assert not old_pdf.exists()
+    assert message.answers[-1] == 'Číslo faktúry bolo upravené. Napíšte: schváliť, upraviť alebo zrušiť.'
+
+
+def test_edit_invoice_number_duplicate_rejected_and_state_kept(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 602
+    db_path = tmp_path / 'edit-number-duplicate.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    other_invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='montaz',
+        service_display_name='Montáž zariadenia',
+        item_description_raw=None,
+    )
+    other_invoice = InvoiceService(db_path).get_invoice_by_id(other_invoice_id)
+    assert other_invoice is not None
+    old_invoice = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert old_invoice is not None
+    old_number = old_invoice.invoice_number
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda **kwargs: None)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'edit_invoice_id': invoice_id})
+    state.current_state = InvoiceStates.waiting_edit_invoice_number_value
+
+    asyncio.run(
+        invoice_edit_invoice_number_value(
+            message=type('M', (), {'text': other_invoice.invoice_number, 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+
+    reloaded = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert reloaded is not None
+    assert reloaded.invoice_number == old_number
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_number_value
+    assert message.answers[-1] == 'Číslo faktúry už existuje. Zadajte prosím iné číslo.'
+
+
+def test_edit_invoice_number_invalid_value_rejected_and_kept_in_state(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 603
+    db_path = tmp_path / 'edit-number-invalid.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    old_invoice = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert old_invoice is not None
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda **kwargs: None)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'edit_invoice_id': invoice_id})
+    state.current_state = InvoiceStates.waiting_edit_invoice_number_value
+
+    asyncio.run(
+        invoice_edit_invoice_number_value(
+            message=type('M', (), {'text': 'ABC-2026', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+
+    reloaded = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert reloaded is not None
+    assert reloaded.invoice_number == old_invoice.invoice_number
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_number_value
+    assert message.answers[-1] == 'Neplatné číslo faktúry. Zadajte prosím číslo vo formáte RRRRNNNN.'
 
 
 def test_postpdf_missing_invoice_id_fails_loud_and_clears_state(tmp_path: Path) -> None:

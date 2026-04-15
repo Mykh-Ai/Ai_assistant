@@ -192,6 +192,20 @@ class InvoiceService:
             pdf_path=row['pdf_path'],
         )
 
+    def is_invoice_number_available(self, *, invoice_number: str, exclude_invoice_id: int | None = None) -> bool:
+        with managed_connection(self._db_path) as connection:
+            if exclude_invoice_id is None:
+                row = connection.execute(
+                    'SELECT id FROM invoice WHERE invoice_number = ? LIMIT 1',
+                    (invoice_number,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    'SELECT id FROM invoice WHERE invoice_number = ? AND id != ? LIMIT 1',
+                    (invoice_number, exclude_invoice_id),
+                ).fetchone()
+        return row is None
+
     def get_items_by_invoice_id(self, invoice_id: int) -> list[InvoiceItemRecord]:
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
@@ -251,6 +265,19 @@ class InvoiceService:
                 (pdf_path, invoice_id),
             )
             connection.commit()
+
+    def update_invoice_number(self, *, invoice_id: int, invoice_number: str) -> bool:
+        with managed_connection(self._db_path) as connection:
+            try:
+                connection.execute(
+                    'UPDATE invoice SET invoice_number = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    (invoice_number, invoice_id),
+                )
+                connection.commit()
+                return True
+            except sqlite3.IntegrityError:
+                connection.rollback()
+                return False
 
     def update_invoice_status(self, invoice_id: int, status: str) -> None:
         with managed_connection(self._db_path) as connection:

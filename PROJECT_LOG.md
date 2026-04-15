@@ -1,5 +1,93 @@
 # PROJECT_LOG
 
+## 2026-04-15 — Session 030 — Runtime `edit_invoice_number` inside bounded `upraviť` flow
+
+### Goal
+Implement runtime support for invoice-number edit (`edit_invoice_number`) inside existing bounded `edit_invoice`/`upraviť` flow, without expanding to other invoice-level or item numeric/date/contact edits.
+
+### Changes
+- invoice edit runtime:
+  - extended bounded edit operation detection with invoice-level operation `edit_invoice_number`;
+  - added bounded FSM state for invoice-number value input;
+  - wired selection path from existing `upraviť` flow (single-item and multi-item invoices) to invoice-number edit state;
+  - added precision-safe prompts for text-only final invoice-number input;
+- validation/safety:
+  - added runtime invoice-number validation for project format (`RRRRNNNN`) with issue-year consistency check;
+  - added application-level uniqueness check before save;
+  - duplicate detection returns bounded Slovak prompt and keeps edit state:
+    - `Číslo faktúry už existuje. Zadajte prosím iné číslo.`
+  - no overwrite, no auto-rename, no best-guess correction;
+- persistence/service:
+  - added invoice service helpers:
+    - `is_invoice_number_available(...)`
+    - `update_invoice_number(...)` with DB-level integrity fallback handling;
+  - kept DB unique constraints as final guard (no schema weakening);
+- rebuild flow:
+  - after successful invoice-number update, runtime rebuilds updated PDF and returns to `waiting_pdf_decision`;
+  - previous PDF file path cleanup is attempted when invoice number change produces a different PDF path;
+- voice guard:
+  - added text-only guard for invoice-number edit state in voice handler.
+
+### Tests
+- added runtime tests for:
+  - successful invoice-number edit to free value (+ persistence + PDF rebuild + post-edit state),
+  - duplicate invoice-number rejection with required bounded Slovak prompt and preserved old value/state,
+  - invalid invoice-number rejection with safe retry prompt and preserved old value/state,
+  - voice precision-safe guard for invoice-number edit state.
+- preserved and reran existing `upraviť položku` regression coverage.
+
+### Scope boundary
+- This runtime patch adds only `edit_invoice_number`.
+- Still out of scope (not implemented here):
+  - `edit_invoice_date`
+  - `edit_invoice_contact`
+  - `edit_item_quantity`
+  - `edit_item_unit`
+  - `edit_item_unit_price`
+
+## 2026-04-15 — Session 029 — Docs-first full `edit_invoice` / `upraviť` scope map
+
+### Goal
+Document one unified planned edit surface for `edit_invoice` so future runtime patches follow a single contract (invoice-level + item-level) instead of separate mini-flows.
+
+### Changes
+- updated orchestrator contract to formalize full bounded `edit_invoice` subflow map:
+  - invoice-level operations:
+    - `edit_invoice_number`
+    - `edit_invoice_date`
+    - `edit_invoice_contact`
+  - item-level operations:
+    - `replace_service`
+    - `edit_item_description`
+    - `edit_item_quantity`
+    - `edit_item_unit`
+    - `edit_item_unit_price`
+- documented required decisions:
+  - `edit_invoice` remains reserved top-level token with bounded in-action/subflow runtime;
+  - invoice-level and item-level fields are documented separately;
+  - precision-sensitive item fields require item targeting;
+  - single-item invoices may default to first item;
+  - multi-item invoices require explicit selection or bounded clarification;
+  - precision-sensitive fields are text-first where ambiguity risk is high;
+  - destructive/integrity-sensitive edits fail safe (no silent auto-fix).
+- updated in-action registry to split `edit_invoice` map into:
+  - `edit_invoice:invoice_level` (planned),
+  - `edit_invoice:item_level` (partial: implemented + planned).
+- updated TZ section 4.7 to align product-level contract with the same full map and explicit status markers.
+
+### Notes
+- Docs-only session; no runtime code changes.
+- Newly mapped operations are not runtime-implemented yet:
+  - `edit_invoice_number`
+  - `edit_invoice_date`
+  - `edit_invoice_contact`
+  - `edit_item_quantity`
+  - `edit_item_unit`
+  - `edit_item_unit_price`
+- Existing runtime coverage remains:
+  - `replace_service`
+  - `edit_item_description`
+
 ## 2026-04-15 — Session 028 — Runtime Phase 1 item edit inside `upraviť faktúru`
 
 ### Goal

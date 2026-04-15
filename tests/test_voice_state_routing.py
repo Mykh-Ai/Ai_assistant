@@ -269,6 +269,23 @@ def test_voice_waiting_edit_description_requires_text_input(monkeypatch, tmp_pat
     assert msg.answers[-1].startswith('Pre finálny opis položky použite textový vstup.')
 
 
+def test_voice_waiting_edit_invoice_number_requires_text_input(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'zmeň číslo na 20260077'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    msg = _DummyMessage()
+    asyncio.run(
+        handle_voice(
+            msg,
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_invoice_number_value.state),
+        )
+    )
+    assert msg.answers[-1] == 'Pre číslo faktúry použite textový vstup vo formáte RRRRNNNN.'
+
+
 def test_voice_top_level_add_service_alias_routes_to_existing_service_flow(monkeypatch, tmp_path: Path) -> None:
     async def _stt(*args, **kwargs) -> str:
         return 'pridaj novú položku'
