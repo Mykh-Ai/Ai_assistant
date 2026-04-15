@@ -279,6 +279,14 @@ class InvoiceService:
                 connection.rollback()
                 return False
 
+    def update_invoice_issue_date(self, *, invoice_id: int, issue_date: str) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                'UPDATE invoice SET issue_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (issue_date, invoice_id),
+            )
+            connection.commit()
+
     def update_invoice_status(self, invoice_id: int, status: str) -> None:
         with managed_connection(self._db_path) as connection:
             connection.execute(
