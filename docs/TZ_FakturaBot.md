@@ -287,23 +287,50 @@ Flow:
 
 Зовнішні джерела в першій версії не є частиною критичного flow.
 
-### 4.7 Phase 1: модель редагування položky в межах `upraviť faktúru` (docs-first contract)
+### 4.7 Full `edit_invoice` / `upraviť` edit surface map (docs-first contract)
 
-`upraviť položku` у Phase 1 означає **in-action edit subflow** всередині майбутнього `edit_invoice`.
+`edit_invoice` залишається **reserved top-level action token**.
+
+Runtime-модель для цього токена: тільки bounded in-action/subflow edits в межах invoice flow (зазвичай через post-PDF `upraviť`), а не окремий top-level executor.
 
 Це важливо:
 - це **не** нова top-level action;
 - це **не** add item flow;
 - add item свідомо винесений за межі цього docs patch.
 
-#### 4.7.1 Дві різні операції item edit
+#### 4.7.1 A) Invoice-level edit operations
 
-У Phase 1 item edit має чітко розрізняти дві операції.
+Canonical machine-facing operations:
+- `edit_invoice_number`
+- `edit_invoice_date`
+- `edit_invoice_contact`
+- `unknown`
 
-Canonical machine-facing operation set:
+Статус:
+- `edit_invoice_number` — implemented;
+- `edit_invoice_date` — planned (not yet implemented);
+- `edit_invoice_contact` — planned (not yet implemented).
+
+Fail-safe рішення для invoice-level полів:
+- ці операції є integrity-sensitive;
+- при неоднозначності/конфлікті Python має fail loud (з bounded clarification), без silent auto-fix;
+- інваріанти нумерації, дат і contact linkage не можна “тихо виправляти”.
+
+#### 4.7.2 B) Item-level edit operations
+
+Canonical machine-facing operations:
 - `replace_service`
 - `edit_item_description`
+- `edit_item_quantity`
+- `edit_item_unit`
+- `edit_item_unit_price`
 - `unknown`
+
+Статус:
+- implemented: `replace_service`, `edit_item_description`;
+- planned (not yet implemented): `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`.
+
+#### 4.7.3 Операційна семантика item-level
 
 **A) `replace_service` (replace service alias / canonical service)**
 - змінює service identity позиції;
@@ -311,93 +338,66 @@ Canonical machine-facing operation set:
 - може оновити short service name (де застосовно);
 - повний display title має резолвитись із service alias / service dictionary.
 
-Приклади intent:
-- `zmeň službu na montáž`
-- `uprav položku na servis`
-- `nahraď opravu za revíziu`
-
 **B) `edit_item_description` (edit free-text item detail)**
 - змінює тільки optional manual detail field `item_description_raw`;
 - це manual free-text;
 - це не canonical alias;
-- це не зміна service dictionary;
-- поле використовується як додатковий опис під основним title послуги.
+- це не зміна service dictionary.
 
-Приклади intent:
-- `doplň, že práce boli vykonané v Hamburgu`
-- `dopíš do položky objekt hala B`
-- `uprav opis položky`
-
-Для `edit_item_description` у Phase 1 обов’язково підтримуються mutation modes:
+Для `edit_item_description` обов’язкові mutation modes:
 - `set`,
 - `replace`,
 - `clear`.
 
-#### 4.7.2 Data/model contract для item
+**C) `edit_item_quantity` / `edit_item_unit` / `edit_item_unit_price`**
+- змінюють тільки відповідне поле item;
+- не повинні руйнувати arithmetic/business invariants;
+- при нерозв’язному конфлікті — fail loud + bounded clarification.
 
-Forward contract:
-- існуюча canonical service/title семантика зберігається без підміни;
-- додається окреме поле `item_description_raw` для optional detail;
-- `item_description_raw` не є alias-термом і не замінює canonical service title.
+#### 4.7.4 Precision-sensitive policy + item targeting
 
-Правила цілісності:
-- service dictionary integrity must remain intact;
-- користувач не повинен створювати новий alias лише для контекстного detail text у позиції.
+Precision-sensitive item fields:
+- `item_description_raw`
+- `edit_item_quantity`
+- `edit_item_unit`
+- `edit_item_unit_price`
 
-#### 4.7.3 PDF / preview / render contract
+Правила:
+- precision-sensitive поля — text-first там, де voice може спотворити значення;
+- voice не повинен “вгадувати” фінальні значення для precision-sensitive полів;
+- для ambiguous voice input бот переходить на bounded Slovak prompt і просить текст.
 
-Обов’язковий business/render контракт:
-- головний service title береться з service alias / service DB;
-- optional `item_description_raw` рендериться окремим рядком(ами) **під** головним title;
+Item targeting контракт:
+- precision-sensitive item-level edits вимагають item targeting;
+- single-item invoices можуть за замовчуванням таргетити перший item;
+- multi-item invoices вимагають explicit item selection або bounded clarification.
+
+#### 4.7.5 Data/model + render contract
+
+- canonical service/title семантика зберігається без підміни;
+- `item_description_raw` лишається окремим optional detail полем;
+- головний service title береться з service alias/service DB;
+- optional `item_description_raw` рендериться під головним title;
 - detail text обмежений максимум 2 rendered lines;
-- якщо detail text не вміщується, бот **не має права** тихо обрізати текст;
-- у такому випадку бот повинен попросити користувача скоротити текст bounded Slovak-only prompt.
+- silent truncation заборонений; якщо не вміщується — bounded prompt на скорочення тексту.
 
-#### 4.7.4 Voice/input rule для precision-sensitive detail field
+#### 4.7.6 Minimal canonical contract block for `edit_invoice:subflow`
 
-`item_description_raw` вважається precision-sensitive полем.
-
-Phase 1 contract:
-- text-first / text-only safe handling для фінального значення detail;
-- voice не повинен “вгадувати” довгий detail text і одразу зберігати його;
-- якщо користувач зайшов у цей крок через voice, бот переходить на bounded Slovak prompt і просить текстовий ввід.
-
-#### 4.7.5 Future-ready multi-item targeting
-
-Навіть якщо поточний runtime часто працює з single-item draft, контракт уже фіксує item-targeted модель:
-- item edit має цільовий item target;
-- поточний single-item draft може за замовчуванням таргетити перший item;
-- для майбутніх multi-item invoices потрібні:
-  - explicit item selection, або
-  - bounded clarification.
-
-User-facing selection може бути за ordinal/index (item 1, item 2, ...),
-а Python надалі може резолвити це до стабільного item identifier (implementation detail майбутнього runtime patch).
-
-#### 4.7.6 Явні межі цього patch (non-goals)
-
-Цей docs patch **не додає**:
-- add item flow;
-- нову top-level action для редагування item;
-- free-form LLM execution;
-- keyword-only parsing fallback;
-- destructive guess behavior;
-- runtime/schema implementation (лише docs contract).
-
-#### 4.7.7 Minimal canonical contract block for `edit_invoice:item_edit`
-
-Machine-facing мінімальний bounded contract (без runtime implementation деталей):
+Machine-facing мінімальний bounded contract:
 - `target_item_index`
 - `operation`
 - `value`
 
 Де:
-- `target_item_index` — integer-like selector item або `unknown`;
-- `operation` ∈ {`replace_service`, `edit_item_description`, `unknown`};
-- `value`:
-  - для `replace_service`: bounded service candidate (остаточну canonical resolution/validation робить Python),
-  - для `edit_item_description`: text candidate або empty/null при `clear`,
-  - для unresolved case: `unknown`.
+- `operation` ∈ {`edit_invoice_number`, `edit_invoice_date`, `edit_invoice_contact`, `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`, `unknown`};
+- `target_item_index` обов’язковий для item-level операцій (для invoice-level ігнорується/`unknown`);
+- `value` завжди candidate-only; Python робить final validation/execution або fail loud.
+
+#### 4.7.7 Explicit implementation boundary for this docs map
+
+- Цей docs patch фіксує єдину карту повного `edit_invoice` scope для майбутніх runtime патчів.
+- Newly mapped operations (`edit_invoice_date`, `edit_invoice_contact`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`) у цьому контексті **ще не реалізовані в runtime**.
+- Поточний runtime coverage у межах `upraviť`: `edit_invoice_number`, `replace_service`, `edit_item_description`.
 
 ---
 

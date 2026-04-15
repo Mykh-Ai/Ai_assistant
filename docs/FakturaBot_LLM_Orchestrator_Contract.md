@@ -52,8 +52,8 @@ Example allowed actions (defined by Python per turn):
 
 LLM must return one of allowed actions or `unknown`.
 
-`edit_invoice` is currently a **reserved top-level action token**.
-Phase 1 contract for this token includes only planned bounded item edit behavior as an in-action subflow (`upraviť položku`) inside invoice edit flow, not as a separate top-level action.
+`edit_invoice` remains a **reserved top-level action token**.
+Runtime editing is defined as bounded in-action/subflow operations under invoice flow (`upraviť`), not as a separate top-level executor.
 
 ---
 
@@ -102,20 +102,48 @@ Python provides allowed canonical values for the field; LLM returns exactly one 
 
 ---
 
-## 6.1) Planned Phase 1 in-action item edit contract (`upraviť položku`)
+## 6.1) Planned full `edit_invoice` in-action/subflow map (`upraviť`)
 
 Scope contract (docs-first):
-- `upraviť položku` is **in-action / subflow** under future `edit_invoice` flow;
-- it is **not** a standalone top-level action;
-- it is **not** add-item behavior.
+- `edit_invoice` stays reserved as top-level canonical action token;
+- runtime behavior is bounded in-action/subflow editing inside invoice flow;
+- edit surface is split into **invoice-level** and **item-level** operation groups;
+- add-item behavior remains out of scope.
 
-Canonical machine-facing operation set for this subflow:
+### A) Invoice-level edit operations (mapped)
+
+Canonical machine-facing operations:
+- `edit_invoice_number`
+- `edit_invoice_date`
+- `edit_invoice_contact`
+
+Status map:
+- `edit_invoice_number` — **implemented** (bounded subflow runtime exists)
+- `edit_invoice_date` — **planned (not yet implemented)**
+- `edit_invoice_contact` — **planned (not yet implemented)**
+
+Integrity/fail-safe rule:
+- these operations are integrity-sensitive and must fail loud on invalid/ambiguous payload;
+- Python must not silently auto-fix numbering/date/contact linkage mismatches.
+
+### B) Item-level edit operations (mapped)
+
+Canonical machine-facing operations:
 - `replace_service`
 - `edit_item_description`
+- `edit_item_quantity`
+- `edit_item_unit`
+- `edit_item_unit_price`
 - `unknown`
 
-Operation meaning (human-readable):
+Status map:
+- `replace_service` — **implemented** (bounded subflow runtime exists)
+- `edit_item_description` — **implemented** (bounded subflow runtime exists)
+- `edit_item_quantity` — **planned (not yet implemented)**
+- `edit_item_unit` — **planned (not yet implemented)**
+- `edit_item_unit_price` — **planned (not yet implemented)**
 
+Operation meaning highlights:
 1. **`replace_service`**
    - replaces item service identity (canonical service term),
    - may update short service name where applicable,
@@ -125,39 +153,46 @@ Operation meaning (human-readable):
    - updates only `item_description_raw`,
    - this field is manual free text,
    - this field is not canonical alias and does not mutate service dictionary,
-   - must support description mutation modes: `set`, `replace`, `clear`.
+   - supports description mutation modes: `set`, `replace`, `clear`.
 
-Precision and voice-input rule for `item_description_raw`:
-- this field is precision-sensitive and text-first in Phase 1;
-- voice must not be used for free guessing long detail into stored value;
-- when user is in this precision-sensitive step via voice, bot asks bounded Slovak prompt to provide text input.
+3. **`edit_item_quantity` / `edit_item_unit` / `edit_item_unit_price`**
+   - update only respective item numeric/unit fields,
+   - must preserve invoice arithmetic invariants and fail loud on non-recoverable conflicts,
+   - are precision-sensitive and text-first for final value capture where ambiguity risk is high.
 
-Future-ready item targeting contract:
-- item edit is item-targeted by design;
-- current single-item draft may default to first item;
-- future multi-item invoices require explicit item selection or bounded clarification (e.g., by ordinal/index, with possible later internal stable identifier mapping in Python).
+### Item targeting and clarification contract
 
-PDF/render contract linkage:
-- main service title is sourced from canonical service alias/service DB resolution;
-- optional `item_description_raw` is rendered below the main title;
-- rendered detail is limited to max 2 lines;
-- if text does not fit, bot must not silently truncate and must ask user (Slovak bounded prompt) to shorten it.
+- Precision-sensitive item-level operations require item targeting by contract.
+- Single-item invoices may default to first item target.
+- Multi-item invoices require explicit item selection or bounded clarification.
+- If target item or operation remains ambiguous, resolver output must be `unknown` and Python asks bounded clarification.
 
-Minimal bounded output shape for `edit_invoice:item_edit`:
+### Precision-sensitive input policy
+
+- `item_description_raw`, `edit_item_quantity`, `edit_item_unit`, and `edit_item_unit_price` are precision-sensitive.
+- For voice-originated ambiguous values, bot must switch to bounded Slovak text prompt before final persistence.
+- No free guessing into stored precision fields.
+
+### Destructive/integrity-sensitive edits
+
+- Any destructive or integrity-sensitive edit must fail safe (halt this edit step + bounded user clarification).
+- No silent truncation, no silent normalization that changes business meaning.
+
+### Minimal bounded output shape for `edit_invoice:subflow`
 
 ```json
 {
   "target_item_index": "<integer_like_or_unknown>",
-  "operation": "replace_service|edit_item_description|unknown",
+  "operation": "edit_invoice_number|edit_invoice_date|edit_invoice_contact|replace_service|edit_item_description|edit_item_quantity|edit_item_unit|edit_item_unit_price|unknown",
   "value": "<candidate_value_or_unknown>"
 }
 ```
 
 Notes:
-- `target_item_index` is mandatory at contract level (single-item runtime may default to first item for now).
-- For `replace_service`, `value` carries bounded service candidate later validated/resolved by Python.
-- For `edit_item_description`, `value` carries text candidate; clear semantics are explicit via empty/null value or explicit clear intent resolved by Python validation.
-- For unresolved mapping, operation/value fallback is `unknown`.
+- `target_item_index` is mandatory for item-level operations (single-item runtime may default to first item).
+- For invoice-level operations, `target_item_index` is `unknown`/ignored.
+- `value` is always candidate-only; Python validates, enforces invariants, and executes or fails loud.
+- Newly mapped operations in this section are docs-only and not runtime-implemented unless explicitly marked implemented above.
 
 ---
 

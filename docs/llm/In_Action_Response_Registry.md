@@ -7,9 +7,10 @@ Purpose: evidence-based registry of bounded in-workflow responses and state-scop
 | Response group | Category | Status | Entry mode | Canonical tokens / values | Source evidence | Notes |
 |---|---|---|---|---|---|---|
 | `invoice_preview_confirmation` | in-action response group | implemented | mixed (text + voice) | `ano`, `nie`, `unknown` | `process_invoice_preview_confirmation()` resolves with context `invoice_preview_confirmation`; voice routes to this handler from `waiting_confirm`. | Used before invoice persistence/PDF branching. |
-| `invoice_postpdf_decision` | in-action response group | implemented | mixed (text + voice) | `schvalit`, `upravit`, `zrusit`, `unknown` | `process_invoice_postpdf_decision()` resolves with context `invoice_postpdf_decision`; voice routes from `waiting_pdf_decision`. | `upravit` currently performs cleanup + informs that edit function is not yet available. |
+| `invoice_postpdf_decision` | in-action response group | implemented | mixed (text + voice) | `schvalit`, `upravit`, `zrusit`, `unknown` | `process_invoice_postpdf_decision()` resolves with context `invoice_postpdf_decision`; voice routes from `waiting_pdf_decision`. | `upravit` enters bounded edit subflow; full `edit_invoice` operation map is still partial in runtime. |
 | `contact_confirm` (semantic intake) | in-action response group | implemented | mixed (text + voice) | `ano`, `nie`, `unknown` | `process_contact_intake_confirm()` resolves with context `contact_confirm`; voice routes from `ContactStates.intake_confirm`. | Used for AI-assisted contact intake path. |
-| `edit_invoice:item_edit` | in-action response group | reserved (Phase 1 docs contract) | mixed entry, with text-only precision step for free-text detail | minimal bounded output shape: `target_item_index`, `operation`, `value`; canonical operation set is `replace_service` / `edit_item_description` / `unknown` | Product + contract docs (`docs/TZ_FakturaBot.md`, `docs/FakturaBot_LLM_Orchestrator_Contract.md`) define this as planned subflow under `edit_invoice`. | Not a top-level action. Not add-item scope. `target_item_index` is mandatory at contract level; unresolved target/operation requires bounded clarification. Free-text detail uses `item_description_raw` and requires bounded Slovak text prompt when precision-sensitive input arrives via voice. |
+| `edit_invoice:invoice_level` | in-action response group | partial (1 implemented, 2 planned) | mixed entry with bounded clarification | `edit_invoice_number`, `edit_invoice_date`, `edit_invoice_contact`, `unknown` | Product + contract docs map these as invoice-level subflow ops under `edit_invoice`; runtime currently implements `edit_invoice_number`. | `edit_invoice` remains top-level reserved token; runtime must execute via bounded subflow only. Integrity-sensitive fields fail safe on ambiguity/conflict. |
+| `edit_invoice:item_level` | in-action response group | partial (2 implemented, 3 planned) | mixed entry; precision-sensitive steps are text-first | `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`, `unknown` | Product + contract docs define full item-level map; runtime currently implements `replace_service` + `edit_item_description` only. | Item targeting required for precision-sensitive item edits. Single-item can default to first item; multi-item requires explicit selection or bounded clarification. |
 
 ## B) Deterministic (non-LLM) in-action confirmations
 
@@ -30,23 +31,25 @@ Purpose: evidence-based registry of bounded in-workflow responses and state-scop
 The previously reported in-action set did not connect service-alias functionality because `/service` is a separate command flow and does not currently define semantic canonical in-action tokens.
 This is expected and should be documented as a manual command flow, not as a missing in-action resolver group.
 
-## E) Reserved contract notes for Phase 1 item edit
+## E) Reserved/partial contract notes for `edit_invoice` map
 
-- `upraviť položku` is documented as an in-action edit subflow inside future `edit_invoice`, not as standalone top-level action.
-- Canonical operation names are fixed for machine-facing contract:
-  - `replace_service`
-  - `edit_item_description`
-  - `unknown`
-- Description mutation semantics for `edit_item_description` are explicit:
+- `edit_invoice` is a reserved top-level token; runtime behavior is bounded in-action/subflow edits.
+- Invoice-level operations are documented separately from item-level operations.
+- Invoice-level mapped operations:
+  - implemented: `edit_invoice_number`
+  - planned: `edit_invoice_date`, `edit_invoice_contact`
+- Item-level mapped operations:
+  - implemented: `replace_service`, `edit_item_description`
+  - planned: `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`
+- `edit_item_description` mutation semantics remain explicit:
   - `set`
   - `replace`
   - `clear`
-- Item targeting is mandatory at contract level (single-item current default may target first item; future multi-item invoices require explicit item selection or bounded clarification).
+- Precision-sensitive item operations require item targeting.
+- Single-item invoices may default to first item; multi-item invoices require explicit selection or bounded clarification.
+- Destructive/integrity-sensitive edits must fail safe (halt current edit step + bounded clarification), never silent auto-fix.
 - Minimal bounded output shape for this response family:
   - `target_item_index`
   - `operation`
   - `value`
-- Bounded clarification behavior is required whenever either:
-  - target item is ambiguous, or
-  - operation type is ambiguous, or
-  - free-text detail exceeds renderable 2-line limit and user must shorten text.
+- Newly mapped operations listed as planned above are docs-only and not runtime-implemented yet.
