@@ -97,6 +97,17 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 config=config,
                 decision_text=recognized_text,
             )
+        elif current_state == InvoiceStates.waiting_edit_item_target.state:
+            await message.answer('V tomto kroku zadajte číslo položky textom (napr. 1).')
+        elif current_state == InvoiceStates.waiting_edit_operation.state:
+            await message.answer('V tomto kroku zadajte voľbu úpravy textom.')
+        elif current_state == InvoiceStates.waiting_edit_service_value.state:
+            await message.answer('Napíšte nový názov služby textom.')
+        elif current_state == InvoiceStates.waiting_edit_description_value.state:
+            await message.answer(
+                'Pre finálny opis položky použite textový vstup. '
+                'Napíšte opis textom alebo `vymaž opis`.'
+            )
         elif current_state == ContactStates.intake_missing.state:
             await process_contact_missing_fields(
                 message=message,

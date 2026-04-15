@@ -52,6 +52,9 @@ Example allowed actions (defined by Python per turn):
 
 LLM must return one of allowed actions or `unknown`.
 
+`edit_invoice` is currently a **reserved top-level action token**.
+Phase 1 contract for this token includes only planned bounded item edit behavior as an in-action subflow (`upraviť položku`) inside invoice edit flow, not as a separate top-level action.
+
 ---
 
 ## 4) Optional semantic action hints for ambiguous actions
@@ -96,6 +99,65 @@ Example service/value canonicalization:
 - `servis`
 
 Python provides allowed canonical values for the field; LLM returns exactly one or `unknown`.
+
+---
+
+## 6.1) Planned Phase 1 in-action item edit contract (`upraviť položku`)
+
+Scope contract (docs-first):
+- `upraviť položku` is **in-action / subflow** under future `edit_invoice` flow;
+- it is **not** a standalone top-level action;
+- it is **not** add-item behavior.
+
+Canonical machine-facing operation set for this subflow:
+- `replace_service`
+- `edit_item_description`
+- `unknown`
+
+Operation meaning (human-readable):
+
+1. **`replace_service`**
+   - replaces item service identity (canonical service term),
+   - may update short service name where applicable,
+   - resolves full display title from service alias/service dictionary.
+
+2. **`edit_item_description`**
+   - updates only `item_description_raw`,
+   - this field is manual free text,
+   - this field is not canonical alias and does not mutate service dictionary,
+   - must support description mutation modes: `set`, `replace`, `clear`.
+
+Precision and voice-input rule for `item_description_raw`:
+- this field is precision-sensitive and text-first in Phase 1;
+- voice must not be used for free guessing long detail into stored value;
+- when user is in this precision-sensitive step via voice, bot asks bounded Slovak prompt to provide text input.
+
+Future-ready item targeting contract:
+- item edit is item-targeted by design;
+- current single-item draft may default to first item;
+- future multi-item invoices require explicit item selection or bounded clarification (e.g., by ordinal/index, with possible later internal stable identifier mapping in Python).
+
+PDF/render contract linkage:
+- main service title is sourced from canonical service alias/service DB resolution;
+- optional `item_description_raw` is rendered below the main title;
+- rendered detail is limited to max 2 lines;
+- if text does not fit, bot must not silently truncate and must ask user (Slovak bounded prompt) to shorten it.
+
+Minimal bounded output shape for `edit_invoice:item_edit`:
+
+```json
+{
+  "target_item_index": "<integer_like_or_unknown>",
+  "operation": "replace_service|edit_item_description|unknown",
+  "value": "<candidate_value_or_unknown>"
+}
+```
+
+Notes:
+- `target_item_index` is mandatory at contract level (single-item runtime may default to first item for now).
+- For `replace_service`, `value` carries bounded service candidate later validated/resolved by Python.
+- For `edit_item_description`, `value` carries text candidate; clear semantics are explicit via empty/null value or explicit clear intent resolved by Python validation.
+- For unresolved mapping, operation/value fallback is `unknown`.
 
 ---
 

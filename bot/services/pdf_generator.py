@@ -35,6 +35,7 @@ class PdfInvoiceItem:
     unit: str | None
     unit_price: float
     total_price: float
+    detail: str | None = None
 
 
 @dataclass
@@ -161,10 +162,24 @@ def _draw_qr(pdf: canvas.Canvas, payload: str, x: float, y: float, size: float) 
     pdf.drawImage(ImageReader(buffer), x, y, width=size, height=size)
 
 
-def _measure_item_row(description: str, *, desc_text_width: float, row_min_h: float, row_line_h: float) -> tuple[list[str], float]:
-    desc_lines = _wrap_text_lines(description, desc_text_width, FONT_REGULAR, 9)
+def _measure_item_row(description_lines: list[str], *, row_min_h: float, row_line_h: float) -> tuple[list[str], float]:
+    desc_lines = description_lines
     row_h = max(row_min_h, (len(desc_lines) * row_line_h) + 4 * mm)
     return desc_lines, row_h
+
+
+def validate_item_detail_render_fit(detail_text: str, *, max_lines: int = 2) -> bool:
+    normalized = ' '.join((detail_text or '').split())
+    if not normalized:
+        return True
+    try:
+        _register_unicode_fonts()
+        font_name = FONT_REGULAR
+    except Exception:
+        font_name = 'Helvetica'
+    desc_text_width = (85 * mm) - (4 * mm)
+    wrapped_lines = _wrap_text_lines(normalized, desc_text_width, font_name, 9)
+    return len(wrapped_lines) <= max_lines
 
 
 def _item_row_numeric_baseline(y_top: float, row_h: float) -> float:
@@ -287,8 +302,11 @@ def generate_invoice_pdf(
     y -= 8 * mm
     pdf.setFont(FONT_REGULAR, 9)
     for item in items:
+        desc_lines = _wrap_text_lines(item.description, desc_text_width, FONT_REGULAR, 9)
+        if item.detail:
+            desc_lines.extend(_wrap_text_lines(item.detail, desc_text_width, FONT_REGULAR, 9))
         desc_lines, row_h = _measure_item_row(
-            item.description, desc_text_width=desc_text_width, row_min_h=row_min_h, row_line_h=row_line_h
+            desc_lines, row_min_h=row_min_h, row_line_h=row_line_h
         )
         pdf.setFillColor(bg_secondary)
         pdf.rect(margin, y - row_h, sum(col_widths), row_h, fill=1, stroke=0)

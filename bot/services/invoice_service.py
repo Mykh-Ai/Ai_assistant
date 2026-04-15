@@ -29,6 +29,7 @@ class InvoiceItemRecord:
     invoice_id: int
     description_raw: str
     description_normalized: str | None
+    item_description_raw: str | None
     quantity: float
     unit: str | None
     unit_price: float
@@ -114,8 +115,8 @@ class InvoiceService:
             connection.execute(
                 (
                     'INSERT INTO invoice_item '
-                    '(invoice_id, description_raw, description_normalized, quantity, unit, unit_price, total_price) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?)'
+                    '(invoice_id, description_raw, description_normalized, item_description_raw, quantity, unit, unit_price, total_price) '
+                    'VALUES (?, ?, ?, NULL, ?, ?, ?, ?)'
                 ),
                 (
                     invoice_id,
@@ -196,7 +197,7 @@ class InvoiceService:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
                 (
-                    'SELECT id, invoice_id, description_raw, description_normalized, quantity, unit, unit_price, total_price '
+                    'SELECT id, invoice_id, description_raw, description_normalized, item_description_raw, quantity, unit, unit_price, total_price '
                     'FROM invoice_item WHERE invoice_id = ? ORDER BY id ASC'
                 ),
                 (invoice_id,),
@@ -208,6 +209,7 @@ class InvoiceService:
                 invoice_id=row['invoice_id'],
                 description_raw=row['description_raw'],
                 description_normalized=row['description_normalized'],
+                item_description_raw=row['item_description_raw'],
                 quantity=row['quantity'],
                 unit=row['unit'],
                 unit_price=row['unit_price'],
@@ -215,6 +217,32 @@ class InvoiceService:
             )
             for row in rows
         ]
+
+    def update_item_service(
+        self,
+        *,
+        item_id: int,
+        service_short_name: str,
+        service_display_name: str,
+    ) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                (
+                    'UPDATE invoice_item '
+                    'SET description_raw = ?, description_normalized = ? '
+                    'WHERE id = ?'
+                ),
+                (service_short_name, service_display_name, item_id),
+            )
+            connection.commit()
+
+    def update_item_description(self, *, item_id: int, item_description_raw: str | None) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                'UPDATE invoice_item SET item_description_raw = ? WHERE id = ?',
+                (item_description_raw, item_id),
+            )
+            connection.commit()
 
     def save_pdf_path(self, invoice_id: int, pdf_path: str) -> None:
         with managed_connection(self._db_path) as connection:

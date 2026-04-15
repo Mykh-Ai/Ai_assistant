@@ -38,6 +38,7 @@ class InvoiceServiceItemNormalizedTests(unittest.TestCase):
             self.assertEqual(len(items), 1)
             self.assertEqual(items[0].description_raw, 'web audit')
             self.assertEqual(items[0].description_normalized, 'Web audit + report')
+            self.assertIsNone(items[0].item_description_raw)
 
 
 if __name__ == '__main__':
