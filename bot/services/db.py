@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS invoice_item (
     invoice_id INTEGER NOT NULL,
     description_raw TEXT NOT NULL,
     description_normalized TEXT,
+    item_description_raw TEXT,
     quantity REAL NOT NULL,
     unit TEXT,
     unit_price REAL NOT NULL,
@@ -149,6 +150,7 @@ INVOICE_ITEM_EXPECTED_COLUMNS = {
     'invoice_id': 'INTEGER NOT NULL',
     'description_raw': 'TEXT NOT NULL',
     'description_normalized': 'TEXT',
+    'item_description_raw': 'TEXT',
     'quantity': 'REAL NOT NULL',
     'unit': 'TEXT',
     'unit_price': 'REAL NOT NULL',
@@ -229,6 +231,20 @@ def _bootstrap_invoice_item_table(connection: sqlite3.Connection) -> None:
         return
 
     if set(existing_columns.keys()) == set(INVOICE_ITEM_EXPECTED_COLUMNS.keys()):
+        return
+
+    legacy_columns_without_item_detail = {
+        'id',
+        'invoice_id',
+        'description_raw',
+        'description_normalized',
+        'quantity',
+        'unit',
+        'unit_price',
+        'total_price',
+    }
+    if set(existing_columns.keys()) == legacy_columns_without_item_detail:
+        connection.execute('ALTER TABLE invoice_item ADD COLUMN item_description_raw TEXT')
         return
 
     raise RuntimeError(

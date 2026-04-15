@@ -6,12 +6,17 @@ from pathlib import Path
 from bot.config import Config
 from bot.handlers.invoice import (
     InvoiceStates,
+    invoice_edit_description_value,
+    invoice_edit_item_target,
+    invoice_edit_operation,
+    invoice_edit_service_value,
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
 )
 from bot.services.contact_service import ContactProfile, ContactService
-from bot.services.db import init_db
+from bot.services.db import init_db, managed_connection
 from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
+from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierProfile, SupplierService
 
 
@@ -227,6 +232,46 @@ def _create_invoice_with_pdf(db_path: Path, pdf_path: Path) -> int:
     return invoice_id
 
 
+def _create_editable_invoice(
+    *,
+    db_path: Path,
+    storage_dir: Path,
+    telegram_id: int,
+    service_short_name: str,
+    service_display_name: str,
+    item_description_raw: str | None,
+) -> int:
+    contact_id = _setup_profiles(db_path, telegram_id)
+    service = InvoiceService(db_path)
+    invoice_id = service.create_invoice_with_one_item(
+        CreateInvoicePayload(
+            supplier_telegram_id=telegram_id,
+            contact_id=contact_id,
+            issue_date='2026-04-12',
+            delivery_date='2026-04-12',
+            due_date='2026-04-26',
+            due_days=14,
+            total_amount=200.0,
+            currency='EUR',
+            status='draft_pdf_ready',
+            item_description_raw=service_short_name,
+            item_description_normalized=service_display_name,
+            item_quantity=1.0,
+            item_unit='ks',
+            item_unit_price=200.0,
+            item_total_price=200.0,
+        )
+    )
+    item = service.get_items_by_invoice_id(invoice_id)[0]
+    service.update_item_description(item_id=item.id, item_description_raw=item_description_raw)
+    invoice = service.get_invoice_by_id(invoice_id)
+    assert invoice is not None
+    pdf_path = storage_dir / f'{invoice.invoice_number}.pdf'
+    pdf_path.write_bytes(b'fake pdf')
+    service.save_pdf_path(invoice_id, str(pdf_path))
+    return invoice_id
+
+
 def test_waiting_pdf_decision_approve_keeps_invoice_and_pdf(tmp_path: Path) -> None:
     db_path = tmp_path / 'approve.db'
     init_db(db_path)
@@ -258,9 +303,11 @@ def test_waiting_pdf_decision_approve_keeps_invoice_and_pdf(tmp_path: Path) -> N
     assert (tmp_path / 'approve.pdf').exists()
 
 
-def test_waiting_pdf_decision_edit_and_cancel_cleanup_invoice_pdf_and_number(tmp_path: Path) -> None:
+def test_waiting_pdf_decision_edit_starts_item_edit_subflow_and_cancel_still_cleans_up(tmp_path: Path) -> None:
     db_path = tmp_path / 'cleanup.db'
     init_db(db_path)
+    telegram_id = 777
+    _setup_profiles(db_path, telegram_id)
     edit_pdf_path = tmp_path / 'edit.pdf'
     cancel_pdf_path = tmp_path / 'cancel.pdf'
     edit_invoice_id = _create_invoice_with_pdf(db_path, edit_pdf_path)
@@ -282,7 +329,7 @@ def test_waiting_pdf_decision_edit_and_cancel_cleanup_invoice_pdf_and_number(tmp
         db_path=db_path,
         storage_dir=tmp_path,
     )
-    message = _DummyMessage(1)
+    message = _DummyMessage(telegram_id)
     edit_state = _DummyState(data={'last_invoice_id': edit_invoice_id, 'last_pdf_path': str(edit_pdf_path)})
 
     asyncio.run(
@@ -293,9 +340,10 @@ def test_waiting_pdf_decision_edit_and_cancel_cleanup_invoice_pdf_and_number(tmp
             decision_text='upraviť',
         )
     )
-    assert not edit_pdf_path.exists()
-    assert service.get_invoice_by_id(edit_invoice_id) is None
-    assert service.get_invoice_by_number(edit_number) is None
+    assert service.get_invoice_by_id(edit_invoice_id) is not None
+    assert service.get_invoice_by_number(edit_number) is not None
+    assert edit_state.current_state == InvoiceStates.waiting_edit_operation
+    assert 'Vyberte úpravu' in message.answers[-1]
 
     cancel_state = _DummyState(data={'last_invoice_id': cancel_invoice_id, 'last_pdf_path': str(cancel_pdf_path)})
     asyncio.run(
@@ -309,6 +357,209 @@ def test_waiting_pdf_decision_edit_and_cancel_cleanup_invoice_pdf_and_number(tmp
     assert not cancel_pdf_path.exists()
     assert service.get_invoice_by_id(cancel_invoice_id) is None
     assert service.get_invoice_by_number(cancel_number) is None
+
+
+def test_replace_service_keeps_existing_item_description_and_rebuilds_pdf(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 501
+    db_path = tmp_path / 'replace-service.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw='hala B',
+    )
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(db_path).create_mapping(int(supplier.id), 'montaz', 'Montáž zariadenia')
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF edited')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'old.pdf')})
+    asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
+    asyncio.run(invoice_edit_operation(message=type('M', (), {'text': 'zmeniť službu', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_service_value(message=type('M', (), {'text': 'montaz', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert item.description_raw == 'montaz'
+    assert item.description_normalized == 'Montáž zariadenia'
+    assert item.item_description_raw == 'hala B'
+    assert message.documents
+
+
+def test_set_replace_and_clear_item_description_preserve_service_and_rebuild_pdf(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 502
+    db_path = tmp_path / 'edit-description.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF edited')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'old.pdf')})
+    asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
+    asyncio.run(invoice_edit_operation(message=type('M', (), {'text': 'upraviť opis položky', 'answer': message.answer})(), state=state, config=config))
+
+    # set
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'práce v hale A', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert item.item_description_raw == 'práce v hale A'
+    assert item.description_normalized == 'Servis zariadenia'
+
+    # replace
+    state.data['last_invoice_id'] = invoice_id
+    state.data['edit_invoice_id'] = invoice_id
+    state.data['edit_target_item_id'] = item.id
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'práce v hale B', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert item.item_description_raw == 'práce v hale B'
+
+    # clear
+    state.data['last_invoice_id'] = invoice_id
+    state.data['edit_invoice_id'] = invoice_id
+    state.data['edit_target_item_id'] = item.id
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'vymaž opis', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert item.item_description_raw is None
+
+
+def test_reject_too_long_item_description_returns_bounded_prompt_and_keeps_previous(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 503
+    db_path = tmp_path / 'too-long-description.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw='pôvodný opis',
+    )
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda **kwargs: None)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'edit_invoice_id': invoice_id, 'edit_target_item_id': InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0].id})
+    long_text = ' '.join(['veľmi'] * 80)
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': long_text, 'answer': message.answer})(), state=state, config=config))
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert item.item_description_raw == 'pôvodný opis'
+    assert 'príliš dlhý' in message.answers[-1]
+
+
+def test_single_item_default_targeting_is_applied_on_edit_entry(tmp_path: Path) -> None:
+    telegram_id = 504
+    db_path = tmp_path / 'single-item-target.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'x.pdf')})
+    asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
+    assert state.current_state == InvoiceStates.waiting_edit_operation
+    assert state.data.get('edit_target_item_index') == 1
+    assert isinstance(state.data.get('edit_target_item_id'), int)
+
+
+def test_multi_item_missing_target_triggers_bounded_clarification(tmp_path: Path) -> None:
+    telegram_id = 505
+    db_path = tmp_path / 'multi-item-target.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw='prvá',
+    )
+    items = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)
+    assert len(items) == 1
+    with managed_connection(db_path) as connection:
+        connection.execute(
+            (
+                'INSERT INTO invoice_item '
+                '(invoice_id, description_raw, description_normalized, item_description_raw, quantity, unit, unit_price, total_price) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            ),
+            (invoice_id, 'montaz', 'Montáž zariadenia', 'druhá', 1.0, 'ks', 100.0, 100.0),
+        )
+        connection.commit()
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'x.pdf')})
+    asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
+    assert state.current_state == InvoiceStates.waiting_edit_item_target
+
+    asyncio.run(invoice_edit_item_target(message=type('M', (), {'text': 'uprav to', 'answer': message.answer})(), state=state, config=config))
+    assert message.answers[-1].startswith('Prosím, zadajte číslo položky')
 
 
 def test_postpdf_missing_invoice_id_fails_loud_and_clears_state(tmp_path: Path) -> None:

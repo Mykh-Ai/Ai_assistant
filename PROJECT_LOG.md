@@ -1,5 +1,104 @@
 # PROJECT_LOG
 
+## 2026-04-15 — Session 028 — Runtime Phase 1 item edit inside `upraviť faktúru`
+
+### Goal
+Implement runtime Phase 1 item-edit subflow under post-PDF `upraviť` decision, including separate operations (`replace_service`, `edit_item_description`), `item_description_raw` persistence, bounded validation, and PDF rebuild.
+
+### Changes
+- DB/schema:
+  - added `invoice_item.item_description_raw` column to bootstrap schema;
+  - added backward-compatible bootstrap migration path (`ALTER TABLE ... ADD COLUMN item_description_raw`) for legacy local DB shape;
+- service layer:
+  - extended `InvoiceItemRecord` with `item_description_raw`;
+  - added item update methods:
+    - `update_item_service(...)`
+    - `update_item_description(...)`
+  - added `ContactService.get_by_id(...)` for rebuild path;
+- invoice runtime flow:
+  - replaced post-PDF `upraviť` placeholder cancel path with real item-edit subflow entry;
+  - added bounded states for item-edit:
+    - target item selection (future-ready multi-item),
+    - operation selection (`replace_service` vs `edit_item_description`),
+    - service update input,
+    - description text input;
+  - single-item invoices default to first item target;
+  - multi-item invoices require bounded item index clarification;
+  - `replace_service` reuses existing alias dictionary resolution path and does not mutate `item_description_raw`;
+  - `edit_item_description` supports `set/replace/clear`, does not mutate canonical service fields;
+  - added bounded overlength guard (max 2 rendered detail lines) with Slovak shorten prompt;
+  - successful edits rebuild and resend updated PDF, then return to `waiting_pdf_decision`;
+- voice guard:
+  - in precision-sensitive description state, voice no longer writes final detail; bot requests text input;
+  - added text-only guard prompts for other edit subflow precision states;
+- PDF/render:
+  - `PdfInvoiceItem` now supports optional `detail`;
+  - PDF item rendering outputs main service title with optional detail line(s) below;
+  - added render-fit helper `validate_item_detail_render_fit(...)` used by runtime validator.
+
+### Tests
+- added runtime tests for:
+  - replace service with description preserved + PDF rebuild,
+  - set/replace/clear description with canonical service preserved,
+  - reject too-long description with bounded Slovak prompt and unchanged stored value,
+  - single-item default targeting,
+  - multi-item missing target clarification,
+  - voice text-only guard for description state.
+
+### Notes
+- add-item flow remains out of scope.
+- Runtime now supports Phase 1 item edit only (replace service, edit description).
+
+## 2026-04-15 — Session 027 — Docs cleanup pass for Phase 1 item edit contract
+
+### Goal
+Cleanup docs after initial Phase 1 item-edit patch: remove naming drift, make clear semantics explicit, and document minimal machine-safe bounded output shape for `edit_invoice:item_edit`.
+
+### Changes
+- unified canonical operation names across docs for item edit:
+  - `replace_service`
+  - `edit_item_description`
+  - `unknown`
+- explicitly fixed description mutation semantics for `edit_item_description`:
+  - `set`
+  - `replace`
+  - `clear`
+- documented minimal bounded output shape for planned `edit_invoice:item_edit` in docs:
+  - `target_item_index`
+  - `operation`
+  - `value`
+
+### Notes
+- Docs cleanup pass completed.
+- Runtime implementation is still not included.
+
+## 2026-04-15 — Session 026 — Docs-first Phase 1 item edit contract inside `upraviť faktúru`
+
+### Goal
+Introduce documentation-only source-of-truth contract for Phase 1 `upraviť položku` as in-action edit subflow within future `edit_invoice`, before any runtime patch.
+
+### Changes
+- updated orchestrator/docs contracts to formalize that:
+  - `upraviť položku` is in-action (not top-level action),
+  - Phase 1 item edit supports two distinct operations:
+    - service replacement (canonical service identity),
+    - free-text detail edit via separate `item_description_raw`;
+- recorded render/preview rule:
+  - main title from service alias/service DB,
+  - optional `item_description_raw` rendered below title with max 2-line limit,
+  - no silent truncation; bot must request shorter text in bounded Slovak prompt;
+- documented precision-sensitive input rule:
+  - `item_description_raw` is text-first/text-only safe in Phase 1,
+  - voice must not freely guess long detail text into stored value;
+- documented future-ready item-targeting contract:
+  - current single-item default may target first item,
+  - future multi-item invoices require explicit selection or bounded clarification.
+
+### Notes
+- Runtime implementation is not included in this session.
+- Key decision: keep canonical service semantics separate from optional free-text item detail (`item_description_raw`).
+- Add-item flow remains out of scope for this docs patch.
+
 ## 2026-04-14 — Session 025 — `add_service_alias` top-level semantic+voice runtime wiring
 
 ### Goal

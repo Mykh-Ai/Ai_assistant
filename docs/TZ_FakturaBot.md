@@ -287,6 +287,118 @@ Flow:
 
 Зовнішні джерела в першій версії не є частиною критичного flow.
 
+### 4.7 Phase 1: модель редагування položky в межах `upraviť faktúru` (docs-first contract)
+
+`upraviť položku` у Phase 1 означає **in-action edit subflow** всередині майбутнього `edit_invoice`.
+
+Це важливо:
+- це **не** нова top-level action;
+- це **не** add item flow;
+- add item свідомо винесений за межі цього docs patch.
+
+#### 4.7.1 Дві різні операції item edit
+
+У Phase 1 item edit має чітко розрізняти дві операції.
+
+Canonical machine-facing operation set:
+- `replace_service`
+- `edit_item_description`
+- `unknown`
+
+**A) `replace_service` (replace service alias / canonical service)**
+- змінює service identity позиції;
+- оновлює canonical service term для item;
+- може оновити short service name (де застосовно);
+- повний display title має резолвитись із service alias / service dictionary.
+
+Приклади intent:
+- `zmeň službu na montáž`
+- `uprav položku na servis`
+- `nahraď opravu za revíziu`
+
+**B) `edit_item_description` (edit free-text item detail)**
+- змінює тільки optional manual detail field `item_description_raw`;
+- це manual free-text;
+- це не canonical alias;
+- це не зміна service dictionary;
+- поле використовується як додатковий опис під основним title послуги.
+
+Приклади intent:
+- `doplň, že práce boli vykonané v Hamburgu`
+- `dopíš do položky objekt hala B`
+- `uprav opis položky`
+
+Для `edit_item_description` у Phase 1 обов’язково підтримуються mutation modes:
+- `set`,
+- `replace`,
+- `clear`.
+
+#### 4.7.2 Data/model contract для item
+
+Forward contract:
+- існуюча canonical service/title семантика зберігається без підміни;
+- додається окреме поле `item_description_raw` для optional detail;
+- `item_description_raw` не є alias-термом і не замінює canonical service title.
+
+Правила цілісності:
+- service dictionary integrity must remain intact;
+- користувач не повинен створювати новий alias лише для контекстного detail text у позиції.
+
+#### 4.7.3 PDF / preview / render contract
+
+Обов’язковий business/render контракт:
+- головний service title береться з service alias / service DB;
+- optional `item_description_raw` рендериться окремим рядком(ами) **під** головним title;
+- detail text обмежений максимум 2 rendered lines;
+- якщо detail text не вміщується, бот **не має права** тихо обрізати текст;
+- у такому випадку бот повинен попросити користувача скоротити текст bounded Slovak-only prompt.
+
+#### 4.7.4 Voice/input rule для precision-sensitive detail field
+
+`item_description_raw` вважається precision-sensitive полем.
+
+Phase 1 contract:
+- text-first / text-only safe handling для фінального значення detail;
+- voice не повинен “вгадувати” довгий detail text і одразу зберігати його;
+- якщо користувач зайшов у цей крок через voice, бот переходить на bounded Slovak prompt і просить текстовий ввід.
+
+#### 4.7.5 Future-ready multi-item targeting
+
+Навіть якщо поточний runtime часто працює з single-item draft, контракт уже фіксує item-targeted модель:
+- item edit має цільовий item target;
+- поточний single-item draft може за замовчуванням таргетити перший item;
+- для майбутніх multi-item invoices потрібні:
+  - explicit item selection, або
+  - bounded clarification.
+
+User-facing selection може бути за ordinal/index (item 1, item 2, ...),
+а Python надалі може резолвити це до стабільного item identifier (implementation detail майбутнього runtime patch).
+
+#### 4.7.6 Явні межі цього patch (non-goals)
+
+Цей docs patch **не додає**:
+- add item flow;
+- нову top-level action для редагування item;
+- free-form LLM execution;
+- keyword-only parsing fallback;
+- destructive guess behavior;
+- runtime/schema implementation (лише docs contract).
+
+#### 4.7.7 Minimal canonical contract block for `edit_invoice:item_edit`
+
+Machine-facing мінімальний bounded contract (без runtime implementation деталей):
+- `target_item_index`
+- `operation`
+- `value`
+
+Де:
+- `target_item_index` — integer-like selector item або `unknown`;
+- `operation` ∈ {`replace_service`, `edit_item_description`, `unknown`};
+- `value`:
+  - для `replace_service`: bounded service candidate (остаточну canonical resolution/validation робить Python),
+  - для `edit_item_description`: text candidate або empty/null при `clear`,
+  - для unresolved case: `unknown`.
+
 ---
 
 ## 5. Роль AI у системі
@@ -589,10 +701,15 @@ Python повинен перевіряти:
 - invoice_id,
 - description_raw,
 - description_normalized,
+- item_description_raw (optional manual free-text detail below canonical service title; не alias і не dictionary-term),
 - quantity,
 - unit,
 - unit_price,
 - total_price.
+
+Примітка для Phase 1 item edit contract:
+- поточний single-item draft може дефолтно редагувати перший item;
+- модель зберігається future-ready для multi-item через item-targeted edits.
 
 ---
 

@@ -46,3 +46,10 @@ Purpose: practical checklist before introducing/upgrading a canonical top-level 
    - [ ] Top-level resolver routing coverage.
    - [ ] State/entry-mode routing coverage (text/command/voice where applicable).
    - [ ] Fail-loud behavior checks for unsupported states/ambiguous input.
+
+## Note: behavior changes that are not new top-level actions
+
+- [ ] Confirm whether requested behavior is a top-level action or an in-action/subflow contract update.
+- [ ] For invoice item edits, explicitly separate service identity replacement from free-text detail editing (`item_description_raw`).
+- [ ] Capture item-targeting rules (current single-item default vs future multi-item explicit selection/clarification) before runtime implementation.
+- [ ] Mark precision-sensitive fields as text-first where voice guessing is unsafe.

@@ -19,7 +19,12 @@ from bot.handlers.supplier import start_add_service_alias_intake
 from bot.services.contact_service import ContactLookupResult, ContactService
 from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
-from bot.services.pdf_generator import PdfInvoiceData, PdfInvoiceItem, generate_invoice_pdf
+from bot.services.pdf_generator import (
+    PdfInvoiceData,
+    PdfInvoiceItem,
+    generate_invoice_pdf,
+    validate_item_detail_render_fit,
+)
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.service_term_normalizer import normalize_service_term
 from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
@@ -44,6 +49,10 @@ class InvoiceStates(StatesGroup):
     waiting_slot_clarification = State()
     waiting_confirm = State()
     waiting_pdf_decision = State()
+    waiting_edit_item_target = State()
+    waiting_edit_operation = State()
+    waiting_edit_service_value = State()
+    waiting_edit_description_value = State()
 
 
 _SLOT_SERVICE = 'service_term'
@@ -53,6 +62,12 @@ _SLOT_DUE_DAYS = 'due_days'
 _SLOT_QUANTITY = 'quantity'
 _SLOT_UNIT_PRICE = 'unit_price'
 _SLOT_QUANTITY_UNIT_PRICE = 'quantity_unit_price_pair'
+_EDIT_ITEM_OPERATION_REPLACE_SERVICE = 'replace_service'
+_EDIT_ITEM_OPERATION_EDIT_DESCRIPTION = 'edit_item_description'
+_EDIT_ITEM_OPERATION_UNKNOWN = 'unknown'
+_DESCRIPTION_MODE_SET = 'set'
+_DESCRIPTION_MODE_REPLACE = 'replace'
+_DESCRIPTION_MODE_CLEAR = 'clear'
 
 _SLOT_PROMPTS = {
     _SLOT_CUSTOMER: 'Nepodarilo sa jednoznačne určiť odberateľa. Spresnite názov firmy, prosím.',
@@ -165,6 +180,26 @@ def _format_preview(recognized_text: str | None, data: dict[str, object]) -> str
         f'• Dátum splatnosti: {data["due_date"]}\n\n'
         'Potvrďte uloženie: napíšte <b>ano</b> alebo <b>nie</b>.'
     )
+
+
+def _detect_edit_operation(value: str) -> str:
+    normalized = ' '.join((value or '').casefold().split())
+    if not normalized:
+        return _EDIT_ITEM_OPERATION_UNKNOWN
+    if any(token in normalized for token in ('služb', 'sluzb', 'service', 'položk', 'polozk')):
+        return _EDIT_ITEM_OPERATION_REPLACE_SERVICE
+    if any(token in normalized for token in ('opis', 'popis', 'detail', 'poznám', 'poznam', 'description')):
+        return _EDIT_ITEM_OPERATION_EDIT_DESCRIPTION
+    return _EDIT_ITEM_OPERATION_UNKNOWN
+
+
+def _detect_description_mode(value: str) -> str:
+    normalized = ' '.join((value or '').casefold().split())
+    if any(token in normalized for token in ('vymaž', 'vymaz', 'zmaž', 'zmaz', 'clear', 'remove', 'odstráň', 'odstran')):
+        return _DESCRIPTION_MODE_CLEAR
+    if any(token in normalized for token in ('nahraď', 'nahrad', 'zmeň', 'zmen', 'uprav', 'replace')):
+        return _DESCRIPTION_MODE_REPLACE
+    return _DESCRIPTION_MODE_SET
 
 
 def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict[str, object]]:
@@ -1267,6 +1302,15 @@ async def process_invoice_postpdf_decision(
         await message.answer('Faktúra bola potvrdená.')
         return
 
+    if answer == 'upravit':
+        await _start_invoice_item_edit_flow(
+            message=message,
+            state=state,
+            config=config,
+            invoice_id=invoice_id,
+        )
+        return
+
     try:
         InvoiceService(config.db_path).delete_invoice_with_items(invoice_id)
     except Exception:
@@ -1281,14 +1325,138 @@ async def process_invoice_postpdf_decision(
             logger.exception('PDF cleanup after cancel/edit failed')
 
     await state.clear()
-    if answer == 'upravit':
+    await message.answer('Faktúra bola zrušená. Číslo faktúry nebolo finálne potvrdené.')
+
+
+def _format_item_edit_preview(invoice_number: str, item, item_index: int) -> str:
+    detail_part = item.item_description_raw or '—'
+    return (
+        f'Úprava položky #{item_index} pre faktúru {invoice_number}:\n'
+        f'• Služba: {item.description_normalized or item.description_raw}\n'
+        f'• Detail: {detail_part}'
+    )
+
+
+def _resolve_target_item_from_index(*, invoice_items, target_item_index: int):
+    if target_item_index < 1 or target_item_index > len(invoice_items):
+        return None
+    return invoice_items[target_item_index - 1]
+
+
+async def _rebuild_pdf_for_existing_invoice(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    invoice_id: int,
+) -> bool:
+    if message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return False
+
+    invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return False
+
+    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    if supplier is None:
+        await state.clear()
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        return False
+
+    contact = ContactService(config.db_path).get_by_id(invoice.contact_id)
+    if contact is None:
+        await state.clear()
+        await message.answer('Kontakt odberateľa sa nenašiel v databáze.')
+        return False
+
+    items = invoice_service.get_items_by_invoice_id(invoice_id)
+    pdf_path = config.storage_dir / 'invoices' / f'{invoice.invoice_number}.pdf'
+    try:
+        generate_invoice_pdf(
+            target_path=pdf_path,
+            supplier=supplier,
+            customer=contact,
+            invoice=PdfInvoiceData(
+                invoice_number=invoice.invoice_number,
+                issue_date=invoice.issue_date,
+                delivery_date=invoice.delivery_date,
+                due_date=invoice.due_date,
+                variable_symbol=invoice.invoice_number,
+                payment_method='bankový prevod',
+                total_amount=float(invoice.total_amount),
+                currency=invoice.currency,
+            ),
+            items=[
+                PdfInvoiceItem(
+                    description=item.description_normalized or item.description_raw,
+                    detail=item.item_description_raw,
+                    quantity=float(item.quantity),
+                    unit=item.unit,
+                    unit_price=float(item.unit_price),
+                    total_price=float(item.total_price),
+                )
+                for item in items
+            ],
+        )
+        invoice_service.save_pdf_path(invoice.id, str(pdf_path))
+        await message.answer_document(
+            FSInputFile(pdf_path),
+            caption=f'Aktualizovaná PDF faktúra {invoice.invoice_number} je pripravená na kontrolu.',
+        )
+        await state.set_state(InvoiceStates.waiting_pdf_decision)
+        await state.update_data(
+            last_invoice_id=invoice.id,
+            last_invoice_number=invoice.invoice_number,
+            last_pdf_path=str(pdf_path),
+        )
+    except Exception:
+        logger.exception('Invoice PDF rebuild failed after edit')
+        await state.clear()
+        await message.answer('Nepodarilo sa aktualizovať PDF faktúru po úprave.')
+        return False
+
+    return True
+
+
+async def _start_invoice_item_edit_flow(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    invoice_id: int,
+) -> None:
+    invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    if invoice is None:
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+    items = invoice_service.get_items_by_invoice_id(invoice_id)
+    if not items:
+        await state.clear()
+        await message.answer('Faktúra neobsahuje žiadne položky na úpravu.')
+        return
+
+    await state.update_data(edit_invoice_id=invoice_id)
+    if len(items) == 1:
+        await state.update_data(edit_target_item_index=1, edit_target_item_id=items[0].id)
+        await state.set_state(InvoiceStates.waiting_edit_operation)
         await message.answer(
-            'Funkcia úpravy zatiaľ nie je dostupná. Faktúra bola zrušená. '
-            'Prosím, vytvorte novú faktúru.'
+            _format_item_edit_preview(invoice.invoice_number, items[0], 1)
+            + '\n\nVyberte úpravu: napíšte `zmeniť službu` alebo `upraviť opis položky`.',
         )
         return
 
-    await message.answer('Faktúra bola zrušená. Číslo faktúry nebolo finálne potvrdené.')
+    await state.set_state(InvoiceStates.waiting_edit_item_target)
+    await message.answer(
+        f'Faktúra {invoice.invoice_number} má viac položiek. '
+        'Napíšte číslo položky, ktorú chcete upraviť (napr. 1, 2, 3).'
+    )
 
 
 @router.message(Command('invoice'))
@@ -1349,6 +1517,166 @@ async def invoice_pdf_decision(message: Message, state: FSMContext, config: Conf
         config=config,
         decision_text=(message.text or ''),
     )
+
+
+@router.message(InvoiceStates.waiting_edit_item_target)
+async def invoice_edit_item_target(message: Message, state: FSMContext, config: Config) -> None:
+    raw_value = (message.text or '').strip()
+    if not raw_value.isdigit():
+        await message.answer('Prosím, zadajte číslo položky, ktorú chcete upraviť (napr. 1).')
+        return
+    target_index = int(raw_value)
+
+    state_data = await state.get_data()
+    invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
+    if not isinstance(invoice_id, int):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    invoice_service = InvoiceService(config.db_path)
+    items = invoice_service.get_items_by_invoice_id(invoice_id)
+    target_item = _resolve_target_item_from_index(invoice_items=items, target_item_index=target_index)
+    if target_item is None:
+        await message.answer('Taká položka neexistuje. Zadajte prosím platné číslo položky.')
+        return
+
+    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return
+
+    await state.update_data(edit_target_item_index=target_index, edit_target_item_id=target_item.id)
+    await state.set_state(InvoiceStates.waiting_edit_operation)
+    await message.answer(
+        _format_item_edit_preview(invoice.invoice_number, target_item, target_index)
+        + '\n\nVyberte úpravu: napíšte `zmeniť službu` alebo `upraviť opis položky`.',
+    )
+
+
+@router.message(InvoiceStates.waiting_edit_operation)
+async def invoice_edit_operation(message: Message, state: FSMContext, config: Config) -> None:
+    operation = _detect_edit_operation(message.text or '')
+    if operation == _EDIT_ITEM_OPERATION_UNKNOWN:
+        await message.answer('Prosím, napíšte `zmeniť službu` alebo `upraviť opis položky`.')
+        return
+
+    state_data = await state.get_data()
+    invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
+    target_item_id = state_data.get('edit_target_item_id')
+    if not isinstance(invoice_id, int) or not isinstance(target_item_id, int):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    if operation == _EDIT_ITEM_OPERATION_REPLACE_SERVICE:
+        await state.set_state(InvoiceStates.waiting_edit_service_value)
+        await message.answer('Napíšte nový krátky názov služby/položky textom (napr. `servis`).')
+        return
+
+    await state.set_state(InvoiceStates.waiting_edit_description_value)
+    await message.answer(
+        'Napíšte nový opis položky textom. '
+        'Ak chcete opis vymazať, napíšte `vymaž opis`.'
+    )
+
+
+@router.message(InvoiceStates.waiting_edit_service_value)
+async def invoice_edit_service_value(message: Message, state: FSMContext, config: Config) -> None:
+    new_service_candidate = (message.text or '').strip()
+    if not new_service_candidate:
+        await message.answer('Napíšte nový názov služby textom.')
+        return
+
+    state_data = await state.get_data()
+    invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
+    target_item_id = state_data.get('edit_target_item_id')
+    if not isinstance(invoice_id, int) or not isinstance(target_item_id, int) or message.from_user is None:
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    if supplier is None:
+        await state.clear()
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        return
+
+    alias_service = ServiceAliasService(config.db_path)
+    service_term_internal = normalize_service_term(new_service_candidate)
+    resolved_display_name = alias_service.resolve_service_display_name(int(supplier.id), new_service_candidate)
+    if not resolved_display_name and service_term_internal:
+        resolved_display_name = alias_service.resolve_service_display_name(int(supplier.id), service_term_internal)
+    if not resolved_display_name and service_term_internal:
+        for bridge_candidate in _service_alias_bridge_forms(service_term_internal):
+            resolved_display_name = alias_service.resolve_service_display_name(int(supplier.id), bridge_candidate)
+            if resolved_display_name:
+                break
+    if not resolved_display_name:
+        await message.answer(
+            'Nepodarilo sa jednoznačne určiť službu zo slovníka aliasov. '
+            'Skúste iný názov alebo najprv pridajte alias cez /service.'
+        )
+        return
+
+    invoice_service = InvoiceService(config.db_path)
+    invoice_service.update_item_service(
+        item_id=int(target_item_id),
+        service_short_name=new_service_candidate,
+        service_display_name=resolved_display_name,
+    )
+
+    rebuilt = await _rebuild_pdf_for_existing_invoice(
+        message=message,
+        state=state,
+        config=config,
+        invoice_id=int(invoice_id),
+    )
+    if rebuilt:
+        await message.answer('Služba položky bola upravená. Napíšte: schváliť, upraviť alebo zrušiť.')
+
+
+@router.message(InvoiceStates.waiting_edit_description_value)
+async def invoice_edit_description_value(message: Message, state: FSMContext, config: Config) -> None:
+    new_description_value = (message.text or '').strip()
+    if not new_description_value:
+        await message.answer('Napíšte opis položky textom alebo `vymaž opis`.')
+        return
+
+    state_data = await state.get_data()
+    invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
+    target_item_id = state_data.get('edit_target_item_id')
+    if not isinstance(invoice_id, int) or not isinstance(target_item_id, int):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    description_mode = _detect_description_mode(new_description_value)
+    description_to_save: str | None = new_description_value
+    if description_mode == _DESCRIPTION_MODE_CLEAR:
+        description_to_save = None
+    elif not validate_item_detail_render_fit(new_description_value, max_lines=2):
+        await message.answer(
+            'Text do opisu položky je príliš dlhý. '
+            'Skráťte ho prosím tak, aby sa zmestil najviac do 2 riadkov.'
+        )
+        return
+
+    invoice_service = InvoiceService(config.db_path)
+    invoice_service.update_item_description(
+        item_id=int(target_item_id),
+        item_description_raw=description_to_save,
+    )
+
+    rebuilt = await _rebuild_pdf_for_existing_invoice(
+        message=message,
+        state=state,
+        config=config,
+        invoice_id=int(invoice_id),
+    )
+    if rebuilt:
+        await message.answer('Opis položky bol upravený. Napíšte: schváliť, upraviť alebo zrušiť.')
 
 
 @router.message(lambda message: bool((message.text or '').strip()) and not (message.text or '').startswith('/'))
