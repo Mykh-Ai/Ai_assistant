@@ -308,7 +308,7 @@ Canonical machine-facing operations:
 
 Статус:
 - `edit_invoice_number` — implemented;
-- `edit_invoice_date` — planned (not yet implemented);
+- `edit_invoice_date` — implemented (Phase 1 strict input format: `DD.MM.RRRR`);
 - `edit_invoice_contact` — planned (not yet implemented).
 
 Fail-safe рішення для invoice-level полів:
@@ -396,8 +396,10 @@ Machine-facing мінімальний bounded contract:
 #### 4.7.7 Explicit implementation boundary for this docs map
 
 - Цей docs patch фіксує єдину карту повного `edit_invoice` scope для майбутніх runtime патчів.
-- Newly mapped operations (`edit_invoice_date`, `edit_invoice_contact`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`) у цьому контексті **ще не реалізовані в runtime**.
-- Поточний runtime coverage у межах `upraviť`: `edit_invoice_number`, `replace_service`, `edit_item_description`.
+- У runtime досі не реалізовані: `edit_invoice_contact`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`.
+- Поточний runtime coverage у межах `upraviť`: `edit_invoice_number`, `edit_invoice_date`, `replace_service`, `edit_item_description`.
+- Для `edit_invoice_date` у Phase 1 застосовано strict формат вводу `DD.MM.RRRR`; natural-language date parsing не використовується.
+- Поточна поведінка для номеру фактури при зміні дати: номер **не змінюється автоматично** (без hidden auto-renumbering).
 
 ---
 

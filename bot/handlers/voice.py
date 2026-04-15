@@ -105,6 +105,8 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             await message.answer('Napíšte nový názov služby textom.')
         elif current_state == InvoiceStates.waiting_edit_invoice_number_value.state:
             await message.answer('Pre číslo faktúry použite textový vstup vo formáte RRRRNNNN.')
+        elif current_state == InvoiceStates.waiting_edit_invoice_date_value.state:
+            await message.answer('Pre dátum faktúry použite textový vstup vo formáte DD.MM.RRRR.')
         elif current_state == InvoiceStates.waiting_edit_description_value.state:
             await message.answer(
                 'Pre finálny opis položky použite textový vstup. '

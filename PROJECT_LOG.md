@@ -1,5 +1,54 @@
 # PROJECT_LOG
 
+## 2026-04-15 — Session 031 — Runtime `edit_invoice_date` inside bounded `upraviť` flow
+
+### Goal
+Implement runtime support for invoice-date edit (`edit_invoice_date`) inside existing bounded `edit_invoice`/`upraviť` flow, without expanding to contact edit or item numeric/unit/price edits.
+
+### Changes
+- invoice edit runtime:
+  - extended bounded edit operation detection with invoice-level operation `edit_invoice_date`;
+  - added bounded FSM state for invoice-date value input;
+  - wired selection path from existing `upraviť` flow (single-item and multi-item invoices) to invoice-date edit state;
+  - added bounded Slovak prompts for strict date input:
+    - entry: `Aktuálny dátum faktúry je {current_date}. Napíšte nový dátum textom vo formáte DD.MM.RRRR.`
+    - invalid: `Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.`
+- validation/safety:
+  - added strict Phase 1 parser helper `parse_strict_date_dd_mm_yyyy(...)`;
+  - accepts only `DD.MM.RRRR`;
+  - rejects non-matching format and impossible dates (e.g. `31.02.2026`);
+  - no natural-language parsing, no silent reinterpretation, no best-guess date conversion.
+- persistence/service:
+  - added invoice service helper `update_invoice_issue_date(...)`;
+  - on valid input, updates `invoice.issue_date` with normalized ISO value used by current storage model.
+- rebuild flow:
+  - after successful invoice-date update, runtime rebuilds updated PDF and returns to `waiting_pdf_decision`;
+  - previous PDF cleanup path remains aligned with existing edit rebuild behavior.
+- voice guard:
+  - added text-only guard for invoice-date edit state in voice handler:
+    - `Pre dátum faktúry použite textový vstup vo formáte DD.MM.RRRR.`
+
+### Invariant decision for this patch
+- Chosen behavior: **B**.
+- Editing invoice date is allowed while invoice number remains unchanged in this patch.
+- No auto-renumbering is introduced.
+
+### Tests
+- added runtime tests for:
+  - successful invoice-date edit to valid strict value (+ persistence + PDF rebuild + post-edit state),
+  - invalid format rejection with bounded Slovak prompt and preserved old value/state,
+  - impossible date rejection with safe retry prompt and preserved old value/state,
+  - voice precision-safe guard for invoice-date edit state.
+- existing `upraviť položku` and `upraviť číslo faktúry` runtime tests remain in suite as regression coverage.
+
+### Scope boundary
+- This runtime patch adds only `edit_invoice_date`.
+- Still out of scope (not implemented here):
+  - `edit_invoice_contact`
+  - `edit_item_quantity`
+  - `edit_item_unit`
+  - `edit_item_unit_price`
+
 ## 2026-04-15 — Session 030 — Runtime `edit_invoice_number` inside bounded `upraviť` flow
 
 ### Goal

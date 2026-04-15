@@ -119,7 +119,7 @@ Canonical machine-facing operations:
 
 Status map:
 - `edit_invoice_number` — **implemented** (bounded subflow runtime exists)
-- `edit_invoice_date` — **planned (not yet implemented)**
+- `edit_invoice_date` — **implemented** (bounded subflow runtime exists, strict Phase 1 format `DD.MM.RRRR`)
 - `edit_invoice_contact` — **planned (not yet implemented)**
 
 Integrity/fail-safe rule:

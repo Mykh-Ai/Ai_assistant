@@ -9,7 +9,7 @@ Purpose: evidence-based registry of bounded in-workflow responses and state-scop
 | `invoice_preview_confirmation` | in-action response group | implemented | mixed (text + voice) | `ano`, `nie`, `unknown` | `process_invoice_preview_confirmation()` resolves with context `invoice_preview_confirmation`; voice routes to this handler from `waiting_confirm`. | Used before invoice persistence/PDF branching. |
 | `invoice_postpdf_decision` | in-action response group | implemented | mixed (text + voice) | `schvalit`, `upravit`, `zrusit`, `unknown` | `process_invoice_postpdf_decision()` resolves with context `invoice_postpdf_decision`; voice routes from `waiting_pdf_decision`. | `upravit` enters bounded edit subflow; full `edit_invoice` operation map is still partial in runtime. |
 | `contact_confirm` (semantic intake) | in-action response group | implemented | mixed (text + voice) | `ano`, `nie`, `unknown` | `process_contact_intake_confirm()` resolves with context `contact_confirm`; voice routes from `ContactStates.intake_confirm`. | Used for AI-assisted contact intake path. |
-| `edit_invoice:invoice_level` | in-action response group | partial (1 implemented, 2 planned) | mixed entry with bounded clarification | `edit_invoice_number`, `edit_invoice_date`, `edit_invoice_contact`, `unknown` | Product + contract docs map these as invoice-level subflow ops under `edit_invoice`; runtime currently implements `edit_invoice_number`. | `edit_invoice` remains top-level reserved token; runtime must execute via bounded subflow only. Integrity-sensitive fields fail safe on ambiguity/conflict. |
+| `edit_invoice:invoice_level` | in-action response group | partial (2 implemented, 1 planned) | mixed entry with bounded clarification | `edit_invoice_number`, `edit_invoice_date`, `edit_invoice_contact`, `unknown` | Product + contract docs map these as invoice-level subflow ops under `edit_invoice`; runtime currently implements `edit_invoice_number` + `edit_invoice_date` (strict Phase 1 `DD.MM.RRRR`). | `edit_invoice` remains top-level reserved token; runtime must execute via bounded subflow only. Integrity-sensitive fields fail safe on ambiguity/conflict. |
 | `edit_invoice:item_level` | in-action response group | partial (2 implemented, 3 planned) | mixed entry; precision-sensitive steps are text-first | `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`, `unknown` | Product + contract docs define full item-level map; runtime currently implements `replace_service` + `edit_item_description` only. | Item targeting required for precision-sensitive item edits. Single-item can default to first item; multi-item requires explicit selection or bounded clarification. |
 
 ## B) Deterministic (non-LLM) in-action confirmations
@@ -37,7 +37,8 @@ This is expected and should be documented as a manual command flow, not as a mis
 - Invoice-level operations are documented separately from item-level operations.
 - Invoice-level mapped operations:
   - implemented: `edit_invoice_number`
-  - planned: `edit_invoice_date`, `edit_invoice_contact`
+  - implemented: `edit_invoice_date`
+  - planned: `edit_invoice_contact`
 - Item-level mapped operations:
   - implemented: `replace_service`, `edit_item_description`
   - planned: `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`

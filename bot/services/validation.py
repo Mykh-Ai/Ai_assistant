@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import re
 
 
@@ -29,3 +30,14 @@ def validate_days_due(value: str) -> bool:
     if not value.strip().isdigit():
         return False
     return int(value.strip()) > 0
+
+
+def parse_strict_date_dd_mm_yyyy(value: str) -> date | None:
+    normalized = value.strip()
+    if not re.fullmatch(r'\d{2}\.\d{2}\.\d{4}', normalized):
+        return None
+    day, month, year = normalized.split('.')
+    try:
+        return date(int(year), int(month), int(day))
+    except ValueError:
+        return None
