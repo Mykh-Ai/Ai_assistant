@@ -10,6 +10,8 @@ def normalize_service_term(raw_item: str) -> str | None:
         'oprava': 'oprava',
         'opravy': 'oprava',
         'ремонт': 'oprava',
+        'montáž': 'montáž',
+        'montaz': 'montáž',
         'монтаж': 'montáž',
     }
 

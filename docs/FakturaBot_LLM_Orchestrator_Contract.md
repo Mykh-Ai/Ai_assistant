@@ -196,6 +196,87 @@ Notes:
 
 ---
 
+## 6.2) Planned `create_invoice` Phase 2 dual-shape intake contract (docs-first)
+
+Scope contract (Phase 1 for future multi-item intake):
+- add-item executor flow remains out of scope;
+- this section defines only bounded intake/output contract evolution for `create_invoice`.
+
+### A) Backward-compatible dual-shape rule
+
+- Existing singleton item fields in `biznis_sk` remain valid and accepted.
+- Optional bounded `biznis_sk.items[]` is added as candidate multi-item output.
+- `items[]` is optional in Phase 1 and must not break legacy singleton payloads.
+- Hard cutover to list-only contract is explicitly out of scope for this docs patch.
+
+### B) LLM vs Python authority for item segmentation
+
+- LLM may return bounded candidate segmentation into item candidates (`items[]`).
+- LLM does not decide final acceptance/persistence and does not own side effects.
+- Python remains final validator/workflow owner:
+  - validates item boundaries,
+  - validates quantity/unit/unit_price/amount coherence per item,
+  - validates invoice total coherence,
+  - enforces bounded item count and render/page safety.
+- Python execution outcomes:
+  - accept and continue,
+  - ask bounded clarification,
+  - or safe fallback to compatible singleton path.
+
+### C) Phase 1 strict bounds
+
+- `items[]` maximum size: **3**.
+- No open-ended extraction of arbitrary line-item count.
+- If `items[]` exceeds bounds or contains unresolved ambiguity, Python must not silently truncate/merge.
+
+### D) Candidate item shape (`biznis_sk.items[]`)
+
+Each candidate item is machine-safe and bounded, with fields aligned to existing invoice terminology:
+- `polozka_povodna` (service/raw item text candidate),
+- `termin_sluzby_sk` (internal Slovak service term candidate),
+- `mnozstvo`,
+- `jednotka`,
+- `cena_za_jednotku`,
+- `suma`,
+- optional future-compatible `item_description_raw` (detail candidate; optional in Phase 1).
+
+This is a candidate extraction shape, not an execution command.
+
+### E) Split semantics rules (contract examples)
+
+- `montáž dva razy po 1000` => one item (`mnozstvo=2`, `cena_za_jednotku=1000`).
+- `oprava 3000 a montáž 1000` => two candidate items.
+- `oprava 3000, montáž 2x1000` => two candidate items (second item carries multiplier semantics).
+- If item boundaries or quantity semantics are ambiguous, Python must request bounded clarification (no silent guess).
+
+### F) Fail-safe / clarification triggers for multi-item candidate intake
+
+Python must not auto-accept multi-item candidate output when any of the following holds:
+- ambiguous item boundaries;
+- ambiguous quantity semantics;
+- ambiguous service resolution for one or more items;
+- inconsistent per-item or aggregate totals;
+- render/page safety bounds exceeded.
+
+In these cases Python asks bounded clarification or falls back safely; no destructive/silent correction.
+
+### G) Runtime follow-up impact areas (not implemented here)
+
+Future runtime patches must align this intake contract with:
+- parser/validator,
+- internal draft normalization (singleton auto-wrap to one-item list),
+- preview formatting,
+- PDF row rendering,
+- total calculation and invariant checks,
+- optional per-item detail (`item_description_raw`) rendering.
+
+Status marker:
+- Phase 1 runtime support is implemented with backward-compatible dual-shape intake.
+- Legacy singleton remains supported; bounded `items[]` (max 3) is optional.
+- Follow-up runtime scope remains: deeper ambiguity handling and future item-detail evolution.
+
+---
+
 ## 7) Output format
 
 Resolver output for each bounded resolution must be machine-safe and minimal:

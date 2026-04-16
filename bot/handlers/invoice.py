@@ -17,7 +17,7 @@ from bot.config import Config
 from bot.handlers.contacts import start_add_contact_intake
 from bot.handlers.supplier import start_add_service_alias_intake
 from bot.services.contact_service import ContactLookupResult, ContactService
-from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
+from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
     PdfInvoiceData,
@@ -65,6 +65,7 @@ _SLOT_DUE_DAYS = 'due_days'
 _SLOT_QUANTITY = 'quantity'
 _SLOT_UNIT_PRICE = 'unit_price'
 _SLOT_QUANTITY_UNIT_PRICE = 'quantity_unit_price_pair'
+_SLOT_ITEMS = 'items'
 _EDIT_ITEM_OPERATION_REPLACE_SERVICE = 'replace_service'
 _EDIT_ITEM_OPERATION_EDIT_DESCRIPTION = 'edit_item_description'
 _EDIT_INVOICE_OPERATION_NUMBER = 'edit_invoice_number'
@@ -85,6 +86,10 @@ _SLOT_PROMPTS = {
     _SLOT_QUANTITY_UNIT_PRICE: (
         'Uveďte množstvo a cenu za jednotku, napr. 3 po 1500 alebo 3 1500. '
         'Ak je množstvo 1, môžete zadať len cenu, napr. 1500.'
+    ),
+    _SLOT_ITEMS: (
+        'Nie je jasné rozdelenie položiek alebo finančné údaje položiek. '
+        'Napíšte položky jasne po riadkoch alebo oddelené čiarkou (max 3 položky).'
     ),
 }
 
@@ -173,6 +178,31 @@ def _format_preview(recognized_text: str | None, data: dict[str, object]) -> str
     if recognized_text:
         text_part = f'<b>Rozpoznaný text:</b>\n{recognized_text}\n\n'
 
+    items = data.get('items')
+    if isinstance(items, list) and len(items) > 1:
+        lines: list[str] = []
+        for idx, item in enumerate(items, start=1):
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f'• Položka {idx}: {(item.get("service_display_name") or item.get("service_short_name") or "-")}\n'
+                f'  Množstvo: {item.get("quantity")} {item.get("unit") or ""}\n'
+                f'  Cena za m.j.: {float(item.get("unit_price") or 0.0):.2f} {data["currency"]}\n'
+                f'  Spolu: {float(item.get("amount") or 0.0):.2f} {data["currency"]}'
+            )
+        items_block = '\n'.join(lines)
+        return (
+            f'{text_part}'
+            '<b>Náhľad faktúry:</b>\n'
+            f'• Odberateľ: {data["customer_name"]}\n'
+            f'{items_block}\n'
+            f'• Suma spolu: {data["amount"]:.2f} {data["currency"]}\n'
+            f'• Dátum vystavenia: {data["issue_date"]}\n'
+            f'• Dátum dodania: {data["delivery_date"]}\n'
+            f'• Dátum splatnosti: {data["due_date"]}\n\n'
+            'Potvrďte uloženie: napíšte <b>ano</b> alebo <b>nie</b>.'
+        )
+
     return (
         f'{text_part}'
         '<b>Náhľad faktúry:</b>\n'
@@ -241,14 +271,45 @@ def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict
     biznis_sk = payload.get('biznis_sk') if isinstance(payload, dict) else {}
 
     raw_text = str((vstup or {}).get('povodny_text') or '').strip()
-    parsed_draft = {
-        'customer_name': (biznis_sk or {}).get('odberatel_kandidat'),
+    singleton_item = {
         'item_name_raw': (biznis_sk or {}).get('polozka_povodna'),
         'service_term_sk': (biznis_sk or {}).get('termin_sluzby_sk'),
         'quantity': (biznis_sk or {}).get('mnozstvo'),
         'unit': (biznis_sk or {}).get('jednotka'),
         'amount': (biznis_sk or {}).get('suma'),
         'unit_price': (biznis_sk or {}).get('cena_za_jednotku'),
+        'item_description_raw': None,
+    }
+
+    items_raw = (biznis_sk or {}).get('items')
+    normalized_items: list[dict[str, object]] = []
+    if isinstance(items_raw, list) and items_raw:
+        for raw_item in items_raw:
+            if not isinstance(raw_item, dict):
+                continue
+            normalized_items.append(
+                {
+                    'item_name_raw': raw_item.get('polozka_povodna'),
+                    'service_term_sk': raw_item.get('termin_sluzby_sk'),
+                    'quantity': raw_item.get('mnozstvo'),
+                    'unit': raw_item.get('jednotka'),
+                    'amount': raw_item.get('suma'),
+                    'unit_price': raw_item.get('cena_za_jednotku'),
+                    'item_description_raw': raw_item.get('item_description_raw'),
+                }
+            )
+    if not normalized_items:
+        normalized_items = [singleton_item]
+
+    parsed_draft = {
+        'customer_name': (biznis_sk or {}).get('odberatel_kandidat'),
+        'item_name_raw': singleton_item['item_name_raw'],
+        'service_term_sk': singleton_item['service_term_sk'],
+        'quantity': singleton_item['quantity'],
+        'unit': singleton_item['unit'],
+        'amount': singleton_item['amount'],
+        'unit_price': singleton_item['unit_price'],
+        'items': normalized_items,
         'currency': (biznis_sk or {}).get('mena'),
         'delivery_date': (biznis_sk or {}).get('datum_dodania'),
         'due_days': (biznis_sk or {}).get('splatnost_dni'),
@@ -261,6 +322,7 @@ _UNIT_PRICE_PATTERN = re.compile(
     r'(?P<qty>\d+(?:[.,]\d+)?)\s*(?:x|kr[aá]t|крат|razi|razy|раз|раза|рази|kusy|kus|ks|по)\s*(?:po|по)?\s*(?P<unit>\d+(?:[.,]\d+)?)',
     flags=re.IGNORECASE,
 )
+_AMOUNT_NUMBER_TOKEN_PATTERN = re.compile(r'(?<!\d)\d+(?:[.,]\d+)?(?!\d)')
 _MULTIPLIER_HINT_PATTERN = re.compile(
     r'\b(?:x|kr[aá]t|крат|razi|razy|раз|раза|рази|kusy|kus|ks|po|по)\b',
     flags=re.IGNORECASE,
@@ -514,6 +576,39 @@ def _normalize_invoice_amount_semantics(
     return quantity, round(total_amount / quantity, 2), total_amount
 
 
+def _normalize_items_input(parsed_draft: dict[str, object]) -> list[dict[str, object]]:
+    items_raw = parsed_draft.get('items')
+    if isinstance(items_raw, list) and items_raw:
+        normalized: list[dict[str, object]] = []
+        for candidate in items_raw:
+            if isinstance(candidate, dict):
+                normalized.append(candidate)
+        if normalized:
+            return normalized
+    return [
+        {
+            'item_name_raw': parsed_draft.get('item_name_raw'),
+            'service_term_sk': parsed_draft.get('service_term_sk'),
+            'quantity': parsed_draft.get('quantity'),
+            'unit': parsed_draft.get('unit'),
+            'amount': parsed_draft.get('amount'),
+            'unit_price': parsed_draft.get('unit_price'),
+            'item_description_raw': None,
+        }
+    ]
+
+
+def _looks_like_item_boundary_split(text: str, *, expected_item_count: int) -> bool:
+    normalized = f' {text.casefold()} '
+    if ',' in text or ';' in text or '\n' in text:
+        return True
+    has_conjunction_split = any(token in normalized for token in (' a ', ' и ', ' та ', ' plus '))
+    if not has_conjunction_split:
+        return False
+    numeric_tokens = _AMOUNT_NUMBER_TOKEN_PATTERN.findall(text)
+    return len(numeric_tokens) >= expected_item_count
+
+
 def _emit_invoice_debug_log(
     *,
     config: Config,
@@ -623,13 +718,8 @@ async def _build_and_store_preview(
         return
     contact = lookup_result.matched_contact
 
-    service_short_name_input = (parsed_draft.get('service_term_sk') or parsed_draft.get('item_name_raw') or '').strip()
-    service_term_internal = normalize_service_term(service_short_name_input)
-    service_short_name = service_term_internal or service_short_name_input
-
-    quantity_value = parsed_draft.get('quantity')
-    quantity_raw = _parse_positive_float(quantity_value)
-    if quantity_value is not None and quantity_raw is None:
+    item_inputs = _normalize_items_input(parsed_draft)
+    if len(item_inputs) > 3:
         await _start_invoice_slot_clarification(
             message=message,
             state=state,
@@ -637,17 +727,10 @@ async def _build_and_store_preview(
             request_id=request_id,
             raw_text=raw_text,
             parsed_draft=parsed_draft,
-            unresolved_slot=_SLOT_QUANTITY,
+            unresolved_slot=_SLOT_ITEMS,
         )
         return
-
-    total_raw = _parse_positive_float(parsed_draft.get('amount'))
-    unit_price_raw = _parse_positive_float(parsed_draft.get('unit_price'))
-    has_multiplier_hint = bool(_MULTIPLIER_HINT_PATTERN.search(raw_text))
-    explicit_amount_pattern = _parse_confident_unit_price_pattern(raw_text)
-    if (total_raw is None and unit_price_raw is None) or (
-        has_multiplier_hint and unit_price_raw is None and explicit_amount_pattern is None
-    ):
+    if len(item_inputs) > 1 and not _looks_like_item_boundary_split(raw_text, expected_item_count=len(item_inputs)):
         await _start_invoice_slot_clarification(
             message=message,
             state=state,
@@ -655,19 +738,19 @@ async def _build_and_store_preview(
             request_id=request_id,
             raw_text=raw_text,
             parsed_draft=parsed_draft,
-            unresolved_slot=_SLOT_QUANTITY_UNIT_PRICE,
+            unresolved_slot=_SLOT_ITEMS,
         )
         return
 
-    try:
-        quantity, unit_price, amount = _normalize_invoice_amount_semantics(
-            raw_text=raw_text,
-            quantity_value=quantity_value,
-            total_value=parsed_draft.get('amount'),
-            unit_price_value=parsed_draft.get('unit_price'),
+    normalized_items: list[dict[str, object]] = []
+    total_amount = 0.0
+    for item_index, item_input in enumerate(item_inputs, start=1):
+        service_short_name_input = (
+            (item_input.get('service_term_sk') or item_input.get('item_name_raw') or '').strip()
         )
-    except ValueError as exc:
-        if 'chýba suma' in str(exc):
+        service_term_internal = normalize_service_term(service_short_name_input)
+        service_short_name = service_term_internal or service_short_name_input
+        if not service_short_name:
             await _start_invoice_slot_clarification(
                 message=message,
                 state=state,
@@ -675,19 +758,92 @@ async def _build_and_store_preview(
                 request_id=request_id,
                 raw_text=raw_text,
                 parsed_draft=parsed_draft,
-                unresolved_slot=_SLOT_QUANTITY_UNIT_PRICE,
+                unresolved_slot=_SLOT_ITEMS if len(item_inputs) > 1 else _SLOT_SERVICE,
             )
             return
-        await message.answer(f'{exc} Skúste formuláciu typu "2x po 1500 EUR".')
-        await state.clear()
-        return
 
-    if not service_short_name:
+        quantity_value = item_input.get('quantity')
+        quantity_raw = _parse_positive_float(quantity_value)
+        if quantity_value is not None and quantity_raw is None:
+            await _start_invoice_slot_clarification(
+                message=message,
+                state=state,
+                config=config,
+                request_id=request_id,
+                raw_text=raw_text,
+                parsed_draft=parsed_draft,
+                unresolved_slot=_SLOT_ITEMS if len(item_inputs) > 1 else _SLOT_QUANTITY,
+            )
+            return
+
+        item_raw_hint = raw_text if len(item_inputs) == 1 else str(item_input.get('item_name_raw') or raw_text)
+        total_raw = _parse_positive_float(item_input.get('amount'))
+        unit_price_raw = _parse_positive_float(item_input.get('unit_price'))
+        has_multiplier_hint = bool(_MULTIPLIER_HINT_PATTERN.search(item_raw_hint))
+        explicit_amount_pattern = _parse_confident_unit_price_pattern(item_raw_hint)
+        if (total_raw is None and unit_price_raw is None) or (
+            has_multiplier_hint and unit_price_raw is None and explicit_amount_pattern is None
+        ):
+            await _start_invoice_slot_clarification(
+                message=message,
+                state=state,
+                config=config,
+                request_id=request_id,
+                raw_text=raw_text,
+                parsed_draft=parsed_draft,
+                unresolved_slot=_SLOT_ITEMS if len(item_inputs) > 1 else _SLOT_QUANTITY_UNIT_PRICE,
+            )
+            return
+
+        try:
+            quantity, unit_price, amount = _normalize_invoice_amount_semantics(
+                raw_text=item_raw_hint,
+                quantity_value=quantity_value,
+                total_value=item_input.get('amount'),
+                unit_price_value=item_input.get('unit_price'),
+            )
+        except ValueError:
+            await _start_invoice_slot_clarification(
+                message=message,
+                state=state,
+                config=config,
+                request_id=request_id,
+                raw_text=raw_text,
+                parsed_draft=parsed_draft,
+                unresolved_slot=_SLOT_ITEMS if len(item_inputs) > 1 else _SLOT_QUANTITY_UNIT_PRICE,
+            )
+            return
+
+        service_display_name = service_short_name
+        if supplier.id is not None:
+            service_display_name = _resolve_service_display_name(
+                alias_service=ServiceAliasService(config.db_path),
+                supplier_id=supplier.id,
+                service_short_name=service_short_name,
+                service_term_internal=service_term_internal,
+            )
+        unit = (item_input.get('unit') or '').strip() or None
+        total_amount = round(total_amount + amount, 2)
+        normalized_items.append(
+            {
+                'item_index': item_index,
+                'service_short_name': service_short_name,
+                'item_term_canonical_internal': service_term_internal,
+                'service_display_name': service_display_name,
+                'quantity': quantity,
+                'unit_price': unit_price,
+                'unit': unit,
+                'amount': amount,
+                'item_description_raw': item_input.get('item_description_raw'),
+            }
+        )
+
+    if not normalized_items:
         await message.answer('AI návrh je neúplný (chýba položka alebo suma). Doplňte údaje a skúste to znova.')
         await state.clear()
         return
 
-    unit = (parsed_draft.get('unit') or '').strip() or None
+    first_item = normalized_items[0]
     currency = (parsed_draft.get('currency') or 'EUR').strip().upper() or 'EUR'
 
     issue_date_obj = date.today()
@@ -741,26 +897,19 @@ async def _build_and_store_preview(
             return
 
     due_date_obj = issue_date_obj + timedelta(days=due_days)
-    service_display_name = service_short_name
-    if supplier.id is not None:
-        service_display_name = _resolve_service_display_name(
-            alias_service=ServiceAliasService(config.db_path),
-            supplier_id=supplier.id,
-            service_short_name=service_short_name,
-            service_term_internal=service_term_internal,
-        )
 
     normalized = {
         'raw_text': raw_text,
         'customer_name': contact.name,
         'contact_id': contact.id,
-        'service_short_name': service_short_name,
-        'item_term_canonical_internal': service_term_internal,
-        'service_display_name': service_display_name,
-        'quantity': quantity,
-        'unit_price': unit_price,
-        'unit': unit,
-        'amount': amount,
+        'service_short_name': first_item['service_short_name'],
+        'item_term_canonical_internal': first_item['item_term_canonical_internal'],
+        'service_display_name': first_item['service_display_name'],
+        'quantity': first_item['quantity'],
+        'unit_price': first_item['unit_price'],
+        'unit': first_item['unit'],
+        'amount': total_amount,
+        'items': normalized_items,
         'currency': currency,
         'issue_date': issue_date_obj.isoformat(),
         'delivery_date': delivery_date_obj.isoformat(),
@@ -777,9 +926,10 @@ async def _build_and_store_preview(
             'original_text': raw_text,
             'final_contact_id': contact.id,
             'final_contact_name': contact.name,
-            'service_short_name': service_short_name,
-            'service_display_name': service_display_name,
-            'service_term_canonical_internal': service_term_internal,
+            'service_short_name': first_item['service_short_name'],
+            'service_display_name': first_item['service_display_name'],
+            'service_term_canonical_internal': first_item['item_term_canonical_internal'],
+            'item_count': len(normalized_items),
             'lookup_state': lookup_result.state,
         },
     )
@@ -977,6 +1127,15 @@ async def process_invoice_slot_clarification(
             return
         parsed_draft['quantity'] = float(resolution['quantity'])
         parsed_draft['unit_price'] = float(resolution['unit_price'])
+    elif unresolved_slot == _SLOT_ITEMS:
+        await process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=clarification_text,
+            request_id=str(partial.get('request_id') or uuid4()),
+        )
+        return
     elif not _apply_slot_clarification(parsed_draft, unresolved_slot, clarification_text):
         await message.answer(_SLOT_PROMPTS.get(unresolved_slot, 'Spresnite údaj, prosím.'))
         return
@@ -1096,7 +1255,7 @@ async def process_invoice_text(
                 'unresolved_slot': exc.error_code,
             },
         )
-        if exc.error_code in {'service_term_unresolved', 'customer_unresolved'} and isinstance(exc.partial_payload, dict):
+        if exc.error_code in {'service_term_unresolved', 'customer_unresolved', 'items_shape_invalid', 'items_count_exceeded', 'items_service_unresolved'} and isinstance(exc.partial_payload, dict):
             raw_text, parsed = _extract_invoice_draft_from_phase2_payload(exc.partial_payload)
             await _start_invoice_slot_clarification(
                 message=message,
@@ -1105,7 +1264,11 @@ async def process_invoice_text(
                 request_id=flow_request_id,
                 raw_text=raw_text or invoice_text,
                 parsed_draft=parsed,
-                unresolved_slot=_SLOT_SERVICE if exc.error_code == 'service_term_unresolved' else _SLOT_CUSTOMER,
+                unresolved_slot=(
+                    _SLOT_SERVICE if exc.error_code == 'service_term_unresolved'
+                    else _SLOT_CUSTOMER if exc.error_code == 'customer_unresolved'
+                    else _SLOT_ITEMS
+                ),
                 prefer_service_state=exc.error_code == 'service_term_unresolved',
             )
             return
@@ -1208,24 +1371,55 @@ async def process_invoice_preview_confirmation(
     pdf_path = None
 
     try:
-        invoice_id = invoice_service.create_invoice_with_one_item(
-            CreateInvoicePayload(
-                supplier_telegram_id=message.from_user.id,
-                contact_id=int(contact_id),
-                issue_date=str(draft['issue_date']),
-                delivery_date=str(draft['delivery_date']),
-                due_date=str(draft['due_date']),
-                due_days=int(draft['due_days']),
-                total_amount=float(draft['amount']),
-                currency=str(draft['currency']),
-                status='draft_pdf_ready',
-                item_description_raw=str(draft['service_short_name']),
-                item_description_normalized=str(draft['service_display_name']),
-                item_quantity=float(draft['quantity']),
-                item_unit=str(draft['unit']) if draft['unit'] else None,
-                item_unit_price=float(draft['unit_price']),
-                item_total_price=float(draft['amount']),
-            )
+        draft_items_raw = draft.get('items')
+        normalized_items: list[CreateInvoiceItemPayload] = []
+        if isinstance(draft_items_raw, list) and draft_items_raw:
+            for item in draft_items_raw:
+                if not isinstance(item, dict):
+                    continue
+                normalized_items.append(
+                    CreateInvoiceItemPayload(
+                        description_raw=str(item.get('service_short_name') or ''),
+                        description_normalized=str(item.get('service_display_name') or item.get('service_short_name') or ''),
+                        item_description_raw=(
+                            str(item.get('item_description_raw')).strip()
+                            if item.get('item_description_raw') is not None and str(item.get('item_description_raw')).strip()
+                            else None
+                        ),
+                        quantity=float(item.get('quantity') or 1.0),
+                        unit=(str(item.get('unit')).strip() if item.get('unit') else None),
+                        unit_price=float(item.get('unit_price') or 0.0),
+                        total_price=float(item.get('amount') or 0.0),
+                    )
+                )
+        if not normalized_items:
+            normalized_items = [
+                CreateInvoiceItemPayload(
+                    description_raw=str(draft['service_short_name']),
+                    description_normalized=str(draft['service_display_name']),
+                    item_description_raw=None,
+                    quantity=float(draft['quantity']),
+                    unit=str(draft['unit']) if draft['unit'] else None,
+                    unit_price=float(draft['unit_price']),
+                    total_price=float(draft['amount']),
+                )
+            ]
+        computed_total = round(sum(item.total_price for item in normalized_items), 2)
+        draft_total = round(float(draft['amount']), 2)
+        if abs(computed_total - draft_total) > 0.01:
+            raise RuntimeError('Nekonzistentné finančné údaje v potvrdenom návrhu faktúry.')
+
+        invoice_id = invoice_service.create_invoice_with_items(
+            supplier_telegram_id=message.from_user.id,
+            contact_id=int(contact_id),
+            issue_date=str(draft['issue_date']),
+            delivery_date=str(draft['delivery_date']),
+            due_date=str(draft['due_date']),
+            due_days=int(draft['due_days']),
+            total_amount=float(draft['amount']),
+            currency=str(draft['currency']),
+            status='draft_pdf_ready',
+            items=normalized_items,
         )
 
         invoice = invoice_service.get_invoice_by_id(invoice_id)

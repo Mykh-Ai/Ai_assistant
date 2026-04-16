@@ -182,6 +182,141 @@ def test_waiting_confirm_accepts_multilingual_no_and_clears_state(tmp_path: Path
     assert 'Vytvorenie faktúry bolo zrušené.' in message.answers[-1]
 
 
+def test_waiting_confirm_persists_multiple_items_when_present(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 9002
+    db_path = tmp_path / 'state_multi.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF-1.4 fake')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(
+        data={
+            'invoice_draft': {
+                'customer_name': 'Tech Company s.r.o.',
+                'contact_id': contact_id,
+                'service_short_name': 'oprava',
+                'service_display_name': 'Servis a oprava zariadenia',
+                'quantity': 1,
+                'unit_price': 3000,
+                'unit': 'ks',
+                'amount': 5000,
+                'currency': 'EUR',
+                'issue_date': '2026-04-12',
+                'delivery_date': '2026-04-12',
+                'due_days': 14,
+                'due_date': '2026-04-26',
+                'items': [
+                    {
+                        'service_short_name': 'oprava',
+                        'service_display_name': 'Servis a oprava zariadenia',
+                        'quantity': 1,
+                        'unit_price': 3000,
+                        'unit': 'ks',
+                        'amount': 3000,
+                    },
+                    {
+                        'service_short_name': 'montáž',
+                        'service_display_name': 'Montáž zariadenia',
+                        'quantity': 2,
+                        'unit_price': 1000,
+                        'unit': 'ks',
+                        'amount': 2000,
+                    },
+                ],
+            }
+        }
+    )
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='ano',
+        )
+    )
+
+    invoice_id = state.data.get('last_invoice_id')
+    assert isinstance(invoice_id, int)
+    items = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)
+    assert len(items) == 2
+    assert items[0].description_raw == 'oprava'
+    assert items[1].description_raw == 'montáž'
+
+
+def test_waiting_confirm_rejects_total_mismatch_for_items(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 9003
+    db_path = tmp_path / 'state_multi_mismatch.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF-1.4 fake')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(
+        data={
+            'invoice_draft': {
+                'customer_name': 'Tech Company s.r.o.',
+                'contact_id': contact_id,
+                'service_short_name': 'oprava',
+                'service_display_name': 'Servis a oprava zariadenia',
+                'quantity': 1,
+                'unit_price': 3000,
+                'unit': 'ks',
+                'amount': 4000,
+                'currency': 'EUR',
+                'issue_date': '2026-04-12',
+                'delivery_date': '2026-04-12',
+                'due_days': 14,
+                'due_date': '2026-04-26',
+                'items': [
+                    {'service_short_name': 'oprava', 'service_display_name': 'Servis a oprava zariadenia', 'quantity': 1, 'unit_price': 3000, 'unit': 'ks', 'amount': 3000},
+                    {'service_short_name': 'montáž', 'service_display_name': 'Montáž zariadenia', 'quantity': 2, 'unit_price': 1000, 'unit': 'ks', 'amount': 2000},
+                ],
+            }
+        }
+    )
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='ano',
+        )
+    )
+
+    assert state.cleared is True
+    assert 'Nepodarilo sa dokončiť vytvorenie PDF faktúry. Skúste to znova.' in message.answers[-1]
+    assert InvoiceService(db_path).get_invoice_by_number('20260001') is None
+
+
 def test_waiting_confirm_noisy_transcript_returns_retry_unknown(tmp_path: Path) -> None:
     config = Config(
         bot_token='token',

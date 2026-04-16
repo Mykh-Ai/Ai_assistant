@@ -24,6 +24,7 @@ _REQUIRED_BIZNIS_FIELDS = {
     'datum_splatnosti',
 }
 _OPTIONAL_BIZNIS_FIELDS = {'cena_za_jednotku'}
+_MAX_MULTI_ITEMS = 3
 
 
 class LlmInvoicePayloadError(ValueError):
@@ -187,6 +188,105 @@ def _resolve_service_slots_or_raise(
     biznis_sk['polozka_povodna'] = repaired_label
 
 
+def _resolve_service_candidate_or_raise(
+    *,
+    item_payload: dict[str, Any],
+    payload_snapshot: dict[str, Any],
+    item_index: int,
+) -> None:
+    polozka_raw = item_payload.get('polozka_povodna')
+    termin_raw = item_payload.get('termin_sluzby_sk')
+
+    if not isinstance(termin_raw, str):
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.items[].termin_sluzby_sk must be a string.',
+            error_code='items_service_unresolved',
+            details={'item_index': item_index, 'field': 'termin_sluzby_sk'},
+            partial_payload=payload_snapshot,
+        )
+    termin_normalized = termin_raw.strip()
+    if not termin_normalized:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.items[].termin_sluzby_sk must not be empty string.',
+            error_code='items_service_unresolved',
+            details={'item_index': item_index, 'field': 'termin_sluzby_sk'},
+            partial_payload=payload_snapshot,
+        )
+
+    canonical_service_term = normalize_service_term(termin_normalized)
+    if canonical_service_term is None and isinstance(polozka_raw, str):
+        canonical_service_term = normalize_service_term(polozka_raw.strip())
+
+    if canonical_service_term is None:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.items[] contains unresolved service term.',
+            error_code='items_service_unresolved',
+            details={'item_index': item_index},
+            partial_payload=payload_snapshot,
+        )
+
+    repaired_label = canonical_service_term
+    if isinstance(polozka_raw, str):
+        item_label = polozka_raw.strip()
+        if item_label and not _CYRILLIC_RE.search(item_label):
+            repaired_label = item_label
+
+    item_payload['termin_sluzby_sk'] = canonical_service_term
+    item_payload['polozka_povodna'] = repaired_label
+
+
+def _validate_optional_items_or_raise(*, biznis_sk: dict[str, Any], payload_snapshot: dict[str, Any]) -> None:
+    items_raw = biznis_sk.get('items')
+    if items_raw is None:
+        return
+    if not isinstance(items_raw, list):
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.items must be an array when present.',
+            error_code='items_shape_invalid',
+            partial_payload=payload_snapshot,
+        )
+    if not items_raw:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.items must not be empty when present.',
+            error_code='items_shape_invalid',
+            partial_payload=payload_snapshot,
+        )
+    if len(items_raw) > _MAX_MULTI_ITEMS:
+        raise LlmInvoicePayloadError(
+            'Invalid LLM payload: biznis_sk.items exceeds Phase 1 max size.',
+            error_code='items_count_exceeded',
+            details={'max_items': _MAX_MULTI_ITEMS, 'actual_items': len(items_raw)},
+            partial_payload=payload_snapshot,
+        )
+
+    normalized_items: list[dict[str, Any]] = []
+    for index, raw_item in enumerate(items_raw, start=1):
+        if not isinstance(raw_item, dict):
+            raise LlmInvoicePayloadError(
+                'Invalid LLM payload: each biznis_sk.items[] entry must be an object.',
+                error_code='items_shape_invalid',
+                details={'item_index': index},
+                partial_payload=payload_snapshot,
+            )
+        candidate = {
+            'polozka_povodna': raw_item.get('polozka_povodna'),
+            'termin_sluzby_sk': raw_item.get('termin_sluzby_sk'),
+            'mnozstvo': raw_item.get('mnozstvo'),
+            'jednotka': raw_item.get('jednotka'),
+            'cena_za_jednotku': raw_item.get('cena_za_jednotku'),
+            'suma': raw_item.get('suma'),
+            'item_description_raw': raw_item.get('item_description_raw'),
+        }
+        _resolve_service_candidate_or_raise(
+            item_payload=candidate,
+            payload_snapshot=payload_snapshot,
+            item_index=index,
+        )
+        normalized_items.append(candidate)
+
+    biznis_sk['items'] = normalized_items
+
+
 def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
     data = _require_dict(payload, 'root')
 
@@ -227,9 +327,10 @@ def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
         payload_snapshot=payload_snapshot,
     )
     _resolve_service_slots_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
+    _validate_optional_items_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
 
     for key in tuple(biznis_sk.keys()):
-        if key not in _REQUIRED_BIZNIS_FIELDS and key not in _OPTIONAL_BIZNIS_FIELDS:
+        if key not in _REQUIRED_BIZNIS_FIELDS and key not in _OPTIONAL_BIZNIS_FIELDS and key != 'items':
             del biznis_sk[key]
 
     return data

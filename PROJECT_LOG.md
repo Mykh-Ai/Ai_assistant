@@ -1,5 +1,98 @@
 # PROJECT_LOG
 
+## 2026-04-16 — Session 034 — Pre-merge audit fixes for Phase 1 multi-item `create_invoice`
+
+### Goal
+Apply only merge-blocking safety fixes discovered during pre-merge audit of Phase 1 multi-item `create_invoice` runtime patch.
+
+### Changes
+- item-boundary ambiguity hardening (`bot/handlers/invoice.py`):
+  - strengthened `_looks_like_item_boundary_split(...)` with numeric-token count check against expected item count;
+  - prevents silent acceptance of two-item candidate splits when raw text contains only one amount token (e.g. conjunction phrase with one number).
+- aggregate total invariant hardening:
+  - in confirmation save path, added explicit guard that draft aggregate total equals sum of persisted item totals before DB insert;
+  - in `InvoiceService.create_invoice_with_items(...)`, added fail-loud invariant check (`invoice total == sum(item totals)`).
+- docs consistency:
+  - removed contradictory `single-item` status line in orchestrator contract section 6.2 so runtime status markers are internally consistent.
+- focused regression tests:
+  - added ambiguity regression for multi-item candidate with conjunction but single amount token (must clarify, not save silently);
+  - added save-path regression proving total mismatch is rejected fail-loud and invoice is not persisted.
+
+### Scope boundary
+- No architecture redesign.
+- No scope expansion to delete/edit-contact/unrelated flows.
+- Only targeted merge-safety fixes for bounded Phase 1 behavior.
+
+## 2026-04-16 — Session 033 — Phase 1 runtime multi-item support for `create_invoice` intake
+
+### Goal
+Implement the smallest safe runtime path for Phase 1 multi-item invoice intake in `create_invoice` flow, while preserving backward-compatible singleton behavior and Python-owned validation/side effects.
+
+### Changes
+- prompt contract (`prompts/invoice_draft_prompt.txt`):
+  - extended invoice draft prompt with optional bounded `biznis_sk.items[]` candidate shape;
+  - preserved singleton fields as mandatory backward-compatible shape;
+  - documented Phase 1 bound `items[]` max size = 3 and no open-ended extraction.
+- parser/validator (`bot/services/llm_invoice_parser.py`):
+  - added optional dual-shape validation for `biznis_sk.items[]`;
+  - implemented fail-safe payload errors for invalid items shape, count overflow, and unresolved item service terms;
+  - preserved legacy singleton validation path and cleanup behavior.
+- runtime normalization/build (`bot/handlers/invoice.py`):
+  - intake extraction now always provides internal `items[]` normalized draft shape (singleton auto-wrap);
+  - preview builder now supports single-item and bounded multi-item normalization with safe checks:
+    - max items bound,
+    - boundary ambiguity guard,
+    - per-item quantity/unit_price/amount coherence via existing deterministic semantics;
+  - added bounded clarification slot for item-split/financial ambiguity (`items`);
+  - preview text formatting now renders item lines when draft has multiple items.
+- persistence (`bot/services/invoice_service.py`):
+  - added `CreateInvoiceItemPayload` and `create_invoice_with_items(...)`;
+  - kept `create_invoice_with_one_item(...)` as compatibility wrapper over new multi-item insert path.
+- save/confirm path (`bot/handlers/invoice.py`):
+  - `process_invoice_preview_confirmation(...)` now persists all normalized draft items when present;
+  - singleton save behavior remains compatible.
+- service normalization (`bot/services/service_term_normalizer.py`):
+  - added Slovak `montáž/montaz` variants to deterministic canonical mapping.
+- tests:
+  - expanded Phase 2 parser/preview tests with dual-shape extraction, bounds rejection, multi-item preview total, and ambiguous multi-item clarification;
+  - added state-decision regression ensuring confirmation persists multiple `invoice_item` rows.
+
+### Scope boundary
+- Added: Phase 1 multi-item support for create-invoice intake/runtime path.
+- Not added: delete/cancel flow redesign, advanced layout redesign, or unrelated edit-flow redesign.
+- LLM remains bounded candidate extractor; Python remains validator/workflow/persistence owner.
+
+## 2026-04-16 — Session 032 — Docs-first dual-shape `create_invoice` intake contract for future multi-item support
+
+### Goal
+Define a safe docs-first contract evolution for `create_invoice`/Phase 2 invoice intake so future runtime can support both one item and multiple items without breaking bounded architecture or current single-item behavior.
+
+### Changes
+- orchestrator contract (`docs/FakturaBot_LLM_Orchestrator_Contract.md`):
+  - added dedicated docs-first section for planned `create_invoice` dual-shape intake;
+  - documented backward-compatible strategy:
+    - keep existing singleton `biznis_sk` item fields,
+    - add optional bounded `biznis_sk.items[]`;
+  - fixed authority split for segmentation:
+    - LLM may return bounded candidate item segmentation only,
+    - Python remains final validator/workflow/persistence owner;
+  - documented Phase 1 bounds:
+    - `items[]` max size = 3,
+    - no open-ended extraction;
+  - documented candidate item shape (service term + qty/unit/unit_price/amount + optional detail),
+  - documented split semantics examples and fail-safe clarification triggers.
+- product spec (`docs/TZ_FakturaBot.md`):
+  - added subsection under invoice draft section with same dual-shape decisions, bounds, ambiguity/fallback rules, and future runtime follow-up areas.
+- in-action registry (`docs/llm/In_Action_Response_Registry.md`):
+  - added docs-first contract-tracking row for `create_invoice` Phase 2 dual-shape intake;
+  - added explicit note that runtime remains single-item until follow-up patches.
+
+### Scope boundary
+- Docs-first only.
+- No runtime implementation in this patch.
+- No prompt implementation in this patch.
+- Current create flow remains single-item until follow-up parser/runtime/prompt patches.
+
 ## 2026-04-15 — Session 031 — Runtime `edit_invoice_date` inside bounded `upraviť` flow
 
 ### Goal
