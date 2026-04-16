@@ -5,8 +5,6 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from bot.services.service_term_normalizer import normalize_service_term
-
 
 _PROMPT_PATH = Path(__file__).parent.parent.parent / 'prompts' / 'invoice_draft_prompt.txt'
 
@@ -161,31 +159,13 @@ def _resolve_service_slots_or_raise(
     if not termin_normalized:
         raise LlmInvoicePayloadError('Invalid LLM payload: biznis_sk.termin_sluzby_sk must not be empty string.')
 
-    canonical_service_term = normalize_service_term(termin_normalized)
-    if canonical_service_term is None and isinstance(polozka_raw, str):
-        canonical_service_term = normalize_service_term(polozka_raw.strip())
+    if not isinstance(polozka_raw, str) or not polozka_raw.strip():
+        polozka_repaired = termin_normalized
+    else:
+        polozka_repaired = polozka_raw.strip()
 
-    if canonical_service_term is None:
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: service term is unresolved after deterministic repair.',
-            error_code='service_term_unresolved',
-            details={
-                'raw_biznis_sk_polozka_povodna': polozka_raw,
-                'raw_biznis_sk_termin_sluzby_sk': termin_raw,
-                'repaired_biznis_sk_polozka_povodna': None,
-                'repaired_service_term_canonical_internal': None,
-            },
-            partial_payload=payload_snapshot,
-        )
-
-    repaired_label = canonical_service_term
-    if isinstance(polozka_raw, str):
-        item_label = polozka_raw.strip()
-        if item_label and not _CYRILLIC_RE.search(item_label):
-            repaired_label = item_label
-
-    biznis_sk['termin_sluzby_sk'] = canonical_service_term
-    biznis_sk['polozka_povodna'] = repaired_label
+    biznis_sk['termin_sluzby_sk'] = termin_normalized
+    biznis_sk['polozka_povodna'] = polozka_repaired
 
 
 def _resolve_service_candidate_or_raise(
@@ -213,26 +193,13 @@ def _resolve_service_candidate_or_raise(
             partial_payload=payload_snapshot,
         )
 
-    canonical_service_term = normalize_service_term(termin_normalized)
-    if canonical_service_term is None and isinstance(polozka_raw, str):
-        canonical_service_term = normalize_service_term(polozka_raw.strip())
+    if not isinstance(polozka_raw, str) or not polozka_raw.strip():
+        polozka_repaired = termin_normalized
+    else:
+        polozka_repaired = polozka_raw.strip()
 
-    if canonical_service_term is None:
-        raise LlmInvoicePayloadError(
-            'Invalid LLM payload: biznis_sk.items[] contains unresolved service term.',
-            error_code='items_service_unresolved',
-            details={'item_index': item_index},
-            partial_payload=payload_snapshot,
-        )
-
-    repaired_label = canonical_service_term
-    if isinstance(polozka_raw, str):
-        item_label = polozka_raw.strip()
-        if item_label and not _CYRILLIC_RE.search(item_label):
-            repaired_label = item_label
-
-    item_payload['termin_sluzby_sk'] = canonical_service_term
-    item_payload['polozka_povodna'] = repaired_label
+    item_payload['termin_sluzby_sk'] = termin_normalized
+    item_payload['polozka_povodna'] = polozka_repaired
 
 
 def _validate_optional_items_or_raise(*, biznis_sk: dict[str, Any], payload_snapshot: dict[str, Any]) -> None:

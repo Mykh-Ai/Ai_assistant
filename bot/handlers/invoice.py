@@ -26,7 +26,6 @@ from bot.services.pdf_generator import (
     validate_item_detail_render_fit,
 )
 from bot.services.service_alias_service import ServiceAliasService
-from bot.services.service_term_normalizer import normalize_service_term
 from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
 from bot.services.semantic_action_resolver import resolve_quantity_unit_price_pair
 from bot.services.supplier_service import SupplierService
@@ -122,39 +121,59 @@ def _resolve_contact_lookup(contact_service: ContactService, telegram_id: int, n
     return contact_service.resolve_contact_lookup(telegram_id, name)
 
 
-def _service_alias_bridge_forms(service_term_internal: str | None) -> tuple[str, ...]:
-    if not service_term_internal:
-        return ()
-
-    deterministic_bridge_forms = {
-        'oprava': ('opravy',),
-    }
-    return deterministic_bridge_forms.get(service_term_internal, ())
 
 
-def _resolve_service_display_name(
+def _normalize_semantic_lookup_key(value: str) -> str:
+    lowered = value.casefold().strip()
+    separators_normalized = re.sub(r'[^\w\sÀ-žЀ-ӿ]+', ' ', lowered, flags=re.UNICODE)
+    return re.sub(r'\s+', ' ', separators_normalized).strip()
+
+
+async def _resolve_service_alias_bounded(
     *,
     alias_service: ServiceAliasService,
     supplier_id: int,
-    service_short_name: str,
-    service_term_internal: str | None,
-) -> str:
-    lookup_candidates: list[str] = [service_short_name]
-    if service_term_internal:
-        lookup_candidates.append(service_term_internal)
-        lookup_candidates.extend(_service_alias_bridge_forms(service_term_internal))
-
-    seen: set[str] = set()
-    for candidate in lookup_candidates:
-        normalized_candidate = candidate.strip().lower()
-        if not normalized_candidate or normalized_candidate in seen:
+    candidate_text: str,
+    config: Config,
+    context_name: str,
+) -> tuple[str | None, str | None, list[str]]:
+    mappings = alias_service.list_mappings(supplier_id)
+    alias_to_display: dict[str, str] = {}
+    normalized_alias_to_canonical: dict[str, str] = {}
+    for mapping in mappings:
+        canonical_alias = mapping.service_short_name.strip()
+        display_name = mapping.service_display_name.strip()
+        if not canonical_alias or not display_name:
             continue
-        seen.add(normalized_candidate)
-        resolved = alias_service.resolve_service_display_name(supplier_id, candidate)
-        if resolved:
-            return resolved
+        alias_to_display[canonical_alias] = display_name
+        normalized_alias_to_canonical[_normalize_semantic_lookup_key(canonical_alias)] = canonical_alias
 
-    return service_short_name
+    allowed_aliases = sorted(alias_to_display.keys())
+    if not allowed_aliases:
+        return None, None, []
+
+    normalized_candidate = _normalize_semantic_lookup_key(candidate_text)
+    direct_match = normalized_alias_to_canonical.get(normalized_candidate)
+    if direct_match is not None:
+        return direct_match, alias_to_display[direct_match], allowed_aliases
+
+    canonical = await resolve_semantic_action(
+        context_name=context_name,
+        allowed_actions=allowed_aliases,
+        user_input_text=candidate_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        auxiliary_context={
+            'supplier_id': supplier_id,
+            'option_descriptions': [
+                {'value': alias, 'description': alias_to_display[alias]} for alias in allowed_aliases
+            ],
+        },
+    )
+    if canonical not in alias_to_display:
+        return None, None, allowed_aliases
+
+    return canonical, alias_to_display[canonical], allowed_aliases
 
 
 def _contact_lookup_feedback(result: ContactLookupResult) -> str:
@@ -745,12 +764,8 @@ async def _build_and_store_preview(
     normalized_items: list[dict[str, object]] = []
     total_amount = 0.0
     for item_index, item_input in enumerate(item_inputs, start=1):
-        service_short_name_input = (
-            (item_input.get('service_term_sk') or item_input.get('item_name_raw') or '').strip()
-        )
-        service_term_internal = normalize_service_term(service_short_name_input)
-        service_short_name = service_term_internal or service_short_name_input
-        if not service_short_name:
+        service_short_name_input = ((item_input.get('service_term_sk') or item_input.get('item_name_raw') or '').strip())
+        if not service_short_name_input:
             await _start_invoice_slot_clarification(
                 message=message,
                 state=state,
@@ -759,6 +774,31 @@ async def _build_and_store_preview(
                 raw_text=raw_text,
                 parsed_draft=parsed_draft,
                 unresolved_slot=_SLOT_ITEMS if len(item_inputs) > 1 else _SLOT_SERVICE,
+            )
+            return
+
+        if supplier.id is None:
+            await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+            await state.clear()
+            return
+
+        service_short_name, service_display_name, allowed_aliases = await _resolve_service_alias_bounded(
+            alias_service=ServiceAliasService(config.db_path),
+            supplier_id=int(supplier.id),
+            candidate_text=service_short_name_input,
+            config=config,
+            context_name='invoice_service_term_resolution',
+        )
+        if not service_short_name or not service_display_name:
+            await _start_invoice_slot_clarification(
+                message=message,
+                state=state,
+                config=config,
+                request_id=request_id,
+                raw_text=raw_text,
+                parsed_draft=parsed_draft,
+                unresolved_slot=_SLOT_ITEMS if len(item_inputs) > 1 else _SLOT_SERVICE,
+                bounded_choices=allowed_aliases[:5],
             )
             return
 
@@ -814,21 +854,13 @@ async def _build_and_store_preview(
             )
             return
 
-        service_display_name = service_short_name
-        if supplier.id is not None:
-            service_display_name = _resolve_service_display_name(
-                alias_service=ServiceAliasService(config.db_path),
-                supplier_id=supplier.id,
-                service_short_name=service_short_name,
-                service_term_internal=service_term_internal,
-            )
         unit = (item_input.get('unit') or '').strip() or None
         total_amount = round(total_amount + amount, 2)
         normalized_items.append(
             {
                 'item_index': item_index,
                 'service_short_name': service_short_name,
-                'item_term_canonical_internal': service_term_internal,
+                'item_term_canonical_internal': service_short_name,
                 'service_display_name': service_display_name,
                 'quantity': quantity,
                 'unit_price': unit_price,
@@ -1054,12 +1086,7 @@ def _parse_date_clarification(value: str, *, issue_date_obj: date) -> str | None
 def _apply_slot_clarification(parsed_draft: dict[str, object], unresolved_slot: str, clarification_text: str) -> bool:
     normalized_text = clarification_text.strip()
     if unresolved_slot == _SLOT_SERVICE:
-        canonical_service_term = normalize_service_term(normalized_text)
-        if canonical_service_term is None:
-            return False
-        parsed_draft['service_term_sk'] = canonical_service_term
-        parsed_draft['item_name_raw'] = canonical_service_term
-        return True
+        return False
     if unresolved_slot == _SLOT_CUSTOMER:
         if not normalized_text:
             return False
@@ -1136,6 +1163,30 @@ async def process_invoice_slot_clarification(
             request_id=str(partial.get('request_id') or uuid4()),
         )
         return
+    elif unresolved_slot == _SLOT_SERVICE:
+        if message.from_user is None:
+            await message.answer('Nepodarilo sa identifikovať používateľa.')
+            return
+        supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+        if supplier is None or supplier.id is None:
+            await state.clear()
+            await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+            return
+        service_short_name, _service_display_name, allowed_aliases = await _resolve_service_alias_bounded(
+            alias_service=ServiceAliasService(config.db_path),
+            supplier_id=int(supplier.id),
+            candidate_text=clarification_text,
+            config=config,
+            context_name='invoice_service_slot_clarification',
+        )
+        if service_short_name is None:
+            prompt = _SLOT_PROMPTS[_SLOT_SERVICE]
+            if allowed_aliases:
+                prompt = f'{prompt}\nMožnosti: {", ".join(allowed_aliases[:5])}.'
+            await message.answer(prompt)
+            return
+        parsed_draft['service_term_sk'] = service_short_name
+        parsed_draft['item_name_raw'] = service_short_name
     elif not _apply_slot_clarification(parsed_draft, unresolved_slot, clarification_text):
         await message.answer(_SLOT_PROMPTS.get(unresolved_slot, 'Spresnite údaj, prosím.'))
         return
@@ -1896,26 +1947,27 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         return
 
     alias_service = ServiceAliasService(config.db_path)
-    service_term_internal = normalize_service_term(new_service_candidate)
-    resolved_display_name = alias_service.resolve_service_display_name(int(supplier.id), new_service_candidate)
-    if not resolved_display_name and service_term_internal:
-        resolved_display_name = alias_service.resolve_service_display_name(int(supplier.id), service_term_internal)
-    if not resolved_display_name and service_term_internal:
-        for bridge_candidate in _service_alias_bridge_forms(service_term_internal):
-            resolved_display_name = alias_service.resolve_service_display_name(int(supplier.id), bridge_candidate)
-            if resolved_display_name:
-                break
-    if not resolved_display_name:
-        await message.answer(
-            'Nepodarilo sa jednoznačne určiť službu zo slovníka aliasov. '
+    resolved_alias, resolved_display_name, allowed_aliases = await _resolve_service_alias_bounded(
+        alias_service=alias_service,
+        supplier_id=int(supplier.id),
+        candidate_text=new_service_candidate,
+        config=config,
+        context_name='invoice_edit_item_service',
+    )
+    if not resolved_alias or not resolved_display_name:
+        prompt = (
+            'Nepodarilo sa jednoznačne určiť službu z povolených aliasov. '
             'Skúste iný názov alebo najprv pridajte alias cez /service.'
         )
+        if allowed_aliases:
+            prompt += f'\nMožnosti: {", ".join(allowed_aliases[:5])}.'
+        await message.answer(prompt)
         return
 
     invoice_service = InvoiceService(config.db_path)
     invoice_service.update_item_service(
         item_id=int(target_item_id),
-        service_short_name=new_service_candidate,
+        service_short_name=resolved_alias,
         service_display_name=resolved_display_name,
     )
 
