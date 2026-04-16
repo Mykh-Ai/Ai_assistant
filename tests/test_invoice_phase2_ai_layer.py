@@ -14,6 +14,7 @@ from bot.handlers.invoice import (
     _extract_invoice_draft_from_phase2_payload,
     _format_preview,
     _resolve_delivery_date,
+    _resolve_service_alias_bounded,
 )
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db
@@ -229,27 +230,15 @@ def test_validate_payload_accepts_lookup_ready_latin_customer_candidate() -> Non
     assert validated['vstup']['povodny_text'] == 'сделай фактуру на техкомпании за ремонт 150 eur'
 
 
-@pytest.mark.parametrize('bad_text', ['ремонт', 'управы', 'оправы'])
-def test_validate_payload_repairs_non_slovak_item_name_when_service_term_is_known(bad_text: str) -> None:
-    payload = _valid_payload('сделай фактуру на техкомпании за ремонт 150 eur')
-    payload['biznis_sk']['polozka_povodna'] = bad_text
+def test_validate_payload_keeps_service_term_and_repairs_missing_item_label() -> None:
+    payload = _valid_payload('faktura pre Tech Company, random service 150 eur')
+    payload['biznis_sk']['polozka_povodna'] = '   '
+    payload['biznis_sk']['termin_sluzby_sk'] = 'random service'
 
     validated = validate_invoice_phase2_payload(payload)
 
-    assert validated['biznis_sk']['termin_sluzby_sk'] == 'oprava'
-    assert validated['biznis_sk']['polozka_povodna'] == 'oprava'
-
-
-def test_validate_payload_returns_slot_error_when_service_term_still_unknown() -> None:
-    payload = _valid_payload('faktura pre Tech Company, random service 150 eur')
-    payload['biznis_sk']['polozka_povodna'] = 'какаято'
-    payload['biznis_sk']['termin_sluzby_sk'] = 'random service'
-
-    with pytest.raises(LlmInvoicePayloadError) as exc_info:
-        validate_invoice_phase2_payload(payload)
-
-    assert exc_info.value.error_code == 'service_term_unresolved'
-    assert exc_info.value.partial_payload is not None
+    assert validated['biznis_sk']['termin_sluzby_sk'] == 'random service'
+    assert validated['biznis_sk']['polozka_povodna'] == 'random service'
 
 
 def test_validate_payload_accepts_optional_items_up_to_three() -> None:
@@ -312,6 +301,10 @@ def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_
     state = _DummyState()
 
     payload = _valid_payload('сделай фактуру для Tech Company, ремонт 150 EUR')
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(db_path).create_mapping(int(supplier.id), 'montáž', 'Montáž zariadenia')
+
     _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
 
     asyncio.run(_build_and_store_preview(
@@ -664,6 +657,10 @@ def test_preview_multi_item_builds_total_and_item_list(configured_db: tuple[Path
     message = _DummyMessage(telegram_id)
     state = _DummyState()
 
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(db_path).create_mapping(int(supplier.id), 'montáž', 'Montáž zariadenia')
+
     payload = _valid_payload('oprava 3000, montáž 2x1000')
     payload['biznis_sk']['items'] = [
         {
@@ -837,3 +834,69 @@ def test_delivery_date_explicit_local_year_disables_anchoring() -> None:
     )
 
     assert resolved.isoformat() == '2025-04-04'
+
+
+def test_resolve_service_alias_bounded_prefers_deterministic_direct_match(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _contact_id = configured_db
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+
+    config = Config(
+        bot_token='token',
+        openai_api_key=None,
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    alias_service = ServiceAliasService(db_path)
+
+    alias, display, allowed = asyncio.run(_resolve_service_alias_bounded(
+        alias_service=alias_service,
+        supplier_id=int(supplier.id),
+        candidate_text='  OPRAVA ',
+        config=config,
+        context_name='invoice_service_term_resolution',
+    ))
+
+    assert alias == 'oprava'
+    assert display == 'Servis a oprava zariadenia'
+    assert 'oprava' in allowed
+
+
+def test_resolve_service_alias_bounded_uses_bounded_llm_result(monkeypatch: pytest.MonkeyPatch, configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _contact_id = configured_db
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(db_path).create_mapping(int(supplier.id), 'montaz', 'Montáž zariadenia')
+
+    async def _fake_resolve_semantic_action(**kwargs):
+        assert kwargs['context_name'] == 'invoice_service_term_resolution'
+        assert 'oprava' in kwargs['allowed_actions']
+        assert 'montaz' in kwargs['allowed_actions']
+        return 'montaz'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _fake_resolve_semantic_action)
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='sk-test',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+
+    alias, display, allowed = asyncio.run(_resolve_service_alias_bounded(
+        alias_service=ServiceAliasService(db_path),
+        supplier_id=int(supplier.id),
+        candidate_text='montáž',
+        config=config,
+        context_name='invoice_service_term_resolution',
+    ))
+
+    assert alias == 'montaz'
+    assert display == 'Montáž zariadenia'
+    assert set(allowed) >= {'oprava', 'montaz'}

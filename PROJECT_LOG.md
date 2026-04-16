@@ -1,5 +1,35 @@
 # PROJECT_LOG
 
+## 2026-04-16 — Session 035 — Semantic seam migration batch 1 (bounded service alias contract)
+
+### Goal
+Migrate remaining Python-first semantic service resolution seams (invoice parse + service clarification + invoice edit service change) to bounded LLM orchestration with DB-driven allowed sets, while keeping deterministic cleaning/validation unchanged.
+
+### Changes
+- invoice parser contract hardening (`bot/services/llm_invoice_parser.py`):
+  - removed dictionary/normalizer-based service canonicalization from payload validation;
+  - kept deterministic shape checks and safe string normalization only (`strip`, non-empty constraints);
+  - service term is now treated as bounded semantic output to be resolved in runtime against allowed aliases.
+- invoice runtime bounded resolution (`bot/handlers/invoice.py`):
+  - added supplier-scoped bounded service alias resolver that:
+    - fetches active alias options from DB,
+    - keeps deterministic text cleaning for direct exact/normalized match,
+    - otherwise calls bounded semantic resolver with allowed values + per-option description,
+    - accepts only one alias from allowed set (or unknown).
+  - migrated create-preview item service resolution to this bounded alias contract;
+  - migrated service slot clarification (`waiting_service_clarification`) to bounded alias contract;
+  - migrated invoice edit `replace_service` path to bounded alias contract;
+  - removed old bridge-form/dictionary semantic fallback usage from these paths.
+- focused tests (`tests/test_invoice_phase2_ai_layer.py`):
+  - updated parser expectations to deterministic-only service-field repair behavior (no dictionary semantic rewrite),
+  - added tests for bounded alias resolution (deterministic direct match + bounded LLM canonical selection),
+  - adjusted multi-item preview fixture coverage to include alias set required by bounded contract.
+
+### Scope boundary
+- Deterministic cleaning/validation/FSM/persistence logic kept in Python.
+- No giant synonym dictionaries introduced.
+- No architecture expansion beyond bounded service-semantic seams targeted in this batch.
+
 ## 2026-04-16 — Session 034 — Pre-merge audit fixes for Phase 1 multi-item `create_invoice`
 
 ### Goal
