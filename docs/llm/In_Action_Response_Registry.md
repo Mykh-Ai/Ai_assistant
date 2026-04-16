@@ -24,6 +24,7 @@ Purpose: evidence-based registry of bounded in-workflow responses and state-scop
 | Value/slot group | Category | Status | Entry mode | Source evidence | Notes |
 |---|---|---|---|---|---|
 | Invoice unresolved slot clarification (`service_term`, `customer_name`, `delivery_date`, `due_days`, `quantity`, `unit_price`, `quantity_unit_price_pair`) | in-action response group | implemented | mixed (text + voice) | Invoice FSM clarification handlers and prompts; quantity×price pair uses dedicated bounded resolver `resolve_quantity_unit_price_pair(...)`; voice routes for `waiting_service_clarification` and `waiting_slot_clarification`. | State-bounded only; not global free-form extraction. |
+| `create_invoice` Phase 2 intake shape (`singleton` + optional bounded `items[]`) | in-action response/value contract group | partial (Phase 1 implemented) | mixed intake (text + voice via STT) | Runtime supports backward-compatible dual-shape intake: singleton item fields remain valid; optional `biznis_sk.items[]` (max 3) is accepted as candidate segmentation shape; parser and preview/save paths normalize to internal list shape with bounded clarification/fail-safe behavior. | Implemented Phase 1: bounded multi-item intake + persistence. Legacy single-item path remains compatible. |
 | Contact intake missing field responses (`name`, `ico`, `dic`, `address`, `email`) | in-action response group | implemented | mixed (text + voice, in specific states) | `process_contact_missing_fields()` updates one missing field at a time; voice routes for `ContactStates.intake_missing`. | Validation is deterministic in Python (ICO/DIC/email checks). |
 
 ## D) Audit correction focus
@@ -54,3 +55,11 @@ This is expected and should be documented as a manual command flow, not as a mis
   - `operation`
   - `value`
 - Newly mapped operations listed as planned above are docs-only and not runtime-implemented yet.
+
+## F) Runtime note for `create_invoice` dual-shape intake
+
+- Phase 1 runtime dual-shape support is implemented:
+  - singleton remains valid,
+  - optional bounded `items[]` (max 3) is supported,
+  - Python remains final validator/workflow owner.
+- Unclear item boundaries, quantity semantics, service resolution ambiguity, total mismatch, or render-safety overflow must trigger bounded clarification/fallback, not silent acceptance.

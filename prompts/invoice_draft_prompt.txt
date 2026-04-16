@@ -23,7 +23,18 @@ Vráť STRICTNE iba jeden JSON objekt v tomto tvare:
     "mena": null,
     "datum_dodania": null,
     "splatnost_dni": null,
-    "datum_splatnosti": null
+    "datum_splatnosti": null,
+    "items": [
+      {
+        "polozka_povodna": null,
+        "termin_sluzby_sk": null,
+        "mnozstvo": null,
+        "jednotka": null,
+        "cena_za_jednotku": null,
+        "suma": null,
+        "item_description_raw": null
+      }
+    ]
   },
   "stopa": {
     "chyba_udaje": [],
@@ -45,10 +56,20 @@ Pravidlá:
 - Nevymýšľaj IČO/DIČ/adresy/právne identifikátory.
 - `termin_sluzby_sk` je interný slovenský termín draft (napr. ремонт -> oprava), nie finálny PDF názov.
 - `biznis_sk.polozka_povodna` a `biznis_sk.termin_sluzby_sk` musia byť v slovenčine (bez cyriliky); raw cyriliku nechávaj len vo `vstup.povodny_text`/`stopa`.
+- Backward compatibility je povinná:
+  - singleton polia (`polozka_povodna`, `termin_sluzby_sk`, `mnozstvo`, `jednotka`, `cena_za_jednotku`, `suma`) vždy vyplň podľa najistejšej interpretácie,
+  - voliteľne môžeš pridať `biznis_sk.items[]` ako candidate segmentation pri multi-item vstupe.
+- `biznis_sk.items[]` je striktne bounded: max 3 položky.
+- Nepoužívaj open-ended extrakciu ľubovoľného počtu položiek.
+- Ak si neistý hranicami položiek alebo významom násobenia, nepoužívaj tiché odhady; daj `null` a zaznamenaj nejasnosť do `stopa.nejasnosti`.
 - Pri frázach typu `2x 1500`, `2 razy po 1500`, `2 kusy po 1500` nastav:
   - `mnozstvo` = 2
   - `cena_za_jednotku` = 1500
   - `suma` = 3000
+- Split semantics:
+  - `montáž dva razy po 1000` = jedna položka (množstvo 2),
+  - `oprava 3000 a montáž 1000` = dve candidate položky,
+  - `oprava 3000, montáž 2x1000` = dve candidate položky (druhá s násobením).
 - Ak si pri rozlíšení `cena_za_jednotku` vs `suma` neistý, nevymýšľaj čísla; nechaj pole `null` a uveď nejasnosť v `stopa.nejasnosti`.
 - Ak pole nevieš určiť spoľahlivo, daj null a uveď dôvod v `stopa.chyba_udaje` alebo `stopa.nejasnosti`.
 - `zamer.nazov` nastav na `vytvor_fakturu` ak je vstup faktúra-like (`invoice`, `faktura`, `рахунок`, `фактура`).

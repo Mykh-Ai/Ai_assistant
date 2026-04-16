@@ -55,6 +55,17 @@ class CreateInvoicePayload:
     item_total_price: float
 
 
+@dataclass
+class CreateInvoiceItemPayload:
+    description_raw: str
+    description_normalized: str | None
+    item_description_raw: str | None
+    quantity: float
+    unit: str | None
+    unit_price: float
+    total_price: float
+
+
 class InvoiceService:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
@@ -84,7 +95,50 @@ class InvoiceService:
         return f'{prefix}{last_num + 1:04d}'
 
     def create_invoice_with_one_item(self, payload: CreateInvoicePayload) -> int:
-        issue_year = int(payload.issue_date[:4])
+        return self.create_invoice_with_items(
+            supplier_telegram_id=payload.supplier_telegram_id,
+            contact_id=payload.contact_id,
+            issue_date=payload.issue_date,
+            delivery_date=payload.delivery_date,
+            due_date=payload.due_date,
+            due_days=payload.due_days,
+            total_amount=payload.total_amount,
+            currency=payload.currency,
+            status=payload.status,
+            items=[
+                CreateInvoiceItemPayload(
+                    description_raw=payload.item_description_raw,
+                    description_normalized=payload.item_description_normalized,
+                    item_description_raw=None,
+                    quantity=payload.item_quantity,
+                    unit=payload.item_unit,
+                    unit_price=payload.item_unit_price,
+                    total_price=payload.item_total_price,
+                )
+            ],
+        )
+
+    def create_invoice_with_items(
+        self,
+        *,
+        supplier_telegram_id: int,
+        contact_id: int,
+        issue_date: str,
+        delivery_date: str,
+        due_date: str,
+        due_days: int,
+        total_amount: float,
+        currency: str,
+        status: str,
+        items: list[CreateInvoiceItemPayload],
+    ) -> int:
+        if not items:
+            raise RuntimeError('Invoice save failed: at least one item is required.')
+        computed_total = round(sum(item.total_price for item in items), 2)
+        if abs(computed_total - round(total_amount, 2)) > 0.01:
+            raise RuntimeError('Invoice save failed: invoice total does not match sum of item totals.')
+
+        issue_year = int(issue_date[:4])
 
         with managed_connection(self._db_path) as connection:
             invoice_number = self._generate_next_invoice_number(connection, issue_year)
@@ -96,38 +150,40 @@ class InvoiceService:
                     'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
                 ),
                 (
-                    payload.supplier_telegram_id,
-                    payload.contact_id,
+                    supplier_telegram_id,
+                    contact_id,
                     invoice_number,
-                    payload.issue_date,
-                    payload.delivery_date,
-                    payload.due_date,
-                    payload.due_days,
-                    payload.total_amount,
-                    payload.currency,
-                    payload.status,
+                    issue_date,
+                    delivery_date,
+                    due_date,
+                    due_days,
+                    total_amount,
+                    currency,
+                    status,
                 ),
             )
             invoice_id = cursor.lastrowid
             if invoice_id is None:
                 raise RuntimeError('Invoice save failed: missing invoice id after insert.')
 
-            connection.execute(
-                (
-                    'INSERT INTO invoice_item '
-                    '(invoice_id, description_raw, description_normalized, item_description_raw, quantity, unit, unit_price, total_price) '
-                    'VALUES (?, ?, ?, NULL, ?, ?, ?, ?)'
-                ),
-                (
-                    invoice_id,
-                    payload.item_description_raw,
-                    payload.item_description_normalized,
-                    payload.item_quantity,
-                    payload.item_unit,
-                    payload.item_unit_price,
-                    payload.item_total_price,
-                ),
-            )
+            for item in items:
+                connection.execute(
+                    (
+                        'INSERT INTO invoice_item '
+                        '(invoice_id, description_raw, description_normalized, item_description_raw, quantity, unit, unit_price, total_price) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                    ),
+                    (
+                        invoice_id,
+                        item.description_raw,
+                        item.description_normalized,
+                        item.item_description_raw,
+                        item.quantity,
+                        item.unit,
+                        item.unit_price,
+                        item.total_price,
+                    ),
+                )
             connection.commit()
 
         return int(invoice_id)

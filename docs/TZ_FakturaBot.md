@@ -484,6 +484,58 @@ LLM не має права:
 }
 ```
 
+### 6.1.1 Dual-shape multi-item intake (Phase 1, bounded)
+
+Поточний runtime для create/invoice intake підтримує backward-compatible dual-shape:
+- singleton shape залишається валідним;
+- optional bounded `biznis_sk.items[]` підтримується для candidate multi-item intake.
+
+Contract decisions:
+- Backward compatibility обов’язкова:
+  - існуючий singleton shape лишається валідним;
+  - додається опційний bounded `biznis_sk.items[]` для candidate multi-item extraction;
+  - list-only hard cutover не входить у цей етап.
+- Python лишається execution/workflow owner:
+  - LLM може повертати лише bounded candidate item segmentation;
+  - LLM не приймає рішення про persistence/side effects;
+  - Python валідовує boundaries, numeric coherence, totals, max item count, render safety.
+- Safe outcomes:
+  - accept + continue,
+  - bounded clarification,
+  - safe fallback (без silent merge/guess).
+
+Phase 1 bounds:
+- `items[]` max size = 3;
+- без open-ended extraction довільної кількості позицій;
+- при перевищенні bounds або неоднозначності — bounded clarification/fallback.
+
+Candidate item shape (conceptual, machine-safe):
+- `polozka_povodna`,
+- `termin_sluzby_sk`,
+- `mnozstvo`,
+- `jednotka`,
+- `cena_za_jednotku`,
+- `suma`,
+- optional future-compatible `item_description_raw`.
+
+Split semantics rules:
+- `montáž dva razy po 1000` => одна позиція (`mnozstvo=2`, `cena_za_jednotku=1000`);
+- `oprava 3000 a montáž 1000` => дві candidate позиції;
+- `oprava 3000, montáž 2x1000` => дві candidate позиції (друга з multiplier semantics);
+- якщо межі позицій або quantity semantics неясні — Python запитує bounded clarification.
+
+Fail-safe triggers (no silent auto-accept):
+- ambiguous boundaries;
+- ambiguous quantity semantics;
+- ambiguous service resolution по будь-якій позиції;
+- total incoherence (per-item або aggregate);
+- render/page safety exceeded.
+
+Runtime follow-up areas (future patches):
+- richer bounded clarification for complex multi-item boundary ambiguity,
+- stricter render/page-fit guards for larger real-world item text,
+- optional per-item detail extraction policy hardening.
+
 Правила дат для invoice draft:
 - `issue_date` відповідає `Dátum vystavenia` і завжди ставиться ботом автоматично в момент створення фактури.
 - Дата, яку користувач продиктував або написав у повідомленні, інтерпретується як `delivery_date` (`Dátum dodania`).

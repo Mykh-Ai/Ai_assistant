@@ -140,6 +140,38 @@ def test_extract_payload_preserves_original_text_and_sk_fields() -> None:
     assert parsed['service_term_sk'] == 'oprava'
     assert parsed['amount'] == 150
     assert parsed['unit_price'] == 150
+    assert isinstance(parsed['items'], list)
+    assert len(parsed['items']) == 1
+
+
+def test_extract_payload_uses_items_list_when_present() -> None:
+    payload = _valid_payload('oprava 3000 a montáž 1000')
+    payload['biznis_sk']['items'] = [
+        {
+            'polozka_povodna': 'oprava',
+            'termin_sluzby_sk': 'oprava',
+            'mnozstvo': 1,
+            'jednotka': 'ks',
+            'cena_za_jednotku': 3000,
+            'suma': 3000,
+            'item_description_raw': None,
+        },
+        {
+            'polozka_povodna': 'montáž',
+            'termin_sluzby_sk': 'montáž',
+            'mnozstvo': 1,
+            'jednotka': 'ks',
+            'cena_za_jednotku': 1000,
+            'suma': 1000,
+            'item_description_raw': None,
+        },
+    ]
+
+    raw_text, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    assert raw_text == 'oprava 3000 a montáž 1000'
+    assert len(parsed['items']) == 2
+    assert parsed['items'][1]['service_term_sk'] == 'montáž'
 
 
 @pytest.mark.parametrize(
@@ -218,6 +250,50 @@ def test_validate_payload_returns_slot_error_when_service_term_still_unknown() -
 
     assert exc_info.value.error_code == 'service_term_unresolved'
     assert exc_info.value.partial_payload is not None
+
+
+def test_validate_payload_accepts_optional_items_up_to_three() -> None:
+    payload = _valid_payload('oprava 3000, montáž 2x1000')
+    payload['biznis_sk']['items'] = [
+        {
+            'polozka_povodna': 'oprava',
+            'termin_sluzby_sk': 'oprava',
+            'mnozstvo': 1,
+            'jednotka': 'ks',
+            'cena_za_jednotku': 3000,
+            'suma': 3000,
+            'item_description_raw': None,
+        },
+        {
+            'polozka_povodna': 'montáž',
+            'termin_sluzby_sk': 'montáž',
+            'mnozstvo': 2,
+            'jednotka': 'ks',
+            'cena_za_jednotku': 1000,
+            'suma': 2000,
+            'item_description_raw': None,
+        },
+    ]
+
+    validated = validate_invoice_phase2_payload(payload)
+
+    assert isinstance(validated['biznis_sk']['items'], list)
+    assert len(validated['biznis_sk']['items']) == 2
+
+
+def test_validate_payload_rejects_items_count_over_phase1_bound() -> None:
+    payload = _valid_payload('multi')
+    payload['biznis_sk']['items'] = [
+        {'polozka_povodna': 'oprava', 'termin_sluzby_sk': 'oprava', 'mnozstvo': 1, 'jednotka': 'ks', 'cena_za_jednotku': 1, 'suma': 1},
+        {'polozka_povodna': 'montáž', 'termin_sluzby_sk': 'montáž', 'mnozstvo': 1, 'jednotka': 'ks', 'cena_za_jednotku': 1, 'suma': 1},
+        {'polozka_povodna': 'servis', 'termin_sluzby_sk': 'servis', 'mnozstvo': 1, 'jednotka': 'ks', 'cena_za_jednotku': 1, 'suma': 1},
+        {'polozka_povodna': 'revizia', 'termin_sluzby_sk': 'revizia', 'mnozstvo': 1, 'jednotka': 'ks', 'cena_za_jednotku': 1, 'suma': 1},
+    ]
+
+    with pytest.raises(LlmInvoicePayloadError) as exc_info:
+        validate_invoice_phase2_payload(payload)
+
+    assert exc_info.value.error_code == 'items_count_exceeded'
 
 
 def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_db: tuple[Path, int, int]) -> None:
@@ -572,6 +648,125 @@ def test_preview_message_hides_short_service_name_field() -> None:
 
     assert 'Krátky názov služby' not in preview
     assert 'Plný názov služby' in preview
+
+
+def test_preview_multi_item_builds_total_and_item_list(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('oprava 3000, montáž 2x1000')
+    payload['biznis_sk']['items'] = [
+        {
+            'polozka_povodna': 'oprava',
+            'termin_sluzby_sk': 'oprava',
+            'mnozstvo': 1,
+            'jednotka': 'ks',
+            'cena_za_jednotku': 3000,
+            'suma': 3000,
+            'item_description_raw': None,
+        },
+        {
+            'polozka_povodna': 'montáž',
+            'termin_sluzby_sk': 'montáž',
+            'mnozstvo': 2,
+            'jednotka': 'ks',
+            'cena_za_jednotku': 1000,
+            'suma': 2000,
+            'item_description_raw': None,
+        },
+    ]
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text='oprava 3000, montáž 2x1000',
+        parsed_draft=parsed,
+    ))
+
+    draft = state.data['invoice_draft']
+    assert len(draft['items']) == 2
+    assert draft['amount'] == 5000.0
+
+
+def test_preview_multi_item_ambiguous_boundaries_requires_clarification(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('oprava montáž 3000 1000')
+    payload['biznis_sk']['items'] = [
+        {'polozka_povodna': 'oprava', 'termin_sluzby_sk': 'oprava', 'mnozstvo': 1, 'jednotka': 'ks', 'cena_za_jednotku': 3000, 'suma': 3000},
+        {'polozka_povodna': 'montáž', 'termin_sluzby_sk': 'montáž', 'mnozstvo': 1, 'jednotka': 'ks', 'cena_za_jednotku': 1000, 'suma': 1000},
+    ]
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text='oprava montáž 3000 1000',
+        parsed_draft=parsed,
+    ))
+
+    assert state.last_state == InvoiceStates.waiting_slot_clarification
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'items'
+
+
+def test_preview_multi_item_with_single_amount_token_requires_clarification(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('oprava a montáž zariadenia 3000')
+    payload['biznis_sk']['items'] = [
+        {'polozka_povodna': 'oprava', 'termin_sluzby_sk': 'oprava', 'mnozstvo': 1, 'jednotka': 'ks', 'cena_za_jednotku': 1500, 'suma': 1500},
+        {'polozka_povodna': 'montáž', 'termin_sluzby_sk': 'montáž', 'mnozstvo': 1, 'jednotka': 'ks', 'cena_za_jednotku': 1500, 'suma': 1500},
+    ]
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text='oprava a montáž zariadenia 3000',
+        parsed_draft=parsed,
+    ))
+
+    assert state.last_state == InvoiceStates.waiting_slot_clarification
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'items'
 
 
 def test_delivery_date_year_anchor_for_ru_day_month_without_year() -> None:
