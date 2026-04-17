@@ -40,27 +40,6 @@ class LlmInvoicePayloadError(ValueError):
         self.partial_payload = partial_payload
 
 
-_CYRILLIC_RE = re.compile(r'[\u0400-\u04FF]')
-_LOOKUP_FRAGMENT_BLOCKLIST = {
-    'на техкомпании',
-    'для компании',
-    'pre firmu',
-    'kompanii',
-}
-_LOOKUP_PREFIX_WORDS = {
-    'pre',
-    'для',
-    'dla',
-    'na',
-    'на',
-    'za',
-    'firma',
-    'firmu',
-    'firmy',
-    'kompanii',
-}
-
-
 def _require_dict(value: Any, path: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise LlmInvoicePayloadError(f'Invalid LLM payload: {path} must be an object.')
@@ -97,52 +76,22 @@ def _validate_lookup_ready_customer_candidate(candidate: Any, *, payload_snapsho
             payload_snapshot=payload_snapshot,
         )
 
-    lowered = re.sub(r'\s+', ' ', value.lower())
-    if lowered in _LOOKUP_FRAGMENT_BLOCKLIST:
+    normalized_spaces = re.sub(r'\s+', ' ', value).strip()
+    if len(normalized_spaces) > 160:
         _raise_customer_unresolved(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat looks like a raw phrase fragment, not a company candidate.',
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too long.',
             candidate=candidate,
             payload_snapshot=payload_snapshot,
         )
 
-    if _CYRILLIC_RE.search(value):
-        latin_chars = re.sub(r'[^A-Za-zÀ-ÖØ-öø-ÿ]', '', value)
-        if not latin_chars:
-            _raise_customer_unresolved(
-                'Invalid LLM payload: biznis_sk.odberatel_kandidat must not be Cyrillic-only.',
-                candidate=candidate,
-                payload_snapshot=payload_snapshot,
-            )
-
-    tokens = [token for token in re.split(r'[\s,.;:!?()\-/]+', lowered) if token]
-    if tokens and tokens[0] in {'pre', 'для', 'dla', 'na', 'на'}:
+    if not re.search(r'[0-9A-Za-zÀ-žЀ-ӿ]', normalized_spaces):
         _raise_customer_unresolved(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat must not start with preposition-like raw phrase token.',
-            candidate=candidate,
-            payload_snapshot=payload_snapshot,
-        )
-    if tokens and all(token in _LOOKUP_PREFIX_WORDS for token in tokens):
-        _raise_customer_unresolved(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat contains only preposition/filler tokens.',
+            'Invalid LLM payload: biznis_sk.odberatel_kandidat must contain at least one alphanumeric symbol.',
             candidate=candidate,
             payload_snapshot=payload_snapshot,
         )
 
-    if len(tokens) > 6:
-        _raise_customer_unresolved(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too long/noisy for deterministic lookup.',
-            candidate=candidate,
-            payload_snapshot=payload_snapshot,
-        )
-
-    if sum(ch.isalpha() for ch in value) < 3:
-        _raise_customer_unresolved(
-            'Invalid LLM payload: biznis_sk.odberatel_kandidat is too short/noisy for deterministic lookup.',
-            candidate=candidate,
-            payload_snapshot=payload_snapshot,
-        )
-
-    return value
+    return normalized_spaces
 
 
 def _resolve_service_slots_or_raise(

@@ -15,6 +15,7 @@ from bot.handlers.invoice import (
     _format_preview,
     _resolve_delivery_date,
     _resolve_service_alias_bounded,
+    process_invoice_slot_clarification,
 )
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db
@@ -51,6 +52,9 @@ class _DummyState:
 
     async def clear(self) -> None:
         self.cleared = True
+
+    async def get_data(self) -> dict:
+        return dict(self.data)
 
 
 @pytest.fixture()
@@ -202,15 +206,13 @@ def test_validate_payload_fails_loudly_on_malformed_shape() -> None:
 @pytest.mark.parametrize(
     'bad_candidate',
     [
-        'техкомпании',
         '   ',
-        'на техкомпании',
-        'для компании',
-        'pre firmu',
-        'kompanii',
+        '---',
+        '!!!',
+        '()',
     ],
 )
-def test_validate_payload_rejects_non_lookup_ready_customer_candidate(bad_candidate: str) -> None:
+def test_validate_payload_rejects_structurally_invalid_customer_candidate(bad_candidate: str) -> None:
     payload = _valid_payload('сделай фактуру на техкомпании за ремонт 150 eur')
     payload['biznis_sk']['odberatel_kandidat'] = bad_candidate
 
@@ -218,6 +220,15 @@ def test_validate_payload_rejects_non_lookup_ready_customer_candidate(bad_candid
         validate_invoice_phase2_payload(payload)
     assert exc_info.value.error_code == 'customer_unresolved'
     assert exc_info.value.partial_payload is not None
+
+
+def test_validate_payload_accepts_noisy_phrase_like_customer_candidate() -> None:
+    payload = _valid_payload('sprav fakturu pre firmu tech company za opravu')
+    payload['biznis_sk']['odberatel_kandidat'] = 'pre firmu tech company'
+
+    validated = validate_invoice_phase2_payload(payload)
+
+    assert validated['biznis_sk']['odberatel_kandidat'] == 'pre firmu tech company'
 
 
 def test_validate_payload_accepts_lookup_ready_latin_customer_candidate() -> None:
@@ -322,6 +333,195 @@ def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_
     assert draft['item_term_canonical_internal'] == 'oprava'
     assert draft['service_short_name'] == 'oprava'
     assert draft['service_display_name'] == 'Servis a oprava zariadenia'
+
+
+def test_customer_resolution_uses_bounded_candidates_when_lookup_is_noisy(configured_db: tuple[Path, int, int], monkeypatch) -> None:
+    db_path, telegram_id, contact_id = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('faktura pre tek kompaniu za opravu 150')
+    payload['biznis_sk']['odberatel_kandidat'] = 'tek kompaniu'
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    async def _fake_resolver(**kwargs):
+        assert kwargs['context_name'] == 'invoice_customer_term_resolution'
+        assert 'Tech Company s.r.o.' in kwargs['allowed_actions']
+        return 'Tech Company s.r.o.'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _fake_resolver)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text=payload['vstup']['povodny_text'],
+        parsed_draft=parsed,
+    ))
+
+    draft = state.data['invoice_draft']
+    assert draft['contact_id'] == contact_id
+    assert draft['customer_name'] == 'Tech Company s.r.o.'
+
+
+def test_service_resolution_uses_bounded_alias_selection_for_noisy_variant(configured_db: tuple[Path, int, int], monkeypatch) -> None:
+    db_path, telegram_id, _ = configured_db
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(db_path).create_mapping(
+        int(supplier.id),
+        service_short_name='stavebné práce',
+        service_display_name='Stavebné práce',
+    )
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+
+    async def _fake_resolver(**kwargs):
+        assert kwargs['context_name'] == 'invoice_service_term_resolution'
+        assert 'stavebné práce' in kwargs['allowed_actions']
+        assert kwargs['user_input_text'] == 'stavbné práce'
+        return 'stavebné práce'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _fake_resolver)
+    resolved_alias, resolved_display, allowed = asyncio.run(
+        _resolve_service_alias_bounded(
+            alias_service=ServiceAliasService(db_path),
+            supplier_id=int(supplier.id),
+            candidate_text='stavbné práce',
+            config=config,
+            context_name='invoice_service_term_resolution',
+        )
+    )
+
+    assert 'stavebné práce' in allowed
+    assert resolved_alias == 'stavebné práce'
+    assert resolved_display == 'Stavebné práce'
+
+
+def test_customer_clarification_reuses_bounded_candidates(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / 'phase2.db'
+    init_db(db_path)
+    telegram_id = 999
+    SupplierService(db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=telegram_id,
+            name='Dodavatel SK',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Bratislava 1',
+            iban='SK3112000000198742637541',
+            swift='TATRSKBX',
+            email='supplier@example.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    ContactService(db_path).create_or_replace(
+        ContactProfile(
+            supplier_telegram_id=telegram_id,
+            name='Tech Company s.r.o.',
+            ico='87654321',
+            dic='0987654321',
+            ic_dph=None,
+            address='Kosice 2',
+            email='contact@example.com',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+    ContactService(db_path).create_or_replace(
+        ContactProfile(
+            supplier_telegram_id=telegram_id,
+            name='Tesla Slovakia s.r.o.',
+            ico='12341234',
+            dic='1010101010',
+            ic_dph=None,
+            address='Bratislava 2',
+            email='tesla@example.com',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+    awaitable_data = {
+        'invoice_partial_draft': {
+            'request_id': 'req',
+            'raw_text': 'faktura',
+            'parsed_draft': {
+                'customer_name': 'tech',
+                'service_term_sk': 'oprava',
+                'item_name_raw': 'oprava',
+                'quantity': 1,
+                'unit_price': 10,
+                'amount': 10,
+                'unit': 'ks',
+                'currency': 'EUR',
+            },
+            'unresolved_slot': 'customer_name',
+            'bounded_choices': ['Tech Company s.r.o.', 'Tesla Slovakia s.r.o.'],
+        }
+    }
+    state.data.update(awaitable_data)
+
+    captured_allowed: list[str] = []
+
+    async def _fake_resolver(**kwargs):
+        captured_allowed.extend(kwargs['allowed_actions'])
+        return 'Tech Company s.r.o.'
+
+    async def _fake_build_and_store_preview(**kwargs):
+        state.data['resolved_customer'] = kwargs['parsed_draft']['customer_name']
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _fake_resolver)
+    monkeypatch.setattr('bot.handlers.invoice._build_and_store_preview', _fake_build_and_store_preview)
+
+    asyncio.run(
+        process_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            clarification_text='tek kompany',
+        )
+    )
+
+    assert captured_allowed == ['Tech Company s.r.o.', 'Tesla Slovakia s.r.o.']
+    assert state.data['resolved_customer'] == 'Tech Company s.r.o.'
 
 
 def test_preview_returns_clean_retry_message_when_amount_missing(configured_db: tuple[Path, int, int]) -> None:

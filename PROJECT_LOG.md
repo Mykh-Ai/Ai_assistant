@@ -1834,3 +1834,63 @@ Implement targeted runtime hardening for short confirmation/decision states so n
 - No STT model/transport changes.
 - No top-level action routing changes.
 - No invoice amount semantics or service-alias flow changes.
+
+## 2026-04-16 — Session 028 — Invoice service/customer bounded candidate migration batch
+
+### Goal
+Finish coherent migration of invoice slot resolution to bounded LLM contract for service/customer slots (including clarification and edit-replace service path), while keeping deterministic Python validation/state/side effects.
+
+### Changes
+- `bot/handlers/invoice.py`:
+  - added bounded customer candidate resolver helper that:
+    - builds allowed contact candidate set from supplier contacts,
+    - includes deterministic normalized/compressed direct-match shortcut,
+    - then uses bounded resolver (`resolve_semantic_action`) with strict allowed candidates and metadata,
+    - returns exact contact or unresolved.
+  - preview build path now applies bounded customer candidate selection when deterministic contact lookup is not exact/normalized single-match:
+    - for `multiple_candidates`: bounded candidate set from lookup candidates,
+    - for `no_match`: bounded candidate set from supplier contacts,
+    - unresolved continues to slot clarification with bounded customer choices.
+  - customer slot clarification now uses bounded candidate resolver (reusing bounded candidate set saved in FSM partial draft) instead of raw phrase heuristics as final chooser.
+  - service slot clarification/edit service replacement continue using supplier alias bounded candidate contract (exact allowed alias or unknown).
+- `bot/services/semantic_action_resolver.py`:
+  - aligned resolver payload envelope with docs/llm template fields for bounded action/value resolution:
+    - `context_name`,
+    - `current_state` (when present in auxiliary context),
+    - `supported_languages`,
+    - `allowed_actions`,
+    - `user_input_text`,
+    - `expected_output`,
+    - `auxiliary_context`,
+    - `action_hints`.
+- `bot/services/service_term_normalizer.py`:
+  - marked as legacy migration helper (fallback/support only; not primary runtime resolver).
+- tests:
+  - added regression for DB alias `stavebné práce` with noisy input `stavbné práce` resolved through bounded allowed alias selection;
+  - added coverage that noisy customer candidate resolves via bounded contact candidate set;
+  - added coverage that customer clarification reuses bounded candidates from FSM partial payload.
+
+### Notes
+- Deterministic Python responsibilities preserved: cleaning/normalization, DB lookup, validation, FSM/state transitions, numbering/PDF and side effects.
+- No hidden concept changes: migration keeps existing invoice workflow architecture and fail-loud behavior for unresolved slots.
+
+## 2026-04-17 — Session 029 — Final cleanup of parser legacy customer gate + clarification seam
+
+### Goal
+Complete remaining cleanup seams from invoice service/customer bounded migration before merge readiness check.
+
+### Changes
+- `bot/services/llm_invoice_parser.py`:
+  - removed legacy semantic phrase/prefix/blocklist customer gating in parser validation;
+  - parser customer candidate validation now keeps only structural sanity checks (type, non-empty, max length, alphanumeric presence) and no longer rejects phrase-like candidates as semantic decision logic.
+- `bot/handlers/invoice.py`:
+  - removed dead duplicate `_SLOT_CUSTOMER` branch from `_apply_slot_clarification(...)`;
+  - customer clarification runtime path remains single canonical bounded path via `process_invoice_slot_clarification(...)` + `_resolve_customer_candidate_bounded(...)`.
+- `tests/test_invoice_phase2_ai_layer.py`:
+  - updated parser tests to match new contract:
+    - reject only structurally invalid customer candidates,
+    - accept noisy phrase-like customer candidates for later bounded runtime resolution.
+
+### Notes
+- No architecture redesign.
+- Service/customer runtime bounded resolution paths remain unchanged for create/clarify/edit.

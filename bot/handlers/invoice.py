@@ -16,7 +16,7 @@ from aiogram.types import FSInputFile, Message
 from bot.config import Config
 from bot.handlers.contacts import start_add_contact_intake
 from bot.handlers.supplier import start_add_service_alias_intake
-from bot.services.contact_service import ContactLookupResult, ContactService
+from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
@@ -121,12 +121,84 @@ def _resolve_contact_lookup(contact_service: ContactService, telegram_id: int, n
     return contact_service.resolve_contact_lookup(telegram_id, name)
 
 
-
-
 def _normalize_semantic_lookup_key(value: str) -> str:
     lowered = value.casefold().strip()
     separators_normalized = re.sub(r'[^\w\sÀ-žЀ-ӿ]+', ' ', lowered, flags=re.UNICODE)
     return re.sub(r'\s+', ' ', separators_normalized).strip()
+
+
+async def _resolve_customer_candidate_bounded(
+    *,
+    contact_service: ContactService,
+    telegram_id: int,
+    candidate_text: str,
+    config: Config,
+    context_name: str,
+    bounded_contact_names: list[str] | None = None,
+) -> tuple[ContactProfile | None, list[str]]:
+    if bounded_contact_names is None:
+        contact_names = [contact.name for contact in contact_service.get_all_by_supplier(telegram_id)]
+    else:
+        contact_names = [name for name in bounded_contact_names if isinstance(name, str)]
+
+    deduplicated_names: list[str] = []
+    seen_names: set[str] = set()
+    for name in contact_names:
+        normalized_name = name.strip()
+        if not normalized_name or normalized_name in seen_names:
+            continue
+        seen_names.add(normalized_name)
+        deduplicated_names.append(normalized_name)
+
+    if not deduplicated_names:
+        return None, []
+
+    normalized_candidate, compressed_candidate = contact_service.normalize_lookup_forms(candidate_text)
+    for contact_name in deduplicated_names:
+        contact_normalized, contact_compressed = contact_service.normalize_lookup_forms(contact_name)
+        if (
+            normalized_candidate
+            and contact_normalized
+            and normalized_candidate == contact_normalized
+        ) or (
+            compressed_candidate
+            and contact_compressed
+            and compressed_candidate == contact_compressed
+        ):
+            return contact_service.get_by_name(telegram_id, contact_name), deduplicated_names
+
+    available_profiles = {
+        contact.name: contact
+        for contact in contact_service.get_all_by_supplier(telegram_id)
+        if contact.name in deduplicated_names
+    }
+    option_descriptions = [
+        {
+            'value': contact_name,
+            'description': (
+                f'IČO: {profile.ico}, DIČ: {profile.dic}, email: {profile.email}'
+                if (profile := available_profiles.get(contact_name)) is not None
+                else ''
+            ),
+        }
+        for contact_name in deduplicated_names
+    ]
+
+    canonical = await resolve_semantic_action(
+        context_name=context_name,
+        allowed_actions=deduplicated_names,
+        user_input_text=candidate_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        auxiliary_context={
+            'supplier_telegram_id': telegram_id,
+            'option_descriptions': option_descriptions,
+        },
+    )
+    if canonical not in available_profiles:
+        return None, deduplicated_names
+
+    return available_profiles[canonical], deduplicated_names
 
 
 async def _resolve_service_alias_bounded(
@@ -717,7 +789,43 @@ async def _build_and_store_preview(
             ),
         },
     )
-    if lookup_result.state not in {'exact_match', 'normalized_match'} or lookup_result.matched_contact is None:
+    if lookup_result.state in {'exact_match', 'normalized_match'} and lookup_result.matched_contact is not None:
+        contact = lookup_result.matched_contact
+    else:
+        bounded_customer_candidates = (
+            [candidate.name for candidate in lookup_result.candidates]
+            if lookup_result.state == 'multiple_candidates'
+            else [candidate.name for candidate in contact_service.get_all_by_supplier(message.from_user.id)]
+        )
+        resolved_contact, allowed_customer_candidates = await _resolve_customer_candidate_bounded(
+            contact_service=contact_service,
+            telegram_id=message.from_user.id,
+            candidate_text=customer_name,
+            config=config,
+            context_name='invoice_customer_term_resolution',
+            bounded_contact_names=bounded_customer_candidates,
+        )
+        if resolved_contact is None:
+            await _start_invoice_slot_clarification(
+                message=message,
+                state=state,
+                config=config,
+                request_id=request_id,
+                raw_text=raw_text,
+                parsed_draft=parsed_draft,
+                unresolved_slot=_SLOT_CUSTOMER,
+                bounded_choices=allowed_customer_candidates[:5],
+                debug_payload={
+                    'lookup_feedback': _contact_lookup_feedback(lookup_result),
+                    'lookup_state': lookup_result.state,
+                },
+                prefer_service_state=False,
+                update_hint='Prosím, spresnite názov odberateľa a skúste to znova.',
+            )
+            return
+        contact = resolved_contact
+
+    if contact is None:
         await _start_invoice_slot_clarification(
             message=message,
             state=state,
@@ -726,16 +834,9 @@ async def _build_and_store_preview(
             raw_text=raw_text,
             parsed_draft=parsed_draft,
             unresolved_slot=_SLOT_CUSTOMER,
-            bounded_choices=[candidate.name for candidate in lookup_result.candidates[:3]],
-            debug_payload={
-                'lookup_feedback': _contact_lookup_feedback(lookup_result),
-                'lookup_state': lookup_result.state,
-            },
-            prefer_service_state=False,
-            update_hint='Prosím, spresnite názov odberateľa a skúste to znova.',
+            bounded_choices=[],
         )
         return
-    contact = lookup_result.matched_contact
 
     item_inputs = _normalize_items_input(parsed_draft)
     if len(item_inputs) > 3:
@@ -1087,11 +1188,6 @@ def _apply_slot_clarification(parsed_draft: dict[str, object], unresolved_slot: 
     normalized_text = clarification_text.strip()
     if unresolved_slot == _SLOT_SERVICE:
         return False
-    if unresolved_slot == _SLOT_CUSTOMER:
-        if not normalized_text:
-            return False
-        parsed_draft['customer_name'] = normalized_text
-        return True
     if unresolved_slot == _SLOT_DELIVERY_DATE:
         parsed_date = _parse_date_clarification(normalized_text, issue_date_obj=date.today())
         if parsed_date is None:
@@ -1187,6 +1283,31 @@ async def process_invoice_slot_clarification(
             return
         parsed_draft['service_term_sk'] = service_short_name
         parsed_draft['item_name_raw'] = service_short_name
+    elif unresolved_slot == _SLOT_CUSTOMER:
+        if message.from_user is None:
+            await message.answer('Nepodarilo sa identifikovať používateľa.')
+            return
+        contact_service = ContactService(config.db_path)
+        bounded_customer_candidates = (
+            partial.get('bounded_choices')
+            if isinstance(partial.get('bounded_choices'), list)
+            else None
+        )
+        resolved_contact, allowed_customer_candidates = await _resolve_customer_candidate_bounded(
+            contact_service=contact_service,
+            telegram_id=message.from_user.id,
+            candidate_text=clarification_text,
+            config=config,
+            context_name='invoice_customer_slot_clarification',
+            bounded_contact_names=bounded_customer_candidates,
+        )
+        if resolved_contact is None:
+            prompt = _SLOT_PROMPTS[_SLOT_CUSTOMER]
+            if allowed_customer_candidates:
+                prompt = f'{prompt}\nMožnosti: {", ".join(allowed_customer_candidates[:5])}.'
+            await message.answer(prompt)
+            return
+        parsed_draft['customer_name'] = resolved_contact.name
     elif not _apply_slot_clarification(parsed_draft, unresolved_slot, clarification_text):
         await message.answer(_SLOT_PROMPTS.get(unresolved_slot, 'Spresnite údaj, prosím.'))
         return

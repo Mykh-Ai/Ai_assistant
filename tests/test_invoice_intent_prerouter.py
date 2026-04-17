@@ -12,6 +12,9 @@ from bot.handlers.invoice import (
     process_invoice_slot_clarification,
     process_invoice_text,
 )
+from bot.services.db import init_db
+from bot.services.service_alias_service import ServiceAliasService
+from bot.services.supplier_service import SupplierProfile, SupplierService
 from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
 
 
@@ -387,7 +390,34 @@ def test_process_invoice_text_keeps_partial_draft_when_customer_slot_is_unknown(
 
 def test_service_clarification_continues_to_preview_without_restart(tmp_path: Path, monkeypatch) -> None:
     message = _DummyMessage('oprava')
+    message.from_user = type('User', (), {'id': 777})()
     state = _DummyState()
+    db_path = tmp_path / 'test.db'
+    init_db(db_path)
+    SupplierService(db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=777,
+            name='Dodavatel SK',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Bratislava 1',
+            iban='SK3112000000198742637541',
+            swift='TATRSKBX',
+            email='supplier@example.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    supplier = SupplierService(db_path).get_by_telegram_id(777)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(db_path).create_mapping(
+        int(supplier.id),
+        service_short_name='oprava',
+        service_display_name='Servis a oprava zariadenia',
+    )
     state.data['invoice_partial_draft'] = {
         'request_id': 'req-1',
         'raw_text': 'faktura pre Tech Company 150 EUR',
