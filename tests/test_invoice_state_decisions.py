@@ -538,6 +538,8 @@ def test_replace_service_keeps_existing_item_description_and_rebuilds_pdf(tmp_pa
     assert item.description_normalized == 'Montáž zariadenia'
     assert item.item_description_raw == 'hala B'
     assert message.documents
+    assert state.current_state == InvoiceStates.waiting_pdf_decision
+    assert message.answers[-1] == 'Služba položky bola upravená. Napíšte: schváliť, upraviť alebo zrušiť.'
 
 
 def test_set_replace_and_clear_item_description_preserve_service_and_rebuild_pdf(tmp_path: Path, monkeypatch) -> None:
@@ -577,6 +579,8 @@ def test_set_replace_and_clear_item_description_preserve_service_and_rebuild_pdf
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     assert item.item_description_raw == 'práce v hale A'
     assert item.description_normalized == 'Servis zariadenia'
+    assert state.current_state == InvoiceStates.waiting_pdf_decision
+    assert message.answers[-1] == 'Opis položky bol upravený. Napíšte: schváliť, upraviť alebo zrušiť.'
 
     # replace
     state.data['last_invoice_id'] = invoice_id

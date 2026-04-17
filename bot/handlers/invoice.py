@@ -1823,6 +1823,11 @@ async def _rebuild_pdf_for_existing_invoice(
     return True
 
 
+async def _send_post_edit_approval_prompt(*, message: Message, state: FSMContext, success_text: str) -> None:
+    await state.set_state(InvoiceStates.waiting_pdf_decision)
+    await message.answer(f'{success_text} Napíšte: schváliť, upraviť alebo zrušiť.')
+
+
 async def _start_invoice_item_edit_flow(
     *,
     message: Message,
@@ -2099,7 +2104,11 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         invoice_id=int(invoice_id),
     )
     if rebuilt:
-        await message.answer('Služba položky bola upravená. Napíšte: schváliť, upraviť alebo zrušiť.')
+        await _send_post_edit_approval_prompt(
+            message=message,
+            state=state,
+            success_text='Služba položky bola upravená.',
+        )
 
 
 @router.message(InvoiceStates.waiting_edit_invoice_number_value)
@@ -2166,7 +2175,11 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
                 previous_pdf_path.unlink(missing_ok=True)
             except Exception:
                 logger.exception('Failed to cleanup previous invoice PDF after invoice-number edit')
-        await message.answer('Číslo faktúry bolo upravené. Napíšte: schváliť, upraviť alebo zrušiť.')
+        await _send_post_edit_approval_prompt(
+            message=message,
+            state=state,
+            success_text='Číslo faktúry bolo upravené.',
+        )
 
 
 @router.message(InvoiceStates.waiting_edit_invoice_date_value)
@@ -2224,7 +2237,11 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
                 previous_pdf_path.unlink(missing_ok=True)
             except Exception:
                 logger.exception('Failed to cleanup previous invoice PDF after invoice-date edit')
-        await message.answer('Dátum faktúry bol upravený. Napíšte: schváliť, upraviť alebo zrušiť.')
+        await _send_post_edit_approval_prompt(
+            message=message,
+            state=state,
+            success_text='Dátum faktúry bol upravený.',
+        )
 
 
 @router.message(InvoiceStates.waiting_edit_description_value)
@@ -2266,7 +2283,11 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
         invoice_id=int(invoice_id),
     )
     if rebuilt:
-        await message.answer('Opis položky bol upravený. Napíšte: schváliť, upraviť alebo zrušiť.')
+        await _send_post_edit_approval_prompt(
+            message=message,
+            state=state,
+            success_text='Opis položky bol upravený.',
+        )
 
 
 @router.message(lambda message: bool((message.text or '').strip()) and not (message.text or '').startswith('/'))

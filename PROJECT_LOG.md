@@ -1,5 +1,25 @@
 # PROJECT_LOG
 
+## 2026-04-17 — Session 036 — Fix post-edit return for `edit_item_description` approval stage
+
+### Goal
+Fix narrow runtime bug where successful item description edit inside `upraviť` could return user into edit-loop context instead of reliably staying in post-PDF approval stage.
+
+### Changes
+- invoice edit success return hardening (`bot/handlers/invoice.py`):
+  - added `_send_post_edit_approval_prompt(...)` helper for post-edit success responses;
+  - helper explicitly enforces FSM state `waiting_pdf_decision` before sending approval prompt;
+  - wired helper into all successful edit handlers (`replace_service`, `edit_item_description`, `edit_invoice_number`, `edit_invoice_date`) after successful PDF rebuild.
+- regression coverage (`tests/test_invoice_state_decisions.py`):
+  - extended `replace_service` test with explicit state + approval prompt assertions;
+  - extended `edit_item_description` success path test with explicit state + approval prompt assertions;
+  - existing invoice number/date tests continue asserting post-edit approval state/prompt behavior.
+
+### Scope boundary
+- Narrow runtime bugfix only.
+- No edit architecture redesign.
+- No expansion to unrelated actions/flows.
+
 ## 2026-04-16 — Session 035 — Semantic seam migration batch 1 (bounded service alias contract)
 
 ### Goal
