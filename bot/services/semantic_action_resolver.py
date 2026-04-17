@@ -313,8 +313,11 @@ async def resolve_semantic_action(
                         'content': json.dumps(
                             {
                                 'context_name': context_name,
+                                'current_state': auxiliary_context.get('current_state') if isinstance(auxiliary_context, dict) else None,
+                                'supported_languages': _SUPPORTED_CONFIRM_LANGUAGES,
                                 'allowed_actions': sorted(allowed),
                                 'user_input_text': cleaned,
+                                'expected_output': {'canonical_action': 'one allowed token or unknown'},
                                 'auxiliary_context': auxiliary_context or {},
                                 'action_hints': action_hints or {},
                             },
