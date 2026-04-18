@@ -269,38 +269,180 @@ def test_voice_waiting_edit_description_requires_text_input(monkeypatch, tmp_pat
     assert msg.answers[-1].startswith('Pre finálny opis položky použite textový vstup.')
 
 
-def test_voice_waiting_edit_invoice_number_requires_text_input(monkeypatch, tmp_path: Path) -> None:
+def test_voice_waiting_edit_scope_routes_to_edit_scope_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
     async def _stt(*args, **kwargs) -> str:
-        return 'zmeň číslo na 20260077'
+        return 'položka'
+
+    async def _scope(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
 
     monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
-    msg = _DummyMessage()
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_scope', _scope)
     asyncio.run(
         handle_voice(
-            msg,
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_scope.state),
+        )
+    )
+    assert calls == ['položka']
+
+
+def test_voice_waiting_edit_item_target_routes_to_item_target_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return '2'
+
+    async def _target(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_item_target', _target)
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_item_target.state),
+        )
+    )
+    assert calls == ['2']
+
+
+def test_voice_waiting_edit_invoice_action_routes_to_invoice_action_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'upraviť číslo faktúry'
+
+    async def _invoice_action(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_invoice_action', _invoice_action)
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_invoice_action.state),
+        )
+    )
+    assert calls == ['upraviť číslo faktúry']
+
+
+def test_voice_waiting_edit_invoice_action_routes_date_text_to_invoice_action_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'upraviť dátum faktúry'
+
+    async def _invoice_action(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_invoice_action', _invoice_action)
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_invoice_action.state),
+        )
+    )
+    assert calls == ['upraviť dátum faktúry']
+
+
+def test_voice_waiting_edit_item_action_routes_to_item_action_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'zmeniť službu'
+
+    async def _action(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_item_action', _action)
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_item_action.state),
+        )
+    )
+    assert calls == ['zmeniť službu']
+
+
+def test_voice_waiting_edit_service_value_routes_to_service_value_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'montaz'
+
+    async def _service_value(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_service_value', _service_value)
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_service_value.state),
+        )
+    )
+    assert calls == ['montaz']
+
+
+def test_voice_waiting_edit_invoice_number_value_routes_to_number_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'zmeň číslo na dvadsať dva'
+
+    async def _number_value(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_invoice_number_value', _number_value)
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
             _DummyBot(),
             _config(tmp_path),
             _DummyState(InvoiceStates.waiting_edit_invoice_number_value.state),
         )
     )
-    assert msg.answers[-1] == 'Pre číslo faktúry použite textový vstup vo formáte RRRRNNNN.'
+    assert calls == ['zmeň číslo na dvadsať dva']
 
 
-def test_voice_waiting_edit_invoice_date_requires_text_input(monkeypatch, tmp_path: Path) -> None:
+def test_voice_waiting_edit_invoice_date_value_routes_to_date_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
     async def _stt(*args, **kwargs) -> str:
         return 'zmeň dátum na pätnásteho marca'
 
+    async def _date_value(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
     monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
-    msg = _DummyMessage()
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_invoice_date_value', _date_value)
     asyncio.run(
         handle_voice(
-            msg,
+            _DummyMessage(),
             _DummyBot(),
             _config(tmp_path),
             _DummyState(InvoiceStates.waiting_edit_invoice_date_value.state),
         )
     )
-    assert msg.answers[-1] == 'Pre dátum faktúry použite textový vstup vo formáte DD.MM.RRRR.'
+    assert calls == ['zmeň dátum na pätnásteho marca']
 
 
 def test_voice_top_level_add_service_alias_routes_to_existing_service_flow(monkeypatch, tmp_path: Path) -> None:

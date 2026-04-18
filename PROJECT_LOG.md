@@ -1,5 +1,78 @@
 # PROJECT_LOG
 
+## 2026-04-18 — Session 038 — Contract-correction pass for edit FSM (item target bounded resolver + runtime contact removal)
+
+### Goal
+Finalize previous clean FSM rewrite without redesigning again: align remaining gaps with docs/llm contract by moving multi-item target selection to bounded semantic resolution and removing `edit_invoice_contact` from runtime edit surface.
+
+### Changes
+- item-target contract correction (`bot/handlers/invoice.py`):
+  - added bounded resolver helper `_resolve_item_target_index_bounded(...)` with dedicated context `invoice_edit_item_target_selection`;
+  - `waiting_edit_item_target` no longer relies on local `isdigit()` gate as primary selector;
+  - handler now resolves canonical target via bounded resolver first, then Python validates range (`1..N`) and performs fail-loud clarification with state preserved.
+- runtime contact edit removal (`bot/handlers/invoice.py`, `bot/services/semantic_action_resolver.py`):
+  - removed `edit_invoice_contact` from invoice-level runtime allowed actions;
+  - removed contact wording from invoice-level user prompts;
+  - removed invoice-action runtime branch for contact edit;
+  - removed fallback mapping for `edit_invoice_contact` in context `invoice_edit_invoice_action`.
+- fallback support (`bot/services/semantic_action_resolver.py`):
+  - added fallback context `invoice_edit_item_target_selection` for deterministic non-LLM fallback (`1/2/3`, basic ordinal/cardinal forms).
+- tests (`tests/test_invoice_state_decisions.py`, `tests/test_voice_state_routing.py`):
+  - added multi-item target coverage for numeric and spoken ordinal selection;
+  - added ambiguous target + out-of-range fail-loud/state-preserved coverage;
+  - added runtime-surface tests proving invoice action prompt no longer offers contact edit and contact text is treated as unknown;
+  - added extra voice invoice-action routing check for date phrase.
+
+### Scope boundary
+- No new architecture redesign from scratch.
+- Kept prior clean state split and value executors unchanged.
+- Kept text-only policy for final description value state unchanged.
+
+## 2026-04-18 — Session 037 — Clean FSM/orchestrator redesign for `upraviť faktúru` edit subflow
+
+### Goal
+Replace legacy mixed item/invoice edit routing with clean bounded orchestrator states and state-scoped semantic resolution, including voice parity for edit-flow control states.
+
+### Changes
+- invoice edit FSM/orchestrator rewrite (`bot/handlers/invoice.py`):
+  - replaced mixed `waiting_edit_operation` contract with explicit state split:
+    - `waiting_edit_scope`
+    - `waiting_edit_invoice_action`
+    - `waiting_edit_item_target`
+    - `waiting_edit_item_action`
+    - value states (`waiting_edit_service_value`, `waiting_edit_invoice_number_value`, `waiting_edit_invoice_date_value`, `waiting_edit_description_value`)
+  - replaced heuristic `_detect_edit_operation(...)` primary routing with bounded state-scoped semantic resolvers:
+    - scope resolver (`invoice_edit_scope_selection`)
+    - invoice action resolver (`invoice_edit_invoice_action`)
+    - item action resolver (`invoice_edit_item_action`)
+  - removed invoice-level action handling from item-target state; item-target now handles only item index selection.
+  - rewrote edit entrypoint from legacy `_start_invoice_item_edit_flow(...)` to clean `start_invoice_edit_flow(...)` with explicit scope selection first.
+  - kept integrity rules and reuse of existing executors (`update_item_service`, `update_item_description`, `update_invoice_number`, `update_invoice_issue_date`, PDF rebuild/post-edit prompt helpers).
+  - kept `waiting_edit_description_value` as text-only final precision state; number/date states now support voice/text with fail-loud exact-text fallback prompts on invalid/ambiguous input.
+- semantic fallback support (`bot/services/semantic_action_resolver.py`):
+  - added deterministic fallback contexts for new bounded edit states (`invoice_edit_scope_selection`, `invoice_edit_invoice_action`, `invoice_edit_item_action`) for non-LLM test/runtime fallback paths.
+- voice routing parity (`bot/handlers/voice.py`):
+  - removed text-only guards for edit-flow selection/control states; STT text now routes through the same edit handlers as text input for:
+    - scope
+    - invoice action
+    - item target
+    - item action
+    - service value
+    - invoice number/date value
+  - retained text-only guard only for final item-description value state.
+- tests (`tests/test_invoice_state_decisions.py`, `tests/test_voice_state_routing.py`):
+  - updated edit-flow tests for clean state graph transitions (scope -> branch-specific states).
+  - added explicit routing coverage for `upraviť opis položky` -> description branch and `zmeniť službu` -> service branch.
+  - updated single-item and multi-item flow assertions to new orchestrator steps.
+  - updated invoice-level branch tests to use `waiting_edit_invoice_action` before number/date value states.
+  - expanded voice routing coverage for edit scope, invoice action, item target, item action, service value, and number/date value handler routing.
+  - strengthened regression by asserting FSM transition to correct final input state before final handlers (removes prior false-green pattern).
+
+### Scope boundary
+- Clean redesign of bounded `upraviť` subflow only (post-PDF in-action model).
+- No standalone top-level `edit_invoice` executor added.
+- `edit_invoice_contact` remains planned/future-ready (not implemented value persistence).
+
 ## 2026-04-17 — Session 036 — Fix post-edit return for `edit_item_description` approval stage
 
 ### Goal
