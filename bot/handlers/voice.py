@@ -10,6 +10,13 @@ from bot.config import Config
 from bot.handlers.contacts import ContactStates, process_contact_intake_confirm, process_contact_missing_fields
 from bot.handlers.invoice import (
     InvoiceStates,
+    invoice_edit_invoice_action,
+    invoice_edit_invoice_date_value,
+    invoice_edit_invoice_number_value,
+    invoice_edit_item_action,
+    invoice_edit_item_target,
+    invoice_edit_scope,
+    invoice_edit_service_value,
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
     process_invoice_service_clarification,
@@ -21,6 +28,22 @@ from bot.services.speech_to_text import transcribe_audio
 
 router = Router(name='voice')
 logger = logging.getLogger(__name__)
+
+
+def _inject_recognized_text(message: Message, recognized_text: str):
+    async def _noop_answer_document(*args, **kwargs) -> None:
+        return None
+
+    return type(
+        'VoiceTextMessage',
+        (),
+        {
+            'text': recognized_text,
+            'answer': message.answer,
+            'answer_document': getattr(message, 'answer_document', _noop_answer_document),
+            'from_user': getattr(message, 'from_user', None),
+        },
+    )()
 
 
 @router.message(F.voice)
@@ -68,6 +91,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             await message.answer('Nepodarilo sa rozpoznať obsah hlasovej správy. Skúste znova.')
             return
 
+        text_message = _inject_recognized_text(message, recognized_text)
         current_state = await state.get_state()
         if current_state == InvoiceStates.waiting_confirm.state:
             await process_invoice_preview_confirmation(
@@ -97,16 +121,48 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 config=config,
                 decision_text=recognized_text,
             )
+        elif current_state == InvoiceStates.waiting_edit_scope.state:
+            await invoice_edit_scope(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == InvoiceStates.waiting_edit_invoice_action.state:
+            await invoice_edit_invoice_action(
+                message=text_message,
+                state=state,
+                config=config,
+            )
         elif current_state == InvoiceStates.waiting_edit_item_target.state:
-            await message.answer('V tomto kroku zadajte číslo položky textom (napr. 1).')
-        elif current_state == InvoiceStates.waiting_edit_operation.state:
-            await message.answer('V tomto kroku zadajte voľbu úpravy textom.')
+            await invoice_edit_item_target(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == InvoiceStates.waiting_edit_item_action.state:
+            await invoice_edit_item_action(
+                message=text_message,
+                state=state,
+                config=config,
+            )
         elif current_state == InvoiceStates.waiting_edit_service_value.state:
-            await message.answer('Napíšte nový názov služby textom.')
+            await invoice_edit_service_value(
+                message=text_message,
+                state=state,
+                config=config,
+            )
         elif current_state == InvoiceStates.waiting_edit_invoice_number_value.state:
-            await message.answer('Pre číslo faktúry použite textový vstup vo formáte RRRRNNNN.')
+            await invoice_edit_invoice_number_value(
+                message=text_message,
+                state=state,
+                config=config,
+            )
         elif current_state == InvoiceStates.waiting_edit_invoice_date_value.state:
-            await message.answer('Pre dátum faktúry použite textový vstup vo formáte DD.MM.RRRR.')
+            await invoice_edit_invoice_date_value(
+                message=text_message,
+                state=state,
+                config=config,
+            )
         elif current_state == InvoiceStates.waiting_edit_description_value.state:
             await message.answer(
                 'Pre finálny opis položky použite textový vstup. '

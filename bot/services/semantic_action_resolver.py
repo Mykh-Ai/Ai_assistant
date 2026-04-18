@@ -24,6 +24,12 @@ def _tokenize(value: str) -> set[str]:
 
 def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> str:
     tokens = _tokenize(text)
+    if context_name == 'invoice_edit_item_target_selection':
+        numeric_match = re.search(r'\b(\d+)\b', text)
+        if numeric_match:
+            numeric_value = numeric_match.group(1)
+            if numeric_value in allowed:
+                return numeric_value
     if not tokens:
         return _UNKNOWN
 
@@ -132,6 +138,40 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'ano'
         if 'nie' in allowed and tokens.intersection({'nie', 'ні', 'нет', 'no', 'cancel'}):
             return 'nie'
+        return _UNKNOWN
+
+    if context_name == 'invoice_edit_scope_selection':
+        if 'invoice_level' in allowed and tokens.intersection({'faktura', 'faktúra', 'invoice', 'cislo', 'číslo', 'datum', 'dátum'}):
+            return 'invoice_level'
+        if 'item_level' in allowed and tokens.intersection({'polozka', 'položka', 'sluzba', 'služba', 'opis', 'detail'}):
+            return 'item_level'
+        return _UNKNOWN
+
+    if context_name == 'invoice_edit_invoice_action':
+        if 'edit_invoice_number' in allowed and tokens.intersection({'cislo', 'číslo', 'number', 'num'}):
+            return 'edit_invoice_number'
+        if 'edit_invoice_date' in allowed and tokens.intersection({'datum', 'dátum', 'date'}):
+            return 'edit_invoice_date'
+        return _UNKNOWN
+
+    if context_name == 'invoice_edit_item_target_selection':
+        ordered_candidates = [
+            ('1', {'1', 'prva', 'prvá', 'prvy', 'prvý', 'jedna', 'jeden'}),
+            ('2', {'2', 'druha', 'druhá', 'druhy', 'druhý', 'dva', 'dve'}),
+            ('3', {'3', 'tretia', 'treti', 'tretí', 'tri'}),
+        ]
+        for canonical_index, hint_tokens in ordered_candidates:
+            if canonical_index in allowed and tokens.intersection(hint_tokens):
+                return canonical_index
+        return _UNKNOWN
+
+    if context_name == 'invoice_edit_item_action':
+        if 'edit_item_description' in allowed and tokens.intersection({'opis', 'popis', 'detail', 'poznamka', 'poznámka', 'description'}):
+            return 'edit_item_description'
+        if 'replace_service' in allowed and tokens.intersection(
+            {'sluzba', 'služba', 'sluzbu', 'službu', 'service', 'polozka', 'položka', 'polozku', 'položku'}
+        ):
+            return 'replace_service'
         return _UNKNOWN
 
     return _UNKNOWN
