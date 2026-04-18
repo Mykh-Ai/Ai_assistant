@@ -1714,6 +1714,23 @@ async def process_invoice_postpdf_decision(
     config: Config,
     decision_text: str,
 ) -> None:
+    request_id = str(uuid4())
+    state_before = await state.get_state()
+    diagnostics: dict[str, object] = {}
+    if config.debug_invoice_transparency:
+        logger.info(
+            json.dumps(
+                {
+                    'event': 'approval_resolver_request',
+                    'request_id': request_id,
+                    'context_name': 'invoice_postpdf_decision',
+                    'expected_reply_type': 'postpdf_decision',
+                    'allowed_outputs': ['schvalit', 'upravit', 'zrusit', 'unknown'],
+                    'user_input_text': decision_text,
+                },
+                ensure_ascii=False,
+            )
+        )
     answer = await resolve_bounded_confirmation_reply(
         context_name='invoice_postpdf_decision',
         expected_reply_type='postpdf_decision',
@@ -1721,8 +1738,55 @@ async def process_invoice_postpdf_decision(
         user_input_text=decision_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
+        diagnostics=diagnostics,
     )
+    if config.debug_invoice_transparency:
+        logger.info(
+            json.dumps(
+                {
+                    'event': 'approval_resolver_response',
+                    'request_id': request_id,
+                    'raw_model_output': diagnostics.get('raw_model_output'),
+                    'normalized_output': diagnostics.get('normalized_output', answer),
+                    'fallback_used': bool(diagnostics.get('fallback_used', False)),
+                    'fallback_output': diagnostics.get('fallback_output'),
+                },
+                ensure_ascii=False,
+            )
+        )
     if answer == 'unknown':
+        if config.debug_invoice_transparency:
+            logger.info(
+                json.dumps(
+                    {
+                        'event': 'approval_unknown_contract_gap',
+                        'request_id': request_id,
+                        'current_state': state_before,
+                        'context_name': 'invoice_postpdf_decision',
+                        'expected_reply_type': 'postpdf_decision',
+                        'allowed_outputs': ['schvalit', 'upravit', 'zrusit', 'unknown'],
+                        'user_input_text': decision_text,
+                        'raw_model_output': diagnostics.get('raw_model_output'),
+                        'normalized_output': diagnostics.get('normalized_output', answer),
+                        'fallback_used': bool(diagnostics.get('fallback_used', False)),
+                        'fallback_output': diagnostics.get('fallback_output'),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            logger.info(
+                json.dumps(
+                    {
+                        'event': 'approval_branch_decision',
+                        'request_id': request_id,
+                        'final_answer': answer,
+                        'invoice_id': None,
+                        'state_before': state_before,
+                        'branch_taken': 'unknown',
+                    },
+                    ensure_ascii=False,
+                )
+            )
         await message.answer('Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.')
         return
 
@@ -1739,6 +1803,20 @@ async def process_invoice_postpdf_decision(
         pdf_path = Path(pdf_path_value)
 
     if answer == 'schvalit':
+        if config.debug_invoice_transparency:
+            logger.info(
+                json.dumps(
+                    {
+                        'event': 'approval_branch_decision',
+                        'request_id': request_id,
+                        'final_answer': answer,
+                        'invoice_id': invoice_id,
+                        'state_before': state_before,
+                        'branch_taken': 'schvalit',
+                    },
+                    ensure_ascii=False,
+                )
+            )
         try:
             InvoiceService(config.db_path).update_invoice_status(invoice_id, 'pripravena')
         except Exception:
@@ -1751,6 +1829,20 @@ async def process_invoice_postpdf_decision(
         return
 
     if answer == 'upravit':
+        if config.debug_invoice_transparency:
+            logger.info(
+                json.dumps(
+                    {
+                        'event': 'approval_branch_decision',
+                        'request_id': request_id,
+                        'final_answer': answer,
+                        'invoice_id': invoice_id,
+                        'state_before': state_before,
+                        'branch_taken': 'upravit',
+                    },
+                    ensure_ascii=False,
+                )
+            )
         await start_invoice_edit_flow(
             message=message,
             state=state,
@@ -1759,6 +1851,20 @@ async def process_invoice_postpdf_decision(
         )
         return
 
+    if config.debug_invoice_transparency:
+        logger.info(
+            json.dumps(
+                {
+                    'event': 'approval_branch_decision',
+                    'request_id': request_id,
+                    'final_answer': answer,
+                    'invoice_id': invoice_id,
+                    'state_before': state_before,
+                    'branch_taken': 'zrusit',
+                },
+                ensure_ascii=False,
+            )
+        )
     try:
         InvoiceService(config.db_path).delete_invoice_with_items(invoice_id)
     except Exception:

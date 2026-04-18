@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 from bot.config import Config
@@ -59,6 +60,9 @@ class _DummyState:
 
     async def clear(self) -> None:
         self.cleared = True
+
+    async def get_state(self):
+        return self.current_state
 
 
 def _setup_profiles(db_path: Path, telegram_id: int) -> int:
@@ -1383,6 +1387,104 @@ def test_waiting_pdf_decision_noisy_transcript_stays_unknown_without_cleanup(tmp
     assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
     assert InvoiceService(db_path).get_invoice_by_id(invoice_id) is not None
     assert pdf_path.exists()
+
+
+def test_waiting_pdf_decision_unknown_logs_contract_gap_and_does_not_cancel(tmp_path: Path, caplog) -> None:
+    db_path = tmp_path / 'unknown-contract-gap.db'
+    init_db(db_path)
+    pdf_path = tmp_path / 'unknown-contract-gap.pdf'
+    invoice_id = _create_invoice_with_pdf(db_path, pdf_path)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=True,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(pdf_path)})
+    state.current_state = InvoiceStates.waiting_pdf_decision.state
+
+    async def _resolver(**kwargs):
+        diagnostics = kwargs.get('diagnostics')
+        if isinstance(diagnostics, dict):
+            diagnostics.update(
+                {
+                    'raw_model_output': '{"canonical":"unknown"}',
+                    'normalized_output': 'unknown',
+                    'fallback_used': False,
+                    'fallback_output': None,
+                }
+            )
+        return 'unknown'
+
+    with caplog.at_level(logging.INFO):
+        from bot.handlers import invoice as invoice_module
+
+        original = invoice_module.resolve_bounded_confirmation_reply
+        invoice_module.resolve_bounded_confirmation_reply = _resolver
+        try:
+            asyncio.run(
+                process_invoice_postpdf_decision(
+                    message=message,
+                    state=state,
+                    config=config,
+                    decision_text='ЗРУШИТИ',
+                )
+            )
+        finally:
+            invoice_module.resolve_bounded_confirmation_reply = original
+
+    assert state.cleared is False
+    assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
+    assert InvoiceService(db_path).get_invoice_by_id(invoice_id) is not None
+    assert any('"event": "approval_unknown_contract_gap"' in rec.message for rec in caplog.records)
+
+
+def test_waiting_pdf_decision_multilingual_destructive_synonyms_runtime_branching(tmp_path: Path) -> None:
+    db_path = tmp_path / 'postpdf-multilingual.db'
+    init_db(db_path)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+
+    cancel_pdf = tmp_path / 'cancel-otmenit.pdf'
+    cancel_invoice_id = _create_invoice_with_pdf(db_path, cancel_pdf)
+    cancel_message = _DummyMessage(1)
+    cancel_state = _DummyState(data={'last_invoice_id': cancel_invoice_id, 'last_pdf_path': str(cancel_pdf)})
+    asyncio.run(
+        process_invoice_postpdf_decision(
+            message=cancel_message,
+            state=cancel_state,
+            config=config,
+            decision_text='отменить',
+        )
+    )
+    assert InvoiceService(db_path).get_invoice_by_id(cancel_invoice_id) is None
+    assert cancel_message.answers[-1] == 'Faktúra bola zrušená. Číslo faktúry nebolo finálne potvrdené.'
+
+    unknown_pdf = tmp_path / 'unknown-delete.pdf'
+    unknown_invoice_id = _create_invoice_with_pdf(db_path, unknown_pdf)
+    unknown_message = _DummyMessage(1)
+    unknown_state = _DummyState(data={'last_invoice_id': unknown_invoice_id, 'last_pdf_path': str(unknown_pdf)})
+    asyncio.run(
+        process_invoice_postpdf_decision(
+            message=unknown_message,
+            state=unknown_state,
+            config=config,
+            decision_text='delete',
+        )
+    )
+    assert InvoiceService(db_path).get_invoice_by_id(unknown_invoice_id) is not None
+    assert unknown_message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
 
 
 def test_pdf_generation_failure_rolls_back_invoice_and_number(tmp_path: Path, monkeypatch) -> None:

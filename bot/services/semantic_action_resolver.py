@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import unicodedata
 from typing import Any
@@ -11,6 +12,7 @@ from openai import AsyncOpenAI
 _UNKNOWN = 'unknown'
 _QUANTITY_UNIT_PRICE_CANONICAL = 'quantity_unit_price_pair'
 _SUPPORTED_CONFIRM_LANGUAGES = ['sk', 'uk', 'ru']
+logger = logging.getLogger(__name__)
 
 
 def _tokenize(value: str) -> set[str]:
@@ -404,13 +406,28 @@ async def resolve_bounded_confirmation_reply(
     user_input_text: str,
     api_key: str | None,
     model: str,
+    diagnostics: dict[str, Any] | None = None,
 ) -> str:
     allowed = {value.strip() for value in allowed_outputs if value and value.strip()}
     if _UNKNOWN not in allowed:
         allowed.add(_UNKNOWN)
 
+    if diagnostics is not None:
+        diagnostics.clear()
+        diagnostics.update(
+            {
+                'raw_model_output': None,
+                'normalized_output': _UNKNOWN,
+                'fallback_used': False,
+                'fallback_output': None,
+            }
+        )
+
     cleaned = user_input_text.strip()
     if not cleaned:
+        if diagnostics is not None:
+            diagnostics['fallback_used'] = True
+            diagnostics['fallback_output'] = _UNKNOWN
         return _UNKNOWN
 
     if api_key and api_key.startswith('sk-'):
@@ -447,19 +464,28 @@ async def resolve_bounded_confirmation_reply(
                 ],
             )
             raw = response.choices[0].message.content or '{}'
+            if diagnostics is not None:
+                diagnostics['raw_model_output'] = raw
             parsed = json.loads(raw)
             canonical = str(parsed.get('canonical', _UNKNOWN)).strip()
             if canonical in allowed:
+                if diagnostics is not None:
+                    diagnostics['normalized_output'] = canonical
                 return canonical
         except Exception:
-            pass
+            logger.exception('Bounded confirmation resolver failed; using fallback')
 
-    return _fallback_bounded_confirmation_reply(
+    fallback_output = _fallback_bounded_confirmation_reply(
         context_name=context_name,
         expected_reply_type=expected_reply_type,
         text=cleaned,
         allowed_outputs=allowed,
     )
+    if diagnostics is not None:
+        diagnostics['fallback_used'] = True
+        diagnostics['fallback_output'] = fallback_output
+        diagnostics['normalized_output'] = fallback_output
+    return fallback_output
 
 
 async def resolve_quantity_unit_price_pair(

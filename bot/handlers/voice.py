@@ -115,6 +115,19 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 clarification_text=recognized_text,
             )
         elif current_state == InvoiceStates.waiting_pdf_decision.state:
+            if config.debug_invoice_transparency:
+                logger.info(
+                    json.dumps(
+                        {
+                            'event': 'approval_voice_routing',
+                            'request_id': request_id,
+                            'current_state': current_state,
+                            'recognized_text': recognized_text,
+                            'telegram_message_id': getattr(message, 'message_id', None),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
             await process_invoice_postpdf_decision(
                 message=message,
                 state=state,

@@ -1987,3 +1987,44 @@ Complete remaining cleanup seams from invoice service/customer bounded migration
 ### Notes
 - No architecture redesign.
 - Service/customer runtime bounded resolution paths remain unchanged for create/clarify/edit.
+
+## 2026-04-18 — Session 030 — Approval-step diagnostic trace for waiting_pdf_decision
+
+### Goal
+Add transparent runtime diagnostics for the post-PDF approval step (`waiting_pdf_decision`) and add narrow tests that expose bounded contract behavior and potential mismatch risks, without changing edit-flow or create/edit/PDF business logic.
+
+### Changes
+- `bot/handlers/voice.py`:
+  - added diagnostic log `approval_voice_routing` for `waiting_pdf_decision` voice routing path with:
+    - `request_id`,
+    - `current_state`,
+    - `recognized_text`,
+    - `telegram_message_id`.
+- `bot/handlers/invoice.py` (`process_invoice_postpdf_decision`):
+  - added diagnostic request/response logs around bounded resolver call:
+    - `approval_resolver_request`,
+    - `approval_resolver_response`;
+  - added branch decision log before each final branch:
+    - `approval_branch_decision` with `branch_taken` in `{schvalit, upravit, zrusit, unknown}`;
+  - added explicit unknown-gap log event:
+    - `approval_unknown_contract_gap` with full resolver/branch context.
+- `bot/services/semantic_action_resolver.py`:
+  - extended `resolve_bounded_confirmation_reply(...)` with optional `diagnostics` payload output (backward compatible);
+  - diagnostics include:
+    - `raw_model_output`,
+    - `normalized_output`,
+    - `fallback_used`,
+    - `fallback_output`;
+  - fallback/exception path now populates diagnostics deterministically for traceability.
+- tests:
+  - `tests/test_invoice_intent_prerouter.py`:
+    - added post-PDF bounded synonym matrix assertions (canonical + multilingual/noisy variants).
+  - `tests/test_invoice_state_decisions.py`:
+    - added runtime branch regression for multilingual destructive synonyms (`отменить`, `delete`);
+    - added unknown-contract-gap logging regression (`unknown` does not auto-cancel).
+  - `tests/test_voice_state_routing.py`:
+    - added voice parity regression for `waiting_pdf_decision` to confirm STT text pass-through and `approval_voice_routing` logging.
+
+### Notes
+- This session is diagnostic-only and keeps existing runtime behavior unchanged.
+- No hidden concept changes, no edits to invoice edit subflows or PDF generation logic.

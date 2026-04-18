@@ -48,6 +48,9 @@ class _DummyState:
     async def get_data(self) -> dict:
         return dict(self.data)
 
+    async def get_state(self):
+        return self.current_state
+
 
 class _DummyDecisionState:
     def __init__(self) -> None:
@@ -59,6 +62,9 @@ class _DummyDecisionState:
 
     async def clear(self) -> None:
         self.cleared = True
+
+    async def get_state(self):
+        return None
 
 
 def _config(tmp_path: Path) -> Config:
@@ -274,6 +280,32 @@ def test_bounded_confirmation_resolver_positive_regressions() -> None:
             model='gpt-4o',
         )
     ) == 'schvalit'
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('schváliť', 'schvalit'),
+        ('upraviť', 'upravit'),
+        ('zrušiť', 'zrusit'),
+        ('Удалить.', 'unknown'),
+        ('delete', 'unknown'),
+        ('отменить', 'zrusit'),
+        ('зрушити', 'unknown'),
+        ('зрушить', 'unknown'),
+    ],
+)
+def test_postpdf_bounded_confirmation_multilingual_synonyms(user_input: str, expected: str) -> None:
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_postpdf_decision',
+            expected_reply_type='postpdf_decision',
+            allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
 
 
 def test_unknown_top_level_stops_flow(tmp_path: Path) -> None:

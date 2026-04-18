@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 from bot.config import Config
@@ -19,6 +20,7 @@ class _DummyMessage:
     def __init__(self) -> None:
         self.voice = _DummyVoice('voice-file-id')
         self.answers: list[str] = []
+        self.message_id = 77
 
     async def answer(self, text: str) -> None:
         self.answers.append(text)
@@ -45,13 +47,13 @@ class _DummyState:
         return self.current_state
 
 
-def _config(tmp_path: Path) -> Config:
+def _config(tmp_path: Path, *, debug_invoice_transparency: bool = False) -> Config:
     return Config(
         bot_token='token',
         openai_api_key='key',
         openai_stt_model='whisper-1',
         openai_llm_model='gpt-4o',
-        debug_invoice_transparency=False,
+        debug_invoice_transparency=debug_invoice_transparency,
         db_path=tmp_path / 'voice.db',
         storage_dir=tmp_path,
     )
@@ -112,6 +114,38 @@ def test_voice_waiting_pdf_decision_routes_to_postpdf(monkeypatch, tmp_path: Pat
         )
     )
     assert calls == ['postpdf']
+
+
+def test_voice_waiting_pdf_decision_logs_approval_routing_and_passes_stt_text(monkeypatch, tmp_path: Path, caplog) -> None:
+    captured_decision_text: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ЗРУШИТИ'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+
+    async def _postpdf(**kwargs) -> None:
+        captured_decision_text.append(kwargs.get('decision_text'))
+
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_preview_confirmation', lambda **kwargs: None)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_service_clarification', lambda **kwargs: None)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_slot_clarification', lambda **kwargs: None)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_postpdf_decision', _postpdf)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', lambda **kwargs: None)
+
+    config = _config(tmp_path, debug_invoice_transparency=True)
+    with caplog.at_level(logging.INFO):
+        asyncio.run(
+            handle_voice(
+                _DummyMessage(),
+                _DummyBot(),
+                config,
+                _DummyState(InvoiceStates.waiting_pdf_decision.state),
+            )
+        )
+
+    assert captured_decision_text == ['ЗРУШИТИ']
+    assert any('"event": "approval_voice_routing"' in rec.message for rec in caplog.records)
 
 
 def test_voice_non_decision_state_routes_to_generic_create_flow(monkeypatch, tmp_path: Path) -> None:
