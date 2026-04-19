@@ -349,6 +349,73 @@ def test_waiting_confirm_noisy_transcript_returns_retry_unknown(tmp_path: Path) 
     assert message.answers[-1] == 'Prosím, odpovedzte áno alebo nie.'
 
 
+def test_waiting_confirm_noisy_transcript_with_exclamation_returns_retry_unknown(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'state.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='Ah, não!',
+        )
+    )
+
+    assert state.cleared is False
+    assert message.answers[-1] == 'Prosím, odpovedzte áno alebo nie.'
+
+
+def test_waiting_confirm_logs_resolver_and_branch_observability(tmp_path: Path, monkeypatch, caplog) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=True,
+        db_path=tmp_path / 'state.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState()
+    state.current_state = InvoiceStates.waiting_confirm.state
+
+    async def _resolver(**kwargs):
+        diagnostics = kwargs.get('diagnostics')
+        if diagnostics is not None:
+            diagnostics['raw_model_output'] = '{"canonical":"unknown"}'
+            diagnostics['normalized_output'] = 'unknown'
+            diagnostics['fallback_used'] = False
+            diagnostics['fallback_output'] = None
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_bounded_confirmation_reply', _resolver)
+
+    with caplog.at_level(logging.INFO):
+        asyncio.run(
+            process_invoice_preview_confirmation(
+                message=message,
+                state=state,
+                config=config,
+                confirmation_text='Ah, não.',
+            )
+        )
+
+    assert any('"event": "confirm_resolver_request"' in rec.message for rec in caplog.records)
+    assert any('"event": "confirm_resolver_response"' in rec.message for rec in caplog.records)
+    assert any('"event": "confirm_unknown_contract_gap"' in rec.message for rec in caplog.records)
+    assert any('"event": "confirm_branch_decision"' in rec.message for rec in caplog.records)
+
+
 def _create_invoice_with_pdf(db_path: Path, pdf_path: Path) -> int:
     service = InvoiceService(db_path)
     invoice_id = service.create_invoice_with_one_item(

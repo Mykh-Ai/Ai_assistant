@@ -1539,6 +1539,23 @@ async def process_invoice_preview_confirmation(
     config: Config,
     confirmation_text: str,
 ) -> None:
+    request_id = str(uuid4())
+    state_before = await state.get_state()
+    diagnostics: dict[str, object] = {}
+    if config.debug_invoice_transparency:
+        logger.info(
+            json.dumps(
+                {
+                    'event': 'confirm_resolver_request',
+                    'request_id': request_id,
+                    'context_name': 'invoice_preview_confirmation',
+                    'expected_reply_type': 'yes_no_confirmation',
+                    'allowed_outputs': ['ano', 'nie', 'unknown'],
+                    'user_input_text': confirmation_text,
+                },
+                ensure_ascii=False,
+            )
+        )
     answer = await resolve_bounded_confirmation_reply(
         context_name='invoice_preview_confirmation',
         expected_reply_type='yes_no_confirmation',
@@ -1546,15 +1563,88 @@ async def process_invoice_preview_confirmation(
         user_input_text=confirmation_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
+        diagnostics=diagnostics,
     )
+    if config.debug_invoice_transparency:
+        logger.info(
+            json.dumps(
+                {
+                    'event': 'confirm_resolver_response',
+                    'request_id': request_id,
+                    'raw_model_output': diagnostics.get('raw_model_output'),
+                    'normalized_output': diagnostics.get('normalized_output', answer),
+                    'fallback_used': bool(diagnostics.get('fallback_used', False)),
+                    'fallback_output': diagnostics.get('fallback_output'),
+                },
+                ensure_ascii=False,
+            )
+        )
     if answer == 'unknown':
+        if config.debug_invoice_transparency:
+            logger.info(
+                json.dumps(
+                    {
+                        'event': 'confirm_unknown_contract_gap',
+                        'request_id': request_id,
+                        'current_state': state_before,
+                        'context_name': 'invoice_preview_confirmation',
+                        'expected_reply_type': 'yes_no_confirmation',
+                        'allowed_outputs': ['ano', 'nie', 'unknown'],
+                        'user_input_text': confirmation_text,
+                        'raw_model_output': diagnostics.get('raw_model_output'),
+                        'normalized_output': diagnostics.get('normalized_output', answer),
+                        'fallback_used': bool(diagnostics.get('fallback_used', False)),
+                        'fallback_output': diagnostics.get('fallback_output'),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            logger.info(
+                json.dumps(
+                    {
+                        'event': 'confirm_branch_decision',
+                        'request_id': request_id,
+                        'final_answer': answer,
+                        'state_before': state_before,
+                        'branch_taken': 'unknown',
+                    },
+                    ensure_ascii=False,
+                )
+            )
         await message.answer('Prosím, odpovedzte áno alebo nie.')
         return
 
     if answer == 'nie':
+        if config.debug_invoice_transparency:
+            logger.info(
+                json.dumps(
+                    {
+                        'event': 'confirm_branch_decision',
+                        'request_id': request_id,
+                        'final_answer': answer,
+                        'state_before': state_before,
+                        'branch_taken': 'decline_cancel',
+                    },
+                    ensure_ascii=False,
+                )
+            )
         await state.clear()
         await message.answer('Vytvorenie faktúry bolo zrušené.')
         return
+
+    if config.debug_invoice_transparency:
+        logger.info(
+            json.dumps(
+                {
+                    'event': 'confirm_branch_decision',
+                    'request_id': request_id,
+                    'final_answer': answer,
+                    'state_before': state_before,
+                    'branch_taken': 'affirmative_save_continue',
+                },
+                ensure_ascii=False,
+            )
+        )
 
     if message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
