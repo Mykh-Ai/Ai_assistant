@@ -1,5 +1,28 @@
 # PROJECT_LOG
 
+## 2026-04-19 — Session 039 — LLM contract rewrite for bounded confirmation/decision normalization
+
+### Goal
+Fix unstable `unknown` outcomes in bounded confirmation steps by rewriting only the LLM prompt/instruction contract (no Python routing/fallback expansion).
+
+### Changes
+- bounded resolver prompt rewrite (`bot/services/semantic_action_resolver.py`):
+  - replaced overly literal/conservative system prompt with explicit intent-normalization policy;
+  - added stepwise policy in system prompt: semantic intent inference -> canonical normalization -> `unknown` only for true ambiguity/non-decision/garbage;
+  - explicitly documented `yes_no_confirmation` behavior (user not required to answer exact `ano`/`nie`);
+  - explicitly documented `postpdf_decision` normalization (`approve/confirm/save` -> `schvalit`, `edit/change/correct` -> `upravit`, `delete/cancel/remove/discard` -> `zrusit`) with destructive-safety guard for unclear intent.
+- bounded resolver user payload contract (`bot/services/semantic_action_resolver.py`):
+  - added `normalization_contract` object to reinforce semantic-intent-first behavior and context-specific mapping expectations.
+- tests (`tests/test_invoice_intent_prerouter.py`):
+  - added LLM-path contract tests (mocked `AsyncOpenAI`) for multilingual/noisy confirmation inputs in `invoice_preview_confirmation`;
+  - added LLM-path contract tests for multilingual delete/cancel/remove/discard intents in `invoice_postpdf_decision`;
+  - assertions verify model path usage (`fallback_used=False`) and presence of new instruction contract fields in prompt/payload.
+
+### Scope boundary
+- No FSM/routing changes.
+- No fallback keyword/synonym expansion in Python.
+- Fix is implemented through LLM contract only.
+
 ## 2026-04-18 — Session 038 — Contract-correction pass for edit FSM (item target bounded resolver + runtime contact removal)
 
 ### Goal

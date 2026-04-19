@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -330,6 +331,147 @@ def test_postpdf_bounded_confirmation_multilingual_synonyms(user_input: str, exp
             model='gpt-4o',
         )
     ) == expected
+
+
+class _FakeChoice:
+    def __init__(self, content: str) -> None:
+        self.message = type('_Msg', (), {'content': content})()
+
+
+class _FakeResponse:
+    def __init__(self, content: str) -> None:
+        self.choices = [_FakeChoice(content)]
+
+
+class _BoundedResolverOpenAIFake:
+    last_messages: list[dict] | None = None
+
+    def __init__(self, *, api_key: str) -> None:
+        self.api_key = api_key
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        _BoundedResolverOpenAIFake.last_messages = kwargs['messages']
+        payload = json.loads(kwargs['messages'][1]['content'])
+        text = payload['user_input_text']
+        reply_type = payload['expected_reply_type']
+        normalized = text.lower().strip()
+
+        if reply_type == 'yes_no_confirmation':
+            if normalized in {'ano', 'áno', 'так.', 'да.', 'tak.', 'yes.', 'а-а-а-но'}:
+                return _FakeResponse('{"canonical":"ano"}')
+            if normalized in {'nie', 'ні.', 'нет.', 'неа.', 'не.'}:
+                return _FakeResponse('{"canonical":"nie"}')
+            return _FakeResponse('{"canonical":"unknown"}')
+
+        if reply_type == 'postpdf_decision':
+            if normalized in {'schváliť', 'подтвердить', 'save it'}:
+                return _FakeResponse('{"canonical":"schvalit"}')
+            if normalized in {'upraviť', 'исправить', 'change invoice'}:
+                return _FakeResponse('{"canonical":"upravit"}')
+            if normalized in {
+                'zrušiť',
+                'видалити фактуру',
+                'удалить',
+                'выдалить',
+                'выдалите фактуру',
+                'cancel invoice',
+                'remove invoice draft',
+                'discard this invoice',
+            }:
+                return _FakeResponse('{"canonical":"zrusit"}')
+            return _FakeResponse('{"canonical":"unknown"}')
+
+        return _FakeResponse('{"canonical":"unknown"}')
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('ano', 'ano'),
+        ('áno', 'ano'),
+        ('Так.', 'ano'),
+        ('Да.', 'ano'),
+        ('Tak.', 'ano'),
+        ('Yes.', 'ano'),
+        ('А-а-а-но', 'ano'),
+        ('nie', 'nie'),
+        ('Ні.', 'nie'),
+        ('Нет.', 'nie'),
+        ('Неа.', 'nie'),
+        ('Не.', 'nie'),
+        ('... ??', 'unknown'),
+    ],
+)
+def test_preview_confirmation_llm_contract_handles_multilingual_intent(monkeypatch, user_input: str, expected: str) -> None:
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _BoundedResolverOpenAIFake)
+
+    diagnostics: dict[str, str | bool | None] = {}
+    result = asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_preview_confirmation',
+            expected_reply_type='yes_no_confirmation',
+            allowed_outputs=['ano', 'nie', 'unknown'],
+            user_input_text=user_input,
+            api_key='sk-test',
+            model='gpt-4o',
+            diagnostics=diagnostics,
+        )
+    )
+
+    assert result == expected
+    assert diagnostics['fallback_used'] is False
+    system_prompt = _BoundedResolverOpenAIFake.last_messages[0]['content']
+    user_payload = json.loads(_BoundedResolverOpenAIFake.last_messages[1]['content'])
+    assert 'bounded intent normalizer' in system_prompt
+    assert 'user is NOT required to say exact "ano"/"nie"' in system_prompt
+    assert user_payload['normalization_contract']['mode'] == 'semantic_intent_first'
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('schváliť', 'schvalit'),
+        ('подтвердить', 'schvalit'),
+        ('save it', 'schvalit'),
+        ('upraviť', 'upravit'),
+        ('исправить', 'upravit'),
+        ('change invoice', 'upravit'),
+        ('zrušiť', 'zrusit'),
+        ('видалити фактуру', 'zrusit'),
+        ('удалить', 'zrusit'),
+        ('Выдалить', 'zrusit'),
+        ('Выдалите фактуру', 'zrusit'),
+        ('cancel invoice', 'zrusit'),
+        ('remove invoice draft', 'zrusit'),
+        ('discard this invoice', 'zrusit'),
+        ('random noise', 'unknown'),
+    ],
+)
+def test_postpdf_confirmation_llm_contract_normalizes_delete_intent(monkeypatch, user_input: str, expected: str) -> None:
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _BoundedResolverOpenAIFake)
+
+    diagnostics: dict[str, str | bool | None] = {}
+    result = asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_postpdf_decision',
+            expected_reply_type='postpdf_decision',
+            allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
+            user_input_text=user_input,
+            api_key='sk-test',
+            model='gpt-4o',
+            diagnostics=diagnostics,
+        )
+    )
+
+    assert result == expected
+    assert diagnostics['fallback_used'] is False
+    system_prompt = _BoundedResolverOpenAIFake.last_messages[0]['content']
+    user_payload = json.loads(_BoundedResolverOpenAIFake.last_messages[1]['content'])
+    assert 'delete/cancel/remove/discard invoice-draft intent to zrusit' in system_prompt
+    assert user_payload['normalization_contract']['context_rules']['postpdf_decision'][
+        'delete_cancel_remove_discard_invoice_draft'
+    ] == 'zrusit_if_allowed'
 
 
 def test_unknown_top_level_stops_flow(tmp_path: Path) -> None:
