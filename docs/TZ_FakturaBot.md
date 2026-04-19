@@ -472,6 +472,54 @@ LLM не має права:
 - застосовується вибірково, коли plain allowed-actions недостатньо для стабільного bounded розпізнавання;
 - canonical bot wording і noisy user examples повинні бути чітко розділені в документації.
 
+### 5.7 Planned `info_help` guidance/navigation/recovery layer (high-level TZ alignment)
+
+`info_help` у плані продукту — це bounded guidance/navigation/recovery шар, а не free-form chat mode і не дубль direct top-level actions.
+
+Routing precedence (обов’язково):
+- top-level action resolution виконується першим;
+- форма питання не блокує прямий action-routing (`"How do I create..."` може резолвитись у direct action);
+- `info_help` використовується тільки коли top-level resolver повернув `unknown`;
+- direct actions лишаються direct, без штучного перенесення в info-layer.
+
+Поведінка planned `info_help` на рівні TZ:
+- відповіді на informational usage/capability питання;
+- навігація до linked actions/subtargets (лише через safe handoff правила);
+- truthful planned-feature/unsupported notices;
+- guidance для recovery/reset/start-over сценаріїв.
+
+Contract precedence:
+- усі `info_help` взаємодії залишаються підпорядкованими bounded Python→LLM контракту (`docs/llm`);
+- цей шар не послаблює і не обходить існуючі contract rules.
+
+Capability status для guidance topics:
+- `implemented`
+- `planned`
+- `unsupported`
+
+Вимога truthfulness:
+- user-facing відповідь повинна відповідати фактичному status;
+- не можна представляти planned/unsupported як implemented.
+
+Logging requirement (product signal):
+- кожен вхід у `info_help` має логуватись як structured product signal для подальшого аналізу UX/roadmap.
+
+Phase 2/3 future direction (high-level):
+- state-aware guidance + reset/new-task допомога;
+- bounded runtime explainability через sanitized Python-prepared facts;
+- explicit заборона на arbitrary source-code reading або arbitrary raw-log reading з боку LLM у цьому шарі.
+
+Caution for unconfirmed runtime coverage in info/guidance answers:
+- dedicated end-to-end edit existing contact details flow;
+- historical old-invoice deletion as user-facing feature;
+- send-invoice/send-email style capability;
+- support/ticket escalation workflow.
+Поки runtime-реалізація не підтверджена — ці пункти мають відповідатися як planned/unsupported, без overstatement.
+
+Детальна архітектура і behavioral contract для planned `info_help` визначені в:
+- `docs/Info_Help_Guidance_Layer.md`
+TZ фіксує high-level product/requirements alignment і не дублює повний детальний spec.
+
 ---
 
 ## 6. Структура чернетки фактури
