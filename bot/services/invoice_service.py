@@ -306,6 +306,24 @@ class InvoiceService:
             )
             connection.commit()
 
+    def update_item_main_description(
+        self,
+        *,
+        item_id: int,
+        description_raw: str,
+        description_normalized: str,
+    ) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                (
+                    'UPDATE invoice_item '
+                    'SET description_raw = ?, description_normalized = ? '
+                    'WHERE id = ?'
+                ),
+                (description_raw, description_normalized, item_id),
+            )
+            connection.commit()
+
     def update_item_description(self, *, item_id: int, item_description_raw: str | None) -> None:
         with managed_connection(self._db_path) as connection:
             connection.execute(

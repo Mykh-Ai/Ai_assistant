@@ -1,5 +1,64 @@
 # PROJECT_LOG
 
+## 2026-04-19 — Session 041 — Hardening `nový opis položky` isolation from alias mappings
+
+### Goal
+Close pre-merge risk check: ensure `nový opis položky` mutates only invoice item fields and has no side effects on supplier service-alias DB state.
+
+### Changes
+- invoice item mutation path isolation (`bot/services/invoice_service.py`, `bot/handlers/invoice.py`):
+  - added explicit `update_item_main_description(...)` method in `InvoiceService`;
+  - switched `replace_main_description` handler path from `update_item_service(...)` to `update_item_main_description(...)` to make intent/scope explicit (invoice item only).
+- regression coverage (`tests/test_invoice_state_decisions.py`):
+  - added test `test_novy_opis_updates_only_invoice_item_without_alias_db_side_effects` that verifies:
+    - main item description is replaced exactly (no appended tail),
+    - item details are untouched,
+    - service-alias mappings remain identical before/after action.
+
+### Scope boundary
+- Minimal change only for isolation/clarity.
+- No changes to `zmeniť službu` runtime branch.
+- No confirmation-flow or FSM redesign changes.
+
+## 2026-04-19 — Session 040 — UX wording cleanup for `upraviť faktúru` item-level edit flow
+
+### Goal
+Align item-level edit naming/messages with real runtime semantics without changing confirmation architecture or broad FSM design.
+
+### Changes
+- user-facing prompt cleanup (`bot/handlers/invoice.py`):
+  - removed `kontakt` from top-level `upraviť faktúru` scope prompt (`faktúra` now shows only `číslo/dátum`);
+  - replaced item-action menu wording with explicit four actions:
+    - `zmeniť službu`
+    - `nový opis položky`
+    - `pridať detaily k položke`
+    - `vymazať detaily položky`
+- item edit action routing/messages (`bot/handlers/invoice.py`, `bot/services/semantic_action_resolver.py`):
+  - split bounded item-action semantics into:
+    - `replace_service`
+    - `replace_main_description`
+    - `add_item_details`
+    - `clear_item_details`
+  - updated input prompts to match action semantics:
+    - main description replacement prompt explicitly states replacement;
+    - details prompt explicitly asks for details;
+    - clear-details action executes immediately and returns clear-details-specific feedback.
+- success-message precision (`bot/handlers/invoice.py`):
+  - `Služba položky bola zmenená.`
+  - `Opis položky bol nahradený novým textom.`
+  - `Detaily položky boli doplnené.`
+  - `Detaily položky boli vymazané.`
+  - empty-clear case: `Položka nemá žiadne detaily na vymazanie.`
+- tests (`tests/test_invoice_state_decisions.py`):
+  - updated item-level flow assertions to new user-facing action names and success copy;
+  - added state assertion for `nový opis položky` action mode;
+  - updated detail-flow expectations to additive details semantics and new messages.
+
+### Scope boundary
+- No redesign of confirmation-flow.
+- No breaking changes for working `zmeniť službu` branch semantics.
+- No large FSM refactor; only minimal routing/message touch for item-level UX fidelity.
+
 ## 2026-04-19 — Session 039 — LLM contract rewrite for bounded confirmation/decision normalization
 
 ### Goal
