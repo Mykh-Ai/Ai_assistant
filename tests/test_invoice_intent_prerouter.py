@@ -285,6 +285,30 @@ def test_bounded_confirmation_resolver_positive_regressions() -> None:
 @pytest.mark.parametrize(
     ('user_input', 'expected'),
     [
+        ('Так.', 'ano'),
+        ('Да.', 'ano'),
+        ('Ні.', 'nie'),
+        ('Нет.', 'nie'),
+        ('Ah, não.', 'unknown'),
+        ('Ah, não!', 'unknown'),
+    ],
+)
+def test_preview_bounded_confirmation_multilingual_and_noisy_inputs(user_input: str, expected: str) -> None:
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_preview_confirmation',
+            expected_reply_type='yes_no_confirmation',
+            allowed_outputs=['ano', 'nie', 'unknown'],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
         ('schváliť', 'schvalit'),
         ('upraviť', 'upravit'),
         ('zrušiť', 'zrusit'),

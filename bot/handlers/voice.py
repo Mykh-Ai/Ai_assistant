@@ -94,6 +94,19 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
         text_message = _inject_recognized_text(message, recognized_text)
         current_state = await state.get_state()
         if current_state == InvoiceStates.waiting_confirm.state:
+            if config.debug_invoice_transparency:
+                logger.info(
+                    json.dumps(
+                        {
+                            'event': 'confirm_voice_routing',
+                            'request_id': request_id,
+                            'current_state': current_state,
+                            'recognized_text': recognized_text,
+                            'telegram_message_id': getattr(message, 'message_id', None),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
             await process_invoice_preview_confirmation(
                 message=message,
                 state=state,

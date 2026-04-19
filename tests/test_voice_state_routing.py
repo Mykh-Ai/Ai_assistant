@@ -83,6 +83,62 @@ def test_voice_waiting_confirm_routes_to_preview_confirmation(monkeypatch, tmp_p
     assert calls == ['preview']
 
 
+def test_voice_waiting_confirm_routes_to_preview_confirmation_for_uk_no(monkeypatch, tmp_path: Path) -> None:
+    captured_confirmation_text: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'Ні.'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+
+    async def _preview(**kwargs) -> None:
+        captured_confirmation_text.append(kwargs.get('confirmation_text'))
+
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_preview_confirmation', _preview)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_postpdf_decision', lambda **kwargs: None)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', lambda **kwargs: None)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_confirm.state),
+        )
+    )
+    assert captured_confirmation_text == ['Ні.']
+
+
+def test_voice_waiting_confirm_logs_confirm_routing_for_noisy_stt(monkeypatch, tmp_path: Path, caplog) -> None:
+    captured_confirmation_text: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'Ah, não!'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+
+    async def _preview(**kwargs) -> None:
+        captured_confirmation_text.append(kwargs.get('confirmation_text'))
+
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_preview_confirmation', _preview)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_postpdf_decision', lambda **kwargs: None)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', lambda **kwargs: None)
+
+    config = _config(tmp_path, debug_invoice_transparency=True)
+    with caplog.at_level(logging.INFO):
+        asyncio.run(
+            handle_voice(
+                _DummyMessage(),
+                _DummyBot(),
+                config,
+                _DummyState(InvoiceStates.waiting_confirm.state),
+            )
+        )
+
+    assert captured_confirmation_text == ['Ah, não!']
+    assert any('"event": "confirm_voice_routing"' in rec.message for rec in caplog.records)
+
+
 def test_voice_waiting_pdf_decision_routes_to_postpdf(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
     async def _stt(*args, **kwargs) -> str:
