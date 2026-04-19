@@ -1,5 +1,114 @@
 # PROJECT_LOG
 
+## 2026-04-19 — Session 045 — TZ alignment with planned `info_help` guidance layer
+
+### Goal
+Align `docs/TZ_FakturaBot.md` with the newer docs-first `info_help` architecture at high-level product/requirements level, without duplicating the detailed focused spec.
+
+### Changes
+- updated `docs/TZ_FakturaBot.md` (section 5) with a surgical high-level `info_help` alignment block:
+  - clarified `info_help` as bounded guidance/navigation/recovery layer (not free-form chat, not direct-action duplicate);
+  - fixed routing precedence: top-level action first, question form does not block direct actions, `info_help` only on top-level `unknown`;
+  - added concise contract-precedence note: `info_help` remains subordinate to existing bounded `docs/llm` rules;
+  - added capability status model (`implemented` / `planned` / `unsupported`) and truthfulness requirement;
+  - added structured logging requirement for all `info_help` entries as product signals;
+  - added Phase 2/3 future-direction note (state-aware guidance, reset/new-task support, bounded runtime explainability);
+  - explicitly prohibited arbitrary source-code/raw-log reading by LLM in this layer;
+  - preserved caution for unconfirmed flows (contact edit, old-invoice deletion, send-invoice/send-email, support escalation);
+  - added explicit reference to detailed spec `docs/Info_Help_Guidance_Layer.md`.
+
+### Scope boundary
+- Docs-only alignment patch.
+- No runtime code changes.
+- No upgrade of unsupported/planned behavior to implemented.
+
+## 2026-04-19 — Session 044 — Refinement: Phase 2/3 runtime explainability for `info_help` spec
+
+### Goal
+Extend the docs-first `info_help` specification with forward-looking runtime explainability/debug-aware guidance rules for later phases, while preserving strict bounded `docs/llm` contract precedence.
+
+### Changes
+- updated `docs/Info_Help_Guidance_Layer.md` with targeted additions:
+  - future-direction note: controlled runtime explainability in Phase 2/3;
+  - new subsection for bounded Python-prepared runtime/debug context (`FSM state`, flow, next actions, reset availability, STT failure count, error category, fallback reason, API/quota status, sanitized summary);
+  - explicit prohibitions against arbitrary source-code/raw-log reading by LLM and against leaking secrets/internal traces/paths;
+  - added worked examples for repeated STT failure and model/API or quota/credits failure;
+  - extended logging rationale with runtime-explainability signals;
+  - extended Phase 2/3 rollout bullets with debug-aware guidance and optional admin reliability summaries.
+
+### Scope boundary
+- Docs-only refinement.
+- No runtime code changes.
+- No new implementation claims beyond planned behavior.
+
+## 2026-04-19 — Session 043 — Docs-first spec for `info_help` guidance/navigation layer
+
+### Goal
+Add a dedicated docs-first architecture/spec for planned `info_help` capability, explicitly subordinate to existing bounded `docs/llm` contract, without runtime implementation changes.
+
+### Changes
+- added new spec document: `docs/Info_Help_Guidance_Layer.md`
+  - defines purpose/scope/non-goals for controlled guidance/navigation/recovery layer;
+  - fixes routing rule: top-level action resolution first, `info_help` only on top-level miss;
+  - defines internal `info_help` submodes (`faq_topic`, `state_guidance`, `action_offer_or_handoff`, `restart_or_reset_request`, `support_escalation`);
+  - defines capability status model (`implemented`, `planned`, `unsupported`) with truthful response rules;
+  - defines bounded knowledge-registry shape and staged LLM interaction contract;
+  - defines safety requirements (no hidden mutation, explicit confirmation for handoff/reset);
+  - defines mandatory structured logging fields for all info-layer requests;
+  - includes worked examples and explicit truthfulness boundaries for unconfirmed flows;
+  - includes phased rollout and docs-alignment checklist.
+
+### Scope boundary
+- Docs-only change.
+- No runtime code changes.
+- No behavior claimed as implemented beyond confirmed current runtime.
+
+## 2026-04-19 — Session 042 — Invoice date edit expansion (issue/delivery/due) with voice-first bounded LLM contract
+
+### Goal
+Expand `upraviť faktúru` invoice-level date editing from one narrow `edit_invoice_date` path to full three-date support (`vystavenia`, `dodania`, `splatnosti`) and make value capture voice/text parity via bounded LLM normalization contract.
+
+### Changes
+- invoice-level action surface (`bot/handlers/invoice.py`, `bot/services/semantic_action_resolver.py`):
+  - added canonical operations:
+    - `edit_invoice_issue_date`
+    - `edit_invoice_delivery_date`
+    - `edit_invoice_due_date`
+  - kept `edit_invoice_date` as clarification-only umbrella intent (`upraviť dátum` -> ask which date).
+- user prompts/messages (`bot/handlers/invoice.py`):
+  - updated invoice-level edit menu to list all three concrete date actions;
+  - added clarification prompt:
+    - `Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?`
+  - added exact value prompts:
+    - `Napíšte alebo nadiktujte nový dátum vystavenia... DD.MM.RRRR`
+    - `Napíšte alebo nadiktujte nový dátum dodania... DD.MM.RRRR`
+    - `Napíšte alebo nadiktujte nový dátum splatnosti... DD.MM.RRRR`
+  - success messages split per field:
+    - `Dátum vystavenia bol upravený.`
+    - `Dátum dodania bol upravený.`
+    - `Dátum splatnosti bol upravený.`
+- bounded LLM date normalization contract (`bot/services/semantic_action_resolver.py`, `bot/handlers/invoice.py`):
+  - added `resolve_invoice_date_normalization(...)` that enforces bounded output:
+    - JSON `{ "normalized_date": "DD.MM.RRRR" }` or `{ "normalized_date": "unknown" }`;
+  - invoice date value handler now uses this contract for both text and voice/STT input;
+  - Python side only performs strict format/date validation and applies persistence/reject logic.
+- validation and persistence (`bot/handlers/invoice.py`, `bot/services/invoice_service.py`):
+  - added `update_invoice_delivery_date(...)` and `update_invoice_due_date(...)`;
+  - enforced invariant reject:
+    - `Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.`
+  - also prevents issue-date update that would violate `due_date >= issue_date`.
+- tests (`tests/test_invoice_state_decisions.py`):
+  - updated issue-date success path to new explicit action;
+  - added routing clarification test for generic `upraviť dátum`;
+  - added success coverage for delivery-date edit;
+  - added invariant reject coverage for due-date earlier than issue-date;
+  - added voice-style natural-language date input test with mocked bounded normalization result.
+
+### Scope boundary
+- Item-level edit flow was not changed.
+- No hidden auto-fix behavior added; all invariant conflicts remain fail-loud with explicit user-facing reject.
+- No behavior claimed as implemented beyond confirmed current runtime.
+
 ## 2026-04-19 — Session 041 — Hardening `nový opis položky` isolation from alias mappings
 
 ### Goal
@@ -1582,7 +1691,6 @@ Remove ambiguity between legacy unittest habits and current pytest workflow.
 
 ### Scope
 - Docs/tooling only; no runtime code changes.
-=======
 ---
 
 ## 2026-04-06 - Session 013 - Windows-safe SQLite connection closing in tests

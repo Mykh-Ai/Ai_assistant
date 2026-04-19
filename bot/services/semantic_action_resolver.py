@@ -152,6 +152,12 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
     if context_name == 'invoice_edit_invoice_action':
         if 'edit_invoice_number' in allowed and tokens.intersection({'cislo', 'číslo', 'number', 'num'}):
             return 'edit_invoice_number'
+        if 'edit_invoice_issue_date' in allowed and tokens.intersection({'vystavenia', 'vystavenie', 'issue'}):
+            return 'edit_invoice_issue_date'
+        if 'edit_invoice_delivery_date' in allowed and tokens.intersection({'dodania', 'dodanie', 'delivery'}):
+            return 'edit_invoice_delivery_date'
+        if 'edit_invoice_due_date' in allowed and tokens.intersection({'splatnosti', 'splatnost', 'due'}):
+            return 'edit_invoice_due_date'
         if 'edit_invoice_date' in allowed and tokens.intersection({'datum', 'dátum', 'date'}):
             return 'edit_invoice_date'
         return _UNKNOWN
@@ -408,6 +414,72 @@ async def resolve_semantic_value(
         model=model,
         auxiliary_context=auxiliary_context,
     )
+
+
+async def resolve_invoice_date_normalization(
+    *,
+    date_field: str,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    invoice_context: dict[str, Any] | None = None,
+) -> str:
+    cleaned = user_input_text.strip()
+    if not cleaned:
+        return _UNKNOWN
+
+    if api_key and api_key.startswith('sk-'):
+        try:
+            client = AsyncOpenAI(api_key=api_key)
+            response = await client.chat.completions.create(
+                model=model,
+                temperature=0,
+                response_format={'type': 'json_object'},
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': (
+                            'You are a bounded normalization engine for invoice date editing. '
+                            'Return strict JSON only in format {"normalized_date":"DD.MM.RRRR"} or {"normalized_date":"unknown"}. '
+                            'Do not return explanations or extra keys.'
+                        ),
+                    },
+                    {
+                        'role': 'user',
+                        'content': json.dumps(
+                            {
+                                'context_name': 'invoice_edit_date_value',
+                                'date_field': date_field,
+                                'required_format': 'DD.MM.RRRR',
+                                'allowed_output': ['DD.MM.RRRR', 'unknown'],
+                                'normalization_contract': {
+                                    'mode': 'bounded_value_normalization',
+                                    'do_not_explain': True,
+                                    'do_not_return_free_text': True,
+                                    'unknown_only_for': ['truly_ambiguous', 'missing_date', 'stt_noise'],
+                                },
+                                'user_input_text': cleaned,
+                                'invoice_context': invoice_context or {},
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                ],
+            )
+            raw = response.choices[0].message.content or '{}'
+            parsed = json.loads(raw)
+            normalized = str(parsed.get('normalized_date', _UNKNOWN)).strip()
+            if normalized == _UNKNOWN:
+                return _UNKNOWN
+            if re.fullmatch(r'\d{2}\.\d{2}\.\d{4}', normalized):
+                return normalized
+            return _UNKNOWN
+        except Exception:
+            logger.exception('Invoice date normalization failed')
+
+    if re.fullmatch(r'\d{2}\.\d{2}\.\d{4}', cleaned):
+        return cleaned
+    return _UNKNOWN
 
 
 async def resolve_bounded_confirmation_reply(
