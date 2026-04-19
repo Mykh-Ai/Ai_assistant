@@ -441,11 +441,19 @@ async def resolve_bounded_confirmation_reply(
                     {
                         'role': 'system',
                         'content': (
-                            'You are a strict bounded resolver for short in-action confirmations/decisions. '
-                            'Input may be noisy/STT-distorted. '
-                            'Return JSON only in format {"canonical":"..."} where value is one allowed output or "unknown". '
-                            'If reply is ambiguous, noisy, malformed, mixed/off-language, or not clearly one bounded choice, return "unknown". '
-                            'Do not best-guess destructive outcomes.'
+                            'You are a bounded intent normalizer for short in-action confirmations/decisions. '
+                            'Return JSON only in format {"canonical":"..."} where value is one allowed output token or "unknown". '
+                            'Do not return any explanations. '
+                            'Reasoning policy: '
+                            'Step 1) infer user intent semantically (not literal matching) even if wording is short, multilingual, colloquial, or mildly STT-noisy. '
+                            'Step 2) normalize that intent to the allowed canonical token for the current context. '
+                            'Step 3) return "unknown" only when intent is truly ambiguous, not a confirmation/decision reply, or genuine STT garbage. '
+                            'For expected_reply_type=yes_no_confirmation: user is NOT required to say exact "ano"/"nie"; '
+                            'map clear affirmative intent across languages/forms to affirmative canonical output and clear negative intent to negative canonical output. '
+                            'For expected_reply_type=postpdf_decision: '
+                            'map clear approve/confirm/save-draft intent to schvalit, clear edit/change/correct intent to upravit, '
+                            'and clear delete/cancel/remove/discard invoice-draft intent to zrusit, including multilingual/noisy variants. '
+                            'Safety rule: do not guess destructive action when intent is unclear; use "unknown" for uncertainty.'
                         ),
                     },
                     {
@@ -457,6 +465,25 @@ async def resolve_bounded_confirmation_reply(
                                 'supported_input_languages': _SUPPORTED_CONFIRM_LANGUAGES,
                                 'allowed_canonical_outputs': sorted(allowed),
                                 'user_input_text': cleaned,
+                                'normalization_contract': {
+                                    'mode': 'semantic_intent_first',
+                                    'unknown_only_for': [
+                                        'true_ambiguity',
+                                        'not_a_confirmation_or_decision_reply',
+                                        'stt_garbage_or_nonsense',
+                                    ],
+                                    'context_rules': {
+                                        'yes_no_confirmation': {
+                                            'affirmative_intent': 'normalize_to_affirmative_token_in_allowed_outputs',
+                                            'negative_intent': 'normalize_to_negative_token_in_allowed_outputs',
+                                        },
+                                        'postpdf_decision': {
+                                            'approve_confirm_save_invoice_draft': 'schvalit_if_allowed',
+                                            'edit_change_correct_invoice_draft': 'upravit_if_allowed',
+                                            'delete_cancel_remove_discard_invoice_draft': 'zrusit_if_allowed',
+                                        },
+                                    },
+                                },
                             },
                             ensure_ascii=False,
                         ),
