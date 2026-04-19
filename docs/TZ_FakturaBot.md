@@ -302,13 +302,19 @@ Runtime-модель для цього токена: тільки bounded in-act
 
 Canonical machine-facing operations:
 - `edit_invoice_number`
-- `edit_invoice_date`
+- `edit_invoice_issue_date`
+- `edit_invoice_delivery_date`
+- `edit_invoice_due_date`
+- `edit_invoice_date` (clarification-only umbrella intent)
 - `edit_invoice_contact`
 - `unknown`
 
 Статус:
 - `edit_invoice_number` — implemented;
-- `edit_invoice_date` — implemented (Phase 1 strict input format: `DD.MM.RRRR`);
+- `edit_invoice_issue_date` — implemented;
+- `edit_invoice_delivery_date` — implemented;
+- `edit_invoice_due_date` — implemented;
+- `edit_invoice_date` — implemented as clarification trigger (`Ktorý dátum chcete upraviť...`);
 - `edit_invoice_contact` — planned (not yet implemented).
 
 Fail-safe рішення для invoice-level полів:
@@ -389,7 +395,7 @@ Machine-facing мінімальний bounded contract:
 - `value`
 
 Де:
-- `operation` ∈ {`edit_invoice_number`, `edit_invoice_date`, `edit_invoice_contact`, `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`, `unknown`};
+- `operation` ∈ {`edit_invoice_number`, `edit_invoice_issue_date`, `edit_invoice_delivery_date`, `edit_invoice_due_date`, `edit_invoice_date`, `edit_invoice_contact`, `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`, `unknown`};
 - `target_item_index` обов’язковий для item-level операцій (для invoice-level ігнорується/`unknown`);
 - `value` завжди candidate-only; Python робить final validation/execution або fail loud.
 
@@ -397,8 +403,12 @@ Machine-facing мінімальний bounded contract:
 
 - Цей docs patch фіксує єдину карту повного `edit_invoice` scope для майбутніх runtime патчів.
 - У runtime досі не реалізовані: `edit_invoice_contact`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`.
-- Поточний runtime coverage у межах `upraviť`: `edit_invoice_number`, `edit_invoice_date`, `replace_service`, `edit_item_description`.
-- Для `edit_invoice_date` у Phase 1 застосовано strict формат вводу `DD.MM.RRRR`; natural-language date parsing не використовується.
+- Поточний runtime coverage у межах `upraviť`: `edit_invoice_number`, `edit_invoice_issue_date`, `edit_invoice_delivery_date`, `edit_invoice_due_date`, `edit_invoice_date` (clarification), `replace_service`, `edit_item_description`.
+- Для invoice-level date edits застосовується bounded LLM normalization contract:
+  - input: natural-language/text/STT date phrase;
+  - output: тільки `DD.MM.RRRR` або `unknown`;
+  - Python виконує тільки strict validate/parse та persistence/reject (без Python semantic date guessing).
+- Guardrail: `dátum splatnosti` не може бути раніше за `dátum vystavenia` (fail-loud reject).
 - Поточна поведінка для номеру фактури при зміні дати: номер **не змінюється автоматично** (без hidden auto-renumbering).
 
 ---

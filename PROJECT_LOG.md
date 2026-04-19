@@ -63,6 +63,52 @@ Add a dedicated docs-first architecture/spec for planned `info_help` capability,
 - No runtime code changes.
 - No behavior claimed as implemented beyond confirmed current runtime.
 
+## 2026-04-19 — Session 042 — Invoice date edit expansion (issue/delivery/due) with voice-first bounded LLM contract
+
+### Goal
+Expand `upraviť faktúru` invoice-level date editing from one narrow `edit_invoice_date` path to full three-date support (`vystavenia`, `dodania`, `splatnosti`) and make value capture voice/text parity via bounded LLM normalization contract.
+
+### Changes
+- invoice-level action surface (`bot/handlers/invoice.py`, `bot/services/semantic_action_resolver.py`):
+  - added canonical operations:
+    - `edit_invoice_issue_date`
+    - `edit_invoice_delivery_date`
+    - `edit_invoice_due_date`
+  - kept `edit_invoice_date` as clarification-only umbrella intent (`upraviť dátum` -> ask which date).
+- user prompts/messages (`bot/handlers/invoice.py`):
+  - updated invoice-level edit menu to list all three concrete date actions;
+  - added clarification prompt:
+    - `Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?`
+  - added exact value prompts:
+    - `Napíšte alebo nadiktujte nový dátum vystavenia... DD.MM.RRRR`
+    - `Napíšte alebo nadiktujte nový dátum dodania... DD.MM.RRRR`
+    - `Napíšte alebo nadiktujte nový dátum splatnosti... DD.MM.RRRR`
+  - success messages split per field:
+    - `Dátum vystavenia bol upravený.`
+    - `Dátum dodania bol upravený.`
+    - `Dátum splatnosti bol upravený.`
+- bounded LLM date normalization contract (`bot/services/semantic_action_resolver.py`, `bot/handlers/invoice.py`):
+  - added `resolve_invoice_date_normalization(...)` that enforces bounded output:
+    - JSON `{ "normalized_date": "DD.MM.RRRR" }` or `{ "normalized_date": "unknown" }`;
+  - invoice date value handler now uses this contract for both text and voice/STT input;
+  - Python side only performs strict format/date validation and applies persistence/reject logic.
+- validation and persistence (`bot/handlers/invoice.py`, `bot/services/invoice_service.py`):
+  - added `update_invoice_delivery_date(...)` and `update_invoice_due_date(...)`;
+  - enforced invariant reject:
+    - `Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.`
+  - also prevents issue-date update that would violate `due_date >= issue_date`.
+- tests (`tests/test_invoice_state_decisions.py`):
+  - updated issue-date success path to new explicit action;
+  - added routing clarification test for generic `upraviť dátum`;
+  - added success coverage for delivery-date edit;
+  - added invariant reject coverage for due-date earlier than issue-date;
+  - added voice-style natural-language date input test with mocked bounded normalization result.
+
+### Scope boundary
+- Item-level edit flow was not changed.
+- No hidden auto-fix behavior added; all invariant conflicts remain fail-loud with explicit user-facing reject.
+- No behavior claimed as implemented beyond confirmed current runtime.
+
 ## 2026-04-19 — Session 041 — Hardening `nový opis položky` isolation from alias mappings
 
 ### Goal
@@ -1645,7 +1691,6 @@ Remove ambiguity between legacy unittest habits and current pytest workflow.
 
 ### Scope
 - Docs/tooling only; no runtime code changes.
-=======
 ---
 
 ## 2026-04-06 - Session 013 - Windows-safe SQLite connection closing in tests

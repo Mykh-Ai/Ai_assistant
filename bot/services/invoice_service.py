@@ -361,6 +361,22 @@ class InvoiceService:
             )
             connection.commit()
 
+    def update_invoice_delivery_date(self, *, invoice_id: int, delivery_date: str) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                'UPDATE invoice SET delivery_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (delivery_date, invoice_id),
+            )
+            connection.commit()
+
+    def update_invoice_due_date(self, *, invoice_id: int, due_date: str) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                'UPDATE invoice SET due_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (due_date, invoice_id),
+            )
+            connection.commit()
+
     def update_invoice_status(self, invoice_id: int, status: str) -> None:
         with managed_connection(self._db_path) as connection:
             connection.execute(

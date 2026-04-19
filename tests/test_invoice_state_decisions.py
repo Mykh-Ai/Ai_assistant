@@ -1433,7 +1433,7 @@ def test_edit_invoice_date_valid_value_updates_issue_date_and_rebuilds_pdf(tmp_p
 
     asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
     asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'faktúra', 'answer': message.answer})(), state=state, config=config))
-    asyncio.run(invoice_edit_invoice_action(message=type('M', (), {'text': 'upraviť dátum faktúry', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_invoice_action(message=type('M', (), {'text': 'upraviť dátum vystavenia', 'answer': message.answer})(), state=state, config=config))
     asyncio.run(
         invoice_edit_invoice_date_value(
             message=type(
@@ -1453,7 +1453,7 @@ def test_edit_invoice_date_valid_value_updates_issue_date_and_rebuilds_pdf(tmp_p
     assert updated_invoice.invoice_number == old_number
     assert message.documents
     assert state.current_state == InvoiceStates.waiting_pdf_decision
-    assert message.answers[-1] == 'Dátum faktúry bol upravený. Napíšte: schváliť, upraviť alebo zrušiť.'
+    assert message.answers[-1] == 'Dátum vystavenia bol upravený. Napíšte: schváliť, upraviť alebo zrušiť.'
 
 
 def test_edit_invoice_date_invalid_format_rejected_and_kept_in_state(tmp_path: Path, monkeypatch) -> None:
@@ -1482,7 +1482,13 @@ def test_edit_invoice_date_invalid_format_rejected_and_kept_in_state(tmp_path: P
         storage_dir=tmp_path,
     )
     message = _DummyMessage(telegram_id)
-    state = _DummyState(data={'last_invoice_id': invoice_id, 'edit_invoice_id': invoice_id})
+    state = _DummyState(
+        data={
+            'last_invoice_id': invoice_id,
+            'edit_invoice_id': invoice_id,
+            'edit_invoice_date_operation': 'edit_invoice_issue_date',
+        }
+    )
     state.current_state = InvoiceStates.waiting_edit_invoice_date_value
 
     asyncio.run(
@@ -1525,7 +1531,13 @@ def test_edit_invoice_date_impossible_date_rejected_and_kept_in_state(tmp_path: 
         storage_dir=tmp_path,
     )
     message = _DummyMessage(telegram_id)
-    state = _DummyState(data={'last_invoice_id': invoice_id, 'edit_invoice_id': invoice_id})
+    state = _DummyState(
+        data={
+            'last_invoice_id': invoice_id,
+            'edit_invoice_id': invoice_id,
+            'edit_invoice_date_operation': 'edit_invoice_issue_date',
+        }
+    )
     state.current_state = InvoiceStates.waiting_edit_invoice_date_value
 
     asyncio.run(
@@ -1540,6 +1552,205 @@ def test_edit_invoice_date_impossible_date_rejected_and_kept_in_state(tmp_path: 
     assert reloaded.issue_date == old_invoice.issue_date
     assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
     assert message.answers[-1].startswith('Neplatný dátum.')
+
+
+def test_edit_invoice_date_generic_action_requires_clarification(tmp_path: Path) -> None:
+    telegram_id = 607
+    db_path = tmp_path / 'edit-date-clarify.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_invoice_id': invoice_id})
+    state.current_state = InvoiceStates.waiting_edit_invoice_action
+    asyncio.run(
+        invoice_edit_invoice_action(
+            message=type('M', (), {'text': 'upraviť dátum', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_action
+    assert message.answers[-1] == 'Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?'
+
+
+def test_edit_invoice_delivery_date_success(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 608
+    db_path = tmp_path / 'edit-delivery-ok.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda **kwargs: None)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_invoice_id': invoice_id, 'last_invoice_id': invoice_id})
+    state.current_state = InvoiceStates.waiting_edit_invoice_action
+    asyncio.run(
+        invoice_edit_invoice_action(
+            message=type('M', (), {'text': 'upraviť dátum dodania', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
+    asyncio.run(
+        invoice_edit_invoice_date_value(
+            message=type(
+                'M',
+                (),
+                {
+                    'text': '10.04.2026',
+                    'answer': message.answer,
+                    'answer_document': message.answer_document,
+                    'from_user': message.from_user,
+                },
+            )(),
+            state=state,
+            config=config,
+        )
+    )
+    updated_invoice = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert updated_invoice is not None
+    assert updated_invoice.delivery_date == '2026-04-10'
+    assert message.answers[-1] == 'Dátum dodania bol upravený. Napíšte: schváliť, upraviť alebo zrušiť.'
+
+
+def test_edit_invoice_due_date_rejects_before_issue_date(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 609
+    db_path = tmp_path / 'edit-due-invalid.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda **kwargs: None)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_invoice_id': invoice_id, 'last_invoice_id': invoice_id})
+    state.current_state = InvoiceStates.waiting_edit_invoice_action
+    asyncio.run(
+        invoice_edit_invoice_action(
+            message=type('M', (), {'text': 'upraviť dátum splatnosti', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+    asyncio.run(
+        invoice_edit_invoice_date_value(
+            message=type('M', (), {'text': '01.01.2026', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
+    assert (
+        message.answers[-1]
+        == 'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+    )
+
+
+def test_edit_invoice_date_voice_input_is_normalized_via_bounded_contract(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 613
+    db_path = tmp_path / 'edit-date-voice-contract.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda **kwargs: None)
+    captured: dict[str, str] = {}
+
+    async def _normalize_date(**kwargs):
+        captured['date_field'] = str(kwargs.get('date_field'))
+        captured['user_input_text'] = str(kwargs.get('user_input_text'))
+        return '11.05.2026'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_invoice_date_normalization', _normalize_date)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_invoice_id': invoice_id, 'last_invoice_id': invoice_id})
+    state.current_state = InvoiceStates.waiting_edit_invoice_action
+    asyncio.run(
+        invoice_edit_invoice_action(
+            message=type('M', (), {'text': 'upraviť dátum dodania', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+    asyncio.run(
+        invoice_edit_invoice_date_value(
+            message=type(
+                'M',
+                (),
+                {
+                    'text': 'jedenásteho mája 2026',
+                    'answer': message.answer,
+                    'answer_document': message.answer_document,
+                    'from_user': message.from_user,
+                },
+            )(),
+            state=state,
+            config=config,
+        )
+    )
+    updated_invoice = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert updated_invoice is not None
+    assert updated_invoice.delivery_date == '2026-05-11'
+    assert captured['date_field'] == 'edit_invoice_delivery_date'
+    assert captured['user_input_text'] == 'jedenásteho mája 2026'
 
 
 def test_postpdf_missing_invoice_id_fails_loud_and_clears_state(tmp_path: Path) -> None:
