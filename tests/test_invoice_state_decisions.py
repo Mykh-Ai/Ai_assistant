@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from unittest.mock import patch
 
 from bot.config import Config
 from bot.handlers.invoice import (
@@ -17,6 +18,7 @@ from bot.handlers.invoice import (
     invoice_edit_service_value,
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
+    start_invoice_edit_flow,
 )
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db, managed_connection
@@ -614,7 +616,7 @@ def test_replace_service_keeps_existing_item_description_and_rebuilds_pdf(tmp_pa
     assert item.item_description_raw == 'hala B'
     assert message.documents
     assert state.current_state == InvoiceStates.waiting_pdf_decision
-    assert message.answers[-1] == 'Služba položky bola upravená. Napíšte: schváliť, upraviť alebo zrušiť.'
+    assert message.answers[-1] == 'Služba položky bola zmenená. Napíšte: schváliť, upraviť alebo zrušiť.'
 
 
 def test_set_replace_and_clear_item_description_preserve_service_and_rebuild_pdf(tmp_path: Path, monkeypatch) -> None:
@@ -648,32 +650,102 @@ def test_set_replace_and_clear_item_description_preserve_service_and_rebuild_pdf
     state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'old.pdf')})
     asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
     asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'položka', 'answer': message.answer})(), state=state, config=config))
-    asyncio.run(invoice_edit_item_action(message=type('M', (), {'text': 'upraviť opis položky', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_action(message=type('M', (), {'text': 'pridať detaily k položke', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_description_value
 
-    # set
+    # add details
     asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'práce v hale A', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     assert item.item_description_raw == 'práce v hale A'
     assert item.description_normalized == 'Servis zariadenia'
     assert state.current_state == InvoiceStates.waiting_pdf_decision
-    assert message.answers[-1] == 'Opis položky bol upravený. Napíšte: schváliť, upraviť alebo zrušiť.'
+    assert message.answers[-1] == 'Detaily položky boli doplnené. Napíšte: schváliť, upraviť alebo zrušiť.'
 
-    # replace
+    # append details
     state.data['last_invoice_id'] = invoice_id
     state.data['edit_invoice_id'] = invoice_id
     state.data['edit_target_item_id'] = item.id
+    state.data['edit_item_action_mode'] = 'add_item_details'
     asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'práce v hale B', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
-    assert item.item_description_raw == 'práce v hale B'
+    assert item.item_description_raw == 'práce v hale A; práce v hale B'
 
-    # clear
-    state.data['last_invoice_id'] = invoice_id
-    state.data['edit_invoice_id'] = invoice_id
-    state.data['edit_target_item_id'] = item.id
-    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'vymaž opis', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    # replace main description
+    state.data['edit_item_action_mode'] = 'replace_main_description'
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'Nový hlavný opis', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
-    assert item.item_description_raw is None
+    assert item.description_raw == 'Nový hlavný opis'
+    assert item.description_normalized == 'Nový hlavný opis'
+
+
+def test_novy_opis_updates_only_invoice_item_without_alias_db_side_effects(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 512
+    db_path = tmp_path / 'novy-opis-isolated.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw='existujúce detaily',
+    )
+
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    alias_service = ServiceAliasService(db_path)
+    alias_service.create_mapping(int(supplier.id), 'servis', 'Servis zariadenia')
+    alias_service.create_mapping(int(supplier.id), 'montaz', 'Montáž zariadenia')
+    aliases_before = alias_service.list_mappings(int(supplier.id))
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF edited')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    state = _DummyState(
+        data={
+            'last_invoice_id': invoice_id,
+            'edit_invoice_id': invoice_id,
+            'edit_target_item_id': item.id,
+            'edit_item_action_mode': 'replace_main_description',
+        }
+    )
+    asyncio.run(
+        invoice_edit_description_value(
+            message=type(
+                'M',
+                (),
+                {'text': 'Nový hlavný opis', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user},
+            )(),
+            state=state,
+            config=config,
+        )
+    )
+
+    updated_item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert updated_item.description_raw == 'Nový hlavný opis'
+    assert updated_item.description_normalized == 'Nový hlavný opis'
+    assert updated_item.description_raw.endswith('opis')
+    assert updated_item.description_raw == 'Nový hlavný opis'
+    assert updated_item.item_description_raw == 'existujúce detaily'
+
+    aliases_after = alias_service.list_mappings(int(supplier.id))
+    assert [(a.service_short_name, a.service_display_name) for a in aliases_after] == [
+        (a.service_short_name, a.service_display_name) for a in aliases_before
+    ]
+    assert message.answers[-1] == 'Opis položky bol nahradený novým textom. Napíšte: schváliť, upraviť alebo zrušiť.'
 
 
 def test_reject_too_long_item_description_returns_bounded_prompt_and_keeps_previous(tmp_path: Path, monkeypatch) -> None:
@@ -708,7 +780,7 @@ def test_reject_too_long_item_description_returns_bounded_prompt_and_keeps_previ
     assert 'príliš dlhý' in message.answers[-1]
 
 
-def test_item_action_phrase_upravit_opis_routes_to_description_branch(tmp_path: Path) -> None:
+def test_item_action_phrase_novy_opis_routes_to_description_branch(tmp_path: Path) -> None:
     config = Config(
         bot_token='token',
         openai_api_key='key',
@@ -722,12 +794,13 @@ def test_item_action_phrase_upravit_opis_routes_to_description_branch(tmp_path: 
     state = _DummyState(data={'edit_target_item_id': 11})
     asyncio.run(
         invoice_edit_item_action(
-            message=type('M', (), {'text': 'upraviť opis položky', 'answer': message.answer})(),
+            message=type('M', (), {'text': 'nový opis položky', 'answer': message.answer})(),
             state=state,
             config=config,
         )
     )
     assert state.current_state == InvoiceStates.waiting_edit_description_value
+    assert state.data.get('edit_item_action_mode') == 'replace_main_description'
 
 
 def test_item_action_phrase_zmenit_sluzbu_routes_to_service_branch(tmp_path: Path) -> None:
@@ -750,6 +823,86 @@ def test_item_action_phrase_zmenit_sluzbu_routes_to_service_branch(tmp_path: Pat
         )
     )
     assert state.current_state == InvoiceStates.waiting_edit_service_value
+
+
+def test_item_action_phrase_vymazat_detaily_clears_details_immediately(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 777
+    db_path = tmp_path / 'clear-item-details.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw='pôvodné detaily',
+    )
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF edited')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    item_id = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0].id
+    state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item_id, 'last_invoice_id': invoice_id})
+    asyncio.run(
+        invoice_edit_item_action(
+            message=type(
+                'M',
+                (),
+                {'text': 'vymazať detaily položky', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user},
+            )(),
+            state=state,
+            config=config,
+        )
+    )
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert item.item_description_raw is None
+    assert state.current_state == InvoiceStates.waiting_pdf_decision
+    assert message.answers[-1] == 'Detaily položky boli vymazané. Napíšte: schváliť, upraviť alebo zrušiť.'
+
+
+def test_item_action_phrase_vymazat_detaily_reports_when_missing(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState(data={'edit_target_item_id': 11, 'edit_invoice_id': 21})
+
+    class _InvoiceServiceWithoutDetails:
+        def __init__(self, db_path: Path) -> None:
+            _ = db_path
+
+        def get_items_by_invoice_id(self, invoice_id: int):  # noqa: ANN001
+            _ = invoice_id
+            return [type('Item', (), {'id': 11, 'item_description_raw': None})()]
+
+    with patch('bot.handlers.invoice.InvoiceService', _InvoiceServiceWithoutDetails):
+        asyncio.run(
+            invoice_edit_item_action(
+                message=type('M', (), {'text': 'vymazať detaily položky', 'answer': message.answer})(),
+                state=state,
+                config=config,
+            )
+        )
+    assert state.current_state == InvoiceStates.waiting_pdf_decision
+    assert message.answers[-1] == 'Položka nemá žiadne detaily na vymazanie.'
 
 
 def test_single_item_default_targeting_is_applied_on_edit_entry(tmp_path: Path) -> None:
@@ -1077,6 +1230,34 @@ def test_invoice_level_action_prompt_does_not_offer_contact_edit(tmp_path: Path)
     state.current_state = InvoiceStates.waiting_edit_scope
     asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'faktúra', 'answer': message.answer})(), state=state, config=config))
     assert 'upraviť kontakt' not in message.answers[-1]
+
+
+def test_edit_scope_prompt_does_not_include_contact(tmp_path: Path) -> None:
+    telegram_id = 612
+    db_path = tmp_path / 'edit-scope-no-contact.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+    asyncio.run(start_invoice_edit_flow(message=message, state=state, config=config, invoice_id=invoice_id))
+    assert 'číslo/dátum/kontakt' not in message.answers[-1]
+    assert 'číslo/dátum' in message.answers[-1]
 
 
 def test_invoice_action_contact_text_is_unknown_and_state_is_preserved(tmp_path: Path) -> None:

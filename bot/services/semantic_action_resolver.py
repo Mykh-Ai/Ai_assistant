@@ -168,12 +168,24 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         return _UNKNOWN
 
     if context_name == 'invoice_edit_item_action':
-        if 'edit_item_description' in allowed and tokens.intersection({'opis', 'popis', 'detail', 'poznamka', 'poznámka', 'description'}):
-            return 'edit_item_description'
+        if 'clear_item_details' in allowed and tokens.intersection(
+            {'vymazat', 'vymazať', 'zmazat', 'zmazať', 'odstranit', 'odstrániť', 'clear', 'delete'}
+        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznámka'}):
+            return 'clear_item_details'
+        if 'add_item_details' in allowed and tokens.intersection(
+            {'pridat', 'pridať', 'doplnit', 'doplniť', 'add'}
+        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznámka'}):
+            return 'add_item_details'
+        if 'replace_main_description' in allowed and tokens.intersection(
+            {'novy', 'nový', 'opis', 'popis', 'description'}
+        ):
+            return 'replace_main_description'
         if 'replace_service' in allowed and tokens.intersection(
             {'sluzba', 'služba', 'sluzbu', 'službu', 'service', 'polozka', 'položka', 'polozku', 'položku'}
         ):
             return 'replace_service'
+        if 'add_item_details' in allowed and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznámka'}):
+            return 'add_item_details'
         return _UNKNOWN
 
     return _UNKNOWN
