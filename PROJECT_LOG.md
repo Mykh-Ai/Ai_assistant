@@ -1,5 +1,68 @@
 # PROJECT_LOG
 
+## 2026-04-19 — Session 045 — TZ alignment with planned `info_help` guidance layer
+
+### Goal
+Align `docs/TZ_FakturaBot.md` with the newer docs-first `info_help` architecture at high-level product/requirements level, without duplicating the detailed focused spec.
+
+### Changes
+- updated `docs/TZ_FakturaBot.md` (section 5) with a surgical high-level `info_help` alignment block:
+  - clarified `info_help` as bounded guidance/navigation/recovery layer (not free-form chat, not direct-action duplicate);
+  - fixed routing precedence: top-level action first, question form does not block direct actions, `info_help` only on top-level `unknown`;
+  - added concise contract-precedence note: `info_help` remains subordinate to existing bounded `docs/llm` rules;
+  - added capability status model (`implemented` / `planned` / `unsupported`) and truthfulness requirement;
+  - added structured logging requirement for all `info_help` entries as product signals;
+  - added Phase 2/3 future-direction note (state-aware guidance, reset/new-task support, bounded runtime explainability);
+  - explicitly prohibited arbitrary source-code/raw-log reading by LLM in this layer;
+  - preserved caution for unconfirmed flows (contact edit, old-invoice deletion, send-invoice/send-email, support escalation);
+  - added explicit reference to detailed spec `docs/Info_Help_Guidance_Layer.md`.
+
+### Scope boundary
+- Docs-only alignment patch.
+- No runtime code changes.
+- No upgrade of unsupported/planned behavior to implemented.
+
+## 2026-04-19 — Session 044 — Refinement: Phase 2/3 runtime explainability for `info_help` spec
+
+### Goal
+Extend the docs-first `info_help` specification with forward-looking runtime explainability/debug-aware guidance rules for later phases, while preserving strict bounded `docs/llm` contract precedence.
+
+### Changes
+- updated `docs/Info_Help_Guidance_Layer.md` with targeted additions:
+  - future-direction note: controlled runtime explainability in Phase 2/3;
+  - new subsection for bounded Python-prepared runtime/debug context (`FSM state`, flow, next actions, reset availability, STT failure count, error category, fallback reason, API/quota status, sanitized summary);
+  - explicit prohibitions against arbitrary source-code/raw-log reading by LLM and against leaking secrets/internal traces/paths;
+  - added worked examples for repeated STT failure and model/API or quota/credits failure;
+  - extended logging rationale with runtime-explainability signals;
+  - extended Phase 2/3 rollout bullets with debug-aware guidance and optional admin reliability summaries.
+
+### Scope boundary
+- Docs-only refinement.
+- No runtime code changes.
+- No new implementation claims beyond planned behavior.
+
+## 2026-04-19 — Session 043 — Docs-first spec for `info_help` guidance/navigation layer
+
+### Goal
+Add a dedicated docs-first architecture/spec for planned `info_help` capability, explicitly subordinate to existing bounded `docs/llm` contract, without runtime implementation changes.
+
+### Changes
+- added new spec document: `docs/Info_Help_Guidance_Layer.md`
+  - defines purpose/scope/non-goals for controlled guidance/navigation/recovery layer;
+  - fixes routing rule: top-level action resolution first, `info_help` only on top-level miss;
+  - defines internal `info_help` submodes (`faq_topic`, `state_guidance`, `action_offer_or_handoff`, `restart_or_reset_request`, `support_escalation`);
+  - defines capability status model (`implemented`, `planned`, `unsupported`) with truthful response rules;
+  - defines bounded knowledge-registry shape and staged LLM interaction contract;
+  - defines safety requirements (no hidden mutation, explicit confirmation for handoff/reset);
+  - defines mandatory structured logging fields for all info-layer requests;
+  - includes worked examples and explicit truthfulness boundaries for unconfirmed flows;
+  - includes phased rollout and docs-alignment checklist.
+
+### Scope boundary
+- Docs-only change.
+- No runtime code changes.
+- No behavior claimed as implemented beyond confirmed current runtime.
+
 ## 2026-04-19 — Session 041 — Hardening `nový opis položky` isolation from alias mappings
 
 ### Goal
