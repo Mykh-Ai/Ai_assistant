@@ -26,7 +26,11 @@ from bot.services.pdf_generator import (
     validate_item_detail_render_fit,
 )
 from bot.services.service_alias_service import ServiceAliasService
-from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
+from bot.services.semantic_action_resolver import (
+    resolve_bounded_confirmation_reply,
+    resolve_invoice_date_normalization,
+    resolve_semantic_action,
+)
 from bot.services.semantic_action_resolver import resolve_quantity_unit_price_pair
 from bot.services.supplier_service import SupplierService
 from bot.services.validation import parse_strict_date_dd_mm_yyyy
@@ -73,6 +77,9 @@ _EDIT_ITEM_OPERATION_ADD_DETAILS = 'add_item_details'
 _EDIT_ITEM_OPERATION_CLEAR_DETAILS = 'clear_item_details'
 _EDIT_INVOICE_OPERATION_NUMBER = 'edit_invoice_number'
 _EDIT_INVOICE_OPERATION_DATE = 'edit_invoice_date'
+_EDIT_INVOICE_OPERATION_ISSUE_DATE = 'edit_invoice_issue_date'
+_EDIT_INVOICE_OPERATION_DELIVERY_DATE = 'edit_invoice_delivery_date'
+_EDIT_INVOICE_OPERATION_DUE_DATE = 'edit_invoice_due_date'
 _EDIT_ITEM_OPERATION_UNKNOWN = 'unknown'
 _INVOICE_NUMBER_PATTERN = re.compile(r'^(?:19|20)\d{6}$')
 
@@ -325,6 +332,9 @@ async def _resolve_invoice_edit_action(*, config: Config, user_input_text: str) 
         context_name='invoice_edit_invoice_action',
         allowed_actions=[
             _EDIT_INVOICE_OPERATION_NUMBER,
+            _EDIT_INVOICE_OPERATION_ISSUE_DATE,
+            _EDIT_INVOICE_OPERATION_DELIVERY_DATE,
+            _EDIT_INVOICE_OPERATION_DUE_DATE,
             _EDIT_INVOICE_OPERATION_DATE,
             _EDIT_ITEM_OPERATION_UNKNOWN,
         ],
@@ -395,6 +405,23 @@ def _parse_strict_issue_date_candidate(value: str) -> str | None:
     if parsed is None:
         return None
     return parsed.isoformat()
+
+
+def _invoice_date_prompt_for_operation(operation: str) -> str:
+    if operation == _EDIT_INVOICE_OPERATION_ISSUE_DATE:
+        return (
+            'Napíšte alebo nadiktujte nový dátum vystavenia. '
+            'Očakávaný výsledok bude uložený vo formáte DD.MM.RRRR.'
+        )
+    if operation == _EDIT_INVOICE_OPERATION_DELIVERY_DATE:
+        return (
+            'Napíšte alebo nadiktujte nový dátum dodania. '
+            'Očakávaný výsledok bude uložený vo formáte DD.MM.RRRR.'
+        )
+    return (
+        'Napíšte alebo nadiktujte nový dátum splatnosti. '
+        'Očakávaný výsledok bude uložený vo formáte DD.MM.RRRR.'
+    )
 
 
 def _item_edit_actions_prompt() -> str:
@@ -2232,7 +2259,8 @@ async def invoice_edit_scope(message: Message, state: FSMContext, config: Config
         await state.set_state(InvoiceStates.waiting_edit_invoice_action)
         await message.answer(
             f'Úprava na úrovni faktúry {invoice.invoice_number}. '
-            'Napíšte: `upraviť číslo faktúry` alebo `upraviť dátum faktúry`.'
+            'Napíšte: `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
+            '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
         )
         return
 
@@ -2264,7 +2292,8 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
     operation = await _resolve_invoice_edit_action(config=config, user_input_text=(message.text or ''))
     if operation == _EDIT_ITEM_OPERATION_UNKNOWN:
         await message.answer(
-            'Prosím, napíšte `upraviť číslo faktúry` alebo `upraviť dátum faktúry`.'
+            'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
+            '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
         )
         return
 
@@ -2288,11 +2317,26 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
         )
         return
 
+    if operation == _EDIT_INVOICE_OPERATION_DATE:
+        await message.answer(
+            'Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?'
+        )
+        return
+
+    if operation not in {
+        _EDIT_INVOICE_OPERATION_ISSUE_DATE,
+        _EDIT_INVOICE_OPERATION_DELIVERY_DATE,
+        _EDIT_INVOICE_OPERATION_DUE_DATE,
+    }:
+        await message.answer(
+            'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
+            '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+        )
+        return
+
+    await state.update_data(edit_invoice_date_operation=operation)
     await state.set_state(InvoiceStates.waiting_edit_invoice_date_value)
-    await message.answer(
-        f'Aktuálny dátum faktúry je {invoice.issue_date}. '
-        'Napíšte nový dátum vo formáte DD.MM.RRRR.'
-    )
+    await message.answer(_invoice_date_prompt_for_operation(operation))
 
 
 @router.message(InvoiceStates.waiting_edit_item_action)
@@ -2507,20 +2551,23 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
     candidate_date_raw = (message.text or '').strip()
     if not candidate_date_raw:
         await message.answer(
-            'Neplatný dátum. Zadajte dátum vo formáte DD.MM.RRRR. '
-            'Ak hlas nebol jednoznačný, pošlite dátum presne textom.'
-        )
-        return
-
-    candidate_issue_date_iso = _parse_strict_issue_date_candidate(candidate_date_raw)
-    if candidate_issue_date_iso is None:
-        await message.answer(
-            'Neplatný dátum. Zadajte dátum vo formáte DD.MM.RRRR '
-            '(pri nejasnom hlase pošlite presný text).'
+            'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.'
         )
         return
 
     state_data = await state.get_data()
+    date_operation = state_data.get('edit_invoice_date_operation')
+    if date_operation not in {
+        _EDIT_INVOICE_OPERATION_ISSUE_DATE,
+        _EDIT_INVOICE_OPERATION_DELIVERY_DATE,
+        _EDIT_INVOICE_OPERATION_DUE_DATE,
+    }:
+        await state.set_state(InvoiceStates.waiting_edit_invoice_action)
+        await message.answer(
+            'Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?'
+        )
+        return
+
     invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
     if not isinstance(invoice_id, int):
         await state.clear()
@@ -2534,6 +2581,39 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
         return
 
+    normalized_date_value = await resolve_invoice_date_normalization(
+        date_field=str(date_operation),
+        user_input_text=candidate_date_raw,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        invoice_context={
+            'invoice_number': invoice.invoice_number,
+            'issue_date': invoice.issue_date,
+            'delivery_date': invoice.delivery_date,
+            'due_date': invoice.due_date,
+        },
+    )
+    candidate_date_iso = _parse_strict_issue_date_candidate(normalized_date_value)
+    if candidate_date_iso is None:
+        await message.answer('Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.')
+        return
+
+    candidate_date_obj = date.fromisoformat(candidate_date_iso)
+    issue_date_obj = date.fromisoformat(invoice.issue_date)
+    if date_operation == _EDIT_INVOICE_OPERATION_DUE_DATE and candidate_date_obj < issue_date_obj:
+        await message.answer(
+            'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+        )
+        return
+
+    if date_operation == _EDIT_INVOICE_OPERATION_ISSUE_DATE:
+        due_date_obj = date.fromisoformat(invoice.due_date)
+        if due_date_obj < candidate_date_obj:
+            await message.answer(
+                'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+            )
+            return
+
     previous_pdf_path_value = state_data.get('last_pdf_path')
     previous_pdf_path = (
         Path(previous_pdf_path_value)
@@ -2541,10 +2621,25 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         else None
     )
 
-    invoice_service.update_invoice_issue_date(
-        invoice_id=invoice_id,
-        issue_date=candidate_issue_date_iso,
-    )
+    if date_operation == _EDIT_INVOICE_OPERATION_ISSUE_DATE:
+        invoice_service.update_invoice_issue_date(
+            invoice_id=invoice_id,
+            issue_date=candidate_date_iso,
+        )
+        success_text = 'Dátum vystavenia bol upravený.'
+    elif date_operation == _EDIT_INVOICE_OPERATION_DELIVERY_DATE:
+        invoice_service.update_invoice_delivery_date(
+            invoice_id=invoice_id,
+            delivery_date=candidate_date_iso,
+        )
+        success_text = 'Dátum dodania bol upravený.'
+    else:
+        invoice_service.update_invoice_due_date(
+            invoice_id=invoice_id,
+            due_date=candidate_date_iso,
+        )
+        success_text = 'Dátum splatnosti bol upravený.'
+
     rebuilt = await _rebuild_pdf_for_existing_invoice(
         message=message,
         state=state,
@@ -2566,7 +2661,7 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         await _send_post_edit_approval_prompt(
             message=message,
             state=state,
-            success_text='Dátum faktúry bol upravený.',
+            success_text=success_text,
         )
 
 
