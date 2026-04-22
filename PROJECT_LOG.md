@@ -1,5 +1,26 @@
 # PROJECT_LOG
 
+## 2026-04-21 — Session 046 — Server rollout/onboarding roadmap + README deployment direction alignment
+
+### Goal
+Add a practical docs-first deployment/onboarding roadmap from current local+GitHub state to the first external client pressing `/start` on a server-hosted FakturaBot, and align README with the near-term shared-backend tenant-isolation direction.
+
+### Changes
+- added `docs/FakturaBot_Server_Rollout_Roadmap.md` with staged operational path:
+  - start point and scope truthfulness notes (plan/target, not completed infrastructure claim);
+  - explicit near-term architecture decision: shared backend + tenant isolation as primary rollout model;
+  - staged roadmap (server foundation -> owner production-like run -> tenant model -> multi-bot routing -> manual onboarding v1 -> first external client dry run -> later improvements);
+  - data/secret handling principles and first milestone definition for external `/start` success.
+- updated `README.md` surgically to:
+  - link the new rollout roadmap document;
+  - state the near-term rollout direction (shared backend + tenant isolation, Telegram-first);
+  - clarify self-service setup page is later and not required for first deployment milestone.
+
+### Scope boundary
+- Docs-only patch.
+- No runtime code changes.
+- No claim that multi-tenant runtime, setup page, or full production automation is already implemented.
+
 ## 2026-04-19 — Session 045 — TZ alignment with planned `info_help` guidance layer
 
 ### Goal

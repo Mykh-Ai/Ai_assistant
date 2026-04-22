@@ -22,8 +22,9 @@ FakturaBot — перша вітрина цього підходу.
 Проєкт у фазі ранньої MVP-реалізації (Phase 4).
 
 Поточна ціль:
-- розгорнути перший інстанс для автора,
+- розгорнути перший server-hosted production-like інстанс для автора,
 - реалізувати живий user flow,
+- підготувати базу для manual onboarding першого зовнішнього тест-клієнта,
 - отримати продукт, який можна показати і дати “помацати”.
 
 ## MVP FakturaBot v1.0
@@ -58,11 +59,23 @@ FakturaBot — перша вітрина цього підходу.
 - кабінет користувача
 - складна рольова система
 
+
+## Deployment roadmap (актуальний напрямок)
+
+Поточний deployment-напрямок для FakturaBot:
+- один shared backend / один codebase / спільна інфраструктурна база;
+- tenant isolation (per-client bot token, API key, config, data);
+- Telegram-first rollout;
+- self-service setup page — пізніше, не обов’язково для першого server milestone.
+
+Детальний покроковий план див. у `docs/FakturaBot_Server_Rollout_Roadmap.md`.
+
 ## Структура документації
 
 - `docs/TZ_FakturaBot.md` — головне ТЗ
 - `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md` — rollout/implementation план (що/коли/в якій фазі)
 - `docs/FakturaBot_LLM_Orchestrator_Contract.md` — детальний LLM/orchestrator контракт (як саме AI шар взаємодіє з Python)
+- `docs/FakturaBot_Server_Rollout_Roadmap.md` — практичний roadmap server rollout / onboarding до першого клієнтського `/start`
 - `docs/llm/Canonical_Action_Registry.md` — актуальний аудит top-level дій (включно з manual command flows)
 - `docs/llm/In_Action_Response_Registry.md` — реєстр bounded in-action responses і slot-clarification груп
 - `docs/llm/Bounded_Resolver_Prompt_Template.md` — шаблон bounded resolver payload + optional action hints
