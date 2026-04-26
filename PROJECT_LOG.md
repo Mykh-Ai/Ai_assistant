@@ -1,5 +1,23 @@
 # PROJECT_LOG
 
+## 2026-04-26 — Session 053 — Draft review edit-flow lifecycle design audit
+
+### Goal
+Audit current FakturaBot invoice lifecycle and design the migration path for moving `upraviť faktúru` from the post-PDF approval step to the draft review / `náhľad faktúry` step before final invoice/PDF generation.
+
+### Changes
+- added docs-only architecture document `docs/Invoice_Draft_Review_Lifecycle_Design.md` with:
+  - current runtime lifecycle and confirmation semantics;
+  - audit answers for FSM draft vs DB invoice row, invoice number timing, PDF timing, `last_invoice_id`, and edit-flow dependencies;
+  - target draft lifecycle and state machine proposal;
+  - data model impact for draft status, numbering, PDF storage, and abandoned drafts;
+  - LLM contract impact for preview decision canonical outputs `schvalit` / `upravit` / `zrusit`;
+  - phased migration plan and risks.
+
+### Decision
+- No runtime code, tests, DB schema, numbering logic, PDF generation logic, billing logic, or post-PDF edit behavior changed in this session.
+- Current audit conclusion: pre-confirmation preview is FSM-only `invoice_draft`; current edit-flow requires persisted `invoice_id` and is coupled to PDF rebuild side effects, so draft review editing should be implemented through a stage-aware edit orchestrator rather than a narrow `waiting_confirm` patch.
+
 ## 2026-04-24 — Session 052 — Clarify implicit first item before explicit `polozka 2`
 
 ### Goal
