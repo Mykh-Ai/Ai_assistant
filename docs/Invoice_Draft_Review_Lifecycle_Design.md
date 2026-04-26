@@ -4,7 +4,39 @@
 
 This document records a docs/code audit and design proposal for moving `upravit fakturu` from the current post-PDF approval step to the review / `nahlad faktury` step before final invoice creation, final numbering, PDF generation, and `pripravena` status.
 
-No runtime code is changed by this document.
+Original audit session was docs-only. Phase 2 runtime implementation now exists and is recorded in the implementation status section below.
+
+## Implementation Status
+
+### Phase 1 — docs-only audit
+
+Completed in Session 053.
+
+### Phase 2 — preview-stage draft decision and draft edit backend
+
+Implemented in Session 054:
+
+- `InvoiceStates.waiting_confirm` now represents draft review decision, not final DB/PDF confirmation.
+- Preview decision canonical outputs are `schvalit`, `upravit`, `zrusit`, `unknown`.
+- Backward-compatible aliases remain:
+  - `ano` -> `schvalit`;
+  - `nie` -> `zrusit`.
+- Preview shows `Cislo faktury: <number> (navrh)`.
+- Proposed invoice number is generated before invoice row creation and stored in FSM `invoice_draft`.
+- Proposed number is not reserved in DB.
+- Final approval checks invoice-number availability before creating the final invoice row.
+- `upravit` starts a draft edit backend that mutates FSM `invoice_draft`, returns an updated preview, and does not create/rebuild PDF.
+- Existing post-PDF edit-flow remains as compatibility/fallback path.
+
+Not changed in Phase 2:
+
+- no DB schema migration;
+- no nullable invoice number;
+- no billing/quota logic;
+- no removal of post-PDF compatibility;
+- no global numbering strategy change.
+
+Runtime behavior is no longer docs-only after Session 054. The draft review lifecycle in this document is now partially implemented in code.
 
 ## Sources Audited
 
@@ -255,11 +287,20 @@ Recommendation:
 
 ## Numbering Timing
 
-Current timing:
+Original audited timing:
 
 - invoice number is assigned when `create_invoice_with_items(...)` inserts the row after `ano`.
 
-Target timing:
+Phase 2 implemented timing:
+
+- preview shows a proposed invoice number stored in FSM `invoice_draft`;
+- proposed number is not reserved in DB before approval;
+- final approval validates that the proposed number is still available, then creates the final invoice row with that number and generates PDF;
+- if the user manually edits invoice number in draft stage, `invoice_number_manual_override = true`;
+- if the user edits `datum vystavenia` in draft stage and `invoice_number_manual_override = false`, proposed number is recalculated for the new issue-date year using current numbering logic;
+- if `invoice_number_manual_override = true`, issue-date edits do not automatically recalculate the proposed number.
+
+Target architectural timing:
 
 - invoice number should be assigned only at `draft_confirmed -> invoice_finalized`;
 - final invoice number should be generated in the same transaction as final invoice row creation;
@@ -324,9 +365,9 @@ Draft edit-flow contract:
 
 ### Phase 1: Docs Only
 
-This document.
+Original Session 053 version of this document.
 
-No runtime behavior change.
+Historical note: Session 053 made no runtime behavior change.
 
 ### Phase 2: Allow `upravit` at Review Stage
 
@@ -435,8 +476,10 @@ Shared layer:
 
 Do not implement this as a one-off `if text == "upravit"` branch in `waiting_confirm`. The lifecycle boundary has to become explicit.
 
-## No-Runtime-Change Guarantee
+## Historical Original Docs-Only Guarantee
 
-This task changes documentation only.
+This section describes the original Session 053 audit task only.
 
-No code, tests, DB schema, runtime routing, numbering logic, PDF generation logic, billing logic, or post-PDF edit behavior is changed by this document.
+In Session 053, no code, tests, DB schema, runtime routing, numbering logic, PDF generation logic, billing logic, or post-PDF edit behavior was changed by this document.
+
+Session 054 superseded that guarantee by implementing runtime changes for preview-stage draft review and draft edit-flow. The remaining guarantees after Session 054 are narrower: no DB schema migration, no billing/quota logic, no removal of post-PDF compatibility, and no global numbering strategy change.

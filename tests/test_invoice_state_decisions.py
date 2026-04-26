@@ -8,6 +8,7 @@ from unittest.mock import patch
 from bot.config import Config
 from bot.handlers.invoice import (
     InvoiceStates,
+    _format_preview,
     invoice_edit_invoice_action,
     invoice_edit_invoice_date_value,
     invoice_edit_description_value,
@@ -22,7 +23,7 @@ from bot.handlers.invoice import (
 )
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db, managed_connection
-from bot.services.invoice_service import CreateInvoicePayload, InvoiceService
+from bot.services.invoice_service import CreateInvoiceItemPayload, CreateInvoicePayload, InvoiceService
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierProfile, SupplierService
 
@@ -107,6 +108,62 @@ def _setup_profiles(db_path: Path, telegram_id: int) -> int:
     return contact.id
 
 
+def _draft_for_tests(contact_id: int, *, invoice_number: str = '20260009') -> dict:
+    return {
+        'customer_name': 'Tech Company s.r.o.',
+        'contact_id': contact_id,
+        'service_short_name': 'servis',
+        'service_display_name': 'Servis zariadenia',
+        'quantity': 1,
+        'unit_price': 100,
+        'unit': 'ks',
+        'amount': 100,
+        'currency': 'EUR',
+        'issue_date': '2026-04-12',
+        'delivery_date': '2026-04-12',
+        'due_days': 14,
+        'due_date': '2026-04-26',
+        'invoice_number': invoice_number,
+        'invoice_number_manual_override': False,
+        'items': [
+            {
+                'service_short_name': 'servis',
+                'service_display_name': 'Servis zariadenia',
+                'quantity': 1,
+                'unit_price': 100,
+                'unit': 'ks',
+                'amount': 100,
+                'item_description_raw': 'hala A',
+            }
+        ],
+    }
+
+
+def test_preview_contains_proposed_invoice_number() -> None:
+    preview = _format_preview(
+        None,
+        {
+            'customer_name': 'Tech Company s.r.o.',
+            'service_short_name': 'servis',
+            'service_display_name': 'Servis zariadenia',
+            'quantity': 1,
+            'unit_price': 100,
+            'unit': 'ks',
+            'amount': 100,
+            'currency': 'EUR',
+            'issue_date': '2026-04-12',
+            'delivery_date': '2026-04-12',
+            'due_date': '2026-04-26',
+            'invoice_number': '20260009',
+        },
+    )
+
+    assert 'Číslo faktúry: 20260009 (návrh)' in preview
+    assert 'schváliť' in preview
+    assert 'upraviť' in preview
+    assert 'zrušiť' in preview
+
+
 def test_waiting_confirm_accepts_multilingual_yes_and_generates_pdf(tmp_path: Path, monkeypatch) -> None:
     telegram_id = 9001
     db_path = tmp_path / 'state.db'
@@ -157,11 +214,13 @@ def test_waiting_confirm_accepts_multilingual_yes_and_generates_pdf(tmp_path: Pa
         )
     )
 
-    assert state.current_state == InvoiceStates.waiting_pdf_decision
-    assert isinstance(state.data.get('last_invoice_id'), int)
-    assert state.data.get('last_invoice_number')
-    assert state.data.get('last_pdf_path')
+    assert state.cleared is True
+    invoice = InvoiceService(db_path).get_invoice_by_number('20260001')
+    assert invoice is not None
+    assert invoice.status == 'pripravena'
+    assert invoice.pdf_path
     assert message.documents
+    assert message.answers[-1] == 'Faktúra 20260001 bola vytvorená.'
 
 
 def test_waiting_confirm_accepts_multilingual_no_and_clears_state(tmp_path: Path) -> None:
@@ -187,7 +246,217 @@ def test_waiting_confirm_accepts_multilingual_no_and_clears_state(tmp_path: Path
     )
 
     assert state.cleared is True
-    assert 'Vytvorenie faktúry bolo zrušené.' in message.answers[-1]
+    assert 'Návrh faktúry bol zrušený.' in message.answers[-1]
+
+
+def test_preview_edit_enters_draft_edit_flow_without_invoice_row(tmp_path: Path) -> None:
+    telegram_id = 9003
+    db_path = tmp_path / 'draft-edit-entry.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'invoice_draft': _draft_for_tests(contact_id)})
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='upraviť',
+        )
+    )
+
+    assert state.current_state == InvoiceStates.waiting_edit_scope
+    assert state.data['edit_stage'] == 'draft'
+    assert state.data['edit_invoice_id'] is None
+    assert InvoiceService(db_path).get_invoice_by_number('20260009') is None
+    assert not message.documents
+
+
+def test_preview_finalize_rejects_used_proposed_invoice_number(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 9004
+    db_path = tmp_path / 'draft-number-conflict.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    service = InvoiceService(db_path)
+    service.create_invoice_with_items(
+        supplier_telegram_id=telegram_id,
+        contact_id=contact_id,
+        issue_date='2026-04-12',
+        delivery_date='2026-04-12',
+        due_date='2026-04-26',
+        due_days=14,
+        total_amount=100,
+        currency='EUR',
+        status='pripravena',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='servis',
+                description_normalized='servis',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=100,
+                total_price=100,
+            )
+        ],
+        invoice_number='20260009',
+    )
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'invoice_draft': _draft_for_tests(contact_id)})
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='schváliť',
+        )
+    )
+
+    assert state.cleared is False
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_number_value
+    assert 'Číslo faktúry 20260009 už existuje' in message.answers[-1]
+    assert not message.documents
+
+
+def test_draft_invoice_number_edit_updates_proposed_number_and_manual_override(tmp_path: Path) -> None:
+    telegram_id = 9005
+    db_path = tmp_path / 'draft-number-edit.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': _draft_for_tests(contact_id)})
+
+    message.text = '20260010'
+    asyncio.run(invoice_edit_invoice_number_value(message=message, state=state, config=config))
+
+    draft = state.data['invoice_draft']
+    assert draft['invoice_number'] == '20260010'
+    assert draft['invoice_number_manual_override'] is True
+    assert state.current_state == InvoiceStates.waiting_confirm
+    assert 'Číslo faktúry: 20260010 (návrh)' in message.answers[-1]
+    assert not message.documents
+
+
+def test_draft_date_edit_updates_fsm_and_rejects_due_date_before_issue(tmp_path: Path) -> None:
+    telegram_id = 9006
+    db_path = tmp_path / 'draft-date-edit.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(
+        data={
+            'edit_stage': 'draft',
+            'invoice_draft': _draft_for_tests(contact_id),
+            'edit_invoice_date_operation': 'edit_invoice_delivery_date',
+        }
+    )
+
+    message.text = '13.04.2026'
+    asyncio.run(invoice_edit_invoice_date_value(message=message, state=state, config=config))
+
+    assert state.data['invoice_draft']['delivery_date'] == '2026-04-13'
+    assert state.current_state == InvoiceStates.waiting_confirm
+    assert 'Dátum dodania' in message.answers[-1]
+    assert not message.documents
+
+    due_state = _DummyState(
+        data={
+            'edit_stage': 'draft',
+            'invoice_draft': _draft_for_tests(contact_id),
+            'edit_invoice_date_operation': 'edit_invoice_due_date',
+        }
+    )
+    due_message = _DummyMessage(telegram_id)
+    due_message.text = '11.04.2026'
+    asyncio.run(invoice_edit_invoice_date_value(message=due_message, state=due_state, config=config))
+
+    assert due_state.current_state is None
+    assert due_state.data['invoice_draft']['due_date'] == '2026-04-26'
+    assert due_message.answers[-1] == 'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+
+
+def test_draft_item_edits_mutate_fsm_without_pdf_rebuild(tmp_path: Path) -> None:
+    telegram_id = 9007
+    db_path = tmp_path / 'draft-item-edit.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(db_path).create_mapping(int(supplier.id), 'montaz', 'Montáž zariadenia')
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+
+    state = _DummyState(
+        data={'edit_stage': 'draft', 'invoice_draft': _draft_for_tests(contact_id), 'edit_target_item_index': 1}
+    )
+    service_message = _DummyMessage(telegram_id)
+    service_message.text = 'montaz'
+    asyncio.run(invoice_edit_service_value(message=service_message, state=state, config=config))
+    assert state.data['invoice_draft']['items'][0]['service_short_name'] == 'montaz'
+    assert state.data['invoice_draft']['items'][0]['service_display_name'] == 'Montáž zariadenia'
+    assert state.current_state == InvoiceStates.waiting_confirm
+
+    state.data.update({'edit_stage': 'draft', 'edit_target_item_index': 1, 'edit_item_action_mode': 'replace_main_description'})
+    replace_message = _DummyMessage(telegram_id)
+    replace_message.text = 'Nová služba'
+    asyncio.run(invoice_edit_description_value(message=replace_message, state=state, config=config))
+    assert state.data['invoice_draft']['items'][0]['service_short_name'] == 'Nová služba'
+
+    state.data.update({'edit_stage': 'draft', 'edit_target_item_index': 1, 'edit_item_action_mode': 'add_item_details'})
+    add_message = _DummyMessage(telegram_id)
+    add_message.text = 'detail B'
+    asyncio.run(invoice_edit_description_value(message=add_message, state=state, config=config))
+    assert state.data['invoice_draft']['items'][0]['item_description_raw'] == 'hala A; detail B'
+
+    state.data.update({'edit_stage': 'draft', 'edit_target_item_index': 1})
+    clear_message = _DummyMessage(telegram_id)
+    clear_message.text = 'vymazať detaily položky'
+    asyncio.run(invoice_edit_item_action(message=clear_message, state=state, config=config))
+    assert state.data['invoice_draft']['items'][0]['item_description_raw'] is None
+    assert not service_message.documents
+    assert not replace_message.documents
+    assert not add_message.documents
+    assert not clear_message.documents
 
 
 def test_waiting_confirm_persists_multiple_items_when_present(tmp_path: Path, monkeypatch) -> None:
@@ -258,8 +527,9 @@ def test_waiting_confirm_persists_multiple_items_when_present(tmp_path: Path, mo
         )
     )
 
-    invoice_id = state.data.get('last_invoice_id')
-    assert isinstance(invoice_id, int)
+    invoice = InvoiceService(db_path).get_invoice_by_number('20260001')
+    assert invoice is not None
+    invoice_id = invoice.id
     items = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)
     assert len(items) == 2
     assert items[0].description_raw == 'oprava'
@@ -348,7 +618,7 @@ def test_waiting_confirm_noisy_transcript_returns_retry_unknown(tmp_path: Path) 
     )
 
     assert state.cleared is False
-    assert message.answers[-1] == 'Prosím, odpovedzte áno alebo nie.'
+    assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
 
 
 def test_waiting_confirm_noisy_transcript_with_exclamation_returns_retry_unknown(tmp_path: Path) -> None:
@@ -374,7 +644,7 @@ def test_waiting_confirm_noisy_transcript_with_exclamation_returns_retry_unknown
     )
 
     assert state.cleared is False
-    assert message.answers[-1] == 'Prosím, odpovedzte áno alebo nie.'
+    assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
 
 
 def test_waiting_confirm_logs_resolver_and_branch_observability(tmp_path: Path, monkeypatch, caplog) -> None:

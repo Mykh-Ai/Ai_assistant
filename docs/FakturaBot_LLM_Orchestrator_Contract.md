@@ -82,10 +82,19 @@ Hint fields:
 The same resolver pattern applies inside FSM states.
 
 Examples:
-- preview state allowed replies: `ano`, `nie`
+- preview draft-review state allowed replies: `schvalit`, `upravit`, `zrusit`, `unknown`
 - post-PDF state allowed replies: `schvalit`, `upravit`, `zrusit`
 
 Even when LLM resolves `schvalit` / `upravit` / `zrusit`, Python still validates state and performs execution.
+
+Preview backward-compatible aliases:
+- `ano` maps to `schvalit`;
+- `nie` maps to `zrusit`.
+
+Preview decision semantics:
+- `schvalit` means final approval: Python validates the proposed invoice number, creates the final invoice row, assigns the final number, and generates PDF.
+- `upravit` means draft edit: Python mutates FSM `invoice_draft` only and returns an updated preview.
+- `zrusit` means draft cancellation: Python clears FSM without DB invoice row creation and without PDF generation.
 
 ---
 

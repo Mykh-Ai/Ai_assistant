@@ -227,7 +227,7 @@ Flow:
 
 Правильна модель:
 
-**Python orchestrates → AI extracts → Python validates → user confirms**
+**Python orchestrates → AI extracts → Python validates → user reviews/edits draft → user approves final generation**
 
 ### 4.4 Створення фактури голосом
 
@@ -245,8 +245,25 @@ Flow:
 4. Передати текст у LLM.
 5. Побудувати чернетку фактури.
 6. Нормалізувати значення.
-7. Показати чернетку користувачу.
-8. Після підтвердження створити PDF.
+7. Показати чернетку користувачу як `Náhľad faktúry`.
+8. У preview показати proposed номер фактури у форматі `Číslo faktúry: <number> (návrh)`.
+9. Прийняти preview-stage рішення: `schváliť`, `upraviť` або `zrušiť`.
+10. Якщо користувач обирає `upraviť`, редагувати FSM draft і знову показати оновлений `Náhľad faktúry`.
+11. Якщо користувач обирає `zrušiť`, скасувати draft без створення invoice row і без PDF.
+12. Якщо користувач обирає `schváliť`, перевірити номер, створити final invoice row, присвоїти final number і згенерувати PDF.
+
+Backward compatibility:
+- `ano` у preview трактується як `schváliť`;
+- `nie` у preview трактується як `zrušiť`.
+
+До `schváliť` invoice row, final invoice number і PDF не створюються. Preview number є тільки proposed number, збереженим у FSM `invoice_draft`.
+
+Правило proposed invoice number у draft stage:
+- proposed number не резервується в DB;
+- якщо користувач вручну редагує `číslo faktúry`, draft отримує `invoice_number_manual_override = true`;
+- якщо користувач редагує `Dátum vystavenia` і `invoice_number_manual_override = false`, proposed number перераховується відповідно до нового року `Dátum vystavenia`;
+- якщо `invoice_number_manual_override = true`, редагування `Dátum vystavenia` не перераховує proposed number автоматично;
+- на `schváliť` Python перевіряє, що proposed/final number досі вільний.
 
 #### 4.4.2 Які поля повинні витягуватись
 
@@ -271,7 +288,7 @@ Flow:
 
 Користувач може писати короткі інструкції вручну. Логіка така сама:
 
-**text/voice → action resolution + content/value canonicalization (Bounded Semantic Canonicalization) → Python validation/execution → preview/PDF**
+**text/voice → action resolution + content/value canonicalization (Bounded Semantic Canonicalization) → Python validation/execution → draft preview/edit → final approval → PDF**
 
 `Semantic Action Resolver` покриває лише вибір дії; структуровані поля фактури окремо проходять semantic value/content canonicalization перед Python validation та execution.
 
@@ -291,7 +308,7 @@ Flow:
 
 `edit_invoice` залишається **reserved top-level action token**.
 
-Runtime-модель для цього токена: тільки bounded in-action/subflow edits в межах invoice flow (зазвичай через post-PDF `upraviť`), а не окремий top-level executor.
+Runtime-модель для цього токена: тільки bounded in-action/subflow edits в межах invoice flow, а не окремий top-level executor. Основний happy path тепер редагує draft на етапі preview / `Náhľad faktúry`; post-PDF edit-flow лишається compatibility/fallback шляхом.
 
 Це важливо:
 - це **не** нова top-level action;

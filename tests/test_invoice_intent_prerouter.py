@@ -872,7 +872,7 @@ def test_preview_unknown_reply(tmp_path: Path) -> None:
             confirmation_text='maybe',
         )
     )
-    assert message.answers[-1] == 'Prosím, odpovedzte áno alebo nie.'
+    assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
 
 
 def test_postpdf_unknown_reply(tmp_path: Path) -> None:

@@ -99,6 +99,18 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         return _UNKNOWN
 
     if context_name == 'invoice_preview_confirmation':
+        if 'schvalit' in allowed and tokens.intersection(
+            {'schvalit', 'schvalit', 'potvrdit', 'potvrdzujem', 'approve', 'confirm', 'save', 'ano', 'tak', 'да', 'так'}
+        ):
+            return 'schvalit'
+        if 'upravit' in allowed and tokens.intersection(
+            {'upravit', 'edit', 'change', 'correct', 'opravit', 'исправить', 'изменить', 'редагувати'}
+        ):
+            return 'upravit'
+        if 'zrusit' in allowed and tokens.intersection(
+            {'zrusit', 'cancel', 'delete', 'discard', 'remove', 'nie', 'ní', 'ні', 'нет', 'íåò', 'nechcem', 'no'}
+        ):
+            return 'zrusit'
         if 'ano' in allowed and tokens.intersection(
             {'ano', 'tak', 'так', 'да', 'добре', 'ok', 'yes', 'potvrdzujem'}
         ):
@@ -236,10 +248,28 @@ def _fallback_bounded_confirmation_reply(
             return 'nie'
         return _UNKNOWN
 
-    if context_name == 'invoice_postpdf_decision' and expected_reply_type == 'postpdf_decision':
-        approve_values = {'schvalit', 'potvrdit', 'схвалити', 'подтвердить'}
-        edit_values = {'upravit', 'изменить', 'исправить', 'редагувати', 'зміни'}
-        cancel_values = {'zrusit', 'отменить', 'скасувати', 'нет', 'ні', 'nie'}
+    if (
+        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision'}
+        and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
+    ):
+        approve_values = {'schvalit', 'potvrdit', 'potvrdzujem', 'approve', 'confirm', 'save', 'ano', 'tak', 'да', 'так'}
+        edit_values = {'upravit', 'opravit', 'edit', 'change', 'correct', 'изменить', 'исправить', 'редагувати', 'зміни'}
+        if context_name == 'invoice_preview_confirmation':
+            cancel_values = {
+                'zrusit',
+                'cancel',
+                'delete',
+                'discard',
+                'remove',
+                'отменить',
+                'скасувати',
+                'нет',
+                'ні',
+                'nie',
+                'no',
+            }
+        else:
+            cancel_values = {'zrusit', 'отменить', 'скасувати', 'нет', 'ні', 'nie'}
 
         if normalized in approve_values and 'schvalit' in allowed_outputs:
             return 'schvalit'
@@ -534,7 +564,7 @@ async def resolve_bounded_confirmation_reply(
                             'Step 3) return "unknown" only when intent is truly ambiguous, not a confirmation/decision reply, or genuine STT garbage. '
                             'For expected_reply_type=yes_no_confirmation: user is NOT required to say exact "ano"/"nie"; '
                             'map clear affirmative intent across languages/forms to affirmative canonical output and clear negative intent to negative canonical output. '
-                            'For expected_reply_type=postpdf_decision: '
+                            'For expected_reply_type=draft_review_decision or postpdf_decision: '
                             'map clear approve/confirm/save-draft intent to schvalit, clear edit/change/correct intent to upravit, '
                             'and clear delete/cancel/remove/discard invoice-draft intent to zrusit, including multilingual/noisy variants. '
                             'Safety rule: do not guess destructive action when intent is unclear; use "unknown" for uncertainty.'
@@ -562,6 +592,11 @@ async def resolve_bounded_confirmation_reply(
                                             'negative_intent': 'normalize_to_negative_token_in_allowed_outputs',
                                         },
                                         'postpdf_decision': {
+                                            'approve_confirm_save_invoice_draft': 'schvalit_if_allowed',
+                                            'edit_change_correct_invoice_draft': 'upravit_if_allowed',
+                                            'delete_cancel_remove_discard_invoice_draft': 'zrusit_if_allowed',
+                                        },
+                                        'draft_review_decision': {
                                             'approve_confirm_save_invoice_draft': 'schvalit_if_allowed',
                                             'edit_change_correct_invoice_draft': 'upravit_if_allowed',
                                             'delete_cancel_remove_discard_invoice_draft': 'zrusit_if_allowed',

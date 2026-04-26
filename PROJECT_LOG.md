@@ -1,5 +1,42 @@
 # PROJECT_LOG
 
+## 2026-04-26 — Session 054 — Preview-stage draft edit-flow implementation
+
+### Goal
+Move the invoice edit happy path from post-PDF approval to preview / `Náhľad faktúry`, while keeping post-PDF edit as compatibility/fallback and showing a proposed invoice number before final generation.
+
+### Changes
+- changed preview confirmation semantics from `ano` / `nie` to draft-review decision `schvalit` / `upravit` / `zrusit`, with `ano` and `nie` kept as aliases;
+- added proposed invoice number to FSM `invoice_draft` and preview copy as `Číslo faktúry: <number> (návrh)`;
+- changed final preview approval to create the invoice row, use the proposed/final number, generate PDF, set ready status, send PDF, and clear FSM;
+- added draft edit backend for invoice number/date edits and item service/description/detail edits, mutating FSM draft only and returning updated preview;
+- preserved post-PDF `waiting_pdf_decision` and persisted invoice edit backend as compatibility/fallback;
+- updated LLM bounded confirmation contract and in-action registry for preview draft decisions;
+- extended tests for preview decision aliases, proposed number behavior, draft edits, duplicate proposed number rejection, and post-PDF compatibility.
+
+### Decision
+- No DB schema migration was made.
+- Invoice number remains non-null on persisted invoices.
+- Proposed number is not reserved before final approval.
+- Billing/quota logic remains out of scope.
+
+### Manual verification checklist
+
+Happy path:
+- create invoice and verify preview shows `Číslo faktúry: <number> (návrh)`;
+- reply `schváliť` or `ano`;
+- verify invoice row is created with final number, PDF is generated, status is `pripravena`, bot does not ask post-PDF `schváliť/upraviť/zrušiť` again, and FSM is cleared.
+
+Draft edit before finalization:
+- create invoice and choose `upraviť` on preview;
+- edit `Dátum dodania`;
+- verify bot shows updated text preview, no PDF rebuild happens during draft edit, no final invoice row exists before `schváliť`, and review returns to `schváliť/upraviť/zrušiť`.
+
+Proposed number conflict:
+- set draft proposed invoice number to an already existing number;
+- reply `schváliť`;
+- verify finalization is rejected, no invoice/PDF is created, draft remains available, and bot asks for another invoice number.
+
 ## 2026-04-26 — Session 053 — Draft review edit-flow lifecycle design audit
 
 ### Goal

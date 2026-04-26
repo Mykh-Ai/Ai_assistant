@@ -131,6 +131,7 @@ class InvoiceService:
         currency: str,
         status: str,
         items: list[CreateInvoiceItemPayload],
+        invoice_number: str | None = None,
     ) -> int:
         if not items:
             raise RuntimeError('Invoice save failed: at least one item is required.')
@@ -141,7 +142,7 @@ class InvoiceService:
         issue_year = int(issue_date[:4])
 
         with managed_connection(self._db_path) as connection:
-            invoice_number = self._generate_next_invoice_number(connection, issue_year)
+            invoice_number_to_save = invoice_number or self._generate_next_invoice_number(connection, issue_year)
             cursor = connection.execute(
                 (
                     'INSERT INTO invoice '
@@ -152,7 +153,7 @@ class InvoiceService:
                 (
                     supplier_telegram_id,
                     contact_id,
-                    invoice_number,
+                    invoice_number_to_save,
                     issue_date,
                     delivery_date,
                     due_date,
