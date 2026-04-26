@@ -1,5 +1,113 @@
 # PROJECT_LOG
 
+## 2026-04-24 — Session 052 — Clarify implicit first item before explicit `polozka 2`
+
+### Goal
+Make the invoice draft prompt explicit that the first item may already start before the user says `polozka 2` / `pozicia 2`.
+
+### Changes
+- updated `prompts/invoice_draft_prompt.txt` so the split-semantics section now states:
+  - if the user starts describing the first service without saying `polozka 1`,
+  - and later says `polozka 2` / `pozicia 2` / `item number 2`,
+  - the preceding service fragment should be treated as candidate item 1 and the marker opens candidate item 2.
+
+### Decision
+Numbered markers in voice input are not required to start from `1`; the model should infer an implicit first item when earlier service content is already present.
+
+## 2026-04-24 — Session 051 — Align invoice draft prompt with multilingual Slovak-normalized LLM contract
+
+### Goal
+Make the invoice draft LLM layer explicitly responsible for normalizing mixed SK/UA/RU/noisy STT input into Slovak business semantics while preserving the exact Python-facing bounded JSON shape.
+
+### Changes
+- updated `docs/FakturaBot_LLM_Orchestrator_Contract.md` to state explicitly that:
+  - LLM first normalizes multilingual/noisy invoice meaning into Slovak draft semantics;
+  - LLM output must stay aligned to the exact Python intake shape (`vstup`, `zamer`, `biznis_sk`, `stopa`, bounded `items[]`);
+  - numbered and ordinal item markers across mixed languages are valid candidate split signals at the LLM contract level;
+- updated `prompts/invoice_draft_prompt.txt` so the runtime prompt now explicitly instructs the model to:
+  - preserve raw transcript in `vstup.povodny_text`;
+  - normalize business meaning into Slovak field-by-field in `biznis_sk`;
+  - return only the machine-safe JSON shape expected by Python;
+  - treat multilingual numbered/ordinal item markers as explicit bounded item separators.
+
+### Decision
+Invoice item segmentation and multilingual normalization should be driven primarily by the LLM contract/prompt, while Python remains a bounded validator and fail-safe layer rather than the main natural-language parser.
+
+## 2026-04-24 — Session 050 — Improve numbered voice item boundary handling
+
+### Goal
+Reduce invoice-draft misses in multi-item voice input where the user separates positions with numbered markers such as `polozka 2`, `polozka cislo 3`, `pozicia 2`, or `item number 2`.
+
+### Changes
+- expanded invoice item-boundary heuristics in `bot/handlers/invoice.py` to treat numbered markers as explicit multi-item separators;
+- covered both Latin/transliterated and Cyrillic/diacritic variants of `polozka/položka/pozicia/позиция/положка/item`;
+- updated `prompts/invoice_draft_prompt.txt` with explicit examples for numbered multi-item speech up to three positions;
+- added regression coverage in `tests/test_invoice_phase2_ai_layer.py` for `item 2` and `item 3` style voice boundaries.
+
+### Decision
+Numbered item markers are now treated as strong split signals even when the utterance has no commas and no reliable conjunction split, because this is a natural speech pattern in Telegram voice drafting.
+
+## 2026-04-24 — Session 049 — Fix Linux PDF font resolution for server invoice generation
+
+### Goal
+Restore invoice PDF generation in the Linux Docker deployment after runtime failure on missing Slovak glyph-capable fonts.
+
+### Changes
+- updated `bot/services/pdf_generator.py` to probe Linux font locations in addition to Windows and ReportLab fallback fonts;
+- added `fonts-dejavu-core` installation to `Dockerfile` so the container includes a Unicode-capable TTF font at runtime.
+
+### Problem confirmed
+- server logs showed PDF generation failure during invoice confirmation:
+  - `RuntimeError: No available PDF font with required Slovak glyph support`
+
+### Decision
+Keep the existing Unicode font registration flow, but make it Linux-aware and ensure the Docker image ships with at least one known-good system font.
+
+## 2026-04-24 — Session 048 — Add safe server update runbook to local-only agent context
+
+### Goal
+Document the exact safe update procedure for refreshing the server-hosted FakturaBot instance after GitHub changes, without exposing secrets in public repo docs.
+
+### Changes
+- updated `docs/FakturaBot_Server_Agent_Context.md` with a focused safe update runbook:
+  - SSH entry point;
+  - `/bot/repo` working directory;
+  - `git fetch` / `checkout main` / `pull --ff-only`;
+  - `docker compose -f docker-compose.prod.yml up -d --build`;
+  - status/log verification steps;
+  - explicit note for `TelegramConflictError` as a competing-runtime issue.
+
+### Decision
+Server update instructions belong in the local-only server agent context because they are operational guidance tied to the live host and should not be expanded in public repo docs.
+
+## 2026-04-24 — Session 047 — Public repo prep for local-only operational materials
+
+### Goal
+Prepare the repository for a public GitHub state while keeping private operational/server materials available locally for agents and excluded from the public index.
+
+### Changes
+- audited the repo for server access details, absolute server paths, deploy/runtime commands, private runbooks, and local ops handoff materials;
+- confirmed the main sensitive local operational file is `docs/FakturaBot_Server_Agent_Context.md`, which remains local-only and ignored;
+- expanded `.gitignore` for a dedicated `docs/local-only/` area while keeping safe placeholders trackable;
+- added a minimal production-like deployment baseline for Stage 1-2 rollout:
+  - `.dockerignore`
+  - `docker-compose.prod.yml`
+  - `.env.server.example`
+  - `scripts/update_repo.sh`
+  - `scripts/deploy_owner_run.sh`
+- added public-safe placeholders:
+  - `docs/local-only/README.md`
+  - `docs/local-only/FakturaBot_Server_Agent_Context.example.md`
+- sanitized tracked public docs to avoid direct local artifact/path guidance where not needed:
+  - `docs/FakturaBot_Server_Rollout_Roadmap.md`
+  - `docs/PayBySquare_Manual_Verification_Checklist.md`
+  - `PROJECT_LOG.md`
+
+### Exposure assessment
+- no tracked file with real SSH host/IP details was found in the current git index;
+- `docs/FakturaBot_Server_Agent_Context.md` contains real server operational details locally, but is already ignored and not tracked in the current repository state;
+- no history rewrite was performed.
+
 ## 2026-04-21 — Session 046 — Server rollout/onboarding roadmap + README deployment direction alignment
 
 ### Goal
@@ -1637,13 +1745,13 @@ Before PAY by square production sign-off, a separate manual scan verification in
 ## 2026-04-06 - Session 009 - Local env support for FakturaBot
 
 ### Goal
-Allow FakturaBot to run locally from a dedicated repo-root `faktura.env` file without breaking existing `.env`-based startup.
+Allow FakturaBot to run locally from a dedicated local-only env file without breaking existing `.env`-based startup.
 
 ### Implemented
-- `bot/config.py` now loads `faktura.env` first when it exists.
-- If `faktura.env` is absent, startup falls back to `.env`.
-- Added repo-root `faktura.env` with empty/default placeholders only.
-- Added `faktura.env` to `.gitignore` while keeping `.env` ignore intact.
+- `bot/config.py` now loads a dedicated local-only env file first when it exists.
+- If that local-only env file is absent, startup falls back to `.env`.
+- Added a dedicated repo-root local env file with empty/default placeholders only.
+- Added that local env file to `.gitignore` while keeping `.env` ignore intact.
 
 ### Explicitly not included
 - No config field renames.
@@ -1652,7 +1760,7 @@ Allow FakturaBot to run locally from a dedicated repo-root `faktura.env` file wi
 - `.env.example` left unchanged.
 
 ### Decision
-Local FakturaBot setup now supports a dedicated non-committed `faktura.env` file while preserving `.env` compatibility.
+Local FakturaBot setup now supports a dedicated non-committed local env file while preserving `.env` compatibility.
 
 ## 2026-04-08 - Session 010 - Docs ownership split: Implementation Plan vs LLM Contract
 
@@ -1766,7 +1874,7 @@ Record the completed local end-to-end FakturaBot verification session for the cu
 ### Verified
 - Local supplier -> contact -> invoice flow completed successfully.
 - A PDF invoice artifact was generated successfully and reviewed.
-- Latest local generated PDF artifact present at `storage/invoices/20260006.pdf` (timestamp observed locally before this log update: 2026-04-07 18:45).
+- Latest local generated PDF artifact was present in the local invoice output area at the time of verification (timestamp observed locally before this log update: 2026-04-07 18:45).
 - The PAY by square QR from the tested PDF was scanned successfully in a real banking mobile app.
 - Manual user confirmation states the bank-app recipient account data matched the expected recipient account data.
 - Manual user confirmation states the amount was populated correctly.

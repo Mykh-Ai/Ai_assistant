@@ -82,6 +82,28 @@ _EDIT_INVOICE_OPERATION_DELIVERY_DATE = 'edit_invoice_delivery_date'
 _EDIT_INVOICE_OPERATION_DUE_DATE = 'edit_invoice_due_date'
 _EDIT_ITEM_OPERATION_UNKNOWN = 'unknown'
 _INVOICE_NUMBER_PATTERN = re.compile(r'^(?:19|20)\d{6}$')
+_ITEM_BOUNDARY_NUMBERED_MARKER_PATTERN = re.compile(
+    r'(?:^|[\s,;:])'
+    r'(?:'
+    r'item'
+    r'|polozka'
+    r'|polo\u017eka'
+    r'|pozicia'
+    r'|poz\u00edcia'
+    r'|pozitsiya'
+    r'|pozitsiia'
+    r'|\u043f\u043e\u0437\u0438\u0446\u0438\u044f'
+    r'|\u043f\u043e\u0437\u0438\u0446\u0456\u044f'
+    r'|\u043f\u043e\u043b\u043e\u0436\u043a\u0430'
+    r')'
+    r'(?:\s+(?:cislo|'
+    r'\u010d\u00edslo|'
+    r'number|no\.?|nr\.?|'
+    r'\u043d\u043e\u043c\u0435\u0440'
+    r'))?'
+    r'\s+([1-3])(?=$|[\s,;:.\-])',
+    re.IGNORECASE,
+)
 
 _SLOT_PROMPTS = {
     _SLOT_CUSTOMER: 'Nepodarilo sa jednoznačne určiť odberateľa. Spresnite názov firmy, prosím.',
@@ -767,6 +789,15 @@ def _looks_like_item_boundary_split(text: str, *, expected_item_count: int) -> b
     normalized = f' {text.casefold()} '
     if ',' in text or ';' in text or '\n' in text:
         return True
+    numbered_markers = {
+        int(match.group(1))
+        for match in _ITEM_BOUNDARY_NUMBERED_MARKER_PATTERN.finditer(text)
+    }
+    required_numbered_markers = max(1, expected_item_count - 1)
+    if len(numbered_markers) >= required_numbered_markers and any(
+        marker >= 2 for marker in numbered_markers
+    ):
+        return True
     has_conjunction_split = any(token in normalized for token in (' a ', ' и ', ' та ', ' plus '))
     if not has_conjunction_split:
         return False
@@ -1287,6 +1318,34 @@ def _apply_slot_clarification(parsed_draft: dict[str, object], unresolved_slot: 
     return False
 
 
+def _merge_item_clarification_into_draft(
+    parsed_draft: dict[str, object],
+    clarification_draft: dict[str, object],
+) -> dict[str, object]:
+    merged = dict(parsed_draft)
+    clarified_items = _normalize_items_input(clarification_draft)
+    if clarified_items:
+        merged['items'] = clarified_items
+        first_item = clarified_items[0]
+        merged['item_name_raw'] = first_item.get('item_name_raw')
+        merged['service_term_sk'] = first_item.get('service_term_sk')
+        merged['quantity'] = first_item.get('quantity')
+        merged['unit'] = first_item.get('unit')
+        merged['amount'] = first_item.get('amount')
+        merged['unit_price'] = first_item.get('unit_price')
+
+    if clarification_draft.get('currency'):
+        merged['currency'] = clarification_draft.get('currency')
+    if clarification_draft.get('delivery_date'):
+        merged['delivery_date'] = clarification_draft.get('delivery_date')
+    if clarification_draft.get('due_days') is not None:
+        merged['due_days'] = clarification_draft.get('due_days')
+    if clarification_draft.get('due_date'):
+        merged['due_date'] = clarification_draft.get('due_date')
+
+    return merged
+
+
 async def process_invoice_slot_clarification(
     *,
     message: Message,
@@ -1325,12 +1384,49 @@ async def process_invoice_slot_clarification(
         parsed_draft['quantity'] = float(resolution['quantity'])
         parsed_draft['unit_price'] = float(resolution['unit_price'])
     elif unresolved_slot == _SLOT_ITEMS:
-        await process_invoice_text(
+        try:
+            clarification_payload = await parse_invoice_phase2_payload(
+                clarification_text,
+                config.openai_api_key,
+                config.openai_llm_model,
+            )
+            clarification_raw_text, clarification_draft = _extract_invoice_draft_from_phase2_payload(
+                clarification_payload
+            )
+        except LlmInvoicePayloadError as exc:
+            if exc.error_code in {
+                'customer_unresolved',
+                'items_shape_invalid',
+                'items_count_exceeded',
+                'items_service_unresolved',
+            } and isinstance(exc.partial_payload, dict):
+                clarification_raw_text, clarification_draft = _extract_invoice_draft_from_phase2_payload(
+                    exc.partial_payload
+                )
+            else:
+                await message.answer(_SLOT_PROMPTS[_SLOT_ITEMS])
+                return
+
+        clarification_items = _normalize_items_input(clarification_draft)
+        if not clarification_items:
+            await message.answer(_SLOT_PROMPTS[_SLOT_ITEMS])
+            return
+
+        parsed_draft = _merge_item_clarification_into_draft(parsed_draft, clarification_draft)
+        raw_text_base = str(partial.get('raw_text') or '').strip()
+        clarification_raw_text = clarification_raw_text.strip() or clarification_text.strip()
+        combined_raw_text = (
+            f'{raw_text_base}\n{clarification_raw_text}'.strip()
+            if raw_text_base
+            else clarification_raw_text
+        )
+        await _build_and_store_preview(
             message=message,
             state=state,
             config=config,
-            invoice_text=clarification_text,
             request_id=str(partial.get('request_id') or uuid4()),
+            raw_text=combined_raw_text,
+            parsed_draft=parsed_draft,
         )
         return
     elif unresolved_slot == _SLOT_SERVICE:

@@ -94,7 +94,7 @@ Near-term напрямок розгортання:
 ### Stage 5 — Manual onboarding v1
 
 Практичні кроки:
-- зробити admin/manual onboarding runbook для перших клієнтів;
+- підтримувати admin/manual onboarding procedure у local-only ops materials для перших клієнтів;
 - створювати tenant config вручну;
 - безпечно вносити/зберігати bot token та API ключі;
 - створювати tenant-isolated storage;

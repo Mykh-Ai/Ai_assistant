@@ -213,6 +213,8 @@ Scope contract (Phase 1 for future multi-item intake):
 
 - LLM may return bounded candidate segmentation into item candidates (`items[]`).
 - LLM does not decide final acceptance/persistence and does not own side effects.
+- For multilingual / mixed / noisy STT input, LLM first normalizes business meaning into Slovak draft semantics before filling the bounded invoice payload shape.
+- LLM output must stay aligned to the exact Python intake structure expected by current invoice flow (`vstup`, `zamer`, `biznis_sk`, `stopa` and bounded `biznis_sk.items[]`).
 - Python remains final validator/workflow owner:
   - validates item boundaries,
   - validates quantity/unit/unit_price/amount coherence per item,
@@ -242,11 +244,22 @@ Each candidate item is machine-safe and bounded, with fields aligned to existing
 
 This is a candidate extraction shape, not an execution command.
 
+Invoice draft intake shape rule:
+- raw user/STT wording may be SK/UA/RU/mixed/noisy,
+- `vstup.povodny_text` preserves the original wording,
+- `biznis_sk.*` must contain Slovak-normalized business meaning suitable for deterministic Python validation,
+- `biznis_sk` fields must be filled only in the bounded machine-safe schema expected by Python runtime,
+- LLM must not invent extra top-level fields or alternate output formats.
+
 ### E) Split semantics rules (contract examples)
 
 - `montáž dva razy po 1000` => one item (`mnozstvo=2`, `cena_za_jednotku=1000`).
 - `oprava 3000 a montáž 1000` => two candidate items.
 - `oprava 3000, montáž 2x1000` => two candidate items (second item carries multiplier semantics).
+- `polozka 1 oprava 3000, polozka 2 stavebne prace 1000` => two candidate items.
+- `položka číslo 1 oprava 3000, položka číslo 2 stavebné práce 1000` => two candidate items.
+- `друга положка oprava 3000, третя положка stavebni roboti 1000` => treat ordinal item markers as explicit candidate item boundaries and normalize item meaning to Slovak in `biznis_sk`.
+- `позиция номер 1 ремонт 3000, позиция номер 2 монтаж 1000` => two candidate items with Slovak-normalized service terms in `biznis_sk`.
 - If item boundaries or quantity semantics are ambiguous, Python must request bounded clarification (no silent guess).
 
 ### F) Fail-safe / clarification triggers for multi-item candidate intake

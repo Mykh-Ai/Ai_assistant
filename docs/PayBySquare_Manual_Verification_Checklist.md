@@ -25,8 +25,8 @@ Scope:
 
 ## Find Generated PDF
 
-- Default path: `storage/invoices/<invoice_number>.pdf`
-- If `STORAGE_DIR` is overridden, use: `<STORAGE_DIR>/invoices/<invoice_number>.pdf`
+- Use the local invoice output directory for the current environment.
+- If custom storage is configured, use that local output location instead of assuming a repo-default path.
 - The runtime path is built in `bot/handlers/invoice.py` and the storage directories are created in `bot/config.py`.
 
 ## Manual Scan Checklist

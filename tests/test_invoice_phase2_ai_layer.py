@@ -13,6 +13,8 @@ from bot.handlers.invoice import (
     _build_and_store_preview,
     _extract_invoice_draft_from_phase2_payload,
     _format_preview,
+    _looks_like_item_boundary_split,
+    _SLOT_ITEMS,
     _resolve_delivery_date,
     _resolve_service_alias_bounded,
     process_invoice_slot_clarification,
@@ -177,6 +179,18 @@ def test_extract_payload_uses_items_list_when_present() -> None:
     assert raw_text == 'oprava 3000 a montáž 1000'
     assert len(parsed['items']) == 2
     assert parsed['items'][1]['service_term_sk'] == 'montáž'
+
+
+@pytest.mark.parametrize(
+    'text,expected_item_count',
+    [
+        ('polozka 1 oprava 2000 polozka 2 stavebne prace 1000', 2),
+        ('pozicia 1 oprava 2000 pozicia 2 montaz 1000 pozicia 3 servis 500', 3),
+        ('item number 1 service 200 item number 2 maintenance 100', 2),
+    ],
+)
+def test_numbered_item_markers_count_as_item_boundaries(text: str, expected_item_count: int) -> None:
+    assert _looks_like_item_boundary_split(text, expected_item_count=expected_item_count) is True
 
 
 @pytest.mark.parametrize(
@@ -964,6 +978,134 @@ def test_preview_multi_item_with_single_amount_token_requires_clarification(conf
 
     assert state.last_state == InvoiceStates.waiting_slot_clarification
     assert state.data['invoice_partial_draft']['unresolved_slot'] == 'items'
+
+
+def test_items_slot_clarification_keeps_existing_customer_context(
+    configured_db: tuple[Path, int, int],
+    monkeypatch,
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+    state.data['invoice_partial_draft'] = {
+        'request_id': 'req-items',
+        'raw_text': 'vytvor fakturu pre Tech Company',
+        'unresolved_slot': _SLOT_ITEMS,
+        'parsed_draft': {
+            'customer_name': 'TECH COMPANY, s.r.o.',
+            'item_name_raw': 'oprava',
+            'service_term_sk': 'oprava',
+            'quantity': None,
+            'unit': None,
+            'amount': 2000,
+            'unit_price': None,
+            'items': [
+                {
+                    'item_name_raw': 'oprava',
+                    'service_term_sk': 'oprava',
+                    'quantity': None,
+                    'unit': None,
+                    'amount': 2000,
+                    'unit_price': None,
+                    'item_description_raw': None,
+                },
+                {
+                    'item_name_raw': 'stavebne prace',
+                    'service_term_sk': 'stavebné práce',
+                    'quantity': None,
+                    'unit': None,
+                    'amount': 1000,
+                    'unit_price': None,
+                    'item_description_raw': None,
+                },
+            ],
+            'currency': 'EUR',
+            'delivery_date': '2026-04-14',
+            'due_days': None,
+            'due_date': None,
+        },
+    }
+
+    async def _fake_parse_invoice_phase2_payload(text: str, api_key: str, model: str) -> dict:
+        assert text == 'polozka 1 oprava 2000, polozka 2 stavebne prace 1000'
+        return {
+            'vstup': {'povodny_text': text, 'zisteny_jazyk': 'mixed'},
+            'zamer': {'nazov': 'vytvor_fakturu', 'istota': 0.91},
+            'biznis_sk': {
+                'odberatel_kandidat': '   ',
+                'polozka_povodna': 'oprava',
+                'termin_sluzby_sk': 'oprava',
+                'mnozstvo': None,
+                'jednotka': None,
+                'suma': 2000,
+                'cena_za_jednotku': None,
+                'mena': 'EUR',
+                'datum_dodania': None,
+                'splatnost_dni': None,
+                'datum_splatnosti': None,
+                'items': [
+                    {
+                        'polozka_povodna': 'oprava',
+                        'termin_sluzby_sk': 'oprava',
+                        'mnozstvo': 1,
+                        'jednotka': 'ks',
+                        'cena_za_jednotku': 2000,
+                        'suma': 2000,
+                        'item_description_raw': None,
+                    },
+                    {
+                        'polozka_povodna': 'stavebne prace',
+                        'termin_sluzby_sk': 'stavebné práce',
+                        'mnozstvo': 1,
+                        'jednotka': 'ks',
+                        'cena_za_jednotku': 1000,
+                        'suma': 1000,
+                        'item_description_raw': None,
+                    },
+                ],
+            },
+            'stopa': {'chyba_udaje': [], 'nejasnosti': [], 'poznamky_normalizacie': []},
+        }
+
+    captured: dict[str, object] = {}
+
+    async def _fake_build_and_store_preview(*, message, state, config, request_id, raw_text, parsed_draft):
+        captured['request_id'] = request_id
+        captured['raw_text'] = raw_text
+        captured['parsed_draft'] = parsed_draft
+
+    monkeypatch.setattr(
+        'bot.handlers.invoice.parse_invoice_phase2_payload',
+        _fake_parse_invoice_phase2_payload,
+    )
+    monkeypatch.setattr(
+        'bot.handlers.invoice._build_and_store_preview',
+        _fake_build_and_store_preview,
+    )
+
+    asyncio.run(
+        process_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            clarification_text='polozka 1 oprava 2000, polozka 2 stavebne prace 1000',
+        )
+    )
+
+    merged = captured['parsed_draft']
+    assert isinstance(merged, dict)
+    assert merged['customer_name'] == 'TECH COMPANY, s.r.o.'
+    assert len(merged['items']) == 2
+    assert merged['items'][1]['service_term_sk'] == 'stavebné práce'
 
 
 def test_delivery_date_year_anchor_for_ru_day_month_without_year() -> None:

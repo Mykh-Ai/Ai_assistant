@@ -119,7 +119,12 @@ FakturaBot використовує **Bounded Semantic Canonicalization** чер
 2. Install dependencies: `pip install -r requirements.txt`
 3. Start locally: `python -m bot.main`
 4. Or start with Docker: `docker compose up --build`
-5. In Telegram use:
+5. For a production-like owner-run baseline on server, use:
+   - `.env.server.example` as the starting env template
+   - `docker-compose.prod.yml` for the isolated server run
+   - `scripts/update_repo.sh` for controlled git updates
+   - `scripts/deploy_owner_run.sh` for rebuild/restart of the owner-run instance
+6. In Telegram use:
    - `/start` — health check
    - voice message — Phase 1 draft preview
    - `/supplier` або `/onboarding` — Phase 2 supplier onboarding

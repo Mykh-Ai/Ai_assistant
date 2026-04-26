@@ -7,6 +7,13 @@ venv/
 env/
 .env
 faktura.env
+docs/FakturaBot_Server_Agent_Context.md
+.claude/
+
+# Local-only operational materials
+docs/local-only/*
+!docs/local-only/README.md
+!docs/local-only/*.example.md
 
 storage/uploads/*
 storage/invoices/*

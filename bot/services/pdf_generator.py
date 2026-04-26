@@ -20,11 +20,29 @@ from bot.services.supplier_service import SupplierProfile
 
 FONT_REGULAR = 'FakturaBot-Regular'
 FONT_BOLD = 'FakturaBot-Bold'
-REQUIRED_GLYPHS = ('ľ', 'ť', 'á', 'č', 'ú', 'ž', 'ý')
+REQUIRED_GLYPHS = (
+    '\u013e',
+    '\u0165',
+    '\u00e1',
+    '\u010d',
+    '\u00fa',
+    '\u017e',
+    '\u00fd',
+)
 WINDOWS_FONT_CANDIDATES = [
     (Path('C:/Windows/Fonts/arial.ttf'), Path('C:/Windows/Fonts/arialbd.ttf')),
     (Path('C:/Windows/Fonts/calibri.ttf'), Path('C:/Windows/Fonts/calibrib.ttf')),
     (Path('C:/Windows/Fonts/CEARIAL.TTF'), Path('C:/Windows/Fonts/arialbd.ttf')),
+]
+LINUX_FONT_CANDIDATES = [
+    (
+        Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'),
+        Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
+    ),
+    (
+        Path('/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf'),
+        Path('/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf'),
+    ),
 ]
 
 
@@ -65,7 +83,7 @@ def _font_supports_glyphs(font_path: Path, glyphs: tuple[str, ...] = REQUIRED_GL
 
 
 def _resolve_unicode_font_paths() -> tuple[Path, Path]:
-    for regular_font_path, bold_font_path in WINDOWS_FONT_CANDIDATES:
+    for regular_font_path, bold_font_path in WINDOWS_FONT_CANDIDATES + LINUX_FONT_CANDIDATES:
         if not regular_font_path.exists() or not bold_font_path.exists():
             continue
         if _font_supports_glyphs(regular_font_path) and _font_supports_glyphs(bold_font_path):
@@ -77,7 +95,7 @@ def _resolve_unicode_font_paths() -> tuple[Path, Path]:
     if _font_supports_glyphs(fallback_regular) and _font_supports_glyphs(fallback_bold):
         return fallback_regular, fallback_bold
 
-    raise RuntimeError('No available PDF font with required Slovak glyph support (ľ, ť).')
+    raise RuntimeError('No available PDF font with required Slovak glyph support (\u013e, \u0165).')
 
 
 def _register_unicode_fonts() -> None:
