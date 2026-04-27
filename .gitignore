@@ -7,10 +7,16 @@ venv/
 env/
 .env
 faktura.env
+
+# Legacy safety guard for the old misplaced private server context path.
 docs/FakturaBot_Server_Agent_Context.md
 .claude/
 
+# One-off local/server maintenance scripts
+reset_invoice_sequence_to_4.py
+
 # Local-only operational materials
+docs/local-only/FakturaBot_Server_Agent_Context.md
 docs/local-only/*
 !docs/local-only/README.md
 !docs/local-only/*.example.md

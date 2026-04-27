@@ -124,7 +124,7 @@ Keep the existing Unicode font registration flow, but make it Linux-aware and en
 Document the exact safe update procedure for refreshing the server-hosted FakturaBot instance after GitHub changes, without exposing secrets in public repo docs.
 
 ### Changes
-- updated `docs/FakturaBot_Server_Agent_Context.md` with a focused safe update runbook:
+- updated `docs/local-only/FakturaBot_Server_Agent_Context.md` with a focused safe update runbook:
   - SSH entry point;
   - `/bot/repo` working directory;
   - `git fetch` / `checkout main` / `pull --ff-only`;
@@ -142,7 +142,7 @@ Prepare the repository for a public GitHub state while keeping private operation
 
 ### Changes
 - audited the repo for server access details, absolute server paths, deploy/runtime commands, private runbooks, and local ops handoff materials;
-- confirmed the main sensitive local operational file is `docs/FakturaBot_Server_Agent_Context.md`, which remains local-only and ignored;
+- confirmed the main sensitive local operational file is `docs/local-only/FakturaBot_Server_Agent_Context.md`, which remains local-only and ignored;
 - expanded `.gitignore` for a dedicated `docs/local-only/` area while keeping safe placeholders trackable;
 - added a minimal production-like deployment baseline for Stage 1-2 rollout:
   - `.dockerignore`
@@ -160,7 +160,7 @@ Prepare the repository for a public GitHub state while keeping private operation
 
 ### Exposure assessment
 - no tracked file with real SSH host/IP details was found in the current git index;
-- `docs/FakturaBot_Server_Agent_Context.md` contains real server operational details locally, but is already ignored and not tracked in the current repository state;
+- `docs/local-only/FakturaBot_Server_Agent_Context.md` contains real server operational details locally, but is already ignored and not tracked in the current repository state;
 - no history rewrite was performed.
 
 ## 2026-04-21 — Session 046 — Server rollout/onboarding roadmap + README deployment direction alignment
@@ -2402,3 +2402,32 @@ Add transparent runtime diagnostics for the post-PDF approval step (`waiting_pdf
 ### Notes
 - This session is diagnostic-only and keeps existing runtime behavior unchanged.
 - No hidden concept changes, no edits to invoice edit subflows or PDF generation logic.
+
+## 2026-04-27 — Session 031 — Server ops context routing clarification
+
+### Goal
+Prevent agents from mistaking the public `docs/local-only/*.example.md` placeholder for the real FakturaBot server runbook.
+
+### Server operation
+- Performed a one-time server-side invoice cleanup using the temporary `reset_invoice_sequence_to_4.py` script.
+- Kept invoice numbers `20260001` through `20260004`.
+- Removed later 2026 invoice rows above `20260004`.
+- Restarted the `fakturabot` container after the operation.
+- Removed the temporary script from the server repo after the one-time run.
+
+### Changes
+- Local ignored file placement:
+  - moved the private server context from `docs/FakturaBot_Server_Agent_Context.md` to `docs/local-only/FakturaBot_Server_Agent_Context.md`;
+  - confirmed the new path is ignored by `.gitignore`.
+- `AGENTS.md`:
+  - added explicit server-side operational context guidance;
+  - documented that `docs/local-only/FakturaBot_Server_Agent_Context.md` is the private local server context file to check before server work;
+  - documented that `docs/local-only/*.example.md` files are public placeholders only.
+- `docs/local-only/README.md`:
+  - clarified that example files are not live runbooks.
+- `docs/local-only/FakturaBot_Server_Agent_Context.example.md`:
+  - added a clear pointer to the private ignored `docs/local-only/FakturaBot_Server_Agent_Context.md` file for real server operations.
+
+### Notes
+- No product logic, MVP scope, or architecture changes.
+- No secrets were added to tracked docs.
