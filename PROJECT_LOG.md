@@ -2453,4 +2453,8 @@ Investigate why server invoice `20260005` received `delivery_date = 2023-04-25` 
 - Added regression tests for the `20260005` stale-year scenario, explicitly confirmed old year, unconfirmed far-future date, and explicitly confirmed future date.
 
 ### Notes
-- Existing issued server PDF/DB row `20260005` was not modified in this code change.
+- Code change was deployed to the server after merge/push.
+- Server invoice `20260005` was corrected after backup:
+  - `delivery_date` changed from `2023-04-25` to `2026-04-25`;
+  - `/bot/data/storage/invoices/20260005.pdf` was regenerated;
+  - backup copies were stored under `/bot/repo/data/storage/backups/`.
