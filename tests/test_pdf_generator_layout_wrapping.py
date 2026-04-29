@@ -56,10 +56,16 @@ class PdfGeneratorLayoutWrappingTests(unittest.TestCase):
         self.assertGreater(long_h, short_h)
 
     def test_item_row_measurement_expands_for_wrapped_description(self) -> None:
-        short_lines, short_h = _measure_item_row('Krátka oprava', desc_text_width=70 * mm, row_min_h=10 * mm, row_line_h=4.2 * mm)
-        long_lines, long_h = _measure_item_row(
+        short_wrapped = _wrap_text_lines('Krátka oprava', 70 * mm, FONT_REGULAR, 9)
+        long_wrapped = _wrap_text_lines(
             'Dlhý popis služby pre pravidelnú údržbu a opravy elektrických zariadení v celej prevádzke',
-            desc_text_width=45 * mm,
+            45 * mm,
+            FONT_REGULAR,
+            9,
+        )
+        short_lines, short_h = _measure_item_row(short_wrapped, row_min_h=10 * mm, row_line_h=4.2 * mm)
+        long_lines, long_h = _measure_item_row(
+            long_wrapped,
             row_min_h=10 * mm,
             row_line_h=4.2 * mm,
         )

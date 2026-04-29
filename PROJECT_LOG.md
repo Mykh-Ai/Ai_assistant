@@ -2431,3 +2431,26 @@ Prevent agents from mistaking the public `docs/local-only/*.example.md` placehol
 ### Notes
 - No product logic, MVP scope, or architecture changes.
 - No secrets were added to tracked docs.
+
+## 2026-04-29 — Session 032 — Delivery date confirmation-window guards
+
+### Goal
+Investigate why server invoice `20260005` received `delivery_date = 2023-04-25` after the user dictated `25 квітня`, and harden future-date handling for day+month inputs without an explicit year.
+
+### Findings
+- Current flow already has year anchoring for recognized day+month inputs without year.
+- The failure path is `_resolve_delivery_date(...)` accepting the LLM-provided full date when Python cannot independently extract day+month from raw/STT text.
+- That allowed an old LLM year (`2023`) to pass into draft/PDF.
+- The same anchoring rule could also produce a far-future delivery date when a user says a late-year date near the start of the invoice year.
+
+### Changes
+- Added Python confirmation-window guards:
+  - more than 62 days before `Dátum vystavenia` requires explicit raw/STT year confirmation near the same day;
+  - more than 93 days after `Dátum vystavenia` also requires explicit raw/STT year confirmation near the same day;
+  - otherwise the flow fails into date clarification.
+- Tightened the invoice draft prompt so LLM must not invent a year from model/training context and must return `null` when the year is not reliable.
+- Updated TZ date interpretation rules with the 2-month stale-year guard and 3-month future-date guard.
+- Added regression tests for the `20260005` stale-year scenario, explicitly confirmed old year, unconfirmed far-future date, and explicitly confirmed future date.
+
+### Notes
+- Existing issued server PDF/DB row `20260005` was not modified in this code change.

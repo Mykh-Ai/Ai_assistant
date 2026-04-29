@@ -1148,6 +1148,44 @@ def test_delivery_date_explicit_year_is_respected() -> None:
     assert resolved.isoformat() == '2025-04-04'
 
 
+def test_delivery_date_rejects_stale_llm_year_without_explicit_raw_confirmation() -> None:
+    with pytest.raises(ValueError, match='viac ako 62 dní'):
+        _resolve_delivery_date(
+            raw_text='Сроби фактуру на техкомпании за оправы на 3 725 евро, дату додания 25 квитня, сплатность 30 днев.',
+            issue_date_obj=date(2026, 4, 27),
+            llm_delivery_value='2023-04-25',
+        )
+
+
+def test_delivery_date_stale_llm_year_is_allowed_when_raw_year_is_near_day() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='datum dodania 25.04.2023 pre Tech Company',
+        issue_date_obj=date(2026, 4, 27),
+        llm_delivery_value='2023-04-25',
+    )
+
+    assert resolved.isoformat() == '2023-04-25'
+
+
+def test_delivery_date_rejects_far_future_day_month_without_year() -> None:
+    with pytest.raises(ValueError, match='viac ako 93 dní'):
+        _resolve_delivery_date(
+            raw_text='datum dodania 12 decembra',
+            issue_date_obj=date(2026, 1, 20),
+            llm_delivery_value='2026-12-12',
+        )
+
+
+def test_delivery_date_far_future_is_allowed_when_raw_year_is_near_day() -> None:
+    resolved = _resolve_delivery_date(
+        raw_text='datum dodania 12.12.2026',
+        issue_date_obj=date(2026, 1, 20),
+        llm_delivery_value='2026-12-12',
+    )
+
+    assert resolved.isoformat() == '2026-12-12'
+
+
 def test_delivery_date_year_anchor_still_applies_when_unrelated_year_exists_elsewhere() -> None:
     resolved = _resolve_delivery_date(
         raw_text='faktura za rok 2023, ale dodania 4 apríla',

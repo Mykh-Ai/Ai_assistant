@@ -631,6 +631,9 @@ _MULTIPLIER_HINT_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _EXPLICIT_YEAR_PATTERN = re.compile(r'(?<!\d)(?:19|20)\d{2}(?!\d)')
+_DAY_NUMBER_PATTERN = re.compile(r'(?<!\d)(0?[1-9]|[12]\d|3[01])(?!\d)')
+_MAX_UNCONFIRMED_PAST_DELIVERY_DAYS = 62
+_MAX_UNCONFIRMED_FUTURE_DELIVERY_DAYS = 93
 _DELIVERY_DAY_MONTH_PATTERN = re.compile(
     r'(?<!\d)(?P<day>0?[1-9]|[12]\d|3[01])\s*(?:[.\-/]\s*|\s+)'
     r'(?P<month>'
@@ -797,6 +800,48 @@ def _has_explicit_year_near_day_month(raw_text: str, start: int, end: int) -> bo
     return bool(_EXPLICIT_YEAR_PATTERN.search(local_window))
 
 
+def _has_explicit_year_confirmation_for_delivery_date(raw_text: str, delivery_date: date) -> bool:
+    year_token = str(delivery_date.year)
+    for match in _DAY_NUMBER_PATTERN.finditer(raw_text):
+        try:
+            day = int(match.group(1))
+        except ValueError:
+            continue
+        if day != delivery_date.day:
+            continue
+        local_window_start = max(0, match.start() - 20)
+        local_window_end = min(len(raw_text), match.end() + 40)
+        if year_token in raw_text[local_window_start:local_window_end]:
+            return True
+    return False
+
+
+def _validate_delivery_date_confirmation_window(
+    *,
+    raw_text: str,
+    issue_date_obj: date,
+    delivery_date_obj: date,
+) -> None:
+    oldest_unconfirmed_date = issue_date_obj - timedelta(days=_MAX_UNCONFIRMED_PAST_DELIVERY_DAYS)
+    latest_unconfirmed_date = issue_date_obj + timedelta(days=_MAX_UNCONFIRMED_FUTURE_DELIVERY_DAYS)
+    if (
+        delivery_date_obj < oldest_unconfirmed_date
+        and not _has_explicit_year_confirmation_for_delivery_date(raw_text, delivery_date_obj)
+    ):
+        raise ValueError(
+            'Dátum dodania je viac ako 62 dní pred dátumom vystavenia '
+            'a rok nie je jednoznačne potvrdený vo vstupe.'
+        )
+    if (
+        delivery_date_obj > latest_unconfirmed_date
+        and not _has_explicit_year_confirmation_for_delivery_date(raw_text, delivery_date_obj)
+    ):
+        raise ValueError(
+            'Dátum dodania je viac ako 93 dní po dátume vystavenia '
+            'a rok nie je jednoznačne potvrdený vo vstupe.'
+        )
+
+
 def _extract_day_month_without_explicit_year(raw_text: str) -> tuple[int, int] | None:
     match = _DELIVERY_DAY_MONTH_PATTERN.search(raw_text)
     if not match:
@@ -821,7 +866,14 @@ def _resolve_delivery_date(
     parsed_delivery_date = _parse_date(llm_delivery_value)
 
     if day_month_without_year is None:
-        return parsed_delivery_date or issue_date_obj
+        if parsed_delivery_date is None:
+            return issue_date_obj
+        _validate_delivery_date_confirmation_window(
+            raw_text=raw_text,
+            issue_date_obj=issue_date_obj,
+            delivery_date_obj=parsed_delivery_date,
+        )
+        return parsed_delivery_date
 
     anchor_day, anchor_month = day_month_without_year
     try:
@@ -830,14 +882,29 @@ def _resolve_delivery_date(
         raise ValueError('Neplatný dátum dodania vo vstupe.') from exc
 
     if parsed_delivery_date is None:
+        _validate_delivery_date_confirmation_window(
+            raw_text=raw_text,
+            issue_date_obj=issue_date_obj,
+            delivery_date_obj=anchored_date,
+        )
         return anchored_date
 
     if (parsed_delivery_date.month, parsed_delivery_date.day) != (anchor_month, anchor_day):
         raise ValueError('Nekonzistentný dátum dodania: AI payload nezodpovedá explicitnému dňu/mesiacu vo vstupe.')
 
     if parsed_delivery_date.year != issue_date_obj.year:
+        _validate_delivery_date_confirmation_window(
+            raw_text=raw_text,
+            issue_date_obj=issue_date_obj,
+            delivery_date_obj=anchored_date,
+        )
         return anchored_date
 
+    _validate_delivery_date_confirmation_window(
+        raw_text=raw_text,
+        issue_date_obj=issue_date_obj,
+        delivery_date_obj=parsed_delivery_date,
+    )
     return parsed_delivery_date
 
 
