@@ -63,3 +63,5 @@ This is expected and should be documented as a manual command flow, not as a mis
   - optional bounded `items[]` (max 3) is supported,
   - Python remains final validator/workflow owner.
 - Unclear item boundaries, quantity semantics, service resolution ambiguity, total mismatch, or render-safety overflow must trigger bounded clarification/fallback, not silent acceptance.
+- For explicit persisted invoice delete commands (SK/EN/UK/RU), canonical top-level action is `delete_existing_invoice`; runtime delete remains Python-guarded with explicit confirmation.
+

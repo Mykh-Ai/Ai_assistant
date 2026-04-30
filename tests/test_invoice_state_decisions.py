@@ -20,6 +20,8 @@ from bot.handlers.invoice import (
     invoice_edit_service_value,
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
+    invoice_delete_existing_invoice_confirm,
+    process_invoice_text,
     start_invoice_edit_flow,
 )
 from bot.services.contact_service import ContactProfile, ContactService
@@ -35,8 +37,9 @@ class _DummyUser:
 
 
 class _DummyMessage:
-    def __init__(self, user_id: int) -> None:
+    def __init__(self, user_id: int, text: str = '') -> None:
         self.from_user = _DummyUser(user_id)
+        self.text = text
         self.answers: list[str] = []
         self.documents: list[str] = []
 
@@ -138,6 +141,38 @@ def _draft_for_tests(contact_id: int, *, invoice_number: str = '20260009') -> di
             }
         ],
     }
+
+
+def test_delete_existing_invoice_confirmation_yes_deletes_invoice_items_and_pdf(tmp_path: Path) -> None:
+    telegram_id = 9010
+    db_path = tmp_path / 'delete.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(bot_token='token', openai_api_key='key', openai_stt_model='whisper-1', openai_llm_model='gpt-4o', debug_invoice_transparency=False, db_path=db_path, storage_dir=tmp_path)
+    service = InvoiceService(db_path)
+    invoice_id = service.create_invoice_with_items(
+        supplier_telegram_id=telegram_id, contact_id=contact_id, issue_date='2026-04-12', delivery_date='2026-04-12', due_date='2026-04-26', due_days=14,
+        total_amount=100, currency='EUR', status='pripravena',
+        items=[CreateInvoiceItemPayload(description_raw='servis', description_normalized='servis', item_description_raw=None, quantity=1, unit='ks', unit_price=100, total_price=100)],
+        invoice_number='20260015',
+    )
+    pdf_path = tmp_path / 'invoice.pdf'
+    pdf_path.write_bytes(b'pdf')
+    service.save_pdf_path(invoice_id, str(pdf_path))
+    message = _DummyMessage(telegram_id, 'ano')
+    state = _DummyState({'pending_delete_invoice_id': invoice_id, 'pending_delete_invoice_number': '20260015', 'pending_delete_pdf_path': str(pdf_path)})
+    asyncio.run(invoice_delete_existing_invoice_confirm(message, state, config))
+    assert state.cleared is True
+    assert service.get_invoice_by_id(invoice_id) is None
+    assert not service.get_items_by_invoice_id(invoice_id)
+    assert not pdf_path.exists()
+
+
+def test_delete_existing_invoice_confirmation_no_cancels(tmp_path: Path) -> None:
+    message = _DummyMessage(1, 'nie')
+    state = _DummyState({'pending_delete_invoice_id': 1, 'pending_delete_invoice_number': '20260001'})
+    config = Config(bot_token='token', openai_api_key='key', openai_stt_model='whisper-1', openai_llm_model='gpt-4o', debug_invoice_transparency=False, db_path=tmp_path / 'x.db', storage_dir=tmp_path)
+    asyncio.run(invoice_delete_existing_invoice_confirm(message, state, config))
+    assert state.cleared is True
 
 
 def test_preview_contains_proposed_invoice_number() -> None:
