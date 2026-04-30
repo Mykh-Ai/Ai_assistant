@@ -1,5 +1,19 @@
 # PROJECT_LOG
 
+## 2026-04-30 — Session 060 — Explicit hard-delete flow for persisted invoices
+
+Summary:
+- Added explicit top-level action `delete_existing_invoice` for persisted invoice deletion by short/full number reference.
+- Added mandatory confirmation gate (`áno / nie`) before destructive delete.
+- Implemented hard delete of invoice items + invoice row, plus best-effort PDF file deletion.
+- Added ownership/invoice existence re-check right before destructive delete to fail loud safely.
+- No soft delete, no storno logic, no DB schema migration.
+
+Tests:
+- `PYTHONPATH=. pytest -q tests/test_invoice_intent_prerouter.py`
+- `PYTHONPATH=. pytest -q tests/test_invoice_state_decisions.py`
+- `PYTHONPATH=. pytest -q`
+
 ## 2026-04-30 — Session 059 — Deterministic post-PDF save/edit/cancel decision guard
 
 Summary:
@@ -2526,3 +2540,4 @@ Investigate why server invoice `20260005` received `delivery_date = 2023-04-25` 
   - `delivery_date` changed from `2023-04-25` to `2026-04-25`;
   - `/bot/data/storage/invoices/20260005.pdf` was regenerated;
   - backup copies were stored under `/bot/repo/data/storage/backups/`.
+

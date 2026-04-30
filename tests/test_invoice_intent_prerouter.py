@@ -155,6 +155,15 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
+            allowed_actions=['create_invoice', 'delete_existing_invoice', 'unknown'],
+            user_input_text='delete invoice 02',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'delete_existing_invoice'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
             allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
             user_input_text='blabla',
             api_key=None,
@@ -258,6 +267,32 @@ def test_process_invoice_text_edit_existing_invoice_by_short_number(tmp_path: Pa
     assert 'x' in preview
     assert 'Množstvo: 1 ks × 10.00 EUR = 10.00 EUR' in preview
     assert 'Celkom: 10.00 EUR' in preview
+
+
+def test_process_invoice_text_delete_existing_invoice_ambiguous_suffix(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    SupplierService(config.db_path).create_or_replace(
+        SupplierProfile(telegram_id=111, name='S', ico='1', dic='1', ic_dph='', address='A', iban='SK1', swift='ABCD', email='a@a.com', smtp_host=None, smtp_user=None, smtp_pass=None, days_due=14)
+    )
+    service = InvoiceService(config.db_path)
+    for num in ('20260002', '20261002'):
+        service.create_invoice_with_items(
+            supplier_telegram_id=111, contact_id=1, issue_date='2026-04-30', delivery_date='2026-04-30', due_date='2026-05-14', due_days=14,
+            total_amount=10, currency='EUR', status='draft',
+            items=[CreateInvoiceItemPayload(description_raw='x', description_normalized='x', item_description_raw='', quantity=1, unit='ks', unit_price=10, total_price=10)],
+            invoice_number=num,
+        )
+    message = _DummyMessage('vymazať faktúru 2')
+    message.from_user = type('U', (), {'id': 111})()
+    state = _DummyState()
+
+    async def _resolver(**kwargs):
+        return 'delete_existing_invoice'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    assert message.answers[-1] == 'Našiel som viac faktúr. Napíšte viac posledných číslic alebo celé číslo faktúry.'
 
 
 def test_process_invoice_text_edit_existing_invoice_ambiguity_and_supplier_scope(tmp_path: Path, monkeypatch) -> None:

@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 _CREATE_INVOICE_INTENT = 'create_invoice'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
+_DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
 _SEND_INVOICE_INTENT = 'send_invoice'
 _ADD_CONTACT_INTENT = 'add_contact'
 _ADD_SERVICE_ALIAS_INTENT = 'add_service_alias'
@@ -107,6 +108,7 @@ class InvoiceStates(StatesGroup):
     waiting_edit_service_value = State()
     waiting_edit_description_value = State()
     waiting_edit_item_numeric_value = State()
+    waiting_delete_existing_invoice_confirm = State()
 
 
 _SLOT_SERVICE = 'service_term'
@@ -1761,6 +1763,7 @@ async def process_invoice_text(
             _ADD_SERVICE_ALIAS_INTENT,
             _SEND_INVOICE_INTENT,
             _EDIT_EXISTING_INVOICE_INTENT,
+            _DELETE_EXISTING_INVOICE_INTENT,
             _EDIT_INVOICE_INTENT,
             _UNKNOWN_INVOICE_INTENT,
         ],
@@ -1788,6 +1791,11 @@ async def process_invoice_text(
                 'meaning': 'user wants to explicitly edit already created invoice by number',
                 'positive_examples': ['upraviť faktúru 15', 'редагувати фактуру 15', 'uprav faktúru číslo 20260015'],
                 'not_this': ['edit current draft preview'],
+            },
+            _DELETE_EXISTING_INVOICE_INTENT: {
+                'meaning': 'user wants to explicitly delete already created invoice by number',
+                'positive_examples': ['vymazať faktúru 15', 'delete invoice 15', 'видалити фактуру 15'],
+                'not_this': ['cancel current draft preview'],
             },
         },
     )
@@ -1862,6 +1870,63 @@ async def process_invoice_text(
             state=state,
             config=config,
             invoice_id=matched_invoice.id,
+        )
+        return
+    if top_level_intent == _DELETE_EXISTING_INVOICE_INTENT:
+        if message.from_user is None:
+            await message.answer('Nepodarilo sa identifikovať používateľa.')
+            return
+        invoice_reference = _extract_invoice_reference(invoice_text)
+        if not invoice_reference:
+            await message.answer('Napíšte číslo faktúry, ktorú chcete vymazať.')
+            return
+        invoice_matches = InvoiceService(config.db_path).find_invoices_for_supplier_by_number_reference(
+            supplier_telegram_id=message.from_user.id,
+            invoice_reference=invoice_reference,
+        )
+        if not invoice_matches:
+            await message.answer('Faktúru s týmto číslom som nenašiel.')
+            return
+        if len(invoice_matches) > 1:
+            await message.answer('Našiel som viac faktúr. Napíšte viac posledných číslic alebo celé číslo faktúry.')
+            return
+        matched_invoice = invoice_matches[0]
+        contact_name = 'Neznámy odberateľ'
+        if matched_invoice.contact_id is not None:
+            contact = ContactService(config.db_path).get_by_id(matched_invoice.contact_id)
+            if contact is not None:
+                contact_name = contact.name
+        matched_items = InvoiceService(config.db_path).get_items_by_invoice_id(matched_invoice.id)
+        await message.answer(
+            _format_existing_invoice_summary(
+                invoice_number=matched_invoice.invoice_number,
+                customer_name=contact_name,
+                issue_date=matched_invoice.issue_date,
+                delivery_date=matched_invoice.delivery_date,
+                due_date=matched_invoice.due_date,
+                items=matched_items,
+                total_amount=float(matched_invoice.total_amount),
+                currency=matched_invoice.currency,
+            )
+        )
+        if matched_invoice.pdf_path:
+            pdf_path = Path(matched_invoice.pdf_path)
+            if pdf_path.exists():
+                try:
+                    await message.answer_document(
+                        FSInputFile(pdf_path),
+                        caption=f'Aktuálne PDF faktúry {matched_invoice.invoice_number}.',
+                    )
+                except Exception:
+                    logger.exception('Failed to send existing invoice PDF preview before delete flow')
+        await state.update_data(
+            pending_delete_invoice_id=matched_invoice.id,
+            pending_delete_invoice_number=matched_invoice.invoice_number,
+            pending_delete_pdf_path=matched_invoice.pdf_path,
+        )
+        await state.set_state(InvoiceStates.waiting_delete_existing_invoice_confirm)
+        await message.answer(
+            f'Naozaj chcete vymazať faktúru {matched_invoice.invoice_number}? Odpovedzte: áno / nie'
         )
         return
     if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT, _UNKNOWN_INVOICE_INTENT}:
@@ -2679,6 +2744,67 @@ async def invoice_pdf_decision(message: Message, state: FSMContext, config: Conf
         config=config,
         decision_text=(message.text or ''),
     )
+
+
+@router.message(InvoiceStates.waiting_delete_existing_invoice_confirm)
+async def invoice_delete_existing_invoice_confirm(message: Message, state: FSMContext, config: Config) -> None:
+    raw_text = (message.text or '').strip().lower()
+    if raw_text in {'áno', 'ano', 'yes', 'так', 'да'}:
+        answer = 'ano'
+    elif raw_text in {'nie', 'no', 'ні', 'нет'}:
+        answer = 'nie'
+    else:
+        answer = await resolve_bounded_confirmation_reply(
+            context_name='contact_confirm',
+            expected_reply_type='binary_confirmation',
+            allowed_outputs=['ano', 'nie', 'unknown'],
+            user_input_text=(message.text or ''),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    if answer == 'unknown':
+        await message.answer('Prosím, odpovedzte: áno / nie')
+        return
+    if answer == 'nie':
+        await state.clear()
+        await message.answer('Vymazanie faktúry bolo zrušené.')
+        return
+
+    data = await state.get_data()
+    invoice_id = data.get('pending_delete_invoice_id')
+    invoice_number = str(data.get('pending_delete_invoice_number') or '')
+    if not isinstance(invoice_id, int) or not invoice_number:
+        await state.clear()
+        await message.answer('Nepodarilo sa dokončiť vymazanie faktúry. Spustite /invoice znova.')
+        return
+
+    if message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa overiť vlastníka faktúry. Vymazanie bolo zastavené.')
+        return
+
+    invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už neexistuje alebo nie je dostupná. Vymazanie bolo zastavené.')
+        return
+    if invoice.supplier_telegram_id != message.from_user.id:
+        await state.clear()
+        await message.answer('Táto faktúra nepatrí vášmu účtu. Vymazanie bolo zastavené.')
+        return
+
+    pdf_path_value = data.get('pending_delete_pdf_path')
+    invoice_service.delete_invoice_with_items(invoice_id)
+    if isinstance(pdf_path_value, str) and pdf_path_value.strip():
+        pdf_path = Path(pdf_path_value)
+        if pdf_path.exists():
+            try:
+                pdf_path.unlink(missing_ok=True)
+            except OSError:
+                logger.exception('Failed to delete invoice PDF after hard-delete', extra={'invoice_id': invoice_id})
+    await state.clear()
+    await message.answer(f'Faktúra {invoice_number} bola vymazaná.')
 
 
 @router.message(InvoiceStates.waiting_edit_item_target)

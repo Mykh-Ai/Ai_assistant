@@ -364,6 +364,7 @@ Action/resolver audit must be synchronized with:
 
 Important:
 - command-only manual flows are still implemented user-facing actions and must not be treated as absent only because they bypass semantic top-level resolver.
+- explicit delete command flow maps to canonical action `delete_existing_invoice` and MUST require explicit user confirmation before any destructive action.
 
 ---
 
@@ -380,3 +381,4 @@ Rules:
 - full reset is reserved only for fatal errors (unusable payload structure, internal runtime failure, or impossible recovery path).
 
 This is a project-wide contract, not invoice-only. The same behavior applies to existing and future structured flows.
+
