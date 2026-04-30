@@ -3,8 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
+import unicodedata
 
 from bot.services.db import managed_connection
+
+
+_CANONICAL_ELECTRICAL_REPAIR_TITLE = 'Opravy vyhradených technických zariadení elektrických'
+
+
+def _display_lookup_key(value: str) -> str:
+    normalized = unicodedata.normalize('NFKD', value.strip().casefold())
+    without_marks = ''.join(character for character in normalized if not unicodedata.combining(character))
+    return ' '.join(without_marks.split())
+
+
+_CANONICAL_SERVICE_DISPLAY_NAMES = {
+    _display_lookup_key(_CANONICAL_ELECTRICAL_REPAIR_TITLE): _CANONICAL_ELECTRICAL_REPAIR_TITLE,
+}
 
 
 @dataclass
@@ -25,9 +40,14 @@ class ServiceAliasService:
     def _normalize_service_short_name(value: str) -> str:
         return value.strip().lower()
 
+    @staticmethod
+    def _normalize_service_display_name(value: str) -> str:
+        display_name = value.strip()
+        return _CANONICAL_SERVICE_DISPLAY_NAMES.get(_display_lookup_key(display_name), display_name)
+
     def create_mapping(self, supplier_id: int, service_short_name: str, service_display_name: str) -> None:
         short_name_clean = service_short_name.strip()
-        display_name_clean = service_display_name.strip()
+        display_name_clean = self._normalize_service_display_name(service_display_name)
         if not short_name_clean:
             raise ValueError('Service short name cannot be empty.')
         if not display_name_clean:
@@ -68,7 +88,7 @@ class ServiceAliasService:
                 id=row['id'],
                 supplier_id=row['supplier_id'],
                 service_short_name=row['alias'],
-                service_display_name=row['canonical_title'],
+                service_display_name=self._normalize_service_display_name(row['canonical_title']),
                 is_active=row['is_active'],
                 created_at=row['created_at'],
             )
@@ -94,7 +114,7 @@ class ServiceAliasService:
         if row is None:
             return None
 
-        return str(row[0])
+        return self._normalize_service_display_name(str(row[0]))
 
     def resolve_alias(self, supplier_id: int, alias: str) -> str | None:
         return self.resolve_service_display_name(supplier_id, alias)

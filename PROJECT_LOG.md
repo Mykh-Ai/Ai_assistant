@@ -1,6 +1,6 @@
 # PROJECT_LOG
 
-## 2026-04-30 — Session 056 — Existing invoice summary preview before persisted edit-flow
+## 2026-04-30 — Session 057 — Existing invoice summary preview before persisted edit-flow
 
 Summary:
 - Follow-up hardening for explicit `edit_existing_invoice`: when exactly one persisted invoice is resolved, bot now sends a current Slovak invoice summary before entering edit menu.
@@ -8,7 +8,7 @@ Summary:
 - If persisted `pdf_path` exists and file is available, bot sends current PDF as optional document preview; missing file/path does not fail flow.
 - After summary/PDF preview, runtime continues into existing `start_invoice_edit_flow(...)` backend without creating a new draft and without post-PDF menu restoration.
 
-## 2026-04-30 — Session 055 — Explicit existing-invoice edit entrypoint by number reference
+## 2026-04-30 — Session 056 — Explicit existing-invoice edit entrypoint by number reference
 
 Summary:
 - Added explicit top-level action `edit_existing_invoice` for persisted invoice editing by command like `upraviť faktúru 15`.
