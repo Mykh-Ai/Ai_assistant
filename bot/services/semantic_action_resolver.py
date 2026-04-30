@@ -229,6 +229,61 @@ def _normalize_bounded_reply_text(value: str) -> str:
     return ''.join(ch for ch in normalized if not unicodedata.combining(ch))
 
 
+_NEGATION_MARKERS = {'ne', 'nie', 'not', 'no', 'не', 'ні', 'нет', 'нічого', 'ничего', 'nechcem'}
+
+
+def _contains_decision_marker(
+    normalized: str,
+    *,
+    exact_values: set[str],
+    prefixes: tuple[str, ...] = (),
+    ignore_negated: bool = False,
+) -> bool:
+    tokens = normalized.split()
+    for index, token in enumerate(tokens):
+        if token not in exact_values and not (prefixes and token.startswith(prefixes)):
+            continue
+        if ignore_negated and any(
+            previous in _NEGATION_MARKERS for previous in tokens[max(0, index - 3) : index]
+        ):
+            continue
+        return True
+    return False
+
+
+def _resolve_local_decision_markers(
+    *,
+    normalized: str,
+    allowed_outputs: set[str],
+    approve_values: set[str],
+    edit_values: set[str],
+    cancel_values: set[str],
+) -> str:
+    matched: set[str] = set()
+    if 'schvalit' in allowed_outputs and _contains_decision_marker(
+        normalized,
+        exact_values=approve_values,
+        prefixes=('зберег', 'збереж', 'зберіг', 'сохран'),
+    ):
+        matched.add('schvalit')
+    if 'upravit' in allowed_outputs and _contains_decision_marker(
+        normalized,
+        exact_values=edit_values,
+        prefixes=('uprav', 'oprav', 'редаг', 'відредаг', 'исправ'),
+        ignore_negated=True,
+    ):
+        matched.add('upravit')
+    if 'zrusit' in allowed_outputs and _contains_decision_marker(
+        normalized,
+        exact_values=cancel_values,
+    ):
+        matched.add('zrusit')
+
+    if len(matched) == 1:
+        return next(iter(matched))
+    return _UNKNOWN
+
+
 def _fallback_bounded_confirmation_reply(
     *,
     context_name: str,
@@ -262,8 +317,43 @@ def _fallback_bounded_confirmation_reply(
         context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision'}
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):
-        approve_values = {'schvalit', 'potvrdit', 'potvrdzujem', 'approve', 'confirm', 'save', 'ano', 'tak', 'да', 'так'}
-        edit_values = {'upravit', 'opravit', 'edit', 'change', 'correct', 'изменить', 'исправить', 'редагувати', 'зміни'}
+        approve_values = {
+            'schvalit',
+            'potvrdit',
+            'potvrdzujem',
+            'approve',
+            'confirm',
+            'save',
+            'zachovat',
+            'zachovajte',
+            'ano',
+            'tak',
+            'da',
+            'uloz',
+            'ulozit',
+            'ulozte',
+            'ulozim',
+            'ulozime',
+            'да',
+            'так',
+        }
+        edit_values = {
+            'upravit',
+            'upravte',
+            'opravit',
+            'opravte',
+            'edit',
+            'change',
+            'correct',
+            'изменить',
+            'исправить',
+            'редагувати',
+            'відредагувати',
+            'відредагуй',
+            'змінити',
+            'змініть',
+            'поміняй',
+        }
         if context_name == 'invoice_preview_confirmation':
             cancel_values = {
                 'zrusit',
@@ -279,15 +369,15 @@ def _fallback_bounded_confirmation_reply(
                 'no',
             }
         else:
-            cancel_values = {'zrusit', 'отменить', 'скасувати', 'нет', 'ні', 'nie'}
+            cancel_values = {'zrusit', 'cancel', 'отменить', 'скасувати', 'нет', 'ні', 'nie'}
 
-        if normalized in approve_values and 'schvalit' in allowed_outputs:
-            return 'schvalit'
-        if normalized in edit_values and 'upravit' in allowed_outputs:
-            return 'upravit'
-        if normalized in cancel_values and 'zrusit' in allowed_outputs:
-            return 'zrusit'
-        return _UNKNOWN
+        return _resolve_local_decision_markers(
+            normalized=normalized,
+            allowed_outputs=allowed_outputs,
+            approve_values=approve_values,
+            edit_values=edit_values,
+            cancel_values=cancel_values,
+        )
 
     return _UNKNOWN
 
@@ -554,6 +644,25 @@ async def resolve_bounded_confirmation_reply(
             diagnostics['fallback_output'] = _UNKNOWN
         return _UNKNOWN
 
+    local_output = _UNKNOWN
+    if (
+        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision'}
+        and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
+    ):
+        local_output = _fallback_bounded_confirmation_reply(
+            context_name=context_name,
+            expected_reply_type=expected_reply_type,
+            text=cleaned,
+            allowed_outputs=allowed,
+        )
+
+    if local_output != _UNKNOWN:
+        if diagnostics is not None:
+            diagnostics['fallback_used'] = True
+            diagnostics['fallback_output'] = local_output
+            diagnostics['normalized_output'] = local_output
+        return local_output
+
     if api_key and api_key.startswith('sk-'):
         try:
             client = AsyncOpenAI(api_key=api_key)
@@ -577,6 +686,7 @@ async def resolve_bounded_confirmation_reply(
                             'For expected_reply_type=draft_review_decision or postpdf_decision: '
                             'map clear approve/confirm/save-draft intent to schvalit, clear edit/change/correct intent to upravit, '
                             'and clear delete/cancel/remove/discard invoice-draft intent to zrusit, including multilingual/noisy variants. '
+                            'Phrases meaning "save changes" are approve/save intent, not edit intent; do not treat "changes" alone as an edit command. '
                             'Safety rule: do not guess destructive action when intent is unclear; use "unknown" for uncertainty.'
                         ),
                     },

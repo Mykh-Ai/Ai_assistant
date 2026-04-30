@@ -256,6 +256,14 @@ Backward compatibility:
 - `ano` у preview трактується як `schváliť`;
 - `nie` у preview трактується як `zrušiť`.
 
+Decision normalization for preview/post-PDF states:
+- Python first applies local deterministic markers before trusting LLM output.
+- Clear save/approve markers (`zachovať`, `uložiť`, `uloz`, `save`, `save changes`, `зберегти`, `збережи`, `сохрани`, `сохранить изменения`) map to `schvalit`.
+- Clear edit markers (`upraviť`, `opravit`, `edit`, `change`, `редагувати`, `відредагувати`, `исправить`, `изменить`) map to `upravit`.
+- Clear cancel markers (`zrušiť`, `cancel`, `скасувати`, `отменить`, `nie`, `ні`, `нет`) map to `zrusit`.
+- Nouns like `zmeny` / `зміни` / `изменения` must not by themselves override an explicit save marker.
+- If local markers conflict, Python must return `unknown` and ask the user to clarify instead of guessing.
+
 До `schváliť` invoice row, final invoice number і PDF не створюються. Preview number є тільки proposed number, збереженим у FSM `invoice_draft`.
 
 Правило proposed invoice number у draft stage:

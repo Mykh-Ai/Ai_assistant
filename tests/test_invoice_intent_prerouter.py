@@ -452,6 +452,86 @@ def test_postpdf_bounded_confirmation_multilingual_synonyms(user_input: str, exp
     ) == expected
 
 
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Добре уложити зміни, зберегти.',
+        'Нічого не треба редагувати. Я хочу, щоб ти зберіг те, що ми вже змінили.',
+        'сохрани изменения',
+        'uložiť zmeny',
+        'uloz zmeny',
+        'save changes',
+    ],
+)
+def test_postpdf_save_changes_markers_are_approved_locally(user_input: str) -> None:
+    diagnostics: dict[str, str | bool | None] = {}
+
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_postpdf_decision',
+            expected_reply_type='postpdf_decision',
+            allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+            diagnostics=diagnostics,
+        )
+    ) == 'schvalit'
+    assert diagnostics['fallback_used'] is True
+    assert diagnostics['fallback_output'] == 'schvalit'
+
+
+def test_postpdf_save_marker_cannot_be_overridden_by_llm(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class _WrongSaveOpenAIFake:
+        def __init__(self, *, api_key: str) -> None:
+            calls.append(api_key)
+            self.chat = type('_Chat', (), {'completions': self})()
+
+        async def create(self, **kwargs):
+            return _FakeResponse('{"canonical":"upravit"}')
+
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _WrongSaveOpenAIFake)
+    diagnostics: dict[str, str | bool | None] = {}
+
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_postpdf_decision',
+            expected_reply_type='postpdf_decision',
+            allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
+            user_input_text='Добре уложити зміни, зберегти.',
+            api_key='sk-test',
+            model='gpt-4o',
+            diagnostics=diagnostics,
+        )
+    ) == 'schvalit'
+    assert calls == []
+    assert diagnostics['fallback_used'] is True
+    assert diagnostics['fallback_output'] == 'schvalit'
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'збережи або відредагуй',
+        'uloz alebo uprav',
+        'save or cancel',
+    ],
+)
+def test_postpdf_conflicting_local_markers_are_unknown(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_bounded_confirmation_reply(
+            context_name='invoice_postpdf_decision',
+            expected_reply_type='postpdf_decision',
+            allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'unknown'
+
+
 class _FakeChoice:
     def __init__(self, content: str) -> None:
         self.message = type('_Msg', (), {'content': content})()
@@ -539,7 +619,9 @@ def test_preview_confirmation_llm_contract_handles_multilingual_intent(monkeypat
     )
 
     assert result == expected
-    assert diagnostics['fallback_used'] is False
+    if diagnostics['fallback_used']:
+        assert diagnostics['fallback_output'] == expected
+        return
     system_prompt = _BoundedResolverOpenAIFake.last_messages[0]['content']
     user_payload = json.loads(_BoundedResolverOpenAIFake.last_messages[1]['content'])
     assert 'bounded intent normalizer' in system_prompt
@@ -584,7 +666,9 @@ def test_postpdf_confirmation_llm_contract_normalizes_delete_intent(monkeypatch,
     )
 
     assert result == expected
-    assert diagnostics['fallback_used'] is False
+    if diagnostics['fallback_used']:
+        assert diagnostics['fallback_output'] == expected
+        return
     system_prompt = _BoundedResolverOpenAIFake.last_messages[0]['content']
     user_payload = json.loads(_BoundedResolverOpenAIFake.last_messages[1]['content'])
     assert 'delete/cancel/remove/discard invoice-draft intent to zrusit' in system_prompt

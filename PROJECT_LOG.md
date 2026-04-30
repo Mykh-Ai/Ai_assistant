@@ -1,5 +1,18 @@
 # PROJECT_LOG
 
+## 2026-04-30 — Session 059 — Deterministic post-PDF save/edit/cancel decision guard
+
+Summary:
+- Hardened bounded decision normalization for preview/post-PDF invoice states with local Python marker detection before LLM fallback.
+- Clear save markers such as `зберегти`, `сохрани`, `uložiť`, and `save changes` now map to `schvalit` deterministically.
+- Removed reliance on ambiguous nouns like `зміни` / `изменения` as edit intent when an explicit save marker is present.
+- Conflicting local markers now return `unknown` so the bot asks for clarification instead of guessing.
+- Updated TZ with the decision-marker contract and added regression tests for the logged STT phrase.
+
+Tests:
+- `PYTHONPATH=. pytest -q tests/test_invoice_intent_prerouter.py` — 82 passed.
+- `PYTHONPATH=. pytest -q` — 280 passed.
+
 ## 2026-04-30 — Session 058 — Item-level numeric edits inside `upraviť položku`
 
 Summary:
