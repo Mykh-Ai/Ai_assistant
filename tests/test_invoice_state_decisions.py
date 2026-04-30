@@ -14,6 +14,7 @@ from bot.handlers.invoice import (
     invoice_edit_description_value,
     invoice_edit_invoice_number_value,
     invoice_edit_item_action,
+    invoice_edit_item_numeric_value,
     invoice_edit_item_target,
     invoice_edit_scope,
     invoice_edit_service_value,
@@ -1095,6 +1096,104 @@ def test_item_action_phrase_zmenit_sluzbu_routes_to_service_branch(tmp_path: Pat
     assert state.current_state == InvoiceStates.waiting_edit_service_value
 
 
+def test_item_action_phrase_upravit_mnozstvo_routes_to_numeric_branch(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState(data={'edit_target_item_id': 11})
+    asyncio.run(
+        invoice_edit_item_action(
+            message=type('M', (), {'text': 'upraviť množstvo', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+    assert state.current_state == InvoiceStates.waiting_edit_item_numeric_value
+    assert state.data.get('edit_item_action_mode') == 'edit_item_quantity'
+
+
+def test_item_action_phrase_upravit_cena_za_mj_routes_to_numeric_branch(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState(data={'edit_target_item_id': 11})
+    asyncio.run(
+        invoice_edit_item_action(
+            message=type('M', (), {'text': 'upraviť cenu za m.j.', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+    assert state.current_state == InvoiceStates.waiting_edit_item_numeric_value
+    assert state.data.get('edit_item_action_mode') == 'edit_item_unit_price'
+
+
+def test_item_action_phrase_upravit_sumu_routes_to_numeric_branch(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    state = _DummyState(data={'edit_target_item_id': 11})
+    asyncio.run(
+        invoice_edit_item_action(
+            message=type('M', (), {'text': 'upraviť sumu položky', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+    assert state.current_state == InvoiceStates.waiting_edit_item_numeric_value
+    assert state.data.get('edit_item_action_mode') == 'edit_item_total_amount'
+
+
+def test_item_action_resolver_maps_multilingual_numeric_phrases(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(1)
+    checks = [
+        ('quantity', 'edit_item_quantity'),
+        ('ціна за одиницю', 'edit_item_unit_price'),
+        ('total', 'edit_item_total_amount'),
+    ]
+    for phrase, expected_operation in checks:
+        state = _DummyState(data={'edit_target_item_id': 11})
+        asyncio.run(
+            invoice_edit_item_action(
+                message=type('M', (), {'text': phrase, 'answer': message.answer})(),
+                state=state,
+                config=config,
+            )
+        )
+        assert state.current_state == InvoiceStates.waiting_edit_item_numeric_value
+        assert state.data.get('edit_item_action_mode') == expected_operation
+
+
 def test_item_action_phrase_vymazat_detaily_clears_details_immediately(tmp_path: Path, monkeypatch) -> None:
     telegram_id = 777
     db_path = tmp_path / 'clear-item-details.db'
@@ -1173,6 +1272,199 @@ def test_item_action_phrase_vymazat_detaily_reports_when_missing(tmp_path: Path)
         )
     assert state.current_state == InvoiceStates.waiting_pdf_decision
     assert message.answers[-1] == 'Položka nemá žiadne detaily na vymazanie.'
+
+
+def test_draft_numeric_edit_quantity_recalculates_total(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    draft = {
+        'customer_name': 'Test',
+        'issue_date': '2026-04-30',
+        'delivery_date': '2026-04-30',
+        'due_date': '2026-05-14',
+        'invoice_number': '20260001',
+        'items': [{'service_display_name': 'Servis', 'service_short_name': 'servis', 'quantity': 2.0, 'unit': 'ks', 'unit_price': 10.0, 'amount': 20.0}],
+        'currency': 'EUR',
+    }
+    message = _DummyMessage(1)
+    state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_quantity'})
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '3', 'answer': message.answer})(), state=state, config=config))
+    item = draft['items'][0]
+    assert item['quantity'] == 3.0
+    assert item['amount'] == 30.0
+    assert draft['amount'] == 30.0
+    assert message.answers[-1].startswith('Množstvo položky bolo upravené.')
+    assert not message.documents
+
+
+def test_draft_numeric_edit_unit_price_recalculates_total(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    draft = _draft_for_tests(contact_id=1)
+    message = _DummyMessage(1)
+    state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_unit_price'})
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '250,50', 'answer': message.answer})(), state=state, config=config))
+    item = draft['items'][0]
+    assert item['unit_price'] == 250.5
+    assert item['amount'] == 250.5
+    assert draft['amount'] == 250.5
+    assert message.answers[-1].startswith('Cena za m.j. bola upravená.')
+    assert not message.documents
+
+
+def test_draft_numeric_edit_total_recalculates_unit_price(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    draft = _draft_for_tests(contact_id=1)
+    draft['items'][0]['quantity'] = 2.0
+    draft['items'][0]['unit_price'] = 10.0
+    draft['items'][0]['amount'] = 20.0
+    draft['quantity'] = 2.0
+    draft['unit_price'] = 10.0
+    draft['amount'] = 20.0
+    message = _DummyMessage(1)
+    state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_total_amount'})
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '50', 'answer': message.answer})(), state=state, config=config))
+    item = draft['items'][0]
+    assert item['amount'] == 50.0
+    assert item['unit_price'] == 25.0
+    assert draft['amount'] == 50.0
+    assert message.answers[-1].startswith('Suma položky bola upravená.')
+    assert not message.documents
+
+
+def test_draft_numeric_invalid_and_negative_values_are_rejected(tmp_path: Path) -> None:
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'noop.db',
+        storage_dir=tmp_path,
+    )
+    draft = _draft_for_tests(contact_id=1)
+
+    invalid_message = _DummyMessage(1)
+    invalid_state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_quantity'})
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': 'dve a pol', 'answer': invalid_message.answer})(), state=invalid_state, config=config))
+    assert invalid_message.answers[-1] == 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.'
+
+    for mode, value in [('edit_item_quantity', '-1'), ('edit_item_unit_price', '-0.5'), ('edit_item_total_amount', '-10')]:
+        message = _DummyMessage(1)
+        state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': mode})
+        asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': value, 'answer': message.answer})(), state=state, config=config))
+        assert message.answers[-1] == 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.'
+
+
+def test_persisted_numeric_edit_total_rebuilds_pdf_and_updates_invoice_total(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 778
+    db_path = tmp_path / 'edit-total.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(db_path=db_path, storage_dir=tmp_path, telegram_id=telegram_id, service_short_name='servis', service_display_name='Servis', item_description_raw=None)
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda *, target_path, **kwargs: (target_path.parent.mkdir(parents=True, exist_ok=True), target_path.write_bytes(b'%PDF')))
+    message = _DummyMessage(telegram_id)
+    config = Config(bot_token='token', openai_api_key='key', openai_stt_model='whisper-1', openai_llm_model='gpt-4o', debug_invoice_transparency=False, db_path=db_path, storage_dir=tmp_path)
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_total_amount'})
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '50', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    updated = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert updated.total_price == 50.0
+    assert InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount == 50.0
+    assert message.documents
+
+
+def test_persisted_numeric_edit_quantity_and_unit_price_rebuild_pdf(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 779
+    db_path = tmp_path / 'edit-quantity-unit-price.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis',
+        item_description_raw=None,
+    )
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda *, target_path, **kwargs: (target_path.parent.mkdir(parents=True, exist_ok=True), target_path.write_bytes(b'%PDF')))
+    config = Config(bot_token='token', openai_api_key='key', openai_stt_model='whisper-1', openai_llm_model='gpt-4o', debug_invoice_transparency=False, db_path=db_path, storage_dir=tmp_path)
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    original_unit_price = float(item.unit_price)
+
+    quantity_message = _DummyMessage(telegram_id)
+    quantity_state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_quantity'})
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '3', 'answer': quantity_message.answer, 'answer_document': quantity_message.answer_document, 'from_user': quantity_message.from_user})(), state=quantity_state, config=config))
+    quantity_updated = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert quantity_updated.quantity == 3.0
+    assert quantity_updated.total_price == round(3.0 * original_unit_price, 2)
+    assert InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount == round(3.0 * original_unit_price, 2)
+    assert quantity_message.documents
+
+    unit_price_message = _DummyMessage(telegram_id)
+    unit_price_state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_unit_price'})
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '50', 'answer': unit_price_message.answer, 'answer_document': unit_price_message.answer_document, 'from_user': unit_price_message.from_user})(), state=unit_price_state, config=config))
+    unit_price_updated = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    assert unit_price_updated.unit_price == 50.0
+    assert unit_price_updated.total_price == 150.0
+    assert InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount == 150.0
+    assert unit_price_message.documents
+
+
+def test_persisted_numeric_invalid_and_negative_are_rejected_without_db_mutation(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 780
+    db_path = tmp_path / 'edit-invalid.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(db_path=db_path, storage_dir=tmp_path, telegram_id=telegram_id, service_short_name='servis', service_display_name='Servis', item_description_raw=None)
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda **kwargs: None)
+    config = Config(bot_token='token', openai_api_key='key', openai_stt_model='whisper-1', openai_llm_model='gpt-4o', debug_invoice_transparency=False, db_path=db_path, storage_dir=tmp_path)
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    before = (item.quantity, item.unit_price, item.total_price, InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount)
+
+    for value in ['text', '-1']:
+        message = _DummyMessage(telegram_id)
+        state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_total_amount'})
+        asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': value, 'answer': message.answer, 'from_user': message.from_user})(), state=state, config=config))
+        after_item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+        after_invoice_total = InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount
+        assert (after_item.quantity, after_item.unit_price, after_item.total_price, after_invoice_total) == before
+        assert message.answers[-1] == 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.'
+
+
+def test_persisted_total_edit_rejects_quantity_not_positive(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 781
+    db_path = tmp_path / 'edit-total-qty-zero.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(db_path=db_path, storage_dir=tmp_path, telegram_id=telegram_id, service_short_name='servis', service_display_name='Servis', item_description_raw=None)
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', lambda **kwargs: None)
+    config = Config(bot_token='token', openai_api_key='key', openai_stt_model='whisper-1', openai_llm_model='gpt-4o', debug_invoice_transparency=False, db_path=db_path, storage_dir=tmp_path)
+    item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
+    InvoiceService(db_path).update_item_financials(item_id=int(item.id), quantity=0.0, unit_price=float(item.unit_price), total_price=float(item.total_price))
+
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_total_amount'})
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '50', 'answer': message.answer, 'from_user': message.from_user})(), state=state, config=config))
+    assert message.answers[-1] == 'Množstvo položky musí byť väčšie ako 0.'
 
 
 def test_single_item_default_targeting_is_applied_on_edit_entry(tmp_path: Path) -> None:

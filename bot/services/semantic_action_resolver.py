@@ -188,6 +188,14 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         return _UNKNOWN
 
     if context_name == 'invoice_edit_item_action':
+        if 'edit_item_quantity' in allowed and tokens.intersection({'mnozstvo', 'množstvo', 'quantity', 'qty'}):
+            return 'edit_item_quantity'
+        if 'edit_item_unit_price' in allowed and tokens.intersection(
+            {'cena', 'cenu', 'ціна', 'unit', 'price', 'mj', 'm.j', 'jednotku', 'jednotka', 'odinicu', 'одиницю'}
+        ):
+            return 'edit_item_unit_price'
+        if 'edit_item_total_amount' in allowed and tokens.intersection({'suma', 'sumu', 'spolu', 'total', 'amount'}):
+            return 'edit_item_total_amount'
         if 'clear_item_details' in allowed and tokens.intersection(
             {'vymazat', 'vymazať', 'zmazat', 'zmazať', 'odstranit', 'odstrániť', 'clear', 'delete'}
         ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznámka'}):

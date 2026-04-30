@@ -1,5 +1,18 @@
 # PROJECT_LOG
 
+## 2026-04-30 — Session 058 — Item-level numeric edits inside `upraviť položku`
+
+Summary:
+- Extended bounded item action menu with numeric operations: `edit_item_quantity`, `edit_item_unit_price`, `edit_item_total_amount`.
+- Added stage-aware numeric value handler for both draft and persisted edit backends under existing `upraviť položku` flow.
+- Added strict numeric parser for bounded value input (`1500`, `1500,50`, `1500.50`, `2`, `2,5`) with fail-loud fallback prompt.
+- Added deterministic arithmetic semantics:
+  - quantity edit recalculates total using existing unit price;
+  - unit-price edit recalculates total using existing quantity;
+  - total edit recalculates unit price with guard `quantity > 0`.
+- Added persisted backend updates for invoice item financial fields + invoice total recomputation before PDF rebuild.
+- Updated LLM/action-contract docs and in-action registry status for item-level numeric operations.
+
 ## 2026-04-30 — Session 057 — Existing invoice summary preview before persisted edit-flow
 
 Summary:
