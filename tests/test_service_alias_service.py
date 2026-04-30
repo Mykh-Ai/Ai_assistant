@@ -48,7 +48,22 @@ class ServiceAliasServiceTests(unittest.TestCase):
         )
 
         resolved = service_name_service.resolve_service_display_name(supplier_id, 'opravy')
-        self.assertEqual(resolved, 'opravy vyhradených technických zariadení elektrických')
+        self.assertEqual(resolved, 'Opravy vyhradených technických zariadení elektrických')
+
+    def test_electrical_repair_title_is_stored_as_correct_slovak_variant(self) -> None:
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
+
+        service_name_service.create_mapping(
+            supplier_id=supplier_id,
+            service_short_name='opravy',
+            service_display_name='opravy vyhradenych technickych zariadeni elektrickych',
+        )
+
+        [mapping] = service_name_service.list_mappings(supplier_id)
+        self.assertEqual(
+            mapping.service_display_name,
+            'Opravy vyhradených technických zariadení elektrických',
+        )
 
     def test_service_short_name_resolution_fallback_when_missing(self) -> None:
         _, _, service_name_service, supplier_id = self._bootstrap_services()

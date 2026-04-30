@@ -1,5 +1,19 @@
 # PROJECT_LOG
 
+## 2026-04-30 — Session 055 — Normalize electrical repair service display title
+
+### Goal
+Fix FakturaBot invoice text generation so the supplier service alias/canonical layer uses the correct Slovak display title for electrical reserved technical device repairs.
+
+### Changes
+- updated `ServiceAliasService` to normalize the known service display title to `Opravy vyhradených technických zariadení elektrických`;
+- applied the normalization on `create_mapping(...)`, `list_mappings(...)`, and `resolve_service_display_name(...)` so both new saves and existing lower-case/no-diacritic records render through the corrected title;
+- added focused regression coverage for storing and resolving the corrected Slovak variant.
+
+### Decision
+- No schema migration or new service-alias flow was added.
+- Existing supplier alias mappings remain the source of truth; this is a narrow canonical-title normalization for one confirmed Slovak service phrase.
+
 ## 2026-04-26 — Session 054 — Preview-stage draft edit-flow implementation
 
 ### Goal
