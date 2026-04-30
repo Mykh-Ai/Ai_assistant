@@ -106,6 +106,7 @@ class InvoiceStates(StatesGroup):
     waiting_edit_invoice_date_value = State()
     waiting_edit_service_value = State()
     waiting_edit_description_value = State()
+    waiting_edit_item_numeric_value = State()
 
 
 _SLOT_SERVICE = 'service_term'
@@ -120,6 +121,9 @@ _EDIT_ITEM_OPERATION_REPLACE_SERVICE = 'replace_service'
 _EDIT_ITEM_OPERATION_REPLACE_MAIN_DESCRIPTION = 'replace_main_description'
 _EDIT_ITEM_OPERATION_ADD_DETAILS = 'add_item_details'
 _EDIT_ITEM_OPERATION_CLEAR_DETAILS = 'clear_item_details'
+_EDIT_ITEM_OPERATION_QUANTITY = 'edit_item_quantity'
+_EDIT_ITEM_OPERATION_UNIT_PRICE = 'edit_item_unit_price'
+_EDIT_ITEM_OPERATION_TOTAL_AMOUNT = 'edit_item_total_amount'
 _EDIT_INVOICE_OPERATION_NUMBER = 'edit_invoice_number'
 _EDIT_INVOICE_OPERATION_DATE = 'edit_invoice_date'
 _EDIT_INVOICE_OPERATION_ISSUE_DATE = 'edit_invoice_issue_date'
@@ -564,6 +568,9 @@ async def _resolve_item_edit_action(*, config: Config, user_input_text: str) -> 
             _EDIT_ITEM_OPERATION_REPLACE_MAIN_DESCRIPTION,
             _EDIT_ITEM_OPERATION_ADD_DETAILS,
             _EDIT_ITEM_OPERATION_CLEAR_DETAILS,
+            _EDIT_ITEM_OPERATION_QUANTITY,
+            _EDIT_ITEM_OPERATION_UNIT_PRICE,
+            _EDIT_ITEM_OPERATION_TOTAL_AMOUNT,
             _EDIT_ITEM_OPERATION_UNKNOWN,
         ],
         user_input_text=user_input_text,
@@ -610,8 +617,19 @@ def _invoice_date_prompt_for_operation(operation: str) -> str:
 def _item_edit_actions_prompt() -> str:
     return (
         'Vyberte úpravu položky: napíšte `zmeniť službu`, `nový opis položky`, '
-        '`pridať detaily k položke` alebo `vymazať detaily položky`.'
+        '`pridať detaily k položke`, `vymazať detaily položky`, `upraviť množstvo`, '
+        '`upraviť cenu za m.j.` alebo `upraviť sumu položky`.'
     )
+
+
+def _parse_strict_numeric_input(value: str) -> float | None:
+    candidate = value.strip().replace(' ', '').replace(',', '.')
+    if not candidate or not re.fullmatch(r'\d+(?:\.\d+)?', candidate):
+        return None
+    try:
+        return float(candidate)
+    except ValueError:
+        return None
 
 
 def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict[str, object]]:
@@ -2933,6 +2951,20 @@ async def invoice_edit_item_action(message: Message, state: FSMContext, config: 
         await state.set_state(InvoiceStates.waiting_edit_description_value)
         await message.answer('Napíšte detaily k položke.')
         return
+    if operation in {
+        _EDIT_ITEM_OPERATION_QUANTITY,
+        _EDIT_ITEM_OPERATION_UNIT_PRICE,
+        _EDIT_ITEM_OPERATION_TOTAL_AMOUNT,
+    }:
+        await state.update_data(edit_item_action_mode=operation)
+        await state.set_state(InvoiceStates.waiting_edit_item_numeric_value)
+        if operation == _EDIT_ITEM_OPERATION_QUANTITY:
+            await message.answer('Napíšte nové množstvo položky (napr. 2 alebo 2,5).')
+        elif operation == _EDIT_ITEM_OPERATION_UNIT_PRICE:
+            await message.answer('Napíšte novú cenu za m.j. (napr. 1500 alebo 1500,50).')
+        else:
+            await message.answer('Napíšte novú sumu položky (napr. 3000 alebo 3000,50).')
+        return
 
     if state_data.get('edit_stage') == 'draft':
         draft = state_data.get('invoice_draft')
@@ -3393,6 +3425,106 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
             state=state,
             success_text=success_text,
         )
+
+
+@router.message(InvoiceStates.waiting_edit_item_numeric_value)
+async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, config: Config) -> None:
+    raw_value = (message.text or '').strip()
+    parsed_value = _parse_strict_numeric_input(raw_value)
+    if parsed_value is None:
+        await message.answer('Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.')
+        return
+
+    state_data = await state.get_data()
+    action_mode = state_data.get('edit_item_action_mode')
+    if action_mode not in {
+        _EDIT_ITEM_OPERATION_QUANTITY,
+        _EDIT_ITEM_OPERATION_UNIT_PRICE,
+        _EDIT_ITEM_OPERATION_TOTAL_AMOUNT,
+    }:
+        await state.set_state(InvoiceStates.waiting_edit_item_action)
+        await message.answer(f'Prosím, {_item_edit_actions_prompt().lower()}')
+        return
+
+    def _apply_values(quantity: float, unit_price: float, total_price: float) -> tuple[float, float, float] | None:
+        if quantity <= 0 or unit_price < 0 or total_price < 0:
+            return None
+        return round(quantity, 4), round(unit_price, 2), round(total_price, 2)
+
+    success_text = 'Suma položky bola upravená.'
+    if state_data.get('edit_stage') == 'draft':
+        draft = state_data.get('invoice_draft')
+        target_index = state_data.get('edit_target_item_index')
+        if not isinstance(target_index, int):
+            target_index = state_data.get('edit_target_item_id')
+        if not isinstance(draft, dict) or not isinstance(target_index, int):
+            await state.clear()
+            await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+            return
+        item = _draft_item_at_index(draft, target_index)
+        if item is None:
+            await state.clear()
+            await message.answer('Položka na úpravu už nie je dostupná. Spustite /invoice znova.')
+            return
+        quantity = float(item.get('quantity') or 0)
+        unit_price = float(item.get('unit_price') or 0)
+        if action_mode == _EDIT_ITEM_OPERATION_QUANTITY:
+            applied = _apply_values(parsed_value, unit_price, parsed_value * unit_price)
+            success_text = 'Množstvo položky bolo upravené.'
+        elif action_mode == _EDIT_ITEM_OPERATION_UNIT_PRICE:
+            applied = _apply_values(quantity, parsed_value, quantity * parsed_value)
+            success_text = 'Cena za m.j. bola upravená.'
+        else:
+            if quantity <= 0:
+                await message.answer('Množstvo položky musí byť väčšie ako 0.')
+                return
+            applied = _apply_values(quantity, parsed_value / quantity, parsed_value)
+        if applied is None:
+            await message.answer('Hodnota musí byť nezáporná a množstvo väčšie ako 0.')
+            return
+        item['quantity'], item['unit_price'], item['amount'] = applied
+        await _show_updated_draft_preview(message=message, state=state, draft=draft, success_text=success_text)
+        return
+
+    invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
+    target_item_id = state_data.get('edit_target_item_id')
+    if not isinstance(invoice_id, int) or not isinstance(target_item_id, int):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+    invoice_service = InvoiceService(config.db_path)
+    item = next((it for it in invoice_service.get_items_by_invoice_id(invoice_id) if it.id == int(target_item_id)), None)
+    if item is None:
+        await state.clear()
+        await message.answer('Položka na úpravu už nie je dostupná. Spustite /invoice znova.')
+        return
+    quantity = float(item.quantity)
+    unit_price = float(item.unit_price)
+    if action_mode == _EDIT_ITEM_OPERATION_QUANTITY:
+        applied = _apply_values(parsed_value, unit_price, parsed_value * unit_price)
+        success_text = 'Množstvo položky bolo upravené.'
+    elif action_mode == _EDIT_ITEM_OPERATION_UNIT_PRICE:
+        applied = _apply_values(quantity, parsed_value, quantity * parsed_value)
+        success_text = 'Cena za m.j. bola upravená.'
+    else:
+        if quantity <= 0:
+            await message.answer('Množstvo položky musí byť väčšie ako 0.')
+            return
+        applied = _apply_values(quantity, parsed_value / quantity, parsed_value)
+    if applied is None:
+        await message.answer('Hodnota musí byť nezáporná a množstvo väčšie ako 0.')
+        return
+    new_quantity, new_unit_price, new_total = applied
+    invoice_service.update_item_financials(
+        item_id=int(target_item_id),
+        quantity=new_quantity,
+        unit_price=new_unit_price,
+        total_price=new_total,
+    )
+    invoice_service.update_invoice_total_amount(invoice_id=int(invoice_id))
+    rebuilt = await _rebuild_pdf_for_existing_invoice(message=message, state=state, config=config, invoice_id=int(invoice_id))
+    if rebuilt:
+        await _send_post_edit_approval_prompt(message=message, state=state, success_text=success_text)
 
 
 @router.message(InvoiceStates.waiting_edit_description_value)

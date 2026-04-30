@@ -369,6 +369,38 @@ class InvoiceService:
             )
             connection.commit()
 
+    def update_item_financials(
+        self,
+        *,
+        item_id: int,
+        quantity: float,
+        unit_price: float,
+        total_price: float,
+    ) -> None:
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                (
+                    'UPDATE invoice_item '
+                    'SET quantity = ?, unit_price = ?, total_price = ? '
+                    'WHERE id = ?'
+                ),
+                (quantity, unit_price, total_price, item_id),
+            )
+            connection.commit()
+
+    def update_invoice_total_amount(self, *, invoice_id: int) -> None:
+        with managed_connection(self._db_path) as connection:
+            aggregated_total = connection.execute(
+                'SELECT COALESCE(SUM(total_price), 0) AS total FROM invoice_item WHERE invoice_id = ?',
+                (invoice_id,),
+            ).fetchone()
+            total_amount = float((aggregated_total or [0])[0] or 0.0)
+            connection.execute(
+                'UPDATE invoice SET total_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (round(total_amount, 2), invoice_id),
+            )
+            connection.commit()
+
     def save_pdf_path(self, invoice_id: int, pdf_path: str) -> None:
         with managed_connection(self._db_path) as connection:
             connection.execute(

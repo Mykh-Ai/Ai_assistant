@@ -143,16 +143,16 @@ Canonical machine-facing operations:
 - `replace_service`
 - `edit_item_description`
 - `edit_item_quantity`
-- `edit_item_unit`
 - `edit_item_unit_price`
+- `edit_item_total_amount`
 - `unknown`
 
 Status map:
 - `replace_service` — **implemented** (bounded subflow runtime exists)
 - `edit_item_description` — **implemented** (bounded subflow runtime exists)
-- `edit_item_quantity` — **planned (not yet implemented)**
-- `edit_item_unit` — **planned (not yet implemented)**
-- `edit_item_unit_price` — **planned (not yet implemented)**
+- `edit_item_quantity` — **implemented** (bounded subflow runtime exists)
+- `edit_item_unit_price` — **implemented** (bounded subflow runtime exists)
+- `edit_item_total_amount` — **implemented** (bounded subflow runtime exists)
 
 Operation meaning highlights:
 1. **`replace_service`**
@@ -166,7 +166,7 @@ Operation meaning highlights:
    - this field is not canonical alias and does not mutate service dictionary,
    - supports description mutation modes: `set`, `replace`, `clear`.
 
-3. **`edit_item_quantity` / `edit_item_unit` / `edit_item_unit_price`**
+3. **`edit_item_quantity` / `edit_item_unit_price` / `edit_item_total_amount`**
    - update only respective item numeric/unit fields,
    - must preserve invoice arithmetic invariants and fail loud on non-recoverable conflicts,
    - are precision-sensitive and text-first for final value capture where ambiguity risk is high.
@@ -180,7 +180,7 @@ Operation meaning highlights:
 
 ### Precision-sensitive input policy
 
-- `item_description_raw`, `edit_item_quantity`, `edit_item_unit`, and `edit_item_unit_price` are precision-sensitive.
+- `item_description_raw`, `edit_item_quantity`, `edit_item_unit_price`, and `edit_item_total_amount` are precision-sensitive.
 - For voice-originated ambiguous values, bot must switch to bounded Slovak text prompt before final persistence.
 - No free guessing into stored precision fields.
 
@@ -194,7 +194,7 @@ Operation meaning highlights:
 ```json
 {
   "target_item_index": "<integer_like_or_unknown>",
-  "operation": "edit_invoice_number|edit_invoice_date|edit_invoice_contact|replace_service|edit_item_description|edit_item_quantity|edit_item_unit|edit_item_unit_price|unknown",
+  "operation": "edit_invoice_number|edit_invoice_date|edit_invoice_contact|replace_service|edit_item_description|edit_item_quantity|edit_item_unit_price|edit_item_total_amount|unknown",
   "value": "<candidate_value_or_unknown>"
 }
 ```

@@ -347,13 +347,12 @@ Canonical machine-facing operations:
 - `replace_service`
 - `edit_item_description`
 - `edit_item_quantity`
-- `edit_item_unit`
 - `edit_item_unit_price`
+- `edit_item_total_amount`
 - `unknown`
 
 Статус:
-- implemented: `replace_service`, `edit_item_description`;
-- planned (not yet implemented): `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`.
+- implemented: `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit_price`, `edit_item_total_amount`.
 
 #### 4.7.3 Операційна семантика item-level
 
@@ -374,7 +373,7 @@ Canonical machine-facing operations:
 - `replace`,
 - `clear`.
 
-**C) `edit_item_quantity` / `edit_item_unit` / `edit_item_unit_price`**
+**C) `edit_item_quantity` / `edit_item_unit_price` / `edit_item_total_amount`**
 - змінюють тільки відповідне поле item;
 - не повинні руйнувати arithmetic/business invariants;
 - при нерозв’язному конфлікті — fail loud + bounded clarification.
@@ -384,8 +383,8 @@ Canonical machine-facing operations:
 Precision-sensitive item fields:
 - `item_description_raw`
 - `edit_item_quantity`
-- `edit_item_unit`
 - `edit_item_unit_price`
+- `edit_item_total_amount`
 
 Правила:
 - precision-sensitive поля — text-first там, де voice може спотворити значення;
@@ -414,15 +413,15 @@ Machine-facing мінімальний bounded contract:
 - `value`
 
 Де:
-- `operation` ∈ {`edit_invoice_number`, `edit_invoice_issue_date`, `edit_invoice_delivery_date`, `edit_invoice_due_date`, `edit_invoice_date`, `edit_invoice_contact`, `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`, `unknown`};
+- `operation` ∈ {`edit_invoice_number`, `edit_invoice_issue_date`, `edit_invoice_delivery_date`, `edit_invoice_due_date`, `edit_invoice_date`, `edit_invoice_contact`, `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit_price`, `edit_item_total_amount`, `unknown`};
 - `target_item_index` обов’язковий для item-level операцій (для invoice-level ігнорується/`unknown`);
 - `value` завжди candidate-only; Python робить final validation/execution або fail loud.
 
 #### 4.7.7 Explicit implementation boundary for this docs map
 
 - Цей docs patch фіксує єдину карту повного `edit_invoice` scope для майбутніх runtime патчів.
-- У runtime досі не реалізовані: `edit_invoice_contact`, `edit_item_quantity`, `edit_item_unit`, `edit_item_unit_price`.
-- Поточний runtime coverage у межах `upraviť`: `edit_invoice_number`, `edit_invoice_issue_date`, `edit_invoice_delivery_date`, `edit_invoice_due_date`, `edit_invoice_date` (clarification), `replace_service`, `edit_item_description`.
+- У runtime досі не реалізована: `edit_invoice_contact`.
+- Поточний runtime coverage у межах `upraviť`: `edit_invoice_number`, `edit_invoice_issue_date`, `edit_invoice_delivery_date`, `edit_invoice_due_date`, `edit_invoice_date` (clarification), `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit_price`, `edit_item_total_amount`.
 - Для invoice-level date edits застосовується bounded LLM normalization contract:
   - input: natural-language/text/STT date phrase;
   - output: тільки `DD.MM.RRRR` або `unknown`;
