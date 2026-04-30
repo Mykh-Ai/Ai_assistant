@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-04-30 — Session 057 — Existing invoice summary preview before persisted edit-flow
+
+Summary:
+- Follow-up hardening for explicit `edit_existing_invoice`: when exactly one persisted invoice is resolved, bot now sends a current Slovak invoice summary before entering edit menu.
+- Summary includes invoice number, customer, dates, item lines (description/detail), quantity, unit price, item total, and invoice total.
+- If persisted `pdf_path` exists and file is available, bot sends current PDF as optional document preview; missing file/path does not fail flow.
+- After summary/PDF preview, runtime continues into existing `start_invoice_edit_flow(...)` backend without creating a new draft and without post-PDF menu restoration.
+
+## 2026-04-30 — Session 056 — Explicit existing-invoice edit entrypoint by number reference
+
+Summary:
+- Added explicit top-level action `edit_existing_invoice` for persisted invoice editing by command like `upraviť faktúru 15`.
+- Kept preview-stage draft `upraviť` flow unchanged; no restoration of post-PDF menu after each generation.
+- Implemented supplier-scoped invoice reference resolution in Python/DB layer (LLM does not query DB): short numeric suffix and full number both supported, with deterministic ambiguity handling.
+
+Runtime changes:
+- `process_invoice_text(...)` now accepts and handles `edit_existing_invoice` as explicit entrypoint.
+- Added extraction of numeric invoice reference from user text and supplier-scoped lookup:
+  - 0 matches => `Faktúru s týmto číslom som nenašiel.`
+  - >1 matches => `Našiel som viac faktúr. Napíšte celé číslo faktúry.`
+  - 1 match => set `last_invoice_id`/`edit_invoice_id` and start persisted `start_invoice_edit_flow(...)`.
+- Added `InvoiceService.find_invoices_for_supplier_by_number_reference(...)`.
+
+Tests:
+- Added intent routing assertion for `edit_existing_invoice`.
+- Added persisted lookup happy-path test for short reference `15` -> invoice `20260015`.
+- Added ambiguity and supplier-scope guard test.
+
 ## 2026-04-30 — Session 055 — Normalize electrical repair service display title
 
 ### Goal

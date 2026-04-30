@@ -249,6 +249,42 @@ class InvoiceService:
             pdf_path=row['pdf_path'],
         )
 
+    def find_invoices_for_supplier_by_number_reference(
+        self, *, supplier_telegram_id: int, invoice_reference: str
+    ) -> list[InvoiceRecord]:
+        normalized_reference = ''.join(ch for ch in invoice_reference.strip() if ch.isdigit())
+        if not normalized_reference:
+            return []
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                (
+                    'SELECT id, supplier_telegram_id, contact_id, invoice_number, issue_date, delivery_date, '
+                    'due_date, due_days, total_amount, currency, status, pdf_path '
+                    'FROM invoice '
+                    'WHERE supplier_telegram_id = ? AND invoice_number LIKE ? '
+                    'ORDER BY invoice_number DESC'
+                ),
+                (supplier_telegram_id, f'%{normalized_reference}'),
+            ).fetchall()
+        return [
+            InvoiceRecord(
+                id=row['id'],
+                supplier_telegram_id=row['supplier_telegram_id'],
+                contact_id=row['contact_id'],
+                invoice_number=row['invoice_number'],
+                issue_date=row['issue_date'],
+                delivery_date=row['delivery_date'],
+                due_date=row['due_date'],
+                due_days=row['due_days'],
+                total_amount=row['total_amount'],
+                currency=row['currency'],
+                status=row['status'],
+                pdf_path=row['pdf_path'],
+            )
+            for row in rows
+        ]
+
     def is_invoice_number_available(self, *, invoice_number: str, exclude_invoice_id: int | None = None) -> bool:
         with managed_connection(self._db_path) as connection:
             if exclude_invoice_id is None:

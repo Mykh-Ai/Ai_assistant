@@ -86,6 +86,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
 
         if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'відправ', 'отправь'}):
             return 'send_invoice'
+        if 'edit_existing_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить', 'управить'}):
+            return 'edit_existing_invoice'
         if 'edit_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить'}):
             return 'edit_invoice'
         if 'create_invoice' in allowed and tokens.intersection(create_invoice_triggers):
