@@ -446,6 +446,7 @@ Machine-facing мінімальний bounded contract:
 
 Один і той самий підхід має уніфікувати:
 - top-level action resolution (`create_invoice`, `add_contact`, `send_invoice`, `edit_invoice`),
+- top-level action resolution (`create_invoice`, `add_contact`, `send_invoice`, `edit_invoice`, `edit_existing_invoice`),
 - reply-state resolution (`ano`/`nie`, `schvalit`/`upravit`/`zrusit`),
 - value/slot canonicalization (наприклад: `oprava`, `revizia`, `servis`).
 
@@ -639,6 +640,30 @@ Runtime follow-up areas (future patches):
 Доступні дії:
 - `schváliť`
 - `upraviť`
+
+### 6.3 Explicit edit of existing persisted invoice by number
+
+- Existing/finalized invoice edit is entered only by explicit command semantics (`upraviť faktúru 15`, `uprav faktúru číslo 20260015`, etc.).
+- LLM responsibility is bounded to intent detection + extracting number reference text; LLM must not query DB.
+- Python normalizes reference and searches supplier-scoped invoices by numeric suffix (`15` -> `...0015`) or full number.
+- If 0 matches: `Faktúru s týmto číslom som nenašiel.`
+- If >1 matches: `Našiel som viac faktúr. Napíšte celé číslo faktúry.`
+- If exactly 1 match:
+  1) load current persisted invoice data;
+  2) show current invoice summary before edit menu;
+  3) optionally send current PDF preview when stored `pdf_path` file is available;
+  4) then open persisted edit-flow (`start_invoice_edit_flow`) without creating new draft.
+- Current invoice summary must include:
+  - invoice number,
+  - customer/contact,
+  - dates (issue/delivery/due),
+  - item lines,
+  - quantities,
+  - unit prices,
+  - item totals,
+  - invoice total.
+- Missing `pdf_path` or missing PDF file must not block entering persisted edit-flow.
+- This does not restore post-PDF menu after each new invoice; explicit entrypoint only.
 
 ---
 

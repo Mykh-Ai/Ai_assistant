@@ -41,10 +41,55 @@ logger = logging.getLogger(__name__)
 
 _CREATE_INVOICE_INTENT = 'create_invoice'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
+_EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
 _SEND_INVOICE_INTENT = 'send_invoice'
 _ADD_CONTACT_INTENT = 'add_contact'
 _ADD_SERVICE_ALIAS_INTENT = 'add_service_alias'
 _UNKNOWN_INVOICE_INTENT = 'unknown'
+
+
+def _extract_invoice_reference(text: str) -> str | None:
+    matches = re.findall(r'\d+', text)
+    if not matches:
+        return None
+    return matches[-1]
+
+
+def _format_existing_invoice_summary(
+    *,
+    invoice_number: str,
+    customer_name: str,
+    issue_date: str,
+    delivery_date: str,
+    due_date: str,
+    items: list[object],
+    total_amount: float,
+    currency: str,
+) -> str:
+    lines = [
+        'Našiel som túto faktúru na úpravu:',
+        f'Číslo faktúry: {invoice_number}',
+        f'Odberateľ: {customer_name}',
+        f'Dátum vystavenia: {issue_date}',
+        f'Dátum dodania: {delivery_date}',
+        f'Dátum splatnosti: {due_date}',
+        '',
+        'Položky:',
+    ]
+    for idx, item in enumerate(items, start=1):
+        description = str(getattr(item, 'description_normalized', '') or getattr(item, 'description_raw', ''))
+        detail = str(getattr(item, 'item_description_raw', '') or '').strip()
+        quantity = float(getattr(item, 'quantity', 0))
+        unit = str(getattr(item, 'unit', ''))
+        unit_price = float(getattr(item, 'unit_price', 0))
+        total_price = float(getattr(item, 'total_price', 0))
+        lines.append(f'{idx}) {description}')
+        if detail:
+            lines.append(f'   Detail: {detail}')
+        lines.append(f'   Množstvo: {quantity:g} {unit} × {unit_price:.2f} {currency} = {total_price:.2f} {currency}')
+    lines.append('')
+    lines.append(f'Celkom: {float(total_amount):.2f} {currency}')
+    return '\n'.join(lines)
 
 
 class InvoiceStates(StatesGroup):
@@ -1697,6 +1742,7 @@ async def process_invoice_text(
             _ADD_CONTACT_INTENT,
             _ADD_SERVICE_ALIAS_INTENT,
             _SEND_INVOICE_INTENT,
+            _EDIT_EXISTING_INVOICE_INTENT,
             _EDIT_INVOICE_INTENT,
             _UNKNOWN_INVOICE_INTENT,
         ],
@@ -1720,6 +1766,11 @@ async def process_invoice_text(
                 ],
                 'not_this': ['create new invoice draft', 'edit existing invoice'],
             },
+            _EDIT_EXISTING_INVOICE_INTENT: {
+                'meaning': 'user wants to explicitly edit already created invoice by number',
+                'positive_examples': ['upraviť faktúru 15', 'редагувати фактуру 15', 'uprav faktúru číslo 20260015'],
+                'not_this': ['edit current draft preview'],
+            },
         },
     )
     if top_level_intent == _ADD_CONTACT_INTENT:
@@ -1734,6 +1785,65 @@ async def process_invoice_text(
             message=message,
             state=state,
             config=config,
+        )
+        return
+    if top_level_intent == _EDIT_EXISTING_INVOICE_INTENT:
+        if message.from_user is None:
+            await message.answer('Nepodarilo sa identifikovať používateľa.')
+            return
+        invoice_reference = _extract_invoice_reference(invoice_text)
+        if not invoice_reference:
+            await message.answer('Napíšte číslo faktúry, ktorú chcete upraviť.')
+            return
+        invoice_matches = InvoiceService(config.db_path).find_invoices_for_supplier_by_number_reference(
+            supplier_telegram_id=message.from_user.id,
+            invoice_reference=invoice_reference,
+        )
+        if not invoice_matches:
+            await message.answer('Faktúru s týmto číslom som nenašiel.')
+            return
+        if len(invoice_matches) > 1:
+            await message.answer('Našiel som viac faktúr. Napíšte celé číslo faktúry.')
+            return
+        matched_invoice = invoice_matches[0]
+        contact_name = 'Neznámy odberateľ'
+        if matched_invoice.contact_id is not None:
+            contact = ContactService(config.db_path).get_by_id(matched_invoice.contact_id)
+            if contact is not None:
+                contact_name = contact.name
+        matched_items = InvoiceService(config.db_path).get_items_by_invoice_id(matched_invoice.id)
+        await message.answer(
+            _format_existing_invoice_summary(
+                invoice_number=matched_invoice.invoice_number,
+                customer_name=contact_name,
+                issue_date=matched_invoice.issue_date,
+                delivery_date=matched_invoice.delivery_date,
+                due_date=matched_invoice.due_date,
+                items=matched_items,
+                total_amount=float(matched_invoice.total_amount),
+                currency=matched_invoice.currency,
+            )
+        )
+        if matched_invoice.pdf_path:
+            pdf_path = Path(matched_invoice.pdf_path)
+            if pdf_path.exists():
+                try:
+                    await message.answer_document(
+                        FSInputFile(pdf_path),
+                        caption=f'Aktuálne PDF faktúry {matched_invoice.invoice_number}.',
+                    )
+                except Exception:
+                    logger.exception('Failed to send existing invoice PDF preview before edit flow')
+        await state.update_data(
+            last_invoice_id=matched_invoice.id,
+            last_invoice_number=matched_invoice.invoice_number,
+            edit_invoice_id=matched_invoice.id,
+        )
+        await start_invoice_edit_flow(
+            message=message,
+            state=state,
+            config=config,
+            invoice_id=matched_invoice.id,
         )
         return
     if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT, _UNKNOWN_INVOICE_INTENT}:

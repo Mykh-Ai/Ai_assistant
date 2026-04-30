@@ -14,6 +14,7 @@ from bot.handlers.invoice import (
     process_invoice_text,
 )
 from bot.services.db import init_db
+from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierProfile, SupplierService
 from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
@@ -26,9 +27,13 @@ class _DummyMessage:
         self.update_id = 1
         self.from_user = None
         self.answers: list[str] = []
+        self.documents: list[str] = []
 
     async def answer(self, text: str) -> None:
         self.answers.append(text)
+
+    async def answer_document(self, document, caption: str | None = None) -> None:
+        self.documents.append(caption or '')
 
 
 class _DummyState:
@@ -123,12 +128,12 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_existing_invoice', 'edit_invoice', 'unknown'],
             user_input_text='upraviť fakturu 20260001',
             api_key=None,
             model='gpt-4o',
         )
-    ) == 'edit_invoice'
+    ) == 'edit_existing_invoice'
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
@@ -195,6 +200,120 @@ def test_process_invoice_text_routes_add_service_alias_to_existing_service_flow(
 
     assert calls == ['service_flow']
     assert message.answers == []
+
+
+def test_process_invoice_text_edit_existing_invoice_by_short_number(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    SupplierService(config.db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=111,
+            name='S',
+            ico='1',
+            dic='1',
+            ic_dph='',
+            address='A',
+            iban='SK1',
+            swift='ABCD',
+            email='a@a.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    invoice_id = InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        issue_date='2026-04-30',
+        delivery_date='2026-04-30',
+        due_date='2026-05-14',
+        due_days=14,
+        total_amount=10,
+        currency='EUR',
+        status='draft',
+        items=[CreateInvoiceItemPayload(description_raw='x', description_normalized='x', item_description_raw='', quantity=1, unit='ks', unit_price=10, total_price=10)],
+        invoice_number='20260015',
+    )
+    message = _DummyMessage('upraviť faktúru 15')
+    message.from_user = type('U', (), {'id': 111})()
+    state = _DummyState()
+    calls: list[int] = []
+
+    async def _resolver(**kwargs):
+        return 'edit_existing_invoice'
+
+    async def _start_edit(**kwargs):
+        calls.append(kwargs['invoice_id'])
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.start_invoice_edit_flow', _start_edit)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    assert calls == [invoice_id]
+    preview = message.answers[0]
+    assert 'Číslo faktúry: 20260015' in preview
+    assert 'Dátum vystavenia: 2026-04-30' in preview
+    assert 'Dátum dodania: 2026-04-30' in preview
+    assert 'Dátum splatnosti: 2026-05-14' in preview
+    assert 'x' in preview
+    assert 'Množstvo: 1 ks × 10.00 EUR = 10.00 EUR' in preview
+    assert 'Celkom: 10.00 EUR' in preview
+
+
+def test_process_invoice_text_edit_existing_invoice_ambiguity_and_supplier_scope(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = InvoiceService(config.db_path)
+    SupplierService(config.db_path).create_or_replace(SupplierProfile(telegram_id=111, name='S1', ico='1', dic='1', ic_dph='', address='A', iban='SK1', swift='ABCD', email='a@a.com', smtp_host=None, smtp_user=None, smtp_pass=None, days_due=14))
+    SupplierService(config.db_path).create_or_replace(SupplierProfile(telegram_id=222, name='S2', ico='2', dic='2', ic_dph='', address='B', iban='SK2', swift='EFGH', email='b@b.com', smtp_host=None, smtp_user=None, smtp_pass=None, days_due=14))
+    item = CreateInvoiceItemPayload(description_raw='x', description_normalized='x', item_description_raw='', quantity=1, unit='ks', unit_price=10, total_price=10)
+    common = dict(contact_id=1, issue_date='2026-04-30', delivery_date='2026-04-30', due_date='2026-05-14', due_days=14, total_amount=10, currency='EUR', status='draft', items=[item])
+    service.create_invoice_with_items(supplier_telegram_id=111, invoice_number='20250015', **common)
+    service.create_invoice_with_items(supplier_telegram_id=111, invoice_number='20260015', **common)
+    service.create_invoice_with_items(supplier_telegram_id=222, invoice_number='20270015', **common)
+    message = _DummyMessage('upraviť faktúru 15')
+    message.from_user = type('U', (), {'id': 111})()
+    state = _DummyState()
+    async def _resolver(**kwargs):
+        return 'edit_existing_invoice'
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    assert message.answers[-1] == 'Našiel som viac faktúr. Napíšte celé číslo faktúry.'
+
+
+def test_edit_existing_invoice_missing_pdf_does_not_fail(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = InvoiceService(config.db_path)
+    SupplierService(config.db_path).create_or_replace(SupplierProfile(telegram_id=111, name='S1', ico='1', dic='1', ic_dph='', address='A', iban='SK1', swift='ABCD', email='a@a.com', smtp_host=None, smtp_user=None, smtp_pass=None, days_due=14))
+    item = CreateInvoiceItemPayload(description_raw='x', description_normalized='x', item_description_raw='', quantity=1, unit='ks', unit_price=10, total_price=10)
+    invoice_id = service.create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        issue_date='2026-04-30',
+        delivery_date='2026-04-30',
+        due_date='2026-05-14',
+        due_days=14,
+        total_amount=10,
+        currency='EUR',
+        status='draft',
+        items=[item],
+        invoice_number='20260015',
+    )
+    service.save_pdf_path(invoice_id, str(tmp_path / 'missing.pdf'))
+    message = _DummyMessage('upraviť faktúru 15')
+    message.from_user = type('U', (), {'id': 111})()
+    state = _DummyState()
+    called: list[int] = []
+    async def _resolver(**kwargs):
+        return 'edit_existing_invoice'
+    async def _start_edit(**kwargs):
+        called.append(kwargs['invoice_id'])
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.start_invoice_edit_flow', _start_edit)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    assert called == [invoice_id]
+    assert message.documents == []
 
 
 def test_state_semantic_resolver_actions() -> None:
