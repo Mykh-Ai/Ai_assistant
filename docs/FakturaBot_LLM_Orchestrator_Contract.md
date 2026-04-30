@@ -49,11 +49,13 @@ Example allowed actions (defined by Python per turn):
 - `add_contact`
 - `send_invoice`
 - `edit_invoice`
+- `edit_existing_invoice`
 
 LLM must return one of allowed actions or `unknown`.
 
 `edit_invoice` remains a **reserved top-level action token**.
 Runtime editing is defined as bounded in-action/subflow operations under invoice flow (`upraviť`), not as a separate top-level executor.
+`edit_existing_invoice` is an explicit top-level action for editing an already created/persisted invoice by number reference; LLM only resolves intent + reference text, Python performs DB lookup with supplier scope and ambiguity handling.
 
 ---
 

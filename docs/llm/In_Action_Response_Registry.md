@@ -35,6 +35,7 @@ This is expected and should be documented as a manual command flow, not as a mis
 ## E) Reserved/partial contract notes for `edit_invoice` map
 
 - `edit_invoice` is a reserved top-level token; runtime behavior is bounded in-action/subflow edits.
+- `edit_existing_invoice` is explicit top-level action for persisted invoice edit by number reference; DB lookup and supplier scoping are Python-only.
 - Invoice-level operations are documented separately from item-level operations.
 - Invoice-level mapped operations:
   - implemented: `edit_invoice_number`
