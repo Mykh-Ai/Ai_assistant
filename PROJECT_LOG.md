@@ -1,5 +1,26 @@
 # PROJECT_LOG
 
+## 2026-05-01 — Session 062 — Document Intake Phase 1 MVP implementation plan
+
+Summary:
+- Added `docs/Document_Intake_MVP_Implementation_Plan.md` as a docs-only Phase 1 plan for future receipt/incoming-invoice intake.
+- Defined accepted inputs, classification, LMM JSON contract, Python validation, file naming, yearly/monthly storage target, Telegram preview/confirm flow, DB/storage options, and required tests.
+- Explicitly kept bank matching, Google Drive sync, Zevs runtime profile, and multi-workspace runtime out of scope.
+- No runtime code, DB schema, existing invoice storage, `pdf_path`, or supplier profile behavior was changed.
+
+## 2026-05-01 — Session 061 — Docs-first OfficeFlow architecture foundation
+
+Summary:
+- Created docs-first OfficeFlow framing with FakturaBot defined as the current outgoing invoices module.
+- Added a non-runtime OfficeFlow storage model proposal separating persistent master data from yearly accounting documents.
+- Added a future Document Intake module proposal for receipts, incoming invoices, contracts, and bank statements.
+- Minimally updated README, FakturaBot TZ, and LLM orchestrator contract with OfficeFlow cross-links and explicit non-runtime boundaries.
+- No runtime code, DB schema, `pdf_path`, supplier SZČO profile, invoice flow, or existing storage files were changed.
+
+Risks / follow-up:
+- Future storage migration requires backup, DB/file compatibility plan, and invoice PDF path regression tests.
+- Future Document Intake actions must be added docs-first to the action registry before runtime implementation.
+
 ## 2026-04-30 — Session 060 — Explicit hard-delete flow for persisted invoices
 
 Summary:

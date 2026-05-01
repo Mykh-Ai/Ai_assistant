@@ -23,6 +23,8 @@ FakturaBot — це Telegram-бот, який допомагає створюв�
 - запису клієнтів,
 - сервісних повідомлень.
 
+Docs-first архітектурний напрямок для цієї ширшої моделі зафіксовано як **OfficeFlow**: umbrella-система для документних workflows малого бізнесу. У цій моделі FakturaBot залишається модулем outgoing invoices. Поточне ТЗ не змінює runtime invoice flow, supplier SZČO profile, `pdf_path`, DB schema або поточну структуру `storage/invoices/`.
+
 ### 1.1 Стартова бізнес-модель
 
 На першому етапі FakturaBot продається не як універсальна SaaS-платформа, а як:
@@ -100,6 +102,8 @@ AI не є джерелом істини. У v2.0 контракт AI базує
 - окремий prompt/context,
 - окремий словник скорочень,
 - окремі сценарії.
+
+OfficeFlow framing додає майбутні поняття `workspace` і `supplier profile` як документаційну модель, але не реалізує multi-workspace або multi-supplier runtime у межах поточного FakturaBot MVP. Поточний робочий supplier profile для SZČO Mykhailo Alieksieienko залишається чинним.
 
 ### 2.3 Стек технологій
 
@@ -750,6 +754,8 @@ SMTP налаштовується при онбордингу (Gmail App Passwor
 - можливість перевірити витягнуті дані пізніше,
 - юридичне підтвердження реквізитів.
 
+OfficeFlow storage proposal розглядає договори як long-living workspace/master-data documents, а не як документи, обов’язково прив’язані до одного року. Це поки лише proposal; поточний runtime і надалі використовує `storage/contracts/`.
+
 ---
 
 ## 7. Витяг контрагента з договору
@@ -892,14 +898,21 @@ Python повинен перевіряти:
 - validation layer,
 - SQLite storage.
 
+У майбутньому OfficeFlow framing цей набір відповідає модулю **FakturaBot / Outgoing Invoices**.
+
 ### 9.2 Відкладені модулі
 
 Модулі, які не є обов’язковими для v1.0:
 - Google Drive,
 - external company lookup,
 - OCR pipeline,
+- Document Intake / expenses,
+- bank statement intake,
+- document categories,
 - e-faktura 2027,
 - extended reports.
+
+Document Intake описується окремо як docs-first future module для bločkov, prijatých faktúr, zmlúv і bankových výpisov. Він не реалізований у поточному runtime.
 
 ---
 
@@ -940,6 +953,8 @@ faktura-bot/
 ├── requirements.txt
 └── .env.example
 ```
+
+Майбутня OfficeFlow storage model описана в `docs/OfficeFlow_Storage_Model_Proposal.md` як non-runtime proposal. Вона не переносить існуючі PDF, не змінює `pdf_path` і не створює yearly folders у поточному коді.
 
 ---
 

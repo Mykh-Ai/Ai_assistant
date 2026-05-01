@@ -5,6 +5,8 @@
 Перший реалізований кейс у цьому репозиторії — **FakturaBot**:
 бот для створення фактур з голосу, тексту та договору.
 
+Docs-first архітектурний напрямок: **OfficeFlow** як майбутня umbrella-система для документних workflows малого бізнесу, де FakturaBot залишається модулем outgoing invoices. Поточний runtime не змінено: OfficeFlow storage/workspace модель описана лише як proposal.
+
 ## Ідея
 
 Це не масовий SaaS на старті.
@@ -72,6 +74,9 @@ FakturaBot — перша вітрина цього підходу.
 
 ## Структура документації
 
+- `docs/OfficeFlow_Architecture_Framing.md` — docs-first framing OfficeFlow як umbrella-системи
+- `docs/OfficeFlow_Storage_Model_Proposal.md` — non-runtime proposal для майбутнього storage/workspace layout
+- `docs/Document_Intake_Module_Proposal.md` — docs-first proposal майбутнього Document Intake модуля
 - `docs/TZ_FakturaBot.md` — головне ТЗ
 - `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md` — rollout/implementation план (що/коли/в якій фазі)
 - `docs/FakturaBot_LLM_Orchestrator_Contract.md` — детальний LLM/orchestrator контракт (як саме AI шар взаємодіє з Python)
@@ -109,6 +114,8 @@ FakturaBot використовує **Bounded Semantic Canonicalization** чер
 - боти для запису клієнтів,
 - боти для заявок,
 - інші Telegram-боти під конкретні бізнес-процеси.
+
+У межах OfficeFlow наступним docs-first напрямком розглядається окремий **Document Intake** module для прийому bločkov, prijatých faktúr, zmlúv і bankových výpisov. Це не runtime-функціональність поточного FakturaBot.
 ## Run
 
 1. Copy `.env.example` to `.env` and fill in:

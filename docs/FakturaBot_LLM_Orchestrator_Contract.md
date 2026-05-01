@@ -4,6 +4,8 @@
 
 This contract defines **Bounded Semantic Canonicalization** via the **Semantic Action Resolver** pattern.
 
+OfficeFlow note: this contract currently applies to the FakturaBot / outgoing invoices module. Future OfficeFlow modules, including Document Intake, must define their own bounded action/value contracts before runtime implementation. This document does not add expenses, bank statement, OCR, or general document-intake runtime actions.
+
 ---
 
 ## 1) Authority split: Python vs LLM
@@ -56,6 +58,8 @@ LLM must return one of allowed actions or `unknown`.
 `edit_invoice` remains a **reserved top-level action token**.
 Runtime editing is defined as bounded in-action/subflow operations under invoice flow (`upraviť`), not as a separate top-level executor.
 `edit_existing_invoice` is an explicit top-level action for editing an already created/persisted invoice by number reference; LLM only resolves intent + reference text, Python performs DB lookup with supplier scope and ambiguity handling.
+
+No OfficeFlow Document Intake action is part of the current top-level registry yet. Future actions for receipts, incoming invoices, contracts archive, bank statements, or categories must be introduced docs-first in the relevant registry and then implemented only after Python-side validation/storage contracts are defined.
 
 ---
 
