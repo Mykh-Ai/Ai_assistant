@@ -23,6 +23,7 @@ from bot.services.officeflow_attachment_models import OfficeFlowAttachmentClassi
 
 
 officeflow_router_module = importlib.import_module('bot.handlers.officeflow_attachment_router')
+voice_module = importlib.import_module('bot.handlers.voice')
 
 
 class _DummyUser:
@@ -52,6 +53,11 @@ class _DummyDocument:
         self.file_size = 456
 
 
+class _DummyVoice:
+    def __init__(self, file_id: str = 'voice-id') -> None:
+        self.file_id = file_id
+
+
 class _DummyMessage:
     def __init__(
         self,
@@ -60,11 +66,13 @@ class _DummyMessage:
         caption: str | None = None,
         photo: list[_DummyPhoto] | None = None,
         document: _DummyDocument | None = None,
+        voice: _DummyVoice | None = None,
     ) -> None:
         self.text = text
         self.caption = caption
         self.photo = photo or []
         self.document = document
+        self.voice = voice
         self.from_user = _DummyUser()
         self.answers: list[str] = []
 
@@ -119,6 +127,18 @@ def _config(tmp_path: Path) -> Config:
     )
 
 
+def _voice_config(tmp_path: Path) -> Config:
+    return Config(
+        bot_token='token',
+        openai_api_key='test-key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'fakturabot.db',
+        storage_dir=tmp_path,
+    )
+
+
 def _stage_accounting_proposal_state(tmp_path: Path) -> tuple[_DummyState, Path]:
     state = _DummyState(OfficeFlowAttachmentRouterStates.accounting_proposal.state)
     staged_path = tmp_path / 'uploads' / 'attachment_intake' / 'PHOTO123' / 'original.jpg'
@@ -142,6 +162,17 @@ def _stage_accounting_proposal_state(tmp_path: Path) -> tuple[_DummyState, Path]
         }
     )
     return state, staged_path
+
+
+def _patch_voice_stt_and_invoice_fallback(monkeypatch, recognized_text: str, invoice_fallback_calls: list[str]) -> None:
+    async def _transcribe(*args, **kwargs) -> str:
+        return recognized_text
+
+    async def _process_invoice_text(**kwargs) -> None:
+        invoice_fallback_calls.append(str(kwargs.get('invoice_text')))
+
+    monkeypatch.setattr(voice_module, 'transcribe_audio', _transcribe)
+    monkeypatch.setattr(voice_module, 'process_invoice_text', _process_invoice_text)
 
 
 async def _classify_as(document_type: str, **kwargs) -> OfficeFlowAttachmentClassification:
@@ -315,6 +346,7 @@ def test_accounting_proposal_no_cleans_staged_file(tmp_path: Path) -> None:
 
 def test_accounting_proposal_handler_has_no_local_confirmation_parser() -> None:
     source = inspect.getsource(officeflow_accounting_proposal)
+    source += inspect.getsource(officeflow_router_module.handle_officeflow_accounting_proposal_text)
 
     assert 'resolve_yes_no' in source
     assert '.lower(' not in source
@@ -322,6 +354,66 @@ def test_accounting_proposal_handler_has_no_local_confirmation_parser() -> None:
     assert "in {'ano'" not in source
     assert "in {'áno'" not in source
     assert "in {'tak'" not in source
+
+
+@pytest.mark.parametrize('recognized_text', ['ano', 'ANO', 'tak', '\u0442\u0430\u043a'])
+def test_voice_accounting_proposal_yes_continues_to_accounting(monkeypatch, tmp_path: Path, recognized_text: str) -> None:
+    captured: dict[str, object] = {}
+    invoice_fallback_calls: list[str] = []
+
+    async def _process(**kwargs) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(officeflow_router_module, 'process_staged_accounting_document', _process)
+    _patch_voice_stt_and_invoice_fallback(monkeypatch, recognized_text, invoice_fallback_calls)
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    message = _DummyMessage(voice=_DummyVoice())
+
+    asyncio.run(voice_module.handle_voice(message, _DummyBot(), _voice_config(tmp_path), state))
+
+    assert captured['document_type_hint'] == 'receipt'
+    assert captured['staged_path'] == staged_path
+    assert invoice_fallback_calls == []
+    assert not staged_path.exists()
+
+
+def test_voice_accounting_proposal_no_cleans_staged_file(monkeypatch, tmp_path: Path) -> None:
+    invoice_fallback_calls: list[str] = []
+
+    async def _process(**kwargs) -> None:
+        raise AssertionError('accounting continuation must not run for no')
+
+    monkeypatch.setattr(officeflow_router_module, 'process_staged_accounting_document', _process)
+    _patch_voice_stt_and_invoice_fallback(monkeypatch, 'nie', invoice_fallback_calls)
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    message = _DummyMessage(voice=_DummyVoice())
+
+    asyncio.run(voice_module.handle_voice(message, _DummyBot(), _voice_config(tmp_path), state))
+
+    assert state.current_state is None
+    assert invoice_fallback_calls == []
+    assert not staged_path.exists()
+    assert 'Spracovanie' in message.answers[-1]
+
+
+def test_voice_accounting_proposal_unknown_keeps_state_and_staging(monkeypatch, tmp_path: Path) -> None:
+    invoice_fallback_calls: list[str] = []
+
+    async def _process(**kwargs) -> None:
+        raise AssertionError('accounting continuation must not run for unknown')
+
+    monkeypatch.setattr(officeflow_router_module, 'process_staged_accounting_document', _process)
+    _patch_voice_stt_and_invoice_fallback(monkeypatch, 'Ah, n\u00e3o.', invoice_fallback_calls)
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    message = _DummyMessage(voice=_DummyVoice())
+
+    asyncio.run(voice_module.handle_voice(message, _DummyBot(), _voice_config(tmp_path), state))
+
+    assert state.current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state
+    assert invoice_fallback_calls == []
+    assert staged_path.exists()
+    assert 'odpovedzte' in message.answers[-1]
+    assert 'nie' in message.answers[-1]
 
 
 def test_shared_router_is_idle_only_and_registered_before_contacts() -> None:

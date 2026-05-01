@@ -2783,3 +2783,27 @@ Prevent future actions/subflows from adding duplicate local confirmation parsers
 - Documentation-only change.
 - No runtime, DB, storage, invoice, Google Drive, or bank matching changes.
 
+## 2026-05-01 — Session 036 — OfficeFlow idle attachment voice continuation bugfix
+
+### Goal
+Fix OfficeFlow idle attachment accounting proposal voice replies being consumed by the global voice router and falling through to top-level invoice routing.
+
+### Changes
+- Refactored OfficeFlow attachment continuation handlers to expose explicit-text helpers for:
+  - accounting proposal;
+  - contact/contract route choice;
+  - unknown document-type clarification.
+- Updated `bot/handlers/voice.py` to route STT text for OfficeFlow attachment states back into those helpers before invoice fallback.
+- Preserved Canonical DecisionResolver usage; no local yes/no parser was added.
+- Added regression coverage for voice `ano`, `ANO`, `tak`, Cyrillic `так`, `nie`, and noisy unknown input in `OfficeFlowAttachmentRouterStates.accounting_proposal`.
+
+### Verification
+- `python -m pytest -q tests\test_decision_resolver.py tests\test_officeflow_attachment_router.py` — 70 passed.
+- `python -m pytest -q tests\test_accounting_document_intake_flow.py tests\test_contact_intake_semantic_flow.py` — 23 passed.
+- `python -m pytest -q` — 423 passed.
+
+### Notes
+- No DB schema changes.
+- No invoice flow semantics, `storage/invoices`, or `pdf_path` changes.
+- No accounting/contact auto-save behavior changes.
+

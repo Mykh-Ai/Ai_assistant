@@ -25,6 +25,12 @@ from bot.handlers.invoice import (
     process_invoice_text,
 )
 from bot.handlers.onboarding import OnboardingStates, onboarding_confirm
+from bot.handlers.officeflow_attachment_router import (
+    OfficeFlowAttachmentRouterStates,
+    handle_officeflow_accounting_proposal_text,
+    handle_officeflow_route_choice_text,
+    handle_officeflow_unknown_clarification_text,
+)
 from bot.handlers.supplier import ServiceAliasStates
 from bot.services.speech_to_text import transcribe_audio
 
@@ -227,6 +233,29 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 state=state,
                 config=config,
             )
+        elif current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state:
+            await handle_officeflow_accounting_proposal_text(
+                message=message,
+                state=state,
+                config=config,
+                answer_text=recognized_text,
+            )
+        elif current_state == OfficeFlowAttachmentRouterStates.route_choice.state:
+            await handle_officeflow_route_choice_text(
+                message=message,
+                state=state,
+                config=config,
+                answer_text=recognized_text,
+            )
+        elif current_state == OfficeFlowAttachmentRouterStates.unknown_clarification.state:
+            await handle_officeflow_unknown_clarification_text(
+                message=message,
+                state=state,
+                config=config,
+                answer_text=recognized_text,
+            )
+        elif _is_officeflow_attachment_state(current_state):
+            await message.answer('Hlasovu odpoved v tomto kroku zatial neviem spracovat. Odpovedzte, prosim, textom.')
         elif current_state == ContactStates.name_hint.state:
             await message.answer('V tomto kroku zadajte názov firmy textom.')
         elif current_state == ContactStates.source_after_name.state:
@@ -246,3 +275,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
 
     finally:
         voice_path.unlink(missing_ok=True)
+
+
+def _is_officeflow_attachment_state(current_state: str | None) -> bool:
+    return bool(current_state and current_state.startswith(f'{OfficeFlowAttachmentRouterStates.__name__}:'))

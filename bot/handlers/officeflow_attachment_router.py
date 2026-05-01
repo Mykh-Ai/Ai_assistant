@@ -73,9 +73,24 @@ async def officeflow_idle_attachment(message: Message, state: FSMContext, config
 
 @router.message(OfficeFlowAttachmentRouterStates.accounting_proposal)
 async def officeflow_accounting_proposal(message: Message, state: FSMContext, config: Config) -> None:
+    await handle_officeflow_accounting_proposal_text(
+        message=message,
+        state=state,
+        config=config,
+        answer_text=message.text or '',
+    )
+
+
+async def handle_officeflow_accounting_proposal_text(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    answer_text: str,
+) -> None:
     decision = await resolve_yes_no(
         context_name='idle_attachment_accounting_proposal',
-        user_input_text=message.text or '',
+        user_input_text=answer_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
     )
@@ -112,9 +127,24 @@ async def officeflow_accounting_proposal(message: Message, state: FSMContext, co
 
 @router.message(OfficeFlowAttachmentRouterStates.route_choice)
 async def officeflow_route_choice(message: Message, state: FSMContext, config: Config) -> None:
+    await handle_officeflow_route_choice_text(
+        message=message,
+        state=state,
+        config=config,
+        answer_text=message.text or '',
+    )
+
+
+async def handle_officeflow_route_choice_text(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    answer_text: str,
+) -> None:
     decision = await resolve_attachment_route_choice(
         context_name='idle_attachment_route_choice',
-        user_input_text=message.text or '',
+        user_input_text=answer_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
     )
@@ -140,9 +170,24 @@ async def officeflow_route_choice(message: Message, state: FSMContext, config: C
 
 @router.message(OfficeFlowAttachmentRouterStates.unknown_clarification)
 async def officeflow_unknown_clarification(message: Message, state: FSMContext, config: Config) -> None:
+    await handle_officeflow_unknown_clarification_text(
+        message=message,
+        state=state,
+        config=config,
+        answer_text=message.text or '',
+    )
+
+
+async def handle_officeflow_unknown_clarification_text(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    answer_text: str,
+) -> None:
     decision = await resolve_attachment_document_type_choice(
         context_name='idle_attachment_document_type_choice',
-        user_input_text=message.text or '',
+        user_input_text=answer_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
     )
