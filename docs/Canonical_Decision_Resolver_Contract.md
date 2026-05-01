@@ -31,6 +31,20 @@ No new per-module local parsers for forms such as `ano`, `nie`, `ok`, `schvalit`
 
 The resolver normalizes user input into canonical decision tokens only. The active FSM flow remains the only place that executes the business action.
 
+This is a runtime contract, not guidance. Future agents must treat this document as an implementation gate for any flow that asks the user to confirm, reject, approve, edit, cancel, save, delete, route, or choose between bounded next steps.
+
+Forbidden patterns for new work:
+- adding `if text.lower() in {...}` or equivalent confirmation parsing in handlers;
+- adding a per-flow list of words such as `ano`, `nie`, `ok`, `так`, `да`, `save`, `delete`, or `cancel`;
+- adding context-specific yes/no or approve/cancel word lists in a lower resolver layer when the behavior belongs to an existing decision family;
+- letting an LLM return a final business action for a confirmation step.
+
+Required pattern:
+- the handler calls `bot/services/decision_resolver.py`;
+- Python receives only family-level canonical outputs;
+- the handler branches only on canonical tokens such as `yes`, `no`, `approve`, `edit`, `cancel`, or `unknown`;
+- user-facing wording can mention Slovak examples, but parsing those examples belongs to the shared resolver family, not to the flow.
+
 ---
 
 ## 3. Decision Families
@@ -57,6 +71,25 @@ Canonical outputs:
 - `unknown`
 
 Existing Slovak-facing tokens such as `ano` and `nie` may remain runtime/UI compatibility vocabulary, but new shared architecture should normalize to the family-level meaning above or provide an explicit adapter.
+
+### 3.3 New decision family gate
+
+Before adding a new action, router, document intake step, delete flow, save flow, or approval step, the implementer must decide whether the user's reply is one of:
+- an existing decision family (`yes_no`, `approve_edit_cancel`, etc.),
+- a new bounded decision family that belongs in `bot/services/decision_resolver.py`,
+- not a confirmation-like decision at all.
+
+If it is confirmation-like, route-like, or destructive-action-like, it must be represented as a DecisionResolver family before runtime handler code is added.
+
+New families must define:
+- family name,
+- canonical outputs,
+- `unknown` behavior,
+- which handlers are allowed to consume those outputs,
+- tests for noisy/multilingual/STT-like input,
+- tests that handlers branch only on canonical outputs.
+
+New families must be documented in `docs/llm/In_Action_Response_Registry.md` before or together with runtime implementation.
 
 ---
 
@@ -113,6 +146,8 @@ Migration must be tests-first:
 5. Confirm voice/text parity for every migrated FSM state.
 
 Until migration is complete, docs and code must not claim the shared resolver is fully implemented everywhere.
+
+For new flows, migration status is not an excuse to add new local parsers. Legacy local parsers may exist only as documented technical debt. New work must use the Canonical DecisionResolver from the first implementation slice.
 
 ### 7.1 Phase 1 Runtime Status
 

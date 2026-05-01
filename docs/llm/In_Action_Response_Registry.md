@@ -4,6 +4,12 @@ Purpose: evidence-based registry of bounded in-workflow responses and state-scop
 
 ## A) Bounded canonical response groups
 
+Design rule:
+- New confirmation-like or route-like response groups must be implemented through `bot/services/decision_resolver.py`.
+- This registry records canonical outputs, not per-flow synonym lists.
+- Handlers must consume canonical outputs only and must not parse raw `ano` / `nie` / `ok` / `schvalit` / `zrusit` / multilingual variants locally.
+- If an existing decision family fits, reuse it. If none fits, add a bounded family to the DecisionResolver before adding handler branches.
+
 | Response group | Category | Status | Entry mode | Canonical tokens / values | Source evidence | Notes |
 |---|---|---|---|---|---|---|
 | `invoice_preview_confirmation` | in-action response group | implemented | mixed (text + voice) | `schvalit`, `upravit`, `zrusit`, `unknown` | `process_invoice_preview_confirmation()` resolves with context `invoice_preview_confirmation`; voice routes to this handler from `waiting_confirm`. | Preview is now draft-review decision. Backward-compatible aliases: `ano` -> `schvalit`, `nie` -> `zrusit`. `upravit` enters draft edit backend without DB/PDF side effects. |
@@ -16,6 +22,10 @@ Purpose: evidence-based registry of bounded in-workflow responses and state-scop
 | `attachment_document_type_choice` | in-action response group | partial | text after unknown idle attachment classification | `receipt`, `incoming_invoice`, `contract`, `contact_source`, `cancel`, `unknown` | Shared idle attachment router uses a bounded clarification family when the classifier returns `unknown`. | This clarification only selects a document type candidate. Python still maps it to a proposal and asks before save/create side effects. |
 
 ## B) Deterministic (non-LLM) in-action confirmations
+
+This section documents legacy/manual deterministic confirmations. It is not a template for new work.
+
+No new confirmation-like response group should be added here unless explicitly approved as a deterministic non-semantic exception. New product/runtime flows must default to the Canonical DecisionResolver contract.
 
 | Response group | Category | Status | Entry mode | Allowed values | Source evidence | Notes |
 |---|---|---|---|---|---|---|

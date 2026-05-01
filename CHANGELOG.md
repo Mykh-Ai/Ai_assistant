@@ -20,6 +20,7 @@
 - voice confirm-state transcripts now route to the active confirmation handler instead of falling through to top-level invoice routing.
 - accounting Document Intake now passes real Telegram photo/PDF bytes into the LMM boundary as image/PDF payloads, with temp staging cleanup for cancel/error/confirmed-save paths.
 - accounting Document Intake exposes a staged-file processing entrypoint so the idle router can continue into the existing accounting preview/confirmation flow without changing invoice storage or DB schema.
+- idle attachment accounting proposal confirmation now uses the shared `yes_no` decision family without a flow-specific yes/no fallback.
 
 ### Notes
 - Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, standalone contract save, or invoice PDF path changes.

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import inspect
 from pathlib import Path
 
 from aiogram.filters import StateFilter
+import pytest
 
 from bot.config import Config
 from bot.handlers import routers
@@ -117,6 +119,31 @@ def _config(tmp_path: Path) -> Config:
     )
 
 
+def _stage_accounting_proposal_state(tmp_path: Path) -> tuple[_DummyState, Path]:
+    state = _DummyState(OfficeFlowAttachmentRouterStates.accounting_proposal.state)
+    staged_path = tmp_path / 'uploads' / 'attachment_intake' / 'PHOTO123' / 'original.jpg'
+    staged_path.parent.mkdir(parents=True, exist_ok=True)
+    staged_path.write_bytes(b'photo')
+    state.data.update(
+        {
+            'officeflow_attachment_staged_path': str(staged_path),
+            'officeflow_attachment_metadata': {
+                'file_unique_id': 'PHOTO123',
+                'input_type': 'photo',
+                'original_filename': 'photo.jpg',
+                'mime_type': 'image/jpeg',
+                'extension': '.jpg',
+            },
+            'officeflow_attachment_classification': {
+                'document_type': 'receipt',
+                'confidence': 'high',
+                'reason': 'receipt evidence',
+            },
+        }
+    )
+    return state, staged_path
+
+
 async def _classify_as(document_type: str, **kwargs) -> OfficeFlowAttachmentClassification:
     return OfficeFlowAttachmentClassification(
         document_type=document_type,
@@ -139,6 +166,7 @@ def test_idle_photo_receipt_stages_and_asks_accounting_proposal(monkeypatch, tmp
     assert staged_path.exists()
     assert state.current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state
     assert 'výdavkový doklad' in message.answers[-1]
+    assert 'Odpovedzte: áno / nie.' in message.answers[-1]
     assert not (tmp_path / 'workspaces').exists()
 
 
@@ -233,6 +261,67 @@ def test_accounting_proposal_uses_decision_resolver_yes_no(monkeypatch, tmp_path
     }
     assert state.current_state is None
     assert not staged_path.exists()
+
+
+@pytest.mark.parametrize(
+    'answer_text',
+    [
+        'ano',
+        '\u00e1no',
+        'tak',
+        'ok',
+        '\u0442\u0430\u043a',
+        '\u0434\u0430',
+    ],
+)
+def test_accounting_proposal_yes_variants_continue_via_shared_resolver(monkeypatch, tmp_path: Path, answer_text: str) -> None:
+    captured: dict[str, object] = {}
+
+    async def _process(**kwargs) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(officeflow_router_module, 'process_staged_accounting_document', _process)
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    message = _DummyMessage(text=answer_text)
+
+    asyncio.run(officeflow_accounting_proposal(message, state, _config(tmp_path)))
+
+    assert captured['document_type_hint'] == 'receipt'
+    assert captured['staged_path'] == staged_path
+    assert not staged_path.exists()
+
+
+def test_accounting_proposal_unknown_keeps_staged_file_and_asks_clarification(tmp_path: Path) -> None:
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    message = _DummyMessage(text='asi')
+
+    asyncio.run(officeflow_accounting_proposal(message, state, _config(tmp_path)))
+
+    assert state.current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state
+    assert staged_path.exists()
+    assert 'áno alebo nie' in message.answers[-1]
+
+
+def test_accounting_proposal_no_cleans_staged_file(tmp_path: Path) -> None:
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    message = _DummyMessage(text='nie')
+
+    asyncio.run(officeflow_accounting_proposal(message, state, _config(tmp_path)))
+
+    assert state.current_state is None
+    assert not staged_path.exists()
+    assert 'zrušené' in message.answers[-1]
+
+
+def test_accounting_proposal_handler_has_no_local_confirmation_parser() -> None:
+    source = inspect.getsource(officeflow_accounting_proposal)
+
+    assert 'resolve_yes_no' in source
+    assert '.lower(' not in source
+    assert 'normalized' not in source
+    assert "in {'ano'" not in source
+    assert "in {'áno'" not in source
+    assert "in {'tak'" not in source
 
 
 def test_shared_router_is_idle_only_and_registered_before_contacts() -> None:

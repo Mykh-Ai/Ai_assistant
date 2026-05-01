@@ -90,6 +90,28 @@ def test_contact_semantic_intake_yes_no_canonical_outputs(user_input: str, expec
     ) == expected
 
 
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'ano',
+        '\u00e1no',
+        'tak',
+        'ok',
+        '\u0442\u0430\u043a',
+        '\u0434\u0430',
+    ],
+)
+def test_idle_attachment_accounting_yes_variants_use_shared_resolver(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='idle_attachment_accounting_proposal',
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'yes'
+
+
 def test_yes_no_stt_noise_is_unknown_for_idle_attachment_accounting() -> None:
     assert asyncio.run(
         resolve_yes_no(

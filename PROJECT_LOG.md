@@ -2729,3 +2729,57 @@ Implement docs-first and runtime foundation for a shared OfficeFlow idle attachm
 - No Google Drive sync, bank matching, or Zevs runtime profile.
 - No confirmed accounting document, contact, or contract is saved from idle classification alone.
 
+## 2026-05-01 — Session 034 — Idle attachment accounting proposal DecisionResolver bugfix
+
+### Goal
+Fix the idle attachment accounting proposal confirmation path so it does not rely on a flow-specific yes/no fallback.
+
+### Changes
+- Kept `bot/handlers/officeflow_attachment_router.py` on `decision_resolver.resolve_yes_no(...)`.
+- Removed the `idle_attachment_accounting_proposal` context from context-specific yes/no fallback logic.
+- Consolidated yes/no confirmation fallback into one shared `yes_no_confirmation` family helper inside the canonical resolver layer.
+- Updated the idle accounting proposal prompt to explicitly say: `Odpovedzte: áno / nie.`
+- Added regression coverage for:
+  - `ano`,
+  - `áno`,
+  - `tak`,
+  - `ok`,
+  - Cyrillic `так`,
+  - Cyrillic `да`,
+  - unknown clarification,
+  - no/cancel cleanup,
+  - no local confirmation parser in the idle attachment handler.
+
+### Verification
+- `python -m pytest -q tests\test_decision_resolver.py tests\test_officeflow_attachment_router.py` — 64 passed.
+- `python -m pytest -q` — 417 passed.
+
+### Notes
+- No DB schema changes.
+- No invoice flow, `storage/invoices`, or `pdf_path` changes.
+- No Document Intake confirmed storage structure changes.
+
+## 2026-05-01 — Session 035 — DecisionResolver design gate documentation
+
+### Goal
+Prevent future actions/subflows from adding duplicate local confirmation parsers instead of using the Canonical DecisionResolver.
+
+### Changes
+- `docs/Canonical_Decision_Resolver_Contract.md`:
+  - clarified that the contract is an implementation gate, not guidance;
+  - added forbidden patterns for handler-local and flow-specific confirmation parsing;
+  - added required pattern for canonical decision outputs;
+  - added a new decision-family gate for future actions/subflows.
+- `docs/llm/New_Action_Design_Checklist.md`:
+  - added a mandatory DecisionResolver gate before runtime handler implementation;
+  - added test expectations for shared resolver usage and no local parser.
+- `docs/llm/In_Action_Response_Registry.md`:
+  - clarified that new response groups must use `bot/services/decision_resolver.py`;
+  - marked deterministic confirmations as legacy/manual documentation, not a template for new work.
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`:
+  - added an implementation gate requiring confirmation/route/save/delete replies to go through `decision_resolver.py`.
+
+### Notes
+- Documentation-only change.
+- No runtime, DB, storage, invoice, Google Drive, or bank matching changes.
+

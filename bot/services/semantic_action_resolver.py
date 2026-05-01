@@ -288,6 +288,16 @@ def _resolve_local_decision_markers(
     return _UNKNOWN
 
 
+def _fallback_yes_no_confirmation(*, normalized: str, allowed_outputs: set[str]) -> str:
+    positive = {'ano', 'tak', 'ok', 'da', 'yes', 'так', 'да'}
+    negative = {'nie', 'net', 'no', 'ні', 'нет'}
+    if normalized in positive and 'ano' in allowed_outputs:
+        return 'ano'
+    if normalized in negative and 'nie' in allowed_outputs:
+        return 'nie'
+    return _UNKNOWN
+
+
 def _fallback_bounded_confirmation_reply(
     *,
     context_name: str,
@@ -299,33 +309,8 @@ def _fallback_bounded_confirmation_reply(
     if not normalized:
         return _UNKNOWN
 
-    if context_name == 'invoice_preview_confirmation' and expected_reply_type == 'yes_no_confirmation':
-        positive = {'ano', 'tak', 'da', 'так', 'да'}
-        negative = {'nie', 'net', 'ні', 'нет'}
-        if normalized in positive and 'ano' in allowed_outputs:
-            return 'ano'
-        if normalized in negative and 'nie' in allowed_outputs:
-            return 'nie'
-        return _UNKNOWN
-
-    if (
-        context_name
-        in {
-            'contact_confirm',
-            'contact_intake_confirm',
-            'onboarding_confirm',
-            'delete_existing_invoice_confirm',
-            'idle_attachment_accounting_proposal',
-        }
-        and expected_reply_type == 'yes_no_confirmation'
-    ):
-        positive = {'ano', 'tak', 'ok', 'da'}
-        negative = {'nie', 'net', 'no'}
-        if normalized in positive and 'ano' in allowed_outputs:
-            return 'ano'
-        if normalized in negative and 'nie' in allowed_outputs:
-            return 'nie'
-        return _UNKNOWN
+    if expected_reply_type == 'yes_no_confirmation':
+        return _fallback_yes_no_confirmation(normalized=normalized, allowed_outputs=allowed_outputs)
 
     if context_name == 'idle_attachment_route_choice' and expected_reply_type == 'attachment_route_choice':
         tokens = set(normalized.split())
@@ -360,15 +345,6 @@ def _fallback_bounded_confirmation_reply(
         if tokens.intersection({'zrusit', 'zrus', 'cancel', 'stop'}):
             matched.add('cancel')
         return next(iter(matched)) if len(matched) == 1 else _UNKNOWN
-
-    if context_name == 'contact_confirm' and expected_reply_type == 'yes_no_confirmation':
-        positive = {'ano', 'tak', 'da', 'так', 'да'}
-        negative = {'nie', 'net', 'ні', 'нет'}
-        if normalized in positive and 'ano' in allowed_outputs:
-            return 'ano'
-        if normalized in negative and 'nie' in allowed_outputs:
-            return 'nie'
-        return _UNKNOWN
 
     if (
         context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview'}

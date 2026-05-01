@@ -163,7 +163,8 @@ async def _ask_for_document_type_route(*, message: Message, state: FSMContext, d
         await state.set_state(OfficeFlowAttachmentRouterStates.accounting_proposal)
         await message.answer(
             'Vyzerá to ako bloček/prijatá faktúra. '
-            'Chcete ju spracovať ako výdavkový doklad?'
+            'Chcete ju spracovať ako výdavkový doklad?\n'
+            'Odpovedzte: áno / nie.'
         )
         return
 

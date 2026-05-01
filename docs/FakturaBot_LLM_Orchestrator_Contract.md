@@ -98,6 +98,13 @@ The required migration target is one shared Canonical DecisionResolver for confi
 Phase 1 runtime now exposes the shared wrapper in `bot/services/decision_resolver.py` and routes the current invoice, contact, onboarding, and existing-invoice delete confirmation flows through it.
 This does not add OfficeFlow Document Intake runtime actions or Telegram button/callback handling.
 
+Implementation gate:
+- `docs/Canonical_Decision_Resolver_Contract.md` is mandatory for new actions and subflows.
+- Any reply that means confirm/reject/approve/edit/cancel/save/delete/route must go through `bot/services/decision_resolver.py`.
+- New handlers must not parse raw confirmation words locally.
+- New resolver work must extend or reuse a bounded decision family, not introduce per-flow synonym lists.
+- Python handlers may branch only on canonical decision outputs.
+
 Decision families:
 - `approve_edit_cancel` -> `approve` / `edit` / `cancel` / `unknown`
 - `yes_no` -> `yes` / `no` / `unknown`
