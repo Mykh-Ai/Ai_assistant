@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [Unreleased]
+
+### Added
+- docs-only Canonical DecisionResolver policy for confirmation-like replies across invoice, contact, onboarding, delete confirmation, and future Document Intake flows.
+
+### Notes
+- The shared resolver is documented as a required architecture/migration target, not as fully implemented runtime behavior.
+- Existing local confirmation parsers are explicitly treated as technical debt to migrate after tests.
+
 ## [0.6.1] - 2026-04-12
 
 ### Changed

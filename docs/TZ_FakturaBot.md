@@ -72,6 +72,8 @@ FakturaBot є першим демонстраційним продуктом у 
 
 AI не є джерелом істини. У v2.0 контракт AI базується на **Bounded Semantic Canonicalization**: Python задає контекст і дозволені канонічні виходи, LLM повертає один дозволений канонічний вихід або `unknown`, Python валідовує і виконує дії.
 
+Додатковий project-level принцип для confirmation-like відповідей зафіксовано в `docs/Canonical_Decision_Resolver_Contract.md`: усі рішення типу approve/edit/cancel або yes/no мають проходити через спільний Canonical DecisionResolver. Поточні локальні парсери `ano/nie` або `schvalit/upravit/zrusit` вважаються технічним боргом і мають мігрувати після тестів; це не означає, що спільний resolver уже повністю впроваджений у runtime.
+
 ---
 
 ## 2. Архітектурна концепція
@@ -899,6 +901,8 @@ Python повинен перевіряти:
 - SQLite storage.
 
 У майбутньому OfficeFlow framing цей набір відповідає модулю **FakturaBot / Outgoing Invoices**.
+
+Для всіх модулів, які приймають confirmation-like відповіді користувача, цільова архітектура вимагає shared Canonical DecisionResolver. Нові модулі не повинні додавати власні локальні парсери підтверджень.
 
 ### 9.2 Відкладені модулі
 

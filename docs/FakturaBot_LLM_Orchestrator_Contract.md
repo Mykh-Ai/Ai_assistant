@@ -93,6 +93,16 @@ Examples:
 
 Even when LLM resolves `schvalit` / `upravit` / `zrusit`, Python still validates state and performs execution.
 
+Project-level decision policy is maintained in `docs/Canonical_Decision_Resolver_Contract.md`.
+The required migration target is one shared Canonical DecisionResolver for confirmation-like replies.
+Current runtime still contains older local parsers in some flows; those are technical debt and must be migrated after tests.
+
+Decision families:
+- `approve_edit_cancel` -> `approve` / `edit` / `cancel` / `unknown`
+- `yes_no` -> `yes` / `no` / `unknown`
+
+Existing machine tokens such as `schvalit`, `upravit`, `zrusit`, `ano`, and `nie` remain current runtime compatibility vocabulary where already used. New confirmation-like flows should not add per-module local parsers and should converge text, voice transcript, and future Telegram button/callback input into the same canonical decision path.
+
 Preview backward-compatible aliases:
 - `ano` maps to `schvalit`;
 - `nie` maps to `zrusit`.

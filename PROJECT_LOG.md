@@ -1,5 +1,18 @@
 # PROJECT_LOG
 
+## 2026-05-01 — Session 063 — Canonical DecisionResolver docs policy
+
+Summary:
+- Added `docs/Canonical_Decision_Resolver_Contract.md` as the project-level policy for confirmation-like replies.
+- Defined the required migration target: one shared Canonical DecisionResolver for `approve_edit_cancel` and `yes_no` decision families.
+- Documented that LMM/semantic resolver returns only canonical decision tokens while the active FSM flow executes business actions.
+- Marked existing local confirmation parsers as technical debt to migrate after tests.
+- No runtime code, DB schema, storage paths, or Document Intake runtime were changed.
+
+Risks / follow-up:
+- Add tests around existing confirmation behavior before migrating local parsers.
+- Migrate invoice/contact/onboarding/delete confirmation paths one at a time after tests.
+
 ## 2026-05-01 — Session 062 — Document Intake Phase 1 MVP implementation plan
 
 Summary:
