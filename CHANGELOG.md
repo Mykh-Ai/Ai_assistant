@@ -5,13 +5,16 @@
 ### Added
 - docs-only Canonical DecisionResolver policy for confirmation-like replies across invoice, contact, onboarding, delete confirmation, and future Document Intake flows.
 - shared runtime `bot/services/decision_resolver.py` adapter for canonical `approve_edit_cancel` and `yes_no` decision families.
+- accounting Document Intake Phase 1 foundation for receipts and incoming invoices:
+  - pure candidate models, validation, deterministic storage helpers, classifier/extraction parsers, and isolated LMM wrapper;
+  - explicit `/doklad`, `/expense`, and `/intake` FSM flow for state-scoped photo/PDF uploads, Slovak preview, shared decision resolution, and confirmed JSON-sidecar storage.
 
 ### Changed
 - invoice preview/post-PDF decisions, contact confirmations, onboarding confirmation, and existing-invoice delete confirmation now route through the shared DecisionResolver.
 - voice confirm-state transcripts now route to the active confirmation handler instead of falling through to top-level invoice routing.
 
 ### Notes
-- OfficeFlow Document Intake runtime, Telegram button callbacks, DB schema, storage paths, supplier profile, and invoice PDF path behavior remain unchanged.
+- Document Intake remains Phase 1 only: no idle attachment interception, bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, or invoice PDF path changes.
 
 ## [0.6.1] - 2026-04-12
 

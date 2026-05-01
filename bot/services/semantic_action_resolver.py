@@ -330,7 +330,7 @@ def _fallback_bounded_confirmation_reply(
         return _UNKNOWN
 
     if (
-        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision'}
+        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview'}
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):
         approve_values = {
@@ -371,7 +371,7 @@ def _fallback_bounded_confirmation_reply(
             'змініть',
             'поміняй',
         }
-        if context_name == 'invoice_preview_confirmation':
+        if context_name in {'invoice_preview_confirmation', 'accounting_document_intake_preview'}:
             cancel_values = {
                 'zrusit',
                 'cancel',
@@ -663,7 +663,7 @@ async def resolve_bounded_confirmation_reply(
 
     local_output = _UNKNOWN
     if (
-        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision'}
+        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview'}
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):
         local_output = _fallback_bounded_confirmation_reply(

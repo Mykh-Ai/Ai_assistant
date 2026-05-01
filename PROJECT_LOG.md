@@ -1,5 +1,58 @@
 # PROJECT_LOG
 
+## 2026-05-01 — Session 068 — Document Intake Phase 1 Slice 4 explicit Telegram intake
+
+Summary:
+- Added an explicit accounting document intake FSM entered only by `/doklad`, `/expense`, or `/intake`.
+- Added state-scoped photo/PDF upload handling for receipts and incoming invoices, with temp staging under `storage/uploads/accounting_intake/`.
+- Wired Slice 4 to the existing accounting document LMM wrapper, Python validation, Slovak preview, shared `resolve_approve_edit_cancel(...)`, and confirmed JSON-sidecar storage.
+- Registered the router without broad idle attachment interception; uploads outside the active intake state are not processed by this router.
+- Kept edit as a bounded not-yet-implemented response for this slice.
+- No bank matching, DB schema changes, Google Drive sync, Zevs runtime profile, supplier profile changes, invoice flow changes, `storage/invoices` changes, or `pdf_path` behavior changes were made.
+
+Tests:
+- Focused Document Intake Slice 1-4 suite: `44 passed`.
+- Full suite: `365 passed`.
+
+## 2026-05-01 — Session 067 — Document Intake Phase 1 Slice 3 LMM boundary
+
+Summary:
+- Added `bot/services/accounting_document_lmm.py` as an isolated, mockable LMM wrapper for accounting document classification and extraction.
+- Added classification and extraction prompt files with strict JSON-only output contracts.
+- The wrapper immediately parses provider output through the strict classifier/extraction parsers and returns candidate-only data.
+- Added tests with fake provider clients for valid responses, non-JSON responses, forbidden side-effect fields, prompt content, provider isolation, and no file/DB writes.
+- No Telegram handlers, preview/confirm flow, real Vision wiring, bank matching, DB schema changes, invoice flow changes, `storage/invoices` changes, `pdf_path` changes, or current contract `document_intake.py` behavior changes were made.
+
+Risks / follow-up:
+- Next slice should add preview/FSM handler integration behind explicit command/state routing, not broad idle attachment interception.
+- Real photo/PDF Vision payload wiring should stay inside the LMM boundary and continue to feed strict parsers only.
+
+## 2026-05-01 — Session 066 — Document Intake Phase 1 Slice 2 parsers
+
+Summary:
+- Added pure classifier parser for strict `receipt` / `incoming_invoice` / `unknown` classification JSON.
+- Added pure extraction parser that converts approved candidate JSON into `AccountingDocumentCandidate`.
+- Added parser guards against non-JSON, unsupported enums, unexpected top-level fields, and side-effect top-level fields such as `saved_path`, `status`, `confirmed`, and `final_category`.
+- Added focused parser tests and compatibility coverage showing extraction output passes existing validation.
+- No Telegram handlers, OpenAI/LMM/Vision calls, DB schema changes, file writes, invoice flow changes, `storage/invoices` changes, `pdf_path` changes, or current contract `document_intake.py` behavior changes were made.
+
+Risks / follow-up:
+- Next slice should add LMM call wrappers behind these parsers without letting model output create paths, IDs, save status, or final categories.
+- Handler integration must remain explicit-command/state first to avoid intercepting existing contact contract uploads.
+
+## 2026-05-01 — Session 065 — Document Intake Phase 1 Slice 1 foundation
+
+Summary:
+- Added pure accounting document data models for future receipt/incoming-invoice intake candidates.
+- Added Python validation for required fields, positive Decimal amounts, ISO dates, currency handling, document type gating, and non-blocking IBAN/variable-symbol warnings.
+- Added storage helpers for temp staging under `storage/uploads/accounting_intake/` and confirmed JSON-sidecar saves under the proposed OfficeFlow yearly/monthly expense tree.
+- Added focused tests for validation failures, deterministic filenames, year/month path derivation, confirmed metadata sidecars, temp staging, and the guard against writing to `storage/invoices`.
+- No Telegram handlers, LMM/OpenAI calls, DB schema changes, invoice flow changes, supplier profile changes, `storage/invoices` changes, or `pdf_path` changes were made.
+
+Risks / follow-up:
+- Next slice should add strict classifier/extraction parser tests before any LMM call.
+- Handler integration must remain explicit-state or explicit-command first to avoid stealing existing contact contract uploads.
+
 ## 2026-05-01 — Session 064 — Canonical DecisionResolver runtime Phase 1
 
 Summary:

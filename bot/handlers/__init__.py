@@ -1,5 +1,6 @@
 from aiogram import Router
 
+from .accounting_document_intake import router as accounting_document_intake_router
 from .contacts import router as contacts_router
 from .contracts import router as contracts_router
 from .invoice import router as invoice_router
@@ -14,6 +15,7 @@ routers: list[Router] = [
     voice_router,
     onboarding_router,
     supplier_router,
+    accounting_document_intake_router,
     contacts_router,
     contracts_router,
     invoice_router,
