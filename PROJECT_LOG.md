@@ -1,5 +1,40 @@
 # PROJECT_LOG
 
+## 2026-05-01 - Session 070 - Local Codex Windows sandbox ACL fix documented
+
+Summary:
+- Documented the resolved local Windows Codex elevated sandbox setup failure that occurred before shell command execution with `windows sandbox: setup refresh failed with status exit code: 1`.
+- Root cause was unsafe Windows ACL/world-writable paths on the local machine, not project code.
+- Removed `C:\Users\Public\KROS`.
+- Fixed the `D:\` root ACL by removing `Everyone:(OI)(CI)(F)` inheritance and keeping normal access for the current user, Administrators, SYSTEM, and Users read/execute.
+- Cleaned unsafe ACLs on `C:\$360Section`.
+- Reset old Codex sandbox state: `.codex\.sandbox`, `cap_sid`, and `sandbox.log`.
+- The known local Windows ACL-related sandbox setup failure was resolved and verified.
+
+Verification:
+- `Get-Location` -> `D:\AI_Model\Ai_assistant`
+- `python --version` -> `Python 3.12.0`
+- `python -m pytest -q` -> `373 passed in 13.20s`
+
+Conclusion:
+- Sandbox/tooling issue resolved; project tests are green.
+- For this repository, the confirmed test command is `python -m pytest -q` from `D:\AI_Model\Ai_assistant`.
+- Avoid bare `pytest -q` because it may not include the project root on `sys.path` and can fail during collection with `ModuleNotFoundError: No module named 'bot'`.
+
+## 2026-05-01 — Session 069 — Document Intake real Telegram file payload wiring
+
+Summary:
+- Hardened `/doklad` accounting intake so real Telegram photo/PDF downloads are passed into `accounting_document_lmm.py` as file bytes.
+- Updated the LMM wrapper to send images as Chat Completions `image_url` data URLs and PDFs as `file` payloads with base64 `file_data`, while keeping strict JSON parser boundaries.
+- Added size/mime guards before provider calls and kept provider behavior fully mockable in tests.
+- Added user-facing handling for unknown classification, parser/provider errors, and poor readability/blurred documents.
+- Added temp staging cleanup after unknown/poor/error paths, cancel, and confirmed save copy.
+- No DB schema changes, invoice flow changes, bank matching, Google Drive sync, Zevs runtime profile, `storage/invoices` changes, or `pdf_path` behavior changes were made.
+
+Tests:
+- Focused accounting document suite: `52 passed`.
+- Full suite: `373 passed`.
+
 ## 2026-05-01 — Session 068 — Document Intake Phase 1 Slice 4 explicit Telegram intake
 
 Summary:

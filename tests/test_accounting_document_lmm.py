@@ -9,6 +9,7 @@ import pytest
 from bot.services.accounting_document_classifier import AccountingDocumentClassifierParseError
 from bot.services.accounting_document_extraction import AccountingDocumentExtractionParseError
 from bot.services.accounting_document_lmm import (
+    AccountingDocumentLmmError,
     AccountingDocumentLmmInput,
     classify_accounting_document,
     extract_accounting_document_metadata,
@@ -57,6 +58,24 @@ def _document_input() -> AccountingDocumentLmmInput:
     )
 
 
+def _image_document_input() -> AccountingDocumentLmmInput:
+    return AccountingDocumentLmmInput(
+        input_type='photo',
+        original_filename='receipt.jpg',
+        mime_type='image/jpeg',
+        file_bytes=b'jpeg-bytes',
+    )
+
+
+def _pdf_document_input() -> AccountingDocumentLmmInput:
+    return AccountingDocumentLmmInput(
+        input_type='pdf',
+        original_filename='invoice.pdf',
+        mime_type='application/pdf',
+        file_bytes=b'%PDF bytes',
+    )
+
+
 def test_classification_wrapper_passes_model_json_into_classifier_parser() -> None:
     calls: list[dict] = []
     raw = json.dumps({'document_type': 'receipt', 'confidence': 'high', 'reason': 'Receipt layout.'})
@@ -75,6 +94,8 @@ def test_classification_wrapper_passes_model_json_into_classifier_parser() -> No
     assert calls[0]['response_format'] == {'type': 'json_object'}
     assert calls[0]['temperature'] == 0
     assert 'strict JSON only' in calls[0]['messages'][0]['content']
+    user_payload = json.loads(calls[0]['messages'][1]['content'])
+    assert user_payload['document_input']['has_file_bytes'] is False
 
 
 def test_extraction_wrapper_passes_model_json_into_extraction_parser() -> None:
@@ -118,6 +139,91 @@ def test_extraction_wrapper_passes_model_json_into_extraction_parser() -> None:
     user_payload = json.loads(calls[0]['messages'][1]['content'])
     assert user_payload['document_type_hint'] == 'incoming_invoice'
     assert user_payload['document_input']['original_filename'] == 'doc.pdf'
+
+
+def test_image_bytes_are_sent_as_chat_image_url_data_url() -> None:
+    calls: list[dict] = []
+    raw = json.dumps({'document_type': 'receipt', 'confidence': 'high', 'reason': 'Receipt layout.'})
+
+    asyncio.run(
+        classify_accounting_document(
+            document_input=_image_document_input(),
+            api_key='sk-test',
+            model='gpt-4o',
+            client_factory=_client_factory(raw, calls),
+        )
+    )
+
+    content = calls[0]['messages'][1]['content']
+    assert isinstance(content, list)
+    assert content[0]['type'] == 'text'
+    assert json.loads(content[0]['text'])['document_input']['has_file_bytes'] is True
+    assert content[1]['type'] == 'image_url'
+    assert content[1]['image_url']['url'].startswith('data:image/jpeg;base64,')
+    assert content[1]['image_url']['detail'] == 'high'
+
+
+def test_pdf_bytes_are_sent_as_chat_file_data_url() -> None:
+    calls: list[dict] = []
+    raw = json.dumps({'document_type': 'incoming_invoice', 'confidence': 'high', 'reason': 'PDF invoice.'})
+
+    asyncio.run(
+        classify_accounting_document(
+            document_input=_pdf_document_input(),
+            api_key='sk-test',
+            model='gpt-4o',
+            client_factory=_client_factory(raw, calls),
+        )
+    )
+
+    content = calls[0]['messages'][1]['content']
+    assert isinstance(content, list)
+    assert content[0]['type'] == 'text'
+    assert content[1]['type'] == 'file'
+    assert content[1]['file']['filename'] == 'invoice.pdf'
+    assert content[1]['file']['file_data'].startswith('data:application/pdf;base64,')
+
+
+def test_unsupported_file_mime_type_is_rejected_before_provider_call() -> None:
+    calls: list[dict] = []
+
+    with pytest.raises(AccountingDocumentLmmError, match='unsupported_document_mime_type'):
+        asyncio.run(
+            classify_accounting_document(
+                document_input=AccountingDocumentLmmInput(
+                    input_type='unknown',
+                    original_filename='notes.txt',
+                    mime_type='text/plain',
+                    file_bytes=b'text',
+                ),
+                api_key='sk-test',
+                model='gpt-4o',
+                client_factory=_client_factory('{}', calls),
+            )
+        )
+
+    assert calls == []
+
+
+def test_oversized_inline_file_is_rejected_before_provider_call() -> None:
+    calls: list[dict] = []
+
+    with pytest.raises(AccountingDocumentLmmError, match='document_file_too_large'):
+        asyncio.run(
+            classify_accounting_document(
+                document_input=AccountingDocumentLmmInput(
+                    input_type='photo',
+                    original_filename='large.jpg',
+                    mime_type='image/jpeg',
+                    file_bytes=b'x' * (20 * 1024 * 1024 + 1),
+                ),
+                api_key='sk-test',
+                model='gpt-4o',
+                client_factory=_client_factory('{}', calls),
+            )
+        )
+
+    assert calls == []
 
 
 def test_non_json_model_response_produces_controlled_parse_error() -> None:

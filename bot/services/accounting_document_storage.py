@@ -106,6 +106,23 @@ def stage_original_file(
     return target_path
 
 
+def cleanup_temp_staging_path(*, storage_dir: Path, staged_path: Path) -> None:
+    accounting_intake_dir = (storage_dir / 'uploads' / 'accounting_intake').resolve()
+    resolved_path = staged_path.resolve()
+    if accounting_intake_dir != resolved_path and accounting_intake_dir not in resolved_path.parents:
+        raise AccountingDocumentStorageError('refusing_to_cleanup_non_accounting_intake_path')
+
+    if staged_path.is_file():
+        staged_path.unlink()
+
+    parent = staged_path.parent
+    if parent.exists() and parent.resolve().parent == accounting_intake_dir:
+        try:
+            parent.rmdir()
+        except OSError:
+            pass
+
+
 def confirmed_paths(
     *,
     storage_dir: Path,

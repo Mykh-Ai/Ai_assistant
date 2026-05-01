@@ -27,6 +27,7 @@ from bot.services.accounting_document_models import (
 )
 from bot.services.accounting_document_storage import (
     AccountingDocumentStorageError,
+    cleanup_temp_staging_path,
     save_confirmed_accounting_document,
     temp_staging_dir,
 )
@@ -74,11 +75,13 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
 
     telegram_file = await bot.get_file(attachment['file_id'])
     await bot.download_file(telegram_file.file_path, destination=staged_path)
+    file_bytes = staged_path.read_bytes()
 
     document_input = AccountingDocumentLmmInput(
         input_type=attachment['input_type'],
         original_filename=attachment['original_filename'],
         mime_type=attachment['mime_type'],
+        file_bytes=file_bytes,
     )
     try:
         classification = await classify_accounting_document(
@@ -86,6 +89,10 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
             api_key=config.openai_api_key,
             model=config.openai_llm_model,
         )
+        if classification.document_type == 'unknown':
+            _cleanup_temp_quietly(config.storage_dir, staged_path)
+            await message.answer('Doklad sa nepodarilo rozpoznať. Skúste poslať čitateľnejšiu fotku alebo PDF.')
+            return
         candidate = await extract_accounting_document_metadata(
             document_input=document_input,
             document_type_hint=classification.document_type,
@@ -93,15 +100,23 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
             model=config.openai_llm_model,
         )
     except AccountingDocumentLmmError:
+        _cleanup_temp_quietly(config.storage_dir, staged_path)
         await message.answer('Doklad sa nepodarilo spracovať. Skúste ho poslať ešte raz v lepšej kvalite.')
         return
     except ValueError:
+        _cleanup_temp_quietly(config.storage_dir, staged_path)
         await message.answer('Doklad sa nepodarilo bezpečne prečítať. Skúste ho poslať ešte raz.')
         return
 
     candidate = _with_upload_source(candidate, attachment)
+    if candidate.quality.readability == 'poor':
+        _cleanup_temp_quietly(config.storage_dir, staged_path)
+        await message.answer('Doklad je príliš rozmazaný alebo nečitateľný. Skúste poslať ostrejšiu fotku alebo PDF.')
+        return
+
     validation = validate_accounting_document_candidate(candidate)
     if not validation.can_save:
+        _cleanup_temp_quietly(config.storage_dir, staged_path)
         await message.answer(_format_validation_failure(validation.errors))
         return
 
@@ -143,6 +158,10 @@ async def accounting_document_preview_decision(message: Message, state: FSMConte
         return
 
     if decision == 'cancel':
+        state_data = await state.get_data()
+        source_path_value = state_data.get(_STATE_TEMP_ORIGINAL_KEY)
+        if isinstance(source_path_value, str):
+            _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
         await state.clear()
         await message.answer('Spracovanie dokladu bolo zrušené.')
         return
@@ -169,6 +188,7 @@ async def accounting_document_preview_decision(message: Message, state: FSMConte
         await message.answer('Doklad sa nepodarilo uložiť. Skúste /doklad znova.')
         return
 
+    _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
     await state.clear()
     await message.answer(f'Doklad bol uložený.\nMetadata: {result.metadata_path}')
 
@@ -298,3 +318,10 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _cleanup_temp_quietly(storage_dir: Path, staged_path: Path) -> None:
+    try:
+        cleanup_temp_staging_path(storage_dir=storage_dir, staged_path=staged_path)
+    except (AccountingDocumentStorageError, OSError):
+        pass

@@ -144,7 +144,13 @@ def test_doklad_starts_intake_fsm_and_asks_for_upload() -> None:
 
 
 def test_upload_receipt_photo_active_state_saves_temp_and_shows_preview(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    captured_bytes: list[bytes | None] = []
+
+    async def _classify(**kwargs) -> AccountingDocumentClassification:
+        captured_bytes.append(kwargs['document_input'].file_bytes)
+        return await _fake_classify(**kwargs)
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _classify)
     monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
     state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
     message = _DummyMessage(photo=[_DummyPhoto()])
@@ -153,6 +159,7 @@ def test_upload_receipt_photo_active_state_saves_temp_and_shows_preview(monkeypa
     asyncio.run(accounting_document_upload(message, state, _config(tmp_path), bot))
 
     assert bot.downloads == [tmp_path / 'uploads' / 'accounting_intake' / 'PHOTO123' / 'original.jpg']
+    assert captured_bytes == [b'accounting-document']
     assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
     assert 'Náhľad dokladu' in message.answers[-1]
     assert 'Typ: Bloček' in message.answers[-1]
@@ -191,6 +198,7 @@ def test_schvalit_approves_via_shared_resolver_and_confirmed_saves(monkeypatch, 
     metadata = json.loads(metadata_files[0].read_text(encoding='utf-8'))
     assert metadata['document_type'] == 'receipt'
     assert metadata['business']['vendor_name'] == 'Tesco Slovensko s.r.o.'
+    assert not (tmp_path / 'uploads' / 'accounting_intake' / 'PHOTO123').exists()
     assert not (tmp_path / 'invoices').exists()
     assert not config.db_path.exists()
 
@@ -208,6 +216,7 @@ def test_zrusit_cancels_without_confirmed_save(monkeypatch, tmp_path: Path) -> N
     assert state.current_state is None
     assert 'zrušené' in message.answers[-1]
     assert not (tmp_path / 'workspaces').exists()
+    assert not (tmp_path / 'uploads' / 'accounting_intake' / 'PHOTO123').exists()
     assert not (tmp_path / 'invoices').exists()
     assert not config.db_path.exists()
 
@@ -243,6 +252,58 @@ def test_upload_outside_active_state_is_not_intercepted(monkeypatch, tmp_path: P
     assert calls == []
     assert bot.downloads == []
     assert message.answers == []
+
+
+def test_unknown_classification_cleans_temp_and_asks_for_clearer_upload(monkeypatch, tmp_path: Path) -> None:
+    async def _unknown_classify(**kwargs) -> AccountingDocumentClassification:
+        return AccountingDocumentClassification(
+            document_type='unknown',
+            confidence='low',
+            reason='Unreadable',
+        )
+
+    calls: list[str] = []
+
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        calls.append('extract')
+        return _receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _unknown_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(photo=[_DummyPhoto()])
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
+
+    assert calls == []
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+    assert 'nepodarilo rozpozna' in message.answers[-1]
+    assert not (tmp_path / 'uploads' / 'accounting_intake' / 'PHOTO123').exists()
+
+
+def test_poor_readability_cleans_temp_and_asks_for_better_file(monkeypatch, tmp_path: Path) -> None:
+    async def _poor_extract(**kwargs) -> AccountingDocumentCandidate:
+        return AccountingDocumentCandidate(
+            document_type='receipt',
+            vendor_name='Tesco Slovensko s.r.o.',
+            issue_date='2026-05-01',
+            total_amount='24.90',
+            currency='EUR',
+            payment_method='card',
+            quality=AccountingDocumentQuality(readability='poor'),
+            source=AccountingDocumentSource(input_type='photo', original_filename='photo.jpg'),
+        )
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _poor_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(photo=[_DummyPhoto()])
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+    assert 'rozmazan' in message.answers[-1]
+    assert not (tmp_path / 'uploads' / 'accounting_intake' / 'PHOTO123').exists()
 
 
 def test_accounting_document_decision_context_supports_slovak_aliases() -> None:

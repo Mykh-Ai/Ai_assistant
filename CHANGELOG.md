@@ -12,6 +12,7 @@
 ### Changed
 - invoice preview/post-PDF decisions, contact confirmations, onboarding confirmation, and existing-invoice delete confirmation now route through the shared DecisionResolver.
 - voice confirm-state transcripts now route to the active confirmation handler instead of falling through to top-level invoice routing.
+- accounting Document Intake now passes real Telegram photo/PDF bytes into the LMM boundary as image/PDF payloads, with temp staging cleanup for cancel/error/confirmed-save paths.
 
 ### Notes
 - Document Intake remains Phase 1 only: no idle attachment interception, bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, or invoice PDF path changes.

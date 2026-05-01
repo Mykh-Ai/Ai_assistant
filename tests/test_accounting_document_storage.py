@@ -9,6 +9,7 @@ import pytest
 from bot.services.accounting_document_models import AccountingDocumentCandidate, AccountingDocumentSource
 from bot.services.accounting_document_storage import (
     AccountingDocumentStorageError,
+    cleanup_temp_staging_path,
     confirmed_filename,
     confirmed_paths,
     save_confirmed_accounting_document,
@@ -140,3 +141,25 @@ def test_stage_original_file_uses_temp_accounting_intake_area(tmp_path: Path) ->
 
     assert staged == tmp_path / 'uploads' / 'accounting_intake' / 'TEMP123' / 'original.pdf'
     assert staged.read_bytes() == b'%PDF'
+
+
+def test_cleanup_temp_staging_path_removes_only_accounting_intake_file(tmp_path: Path) -> None:
+    staged = tmp_path / 'uploads' / 'accounting_intake' / 'TEMP123' / 'original.pdf'
+    staged.parent.mkdir(parents=True)
+    staged.write_bytes(b'%PDF')
+
+    cleanup_temp_staging_path(storage_dir=tmp_path, staged_path=staged)
+
+    assert not staged.exists()
+    assert not staged.parent.exists()
+
+
+def test_cleanup_temp_staging_path_rejects_non_intake_path(tmp_path: Path) -> None:
+    invoice_file = tmp_path / 'invoices' / 'x.pdf'
+    invoice_file.parent.mkdir()
+    invoice_file.write_bytes(b'%PDF')
+
+    with pytest.raises(AccountingDocumentStorageError, match='refusing_to_cleanup_non_accounting_intake_path'):
+        cleanup_temp_staging_path(storage_dir=tmp_path, staged_path=invoice_file)
+
+    assert invoice_file.exists()

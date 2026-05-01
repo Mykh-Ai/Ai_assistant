@@ -72,6 +72,11 @@ Read-only дії в межах репозиторію не потребують 
 - destructive або risky дій;
 - runtime / DB / storage змін, якщо вони не були явно замовлені.
 
+## Test commands
+
+For this repository, run tests with `python -m pytest -q` from `D:\AI_Model\Ai_assistant`.
+Avoid bare `pytest -q` because it may not include the project root on `sys.path` and can fail to import `bot`.
+
 ## Формат результату
 
 Після виконання запиту на зміни в проєкті агент повинен за замовчуванням повертати результат у форматі:
