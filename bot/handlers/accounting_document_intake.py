@@ -29,6 +29,7 @@ from bot.services.accounting_document_storage import (
     AccountingDocumentStorageError,
     cleanup_temp_staging_path,
     save_confirmed_accounting_document,
+    stage_original_file,
     temp_staging_dir,
 )
 from bot.services.accounting_document_validation import validate_accounting_document_candidate
@@ -132,6 +133,32 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
     await message.answer(_format_accounting_document_preview(candidate))
 
 
+async def process_staged_accounting_document(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    staged_path: Path,
+    attachment_metadata: dict[str, str],
+    document_type_hint: str | None = None,
+) -> None:
+    file_unique_id = attachment_metadata.get('file_unique_id')
+    accounting_staged_path = stage_original_file(
+        storage_dir=config.storage_dir,
+        source_path=staged_path,
+        file_unique_id=file_unique_id,
+    )
+    await _process_accounting_document_from_staged_original(
+        message=message,
+        state=state,
+        config=config,
+        staged_path=accounting_staged_path,
+        attachment_metadata=attachment_metadata,
+        document_type_hint=document_type_hint,
+        failure_state=None,
+    )
+
+
 @router.message(AccountingDocumentIntakeStates.waiting_upload)
 async def accounting_document_waiting_upload(message: Message) -> None:
     await message.answer('Pošlite, prosím, fotku alebo PDF bločka / prijatej faktúry.')
@@ -223,6 +250,123 @@ def _extract_supported_attachment(message: Message) -> dict[str, str] | None:
         'original_filename': file_name,
         'mime_type': mime_type or 'application/pdf',
     }
+
+
+async def _process_accounting_document_from_staged_original(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    staged_path: Path,
+    attachment_metadata: dict[str, str],
+    document_type_hint: str | None = None,
+    failure_state: State | None = None,
+) -> None:
+    file_unique_id = attachment_metadata['file_unique_id']
+    file_bytes = staged_path.read_bytes()
+    document_input = AccountingDocumentLmmInput(
+        input_type=attachment_metadata['input_type'],
+        original_filename=attachment_metadata['original_filename'],
+        mime_type=attachment_metadata['mime_type'],
+        file_bytes=file_bytes,
+    )
+    try:
+        resolved_document_type = document_type_hint
+        if resolved_document_type is None:
+            classification = await classify_accounting_document(
+                document_input=document_input,
+                api_key=config.openai_api_key,
+                model=config.openai_llm_model,
+            )
+            resolved_document_type = classification.document_type
+        if resolved_document_type == 'unknown':
+            await _handle_accounting_processing_failure(
+                message=message,
+                state=state,
+                config=config,
+                staged_path=staged_path,
+                failure_state=failure_state,
+                text='Doklad sa nepodarilo rozpoznať. Skúste poslať čitateľnejšiu fotku alebo PDF.',
+            )
+            return
+        candidate = await extract_accounting_document_metadata(
+            document_input=document_input,
+            document_type_hint=resolved_document_type,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    except AccountingDocumentLmmError:
+        await _handle_accounting_processing_failure(
+            message=message,
+            state=state,
+            config=config,
+            staged_path=staged_path,
+            failure_state=failure_state,
+            text='Doklad sa nepodarilo spracovať. Skúste ho poslať ešte raz v lepšej kvalite.',
+        )
+        return
+    except ValueError:
+        await _handle_accounting_processing_failure(
+            message=message,
+            state=state,
+            config=config,
+            staged_path=staged_path,
+            failure_state=failure_state,
+            text='Doklad sa nepodarilo bezpečne prečítať. Skúste ho poslať ešte raz.',
+        )
+        return
+
+    candidate = _with_upload_source(candidate, attachment_metadata)
+    if candidate.quality.readability == 'poor':
+        await _handle_accounting_processing_failure(
+            message=message,
+            state=state,
+            config=config,
+            staged_path=staged_path,
+            failure_state=failure_state,
+            text='Doklad je príliš rozmazaný alebo nečitateľný. Skúste poslať ostrejšiu fotku alebo PDF.',
+        )
+        return
+
+    validation = validate_accounting_document_candidate(candidate)
+    if not validation.can_save:
+        await _handle_accounting_processing_failure(
+            message=message,
+            state=state,
+            config=config,
+            staged_path=staged_path,
+            failure_state=failure_state,
+            text=_format_validation_failure(validation.errors),
+        )
+        return
+
+    await state.update_data(
+        **{
+            _STATE_CANDIDATE_KEY: candidate_to_metadata_dict(candidate),
+            _STATE_TEMP_ORIGINAL_KEY: str(staged_path),
+            _STATE_FILE_UNIQUE_ID_KEY: file_unique_id,
+            _STATE_EXTENSION_KEY: attachment_metadata['extension'],
+        }
+    )
+    await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
+    await message.answer(_format_accounting_document_preview(candidate))
+
+
+async def _handle_accounting_processing_failure(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    staged_path: Path,
+    failure_state: State | None,
+    text: str,
+) -> None:
+    _cleanup_temp_quietly(config.storage_dir, staged_path)
+    if failure_state is None:
+        await state.clear()
+    else:
+        await state.set_state(failure_state)
+    await message.answer(text)
 
 
 def _with_upload_source(candidate: AccountingDocumentCandidate, attachment: dict[str, str]) -> AccountingDocumentCandidate:

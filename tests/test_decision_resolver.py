@@ -4,7 +4,12 @@ import asyncio
 
 import pytest
 
-from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
+from bot.services.decision_resolver import (
+    resolve_approve_edit_cancel,
+    resolve_attachment_document_type_choice,
+    resolve_attachment_route_choice,
+    resolve_yes_no,
+)
 
 
 @pytest.mark.parametrize(
@@ -78,6 +83,59 @@ def test_contact_semantic_intake_yes_no_canonical_outputs(user_input: str, expec
     assert asyncio.run(
         resolve_yes_no(
             context_name='contact_intake_confirm',
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
+
+
+def test_yes_no_stt_noise_is_unknown_for_idle_attachment_accounting() -> None:
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='idle_attachment_accounting_proposal',
+            user_input_text='Ah, não.',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'unknown'
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('vytvoriť kontakt', 'create_contact'),
+        ('uložiť zmluvu', 'save_contract'),
+        ('zrušiť', 'cancel'),
+        ('asi neviem', 'unknown'),
+    ],
+)
+def test_attachment_route_choice_canonical_outputs(user_input: str, expected: str) -> None:
+    assert asyncio.run(
+        resolve_attachment_route_choice(
+            context_name='idle_attachment_route_choice',
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('bloček', 'receipt'),
+        ('prijatá faktúra', 'incoming_invoice'),
+        ('zmluva', 'contract'),
+        ('kontakt', 'contact_source'),
+        ('zrušiť', 'cancel'),
+        ('neviem', 'unknown'),
+    ],
+)
+def test_attachment_document_type_choice_canonical_outputs(user_input: str, expected: str) -> None:
+    assert asyncio.run(
+        resolve_attachment_document_type_choice(
+            context_name='idle_attachment_document_type_choice',
             user_input_text=user_input,
             api_key=None,
             model='gpt-4o',

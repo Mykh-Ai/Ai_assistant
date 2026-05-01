@@ -7,10 +7,21 @@ from bot.services.semantic_action_resolver import resolve_bounded_confirmation_r
 
 ApproveEditCancelDecision = str
 YesNoDecision = str
+AttachmentRouteChoiceDecision = str
+AttachmentDocumentTypeChoiceDecision = str
 
 _UNKNOWN = 'unknown'
 _APPROVE_EDIT_CANCEL_OUTPUTS = ['schvalit', 'upravit', 'zrusit', 'unknown']
 _YES_NO_OUTPUTS = ['ano', 'nie', 'unknown']
+_ATTACHMENT_ROUTE_CHOICE_OUTPUTS = ['create_contact', 'save_contract', 'cancel', 'unknown']
+_ATTACHMENT_DOCUMENT_TYPE_CHOICE_OUTPUTS = [
+    'receipt',
+    'incoming_invoice',
+    'contract',
+    'contact_source',
+    'cancel',
+    'unknown',
+]
 
 _APPROVE_EDIT_CANCEL_MAP = {
     'schvalit': 'approve',
@@ -69,3 +80,43 @@ async def resolve_yes_no(
         diagnostics=diagnostics,
     )
     return _YES_NO_MAP.get(legacy, _UNKNOWN)
+
+
+async def resolve_attachment_route_choice(
+    *,
+    context_name: str,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> AttachmentRouteChoiceDecision:
+    decision = await resolve_bounded_confirmation_reply(
+        context_name=context_name,
+        expected_reply_type='attachment_route_choice',
+        allowed_outputs=_ATTACHMENT_ROUTE_CHOICE_OUTPUTS,
+        user_input_text=user_input_text,
+        api_key=api_key,
+        model=model,
+        diagnostics=diagnostics,
+    )
+    return decision if decision in _ATTACHMENT_ROUTE_CHOICE_OUTPUTS else _UNKNOWN
+
+
+async def resolve_attachment_document_type_choice(
+    *,
+    context_name: str,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> AttachmentDocumentTypeChoiceDecision:
+    decision = await resolve_bounded_confirmation_reply(
+        context_name=context_name,
+        expected_reply_type='attachment_document_type_choice',
+        allowed_outputs=_ATTACHMENT_DOCUMENT_TYPE_CHOICE_OUTPUTS,
+        user_input_text=user_input_text,
+        api_key=api_key,
+        model=model,
+        diagnostics=diagnostics,
+    )
+    return decision if decision in _ATTACHMENT_DOCUMENT_TYPE_CHOICE_OUTPUTS else _UNKNOWN

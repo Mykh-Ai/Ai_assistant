@@ -2676,3 +2676,56 @@ Investigate why server invoice `20260005` received `delivery_date = 2023-04-25` 
   - `/bot/data/storage/invoices/20260005.pdf` was regenerated;
   - backup copies were stored under `/bot/repo/data/storage/backups/`.
 
+## 2026-05-01 — Session 033 — Shared OfficeFlow idle attachment router foundation
+
+### Goal
+Implement docs-first and runtime foundation for a shared OfficeFlow idle attachment classifier/router above accounting intake and contact/contract intake.
+
+### Decisions
+- Active FSM state remains authoritative:
+  - `/doklad` upload state continues to own accounting uploads;
+  - contact source/intake states continue to own contact document uploads;
+  - the shared router is registered idle-only with `StateFilter(None)`.
+- LMM classifies document type only:
+  - `receipt`,
+  - `incoming_invoice`,
+  - `contract`,
+  - `contact_source`,
+  - `unknown`.
+- Python maps `document_type` to a bounded proposal and asks the user before any save/create side effect.
+- `bot/services/document_intake.py` remains the old contract/contact PDF helper and was not expanded for accounting documents.
+- Standalone `save_contract` remains reserved; the runtime fails explicitly if selected.
+
+### Changes
+- Docs:
+  - updated `docs/llm/Canonical_Action_Registry.md`;
+  - updated `docs/llm/In_Action_Response_Registry.md`;
+  - updated `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+  - updated `docs/Document_Intake_Module_Proposal.md`.
+- Runtime:
+  - added `bot/services/officeflow_attachment_models.py`;
+  - added `bot/services/officeflow_attachment_storage.py`;
+  - added `bot/services/officeflow_attachment_classifier.py`;
+  - added `bot/services/officeflow_attachment_lmm.py`;
+  - added `prompts/officeflow_attachment_classification_prompt.txt`;
+  - added `bot/handlers/officeflow_attachment_router.py`;
+  - registered the shared router before `contacts_router`;
+  - added a staged-file entrypoint for existing accounting document processing.
+- DecisionResolver:
+  - added `attachment_route_choice`;
+  - added `attachment_document_type_choice`;
+  - kept accounting proposal on existing `yes_no`.
+- Tests:
+  - added strict parser coverage for all allowed attachment document types and invalid payloads;
+  - added idle router coverage for receipt, incoming invoice, contract, unknown, LMM failure cleanup, and idle-only registration;
+  - added DecisionResolver coverage for attachment route/document-type choices and STT-noise fallback.
+
+### Verification
+- `python -m pytest -q` — 402 passed.
+
+### Notes
+- No DB schema changes.
+- No invoice flow, `storage/invoices`, or `pdf_path` changes.
+- No Google Drive sync, bank matching, or Zevs runtime profile.
+- No confirmed accounting document, contact, or contract is saved from idle classification alone.
+

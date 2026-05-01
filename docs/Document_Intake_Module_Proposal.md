@@ -2,7 +2,10 @@
 
 **Document role:** docs-first proposal for a future OfficeFlow Document Intake module.
 
-This document does not describe an implemented expenses/incoming-documents runtime. Current code contains a narrow document intake helper for contract attachments in the contact flow; that helper is not the full module described here.
+This document distinguishes three runtime layers:
+- the old narrow `bot/services/document_intake.py` contract/contact helper,
+- the implemented accounting Document Intake Phase 1 flow,
+- the shared OfficeFlow idle attachment router foundation above both intake families.
 
 ---
 
@@ -22,14 +25,31 @@ Current implemented behavior:
 - text-based PDFs can be read,
 - scan-PDF OCR branch fails loud / remains pluggable,
 - extracted contact data is candidate-only and must be confirmed before save.
+- accounting Document Intake Phase 1 exists for `/doklad`, `/expense`, and `/intake`:
+  - accepts photo/PDF while the accounting intake FSM state is active,
+  - classifies only receipts and incoming invoices,
+  - extracts candidate metadata through a bounded LMM wrapper,
+  - validates in Python,
+  - shows a Slovak preview,
+  - saves to confirmed accounting storage only after explicit user approval.
+- shared idle attachment router foundation exists/planned as the layer above accounting intake and contact/contract intake:
+  - runs only when no FSM state is active,
+  - stages photo/PDF originals in neutral temporary storage,
+  - classifies `receipt`, `incoming_invoice`, `contract`, `contact_source`, or `unknown`,
+  - maps document type to a Python-owned proposal,
+  - asks before entering accounting or contact processing.
 
 Current behavior is not:
-- expense intake,
-- receipt OCR,
-- incoming invoice processing,
 - bank statement parsing,
-- general document classification,
+- receipt OCR,
+- general document classification beyond the bounded idle attachment document types listed above,
 - accounting export.
+
+Important module boundary:
+- `bot/services/document_intake.py` remains the old contract/contact PDF helper.
+- Accounting intake remains in `bot/handlers/accounting_document_intake.py` and `bot/services/accounting_document_*`.
+- The shared attachment router must not stuff receipt/incoming-invoice behavior into `document_intake.py`.
+- The shared router is an idle pre-router, not confirmed business storage.
 
 ---
 
@@ -129,6 +149,14 @@ High-level rule:
 
 No current files should be moved as part of this proposal.
 
+Current shared idle staging uses neutral temporary storage such as:
+
+```text
+storage/uploads/attachment_intake/<id>/original.<ext>
+```
+
+This is not confirmed accounting storage and not contract archive storage.
+
 ---
 
 ## 7. Integration Points
@@ -141,16 +169,14 @@ Future integration points:
 - optional category dictionary service,
 - later accounting export/package service.
 
-These are planning points only. No runtime action should be added until a separate docs contract is approved.
+Runtime integration now starts with a shared idle attachment router foundation, while the broader module remains incremental. The router is intentionally above the existing accounting intake and contact/contract helper and must preserve active FSM state ownership.
 
 ---
 
 ## 8. Explicit Non-Goals
 
 Do not implement in this step:
-- expenses runtime,
 - bank statement runtime,
-- OCR/LLM extraction runtime,
 - document category DB schema,
 - automatic saving of AI output,
 - Zevs s.r.o. profile,

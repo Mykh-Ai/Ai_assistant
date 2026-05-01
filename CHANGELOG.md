@@ -8,14 +8,21 @@
 - accounting Document Intake Phase 1 foundation for receipts and incoming invoices:
   - pure candidate models, validation, deterministic storage helpers, classifier/extraction parsers, and isolated LMM wrapper;
   - explicit `/doklad`, `/expense`, and `/intake` FSM flow for state-scoped photo/PDF uploads, Slovak preview, shared decision resolution, and confirmed JSON-sidecar storage.
+- shared OfficeFlow idle attachment router foundation:
+  - neutral temp staging under `storage/uploads/attachment_intake/`;
+  - bounded LMM document-type classifier for `receipt`, `incoming_invoice`, `contract`, `contact_source`, and `unknown`;
+  - idle-only `StateFilter(None)` router above accounting/contact intake;
+  - bounded accounting/contact-route proposals before any save/create side effects.
+- DecisionResolver families for idle attachment route and document-type clarification.
 
 ### Changed
 - invoice preview/post-PDF decisions, contact confirmations, onboarding confirmation, and existing-invoice delete confirmation now route through the shared DecisionResolver.
 - voice confirm-state transcripts now route to the active confirmation handler instead of falling through to top-level invoice routing.
 - accounting Document Intake now passes real Telegram photo/PDF bytes into the LMM boundary as image/PDF payloads, with temp staging cleanup for cancel/error/confirmed-save paths.
+- accounting Document Intake exposes a staged-file processing entrypoint so the idle router can continue into the existing accounting preview/confirmation flow without changing invoice storage or DB schema.
 
 ### Notes
-- Document Intake remains Phase 1 only: no idle attachment interception, bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, or invoice PDF path changes.
+- Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, standalone contract save, or invoice PDF path changes.
 
 ## [0.6.1] - 2026-04-12
 

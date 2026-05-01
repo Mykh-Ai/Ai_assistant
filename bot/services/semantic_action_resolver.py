@@ -309,7 +309,14 @@ def _fallback_bounded_confirmation_reply(
         return _UNKNOWN
 
     if (
-        context_name in {'contact_confirm', 'contact_intake_confirm', 'onboarding_confirm', 'delete_existing_invoice_confirm'}
+        context_name
+        in {
+            'contact_confirm',
+            'contact_intake_confirm',
+            'onboarding_confirm',
+            'delete_existing_invoice_confirm',
+            'idle_attachment_accounting_proposal',
+        }
         and expected_reply_type == 'yes_no_confirmation'
     ):
         positive = {'ano', 'tak', 'ok', 'da'}
@@ -319,6 +326,40 @@ def _fallback_bounded_confirmation_reply(
         if normalized in negative and 'nie' in allowed_outputs:
             return 'nie'
         return _UNKNOWN
+
+    if context_name == 'idle_attachment_route_choice' and expected_reply_type == 'attachment_route_choice':
+        tokens = set(normalized.split())
+        matched: set[str] = set()
+        if tokens.intersection({'kontakt', 'contact', 'kontrahent', 'firmu', 'spolocnost'}) and tokens.intersection(
+            {'vytvorit', 'vytvor', 'pridat', 'pridaj', 'create', 'add'}
+        ):
+            matched.add('create_contact')
+        if tokens.intersection({'zmluvu', 'zmluva', 'contract'}) and tokens.intersection(
+            {'ulozit', 'uloz', 'save', 'archivovat'}
+        ):
+            matched.add('save_contract')
+        if tokens.intersection({'zrusit', 'zrus', 'cancel', 'stop'}):
+            matched.add('cancel')
+        if normalized in {'nie', 'no', 'cancel'}:
+            matched.add('cancel')
+        return next(iter(matched)) if len(matched) == 1 else _UNKNOWN
+
+    if context_name == 'idle_attachment_document_type_choice' and expected_reply_type == 'attachment_document_type_choice':
+        tokens = set(normalized.split())
+        matched: set[str] = set()
+        if tokens.intersection({'blocek', 'block', 'receipt', 'uctenka'}):
+            matched.add('receipt')
+        if tokens.intersection({'faktura', 'fakturu', 'invoice'}) and tokens.intersection(
+            {'prijata', 'prijatu', 'incoming', 'dodavatelska'}
+        ):
+            matched.add('incoming_invoice')
+        if tokens.intersection({'zmluva', 'zmluvu', 'contract'}):
+            matched.add('contract')
+        if tokens.intersection({'kontakt', 'contact', 'kontrahent', 'firmu', 'spolocnost'}):
+            matched.add('contact_source')
+        if tokens.intersection({'zrusit', 'zrus', 'cancel', 'stop'}):
+            matched.add('cancel')
+        return next(iter(matched)) if len(matched) == 1 else _UNKNOWN
 
     if context_name == 'contact_confirm' and expected_reply_type == 'yes_no_confirmation':
         positive = {'ano', 'tak', 'da', 'так', 'да'}
@@ -703,6 +744,10 @@ async def resolve_bounded_confirmation_reply(
                             'For expected_reply_type=draft_review_decision or postpdf_decision: '
                             'map clear approve/confirm/save-draft intent to schvalit, clear edit/change/correct intent to upravit, '
                             'and clear delete/cancel/remove/discard invoice-draft intent to zrusit, including multilingual/noisy variants. '
+                            'For expected_reply_type=attachment_route_choice: map only clear route choice to create_contact, '
+                            'save_contract, cancel, or unknown. '
+                            'For expected_reply_type=attachment_document_type_choice: map only clear document-type clarification to '
+                            'receipt, incoming_invoice, contract, contact_source, cancel, or unknown. '
                             'Phrases meaning "save changes" are approve/save intent, not edit intent; do not treat "changes" alone as an edit command. '
                             'Safety rule: do not guess destructive action when intent is unclear; use "unknown" for uncertainty.'
                         ),

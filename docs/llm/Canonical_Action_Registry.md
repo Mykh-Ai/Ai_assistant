@@ -17,6 +17,25 @@ Purpose: evidence-based inventory of currently existing user-facing actions/flow
 | `send_invoice` | top-level user-facing action | reserved | text/voice token recognized, runtime fallback | Included in allowed top-level resolver actions and fallback tokenization; in runtime branch `process_invoice_text()` maps it to generic “Nerozumiem...” and clears state. | Resolver-recognized placeholder only; no standalone execution flow yet. |
 | `edit_invoice` | top-level user-facing action | reserved | text/voice token recognized, runtime fallback | Included in allowed top-level resolver actions and fallback tokenization; runtime currently returns generic “Nerozumiem...” and clears state. | Resolver-recognized placeholder only; no standalone execution flow yet. |
 
+## A.1) Shared idle attachment pre-router
+
+| Capability (working name) | Category | Status | Entry mode | Source evidence | Notes |
+|---|---|---|---|---|---|
+| `officeflow_idle_attachment_router` | idle attachment pre-router | partial | photo/PDF while FSM state is idle | Shared OfficeFlow attachment router foundation. | This is not a top-level business action like `create_invoice` or `add_contact`. It classifies an idle attachment before Python proposes a bounded next step. Active FSM state wins; the router runs only when no FSM state is active. |
+
+Supported LMM `document_type` classification values:
+- `receipt`
+- `incoming_invoice`
+- `contract`
+- `contact_source`
+- `unknown`
+
+Important distinction:
+- LMM returns only `document_type`, `confidence`, and `reason`.
+- `document_type` is not a business action.
+- Python maps `document_type` to a proposed workflow step and asks the user before any confirmed save or contact creation.
+- No confirmed accounting storage, contact save, contract save, DB mutation, Google Drive sync, or bank matching may happen from classification alone.
+
 ## B) Bootstrap/admin/setup flows
 
 | Flow (working name) | Category | Status | Entry mode | Source evidence | Notes |

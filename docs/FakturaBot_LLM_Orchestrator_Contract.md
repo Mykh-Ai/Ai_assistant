@@ -101,6 +101,8 @@ This does not add OfficeFlow Document Intake runtime actions or Telegram button/
 Decision families:
 - `approve_edit_cancel` -> `approve` / `edit` / `cancel` / `unknown`
 - `yes_no` -> `yes` / `no` / `unknown`
+- `attachment_route_choice` -> `create_contact` / `save_contract` / `cancel` / `unknown`
+- `attachment_document_type_choice` -> `receipt` / `incoming_invoice` / `contract` / `contact_source` / `cancel` / `unknown`
 
 Existing machine tokens such as `schvalit`, `upravit`, `zrusit`, `ano`, and `nie` remain current runtime compatibility vocabulary where already used. New confirmation-like flows should not add per-module local parsers and should converge text, voice transcript, and future Telegram button/callback input into the same canonical decision path.
 
@@ -368,6 +370,38 @@ Unified resolver principle for FakturaBot AI layer:
 In short:
 
 **Python defines bounds and executes. LLM canonicalizes within bounds.**
+
+---
+
+## 10.1) Shared OfficeFlow attachment classification contract
+
+The shared OfficeFlow idle attachment classifier is a pre-router above accounting intake and contact/contract intake.
+
+Strict routing rule:
+- Active FSM state wins.
+- If the user is already in `/doklad` upload state, the accounting intake handler owns the upload.
+- If the user is in contact source/intake state, the contact flow owns the upload.
+- The shared idle attachment classifier runs only when there is no active FSM state.
+
+LMM contract:
+- LMM classifies document type only.
+- Allowed `document_type` values are `receipt`, `incoming_invoice`, `contract`, `contact_source`, and `unknown`.
+- LMM must return strict JSON only: `document_type`, `confidence`, `reason`.
+- LMM must not choose a final business action.
+- LMM must not claim anything was saved, routed, confirmed, created, or executed.
+
+Python contract:
+- Python stages the original file in neutral temporary attachment staging.
+- Python builds the classification bundle with idle state, allowed document types, routing hints, forbidden side effects, attachment metadata, and extracted PDF text when available.
+- Python validates the classifier output.
+- Python maps `document_type` to a bounded user-facing proposal.
+- Python asks the user before any confirmed accounting save, contact creation, or contract save.
+- Python remains the only workflow authority and the only component allowed to perform side effects after approval.
+
+Slice status:
+- Accounting proposal path can continue into the existing accounting document preview and confirmation flow.
+- Contact-source path can continue into the existing contact draft preview and confirmation flow.
+- Standalone `save_contract` is reserved until a separate contract-save approval/storage contract exists.
 
 ---
 
