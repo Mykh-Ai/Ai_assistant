@@ -308,6 +308,18 @@ def _fallback_bounded_confirmation_reply(
             return 'nie'
         return _UNKNOWN
 
+    if (
+        context_name in {'contact_confirm', 'contact_intake_confirm', 'onboarding_confirm', 'delete_existing_invoice_confirm'}
+        and expected_reply_type == 'yes_no_confirmation'
+    ):
+        positive = {'ano', 'tak', 'ok', 'da'}
+        negative = {'nie', 'net', 'no'}
+        if normalized in positive and 'ano' in allowed_outputs:
+            return 'ano'
+        if normalized in negative and 'nie' in allowed_outputs:
+            return 'nie'
+        return _UNKNOWN
+
     if context_name == 'contact_confirm' and expected_reply_type == 'yes_no_confirmation':
         positive = {'ano', 'tak', 'da', 'так', 'да'}
         negative = {'nie', 'net', 'ні', 'нет'}
@@ -332,6 +344,7 @@ def _fallback_bounded_confirmation_reply(
             'zachovajte',
             'ano',
             'tak',
+            'ok',
             'da',
             'uloz',
             'ulozit',
@@ -373,7 +386,7 @@ def _fallback_bounded_confirmation_reply(
                 'no',
             }
         else:
-            cancel_values = {'zrusit', 'cancel', 'отменить', 'скасувати', 'нет', 'ні', 'nie'}
+            cancel_values = {'zrusit', 'cancel', 'отменить', 'скасувати', 'нет', 'ні', 'nie', 'no'}
 
         return _resolve_local_decision_markers(
             normalized=normalized,

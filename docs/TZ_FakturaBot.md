@@ -74,6 +74,8 @@ AI не є джерелом істини. У v2.0 контракт AI базує
 
 Додатковий project-level принцип для confirmation-like відповідей зафіксовано в `docs/Canonical_Decision_Resolver_Contract.md`: усі рішення типу approve/edit/cancel або yes/no мають проходити через спільний Canonical DecisionResolver. Поточні локальні парсери `ano/nie` або `schvalit/upravit/zrusit` вважаються технічним боргом і мають мігрувати після тестів; це не означає, що спільний resolver уже повністю впроваджений у runtime.
 
+Phase 1 migration частково впроваджує цей принцип у runtime: поточні invoice preview/post-PDF, contact confirmation, onboarding confirmation і existing-invoice delete confirmation flows проходять через `bot/services/decision_resolver.py`. Це не додає OfficeFlow Document Intake runtime, Telegram button callbacks, DB schema changes, storage migration або зміну `pdf_path`.
+
 ---
 
 ## 2. Архітектурна концепція

@@ -175,6 +175,24 @@ def test_delete_existing_invoice_confirmation_no_cancels(tmp_path: Path) -> None
     assert state.cleared is True
 
 
+def test_delete_existing_invoice_confirmation_uses_delete_context_for_unknown(tmp_path: Path, monkeypatch) -> None:
+    message = _DummyMessage(1, 'mozno')
+    state = _DummyState({'pending_delete_invoice_id': 1, 'pending_delete_invoice_number': '20260001'})
+    config = Config(bot_token='token', openai_api_key='key', openai_stt_model='whisper-1', openai_llm_model='gpt-4o', debug_invoice_transparency=False, db_path=tmp_path / 'x.db', storage_dir=tmp_path)
+    captured: dict[str, str] = {}
+
+    async def _resolver(**kwargs):
+        captured['context_name'] = kwargs['context_name']
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_yes_no', _resolver)
+    asyncio.run(invoice_delete_existing_invoice_confirm(message, state, config))
+
+    assert captured['context_name'] == 'delete_existing_invoice_confirm'
+    assert state.cleared is False
+    assert 'odpovedzte' in message.answers[-1]
+
+
 def test_preview_contains_proposed_invoice_number() -> None:
     preview = _format_preview(
         None,

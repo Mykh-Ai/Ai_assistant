@@ -7,6 +7,7 @@ from pathlib import Path
 from bot.config import Config
 from bot.handlers.contacts import ContactStates
 from bot.handlers.invoice import InvoiceStates
+from bot.handlers.onboarding import OnboardingStates
 from bot.handlers.supplier import ServiceAliasStates
 from bot.handlers.voice import handle_voice
 
@@ -251,6 +252,87 @@ def test_voice_contact_missing_state_routes_to_contact_missing_handler(monkeypat
 
     asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(ContactStates.intake_missing.state)))
     assert calls == ['contact_missing']
+
+
+def test_voice_delete_invoice_confirm_routes_to_delete_confirmation_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ok'
+
+    async def _delete_confirm(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    async def _generic(**kwargs) -> None:
+        calls.append('generic')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.invoice_delete_existing_invoice_confirm', _delete_confirm)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _generic)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_delete_existing_invoice_confirm.state),
+        )
+    )
+    assert calls == ['ok']
+
+
+def test_voice_manual_contact_confirm_routes_to_contact_confirmation_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ok'
+
+    async def _contact_confirm(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    async def _generic(**kwargs) -> None:
+        calls.append('generic')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.contact_confirm', _contact_confirm)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _generic)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(ContactStates.confirm.state),
+        )
+    )
+    assert calls == ['ok']
+
+
+def test_voice_onboarding_confirm_routes_to_onboarding_confirmation_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ok'
+
+    async def _onboarding_confirm(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    async def _generic(**kwargs) -> None:
+        calls.append('generic')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.onboarding_confirm', _onboarding_confirm)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _generic)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(OnboardingStates.confirm.state),
+        )
+    )
+    assert calls == ['ok']
 
 
 def test_voice_name_hint_state_requires_text_input(monkeypatch, tmp_path: Path) -> None:

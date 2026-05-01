@@ -2,7 +2,8 @@
 
 **Document role:** project-level architecture contract for confirmation-like user decisions.
 
-This is a docs-only policy and migration target. It does not claim that every current runtime confirmation path already uses one shared implementation.
+This contract started as a docs-only policy and migration target.
+Phase 1 runtime migration now exists for the current FakturaBot confirmation surfaces listed in section 7.1, but this document still does not claim that future modules or Telegram button callbacks are implemented.
 
 ---
 
@@ -112,6 +113,35 @@ Migration must be tests-first:
 5. Confirm voice/text parity for every migrated FSM state.
 
 Until migration is complete, docs and code must not claim the shared resolver is fully implemented everywhere.
+
+### 7.1 Phase 1 Runtime Status
+
+Implemented in `bot/services/decision_resolver.py`:
+- `resolve_approve_edit_cancel(...)` returns `approve`, `edit`, `cancel`, or `unknown`.
+- `resolve_yes_no(...)` returns `yes`, `no`, or `unknown`.
+
+Migrated runtime paths:
+- invoice preview confirmation;
+- invoice post-PDF decision;
+- contact semantic intake confirmation;
+- manual contact confirmation;
+- supplier onboarding confirmation;
+- existing invoice delete confirmation.
+
+Voice routing now sends confirm-state transcripts to the active confirmation handler for:
+- invoice preview confirmation;
+- invoice post-PDF decision;
+- existing invoice delete confirmation;
+- contact semantic intake confirmation;
+- manual contact confirmation;
+- supplier onboarding confirmation.
+
+Not implemented by this migration:
+- OfficeFlow Document Intake runtime;
+- Telegram button/callback handling;
+- DB schema changes;
+- storage path changes;
+- invoice PDF path behavior changes.
 
 ---
 

@@ -7,6 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 
 from bot.config import Config
+from bot.services.decision_resolver import resolve_yes_no
 from bot.services.supplier_service import SupplierProfile, SupplierService
 from bot.services.validation import (
     validate_days_due,
@@ -219,12 +220,17 @@ async def onboarding_confirm(
     state: FSMContext,
     config: Config,
 ) -> None:
-    answer = (message.text or '').strip().lower()
-    if answer not in {'ano', 'nie'}:
+    answer = await resolve_yes_no(
+        context_name='onboarding_confirm',
+        user_input_text=(message.text or ''),
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if answer == 'unknown':
         await message.answer('Napíšte ano alebo nie.')
         return
 
-    if answer == 'nie':
+    if answer == 'no':
         await state.clear()
         await message.answer('Onboarding bol zrušený. Pre nový pokus spustite /supplier.')
         return

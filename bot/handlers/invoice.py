@@ -17,6 +17,7 @@ from bot.config import Config
 from bot.handlers.contacts import start_add_contact_intake
 from bot.handlers.supplier import start_add_service_alias_intake
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
+from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
@@ -2263,10 +2264,8 @@ async def process_invoice_preview_confirmation(
                 ensure_ascii=False,
             )
         )
-    answer = await resolve_bounded_confirmation_reply(
+    answer = await resolve_approve_edit_cancel(
         context_name='invoice_preview_confirmation',
-        expected_reply_type='draft_review_decision',
-        allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
         user_input_text=confirmation_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
@@ -2321,7 +2320,7 @@ async def process_invoice_preview_confirmation(
         await message.answer('Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.')
         return
 
-    if answer == 'zrusit':
+    if answer == 'cancel':
         if config.debug_invoice_transparency:
             logger.info(
                 json.dumps(
@@ -2346,7 +2345,7 @@ async def process_invoice_preview_confirmation(
         await state.clear()
         return
 
-    if answer == 'upravit':
+    if answer == 'edit':
         if config.debug_invoice_transparency:
             logger.info(
                 json.dumps(
@@ -2403,10 +2402,8 @@ async def process_invoice_postpdf_decision(
                 ensure_ascii=False,
             )
         )
-    answer = await resolve_bounded_confirmation_reply(
+    answer = await resolve_approve_edit_cancel(
         context_name='invoice_postpdf_decision',
-        expected_reply_type='postpdf_decision',
-        allowed_outputs=['schvalit', 'upravit', 'zrusit', 'unknown'],
         user_input_text=decision_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
@@ -2474,7 +2471,7 @@ async def process_invoice_postpdf_decision(
     if isinstance(pdf_path_value, str) and pdf_path_value.strip():
         pdf_path = Path(pdf_path_value)
 
-    if answer == 'schvalit':
+    if answer == 'approve':
         if config.debug_invoice_transparency:
             logger.info(
                 json.dumps(
@@ -2500,7 +2497,7 @@ async def process_invoice_postpdf_decision(
         await message.answer('Faktúra bola potvrdená.')
         return
 
-    if answer == 'upravit':
+    if answer == 'edit':
         if config.debug_invoice_transparency:
             logger.info(
                 json.dumps(
@@ -2748,24 +2745,16 @@ async def invoice_pdf_decision(message: Message, state: FSMContext, config: Conf
 
 @router.message(InvoiceStates.waiting_delete_existing_invoice_confirm)
 async def invoice_delete_existing_invoice_confirm(message: Message, state: FSMContext, config: Config) -> None:
-    raw_text = (message.text or '').strip().lower()
-    if raw_text in {'áno', 'ano', 'yes', 'так', 'да'}:
-        answer = 'ano'
-    elif raw_text in {'nie', 'no', 'ні', 'нет'}:
-        answer = 'nie'
-    else:
-        answer = await resolve_bounded_confirmation_reply(
-            context_name='contact_confirm',
-            expected_reply_type='binary_confirmation',
-            allowed_outputs=['ano', 'nie', 'unknown'],
-            user_input_text=(message.text or ''),
-            api_key=config.openai_api_key,
-            model=config.openai_llm_model,
-        )
+    answer = await resolve_yes_no(
+        context_name='delete_existing_invoice_confirm',
+        user_input_text=(message.text or ''),
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
     if answer == 'unknown':
         await message.answer('Prosím, odpovedzte: áno / nie')
         return
-    if answer == 'nie':
+    if answer == 'no':
         await state.clear()
         await message.answer('Vymazanie faktúry bolo zrušené.')
         return

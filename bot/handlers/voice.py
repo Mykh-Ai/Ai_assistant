@@ -7,9 +7,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.config import Config
-from bot.handlers.contacts import ContactStates, process_contact_intake_confirm, process_contact_missing_fields
+from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm, process_contact_missing_fields
 from bot.handlers.invoice import (
     InvoiceStates,
+    invoice_delete_existing_invoice_confirm,
     invoice_edit_invoice_action,
     invoice_edit_invoice_date_value,
     invoice_edit_invoice_number_value,
@@ -23,6 +24,7 @@ from bot.handlers.invoice import (
     process_invoice_slot_clarification,
     process_invoice_text,
 )
+from bot.handlers.onboarding import OnboardingStates, onboarding_confirm
 from bot.handlers.supplier import ServiceAliasStates
 from bot.services.speech_to_text import transcribe_audio
 
@@ -147,6 +149,12 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 config=config,
                 decision_text=recognized_text,
             )
+        elif current_state == InvoiceStates.waiting_delete_existing_invoice_confirm.state:
+            await invoice_delete_existing_invoice_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
         elif current_state == InvoiceStates.waiting_edit_scope.state:
             await invoice_edit_scope(
                 message=text_message,
@@ -206,6 +214,18 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 state=state,
                 config=config,
                 answer_text=recognized_text,
+            )
+        elif current_state == ContactStates.confirm.state:
+            await contact_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == OnboardingStates.confirm.state:
+            await onboarding_confirm(
+                message=text_message,
+                state=state,
+                config=config,
             )
         elif current_state == ContactStates.name_hint.state:
             await message.answer('V tomto kroku zadajte názov firmy textom.')

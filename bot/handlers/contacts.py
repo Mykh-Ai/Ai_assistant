@@ -11,7 +11,8 @@ from bot.config import Config
 from bot.services.document_intake import extract_message_document_text
 from bot.services.llm_contact_parser import extract_contact_draft
 from bot.services.contact_service import ContactProfile, ContactService
-from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
+from bot.services.decision_resolver import resolve_yes_no
+from bot.services.semantic_action_resolver import resolve_semantic_action
 from bot.services.supplier_service import SupplierService
 from bot.services.validation import validate_dic, validate_email, validate_ic_dph, validate_ico
 
@@ -239,10 +240,8 @@ async def process_contact_intake_confirm(
     config: Config,
     answer_text: str,
 ) -> None:
-    answer = await resolve_bounded_confirmation_reply(
-        context_name='contact_confirm',
-        expected_reply_type='yes_no_confirmation',
-        allowed_outputs=['ano', 'nie', 'unknown'],
+    answer = await resolve_yes_no(
+        context_name='contact_intake_confirm',
         user_input_text=answer_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
@@ -250,7 +249,7 @@ async def process_contact_intake_confirm(
     if answer == 'unknown':
         await message.answer('Napíšte ano alebo nie.')
         return
-    if answer == 'nie':
+    if answer == 'no':
         await state.clear()
         await message.answer('Vytvorenie kontaktu bolo zrušené.')
         return
@@ -456,12 +455,17 @@ async def contact_person(message: Message, state: FSMContext) -> None:
 
 @router.message(ContactStates.confirm)
 async def contact_confirm(message: Message, state: FSMContext, config: Config) -> None:
-    answer = (message.text or '').strip().lower()
-    if answer not in {'ano', 'nie'}:
+    answer = await resolve_yes_no(
+        context_name='contact_confirm',
+        user_input_text=(message.text or ''),
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if answer == 'unknown':
         await message.answer('Napíšte ano alebo nie.')
         return
 
-    if answer == 'nie':
+    if answer == 'no':
         await state.clear()
         await message.answer('Vytvorenie kontaktu bolo zrušené. Pre nový pokus spustite /contact.')
         return

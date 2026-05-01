@@ -1,5 +1,18 @@
 # PROJECT_LOG
 
+## 2026-05-01 — Session 064 — Canonical DecisionResolver runtime Phase 1
+
+Summary:
+- Added `bot/services/decision_resolver.py` as the shared Canonical DecisionResolver adapter for `approve_edit_cancel` and `yes_no` decision families.
+- Migrated invoice preview, post-PDF invoice decision, contact semantic/manual confirmation, supplier onboarding confirmation, and existing-invoice delete confirmation to the shared resolver path.
+- Fixed voice routing so confirm-state transcripts route to the active confirmation handler instead of falling through to top-level invoice routing.
+- Added regression tests for canonical decisions, manual contact/onboarding confirmation aliases, delete confirmation context, and voice confirm routing.
+- No OfficeFlow Document Intake runtime, DB schema, storage paths, supplier profile, invoice PDF path behavior, or `pdf_path` behavior changed.
+
+Risks / follow-up:
+- Telegram button/callback decisions are still future work.
+- Future Document Intake must reuse the shared resolver and add its own preview/confirm tests before runtime implementation.
+
 ## 2026-05-01 — Session 063 — Canonical DecisionResolver docs policy
 
 Summary:

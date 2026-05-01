@@ -95,7 +95,8 @@ Even when LLM resolves `schvalit` / `upravit` / `zrusit`, Python still validates
 
 Project-level decision policy is maintained in `docs/Canonical_Decision_Resolver_Contract.md`.
 The required migration target is one shared Canonical DecisionResolver for confirmation-like replies.
-Current runtime still contains older local parsers in some flows; those are technical debt and must be migrated after tests.
+Phase 1 runtime now exposes the shared wrapper in `bot/services/decision_resolver.py` and routes the current invoice, contact, onboarding, and existing-invoice delete confirmation flows through it.
+This does not add OfficeFlow Document Intake runtime actions or Telegram button/callback handling.
 
 Decision families:
 - `approve_edit_cancel` -> `approve` / `edit` / `cancel` / `unknown`

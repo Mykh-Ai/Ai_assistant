@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from typing import Any
+
+from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply
+
+
+ApproveEditCancelDecision = str
+YesNoDecision = str
+
+_UNKNOWN = 'unknown'
+_APPROVE_EDIT_CANCEL_OUTPUTS = ['schvalit', 'upravit', 'zrusit', 'unknown']
+_YES_NO_OUTPUTS = ['ano', 'nie', 'unknown']
+
+_APPROVE_EDIT_CANCEL_MAP = {
+    'schvalit': 'approve',
+    'upravit': 'edit',
+    'zrusit': 'cancel',
+    'unknown': _UNKNOWN,
+}
+_YES_NO_MAP = {
+    'ano': 'yes',
+    'nie': 'no',
+    'unknown': _UNKNOWN,
+}
+
+
+def _approve_edit_cancel_reply_type(context_name: str) -> str:
+    if context_name == 'invoice_postpdf_decision':
+        return 'postpdf_decision'
+    return 'draft_review_decision'
+
+
+async def resolve_approve_edit_cancel(
+    *,
+    context_name: str,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> ApproveEditCancelDecision:
+    legacy = await resolve_bounded_confirmation_reply(
+        context_name=context_name,
+        expected_reply_type=_approve_edit_cancel_reply_type(context_name),
+        allowed_outputs=_APPROVE_EDIT_CANCEL_OUTPUTS,
+        user_input_text=user_input_text,
+        api_key=api_key,
+        model=model,
+        diagnostics=diagnostics,
+    )
+    return _APPROVE_EDIT_CANCEL_MAP.get(legacy, _UNKNOWN)
+
+
+async def resolve_yes_no(
+    *,
+    context_name: str,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> YesNoDecision:
+    legacy = await resolve_bounded_confirmation_reply(
+        context_name=context_name,
+        expected_reply_type='yes_no_confirmation',
+        allowed_outputs=_YES_NO_OUTPUTS,
+        user_input_text=user_input_text,
+        api_key=api_key,
+        model=model,
+        diagnostics=diagnostics,
+    )
+    return _YES_NO_MAP.get(legacy, _UNKNOWN)

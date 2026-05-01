@@ -4,10 +4,14 @@
 
 ### Added
 - docs-only Canonical DecisionResolver policy for confirmation-like replies across invoice, contact, onboarding, delete confirmation, and future Document Intake flows.
+- shared runtime `bot/services/decision_resolver.py` adapter for canonical `approve_edit_cancel` and `yes_no` decision families.
+
+### Changed
+- invoice preview/post-PDF decisions, contact confirmations, onboarding confirmation, and existing-invoice delete confirmation now route through the shared DecisionResolver.
+- voice confirm-state transcripts now route to the active confirmation handler instead of falling through to top-level invoice routing.
 
 ### Notes
-- The shared resolver is documented as a required architecture/migration target, not as fully implemented runtime behavior.
-- Existing local confirmation parsers are explicitly treated as technical debt to migrate after tests.
+- OfficeFlow Document Intake runtime, Telegram button callbacks, DB schema, storage paths, supplier profile, and invoice PDF path behavior remain unchanged.
 
 ## [0.6.1] - 2026-04-12
 

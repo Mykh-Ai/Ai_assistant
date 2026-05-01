@@ -8,6 +8,7 @@ from bot.handlers.contacts import (
     ContactStates,
     _process_source_after_name_step,
     _start_add_contact_from_source,
+    contact_confirm,
     contact_intake_from_document,
     contact_name_hint,
     process_contact_missing_fields,
@@ -196,6 +197,46 @@ def test_contact_saved_after_confirmation(tmp_path: Path) -> None:
     saved = ContactService(config.db_path).get_by_name(111, 'ZS s.r.o.')
     assert saved is not None
     assert saved.contract_path == 'storage/contracts/test.pdf'
+
+
+def test_manual_contact_confirm_accepts_shared_yes_alias(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    state.current_state = ContactStates.confirm
+    state.data.update(
+        {
+            'name': 'Manual ZS s.r.o.',
+            'ico': '12345678',
+            'dic': '1234567890',
+            'ic_dph': '',
+            'address': 'HlavnГЎ 1, KoЕЎice',
+            'email': 'manual@zs.sk',
+            'contact_person': '',
+        }
+    )
+    message = _DummyMessage()
+    message.text = 'ok'
+
+    asyncio.run(contact_confirm(message, state, config))
+
+    saved = ContactService(config.db_path).get_by_name(111, 'Manual ZS s.r.o.')
+    assert saved is not None
+    assert saved.source_type == 'manual'
+
+
+def test_manual_contact_confirm_accepts_shared_no_alias(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    state.current_state = ContactStates.confirm
+    message = _DummyMessage()
+    message.text = 'no'
+
+    asyncio.run(contact_confirm(message, state, config))
+
+    assert state.current_state is None
+    assert '/contact' in message.answers[-1]
 
 
 def test_contact_semantic_confirm_noisy_transcript_returns_unknown_retry(tmp_path: Path) -> None:
