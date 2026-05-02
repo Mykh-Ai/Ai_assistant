@@ -2,163 +2,196 @@
 
 ## 1) Мета документа
 
-Цей документ фіксує **практичний план розгортання** FakturaBot від поточного стану
-`локальний репозиторій + GitHub` до першого зовнішнього тест-клієнта, який натискає `/start` у server-hosted інстансі.
+Цей документ фіксує практичний стан і наступні кроки server rollout для FakturaBot:
+від поточного production-like owner-run baseline до першого зовнішнього dry run.
 
-Документ описує **цільовий напрямок та етапи впровадження**, а не твердження, що вся інфраструктура вже завершена.
+Документ не є джерелом продуктової істини для MVP. Якщо є конфлікт, пріоритет мають:
+1. `docs/TZ_FakturaBot.md`
+2. `PROJECT_LOG.md`
+3. поточний код
+4. `CHANGELOG.md`
 
-## 2) Стартова точка (поточний стан)
+Для будь-яких реальних серверних дій спочатку перевіряти приватний локальний runbook:
+`docs/local-only/FakturaBot_Server_Agent_Context.md`.
 
-На момент цього roadmap стартова точка:
-- код і документація в локальному репозиторії;
-- репозиторій у GitHub;
-- є MVP runtime-функціональність FakturaBot;
-- повний клієнт-ready server/onboarding workflow як стабільний продуктний процес ще формується.
+## 2) Audit стану на 2026-05-02
 
-## 3) Цільова near-term deployment концепція
+Статуси:
+- `DONE` - є в коді/документації/журналі і не потребує додаткового підтвердження для поточного рівня.
+- `PARTIAL` - частина вже зроблена, але етап ще не можна вважати завершеним.
+- `NOT STARTED` - є лише план або концепція, runtime/операційного процесу ще немає.
+- `FUTURE` - свідомо винесено за межі найближчого rollout.
 
-Near-term напрямок розгортання:
-- **один shared backend service**;
-- **один codebase**;
-- **одна спільна інфраструктурна база**;
-- **tenant isolation** на рівні клієнта/бота/конфігурації/даних;
-- per-client ізоляція:
-  - окремий Telegram bot token,
-  - окремий OpenAI API key,
-  - окремий supplier/business config,
-  - окремі дані та контексти сесій;
+| Етап | Статус | Що підтверджено | Що ще не завершено |
+| --- | --- | --- | --- |
+| Stage 1 - Server foundation | `PARTIAL` | Є `docker-compose.prod.yml`, `.env.server.example`, `scripts/update_repo.sh`, `scripts/deploy_owner_run.sh`, локальний server context/runbook, правило не публікувати секрети. | Формально не закрито backup/restore smoke-check, немає зафіксованого production secrets policy вище test-stage рівня, немає завершеного deployment checklist з результатами останньої перевірки. |
+| Stage 2 - First self-hosted production-like run (owner) | `PARTIAL` | У `PROJECT_LOG.md` є записи про server deploy, server invoice cleanup/correction, Linux PDF font fix; README описує production-like owner-run baseline. | Немає останнього підписаного checklist: `/start`, повний invoice flow, PDF/QR, persistence після restart, logs, backup/restore. |
+| Stage 3 - Tenant model definition | `NOT STARTED` | Концепція shared backend + tenant isolation описана в roadmap/local context. | Немає формального tenant contract і runtime-моделі tenant id/config/data/session/secrets isolation. |
+| Stage 4 - Multi-bot routing | `NOT STARTED` | Бажаний напрямок визначений: один backend для кількох ботів/тенантів. | Немає runtime routing для кількох Telegram bot tokens, guardrails проти cross-tenant leakage і тестів маршрутизації. |
+| Stage 5 - Manual onboarding v1 | `NOT STARTED` | Є локальний server context для ручних операцій без секретів у публічних файлах. | Немає завершеного manual onboarding runbook для першого tenant/client, smoke-check процедури і checklist без секретів. |
+| Stage 6 - First external client dry run | `NOT STARTED` | Цільовий сценарій визначений. | Немає запису, що зовнішній клієнт пройшов `/start` і базовий invoice flow на server-hosted tenant. |
+| Stage 7 - Later improvements | `FUTURE` | Теми визначені як після першого dry run. | Self-service setup page, vault/KMS-подібне hardening, admin tooling, Google Drive sync, Android/app layer не є поточним milestone. |
+
+## 3) Поточна rollout концепція
+
+Near-term напрямок:
+- один shared backend service;
+- один codebase;
+- одна керована server/runtime база;
+- tenant isolation на рівні клієнта/бота/конфігурації/даних/сесій;
 - Telegram-first rollout;
-- setup page/self-service onboarding — **пізніше** (не required для першого серверного milestone);
-- Android/UI шар — також пізніше.
+- ручний onboarding перших клієнтів;
+- setup page/self-service onboarding - пізніше;
+- Android/UI шар - пізніше.
 
-## 4) Явне архітектурне рішення для rollout
+Що не є базовою стратегією першого rollout:
+- multi-Docker-per-client як дефолт для кожного нового клієнта;
+- повністю автоматичний SaaS onboarding до перевіреного ручного процесу;
+- передчасна рольова система або admin panel.
 
-На найближчий production-like rollout рекомендовано:
-- **shared backend + tenant isolation** як основний шлях.
+## 4) Пріоритети
 
-Що НЕ є основною стратегією першого production-like кроку:
-- multi-Docker-per-client як дефолтна модель для кожного нового клієнта.
+### P0 - закрити owner-run baseline
 
-Примітка:
-- пер-клієнтна контейнеризація може лишатися опцією пізнішого етапу (специфічна ізоляція/масштаб),
-  але не як базова рекомендація для першого server rollout milestone.
+Задачі:
+- перевірити `/start` на server-hosted owner instance;
+- пройти повний invoice flow end-to-end;
+- перевірити PDF generation і Pay by Square QR;
+- перевірити, що `pdf_path` і створені файли зберігаються після restart;
+- перевірити логи і відсутність критичних runtime errors;
+- виконати backup/restore smoke-check або явно зафіксувати, що він ще не виконаний.
 
-## 5) Staged roadmap до першого клієнтського `/start`
+Definition of done:
+- у `PROJECT_LOG.md` є запис з датою, командами/діями перевірки і результатом;
+- відомо, як відновити runtime дані перед будь-якою DB/storage міграцією.
 
-### Stage 1 — Server foundation
+### P0 - зафіксувати DB/storage migration discipline
 
-Практичні кроки:
-- вибрати VPS/сервер;
-- підготувати базові директорії (код, storage, backups, logs);
-- підготувати Docker/deploy baseline;
-- налаштувати clone/pull/update процес з GitHub;
-- підготувати production env/secrets policy (без hardcode у репозиторії).
+Поточний стан:
+- повної системи міграцій БД у проєкті немає;
+- `bot/services/db.py` виконує bootstrap через `init_db()`;
+- є fail-loud перевірки очікуваних колонок через `PRAGMA table_info`;
+- сумісне додавання `invoice_item.item_description_raw` робиться автоматичним `ALTER TABLE`;
+- інші зміни схеми не можна вважати автоматично мігрованими.
 
-Результат етапу:
-- сервер готовий прийняти керований deploy і перезапуски.
+Рішення для найближчого етапу:
+- не впроваджувати складну migration framework без конкретної schema/storage зміни;
+- перед наступною реальною зміною схеми додати явний migration plan:
+  - backup перед міграцією;
+  - reversible або принаймні repeatable migration script;
+  - `schema_migrations` або інший простий журнал застосованих міграцій;
+  - smoke-check після міграції;
+  - заборона тихого переміщення/перегенерації invoice PDF без збереження `pdf_path`.
 
-### Stage 2 — First self-hosted production-like run (owner)
+### P1 - dependency management decision (`requirements.txt` vs `uv`)
 
-Практичні кроки:
-- розгорнути один робочий інстанс для автора/внутрішнього тесту;
-- перевірити `/start`;
-- пройти базовий invoice flow end-to-end;
-- перевірити persistence, логи, restart-поведінку.
+Поточний стан:
+- проєкт використовує `requirements.txt`;
+- `Dockerfile` встановлює залежності через `pip install -r requirements.txt`;
+- у roadmap/TZ немає зафіксованої вимоги переходу на `uv`.
 
-Результат етапу:
-- стабільний owner-run baseline, придатний для контрольованого зовнішнього dry run.
+Рішення:
+- перехід на `uv` не є блокером для owner-run або першого dry run;
+- `uv` варто розглянути окремою P1-задачею перед CI/server hardening, якщо потрібні:
+  - lockfile;
+  - швидше і відтворюване встановлення залежностей;
+  - `pyproject.toml` як єдина точка dependency metadata;
+  - окремі dev/test dependency groups.
 
-### Stage 3 — Tenant model definition
+Не змішувати перехід на `uv` з DB migration. Це різні ризики і різні rollback-плани.
 
-Практичні кроки:
-- зафіксувати tenant identifier модель;
-- визначити ізоляцію per-client config;
-- визначити ізоляцію per-client data storage;
-- визначити ізоляцію per-client FSM/session context;
-- визначити policy ізоляції per-client secrets.
+### P1 - tenant contract
 
-Результат етапу:
-- формалізований tenant contract без cross-tenant змішування.
+Задачі:
+- визначити tenant identifier;
+- описати per-tenant config;
+- описати per-tenant secrets ownership і storage policy;
+- описати ізоляцію data/session context;
+- визначити, які таблиці/файли стають tenant-aware;
+- додати guardrails проти cross-tenant leakage.
 
-### Stage 4 — Multi-bot routing
+Definition of done:
+- є окремий документ або секція в цьому roadmap з tenant contract;
+- зміни узгоджені з `docs/TZ_FakturaBot.md` або явно зафіксовані в `PROJECT_LOG.md`.
 
-Практичні кроки:
-- мапити вхідні Telegram updates до правильного tenant;
+### P1 - manual onboarding v1
+
+Задачі:
+- створити public checklist без секретів;
+- створити/оновити local-only runbook для реальних token/API key дій;
+- описати створення tenant config/storage;
+- описати smoke-check після активації tenant bot;
+- визначити rollback/deactivation steps для тестового клієнта.
+
+### P2 - multi-bot routing
+
+Задачі:
+- мапити Telegram updates до правильного tenant;
 - завантажувати коректні tenant config/secrets/data;
-- додати технічні guardrails проти cross-tenant leakage;
-- додати операційні перевірки, що маршрутизація детермінована.
+- додати тести маршрутизації;
+- додати runtime guardrails проти cross-tenant leakage.
 
-Результат етапу:
-- один backend коректно маршрутизує декілька ботів/тенантів.
+Передумова:
+- P1 tenant contract має бути закритий до реалізації routing.
 
-### Stage 5 — Manual onboarding v1
+### P2 - first external client dry run
 
-Практичні кроки:
-- підтримувати admin/manual onboarding procedure у local-only ops materials для перших клієнтів;
-- створювати tenant config вручну;
-- безпечно вносити/зберігати bot token та API ключі;
-- створювати tenant-isolated storage;
-- активувати конкретний tenant bot і виконувати smoke-check.
-
-Результат етапу:
-- керований ручний onboarding першого зовнішнього тест-клієнта без self-service UI.
-
-### Stage 6 — First external client dry run
-
-Практичні кроки:
-- зареєструвати клієнтський Telegram bot/token;
-- застосувати tenant config;
+Задачі:
+- підготувати клієнтський bot token/config;
+- активувати tenant;
 - дати клієнту інструкцію натиснути `/start`;
-- пройти перший onboarding у боті;
-- створити першу тестову фактуру;
-- перевірити логи, ізоляцію і відсутність cross-tenant витоків.
+- пройти onboarding і створити першу тестову фактуру;
+- перевірити логи, ізоляцію і rollback/deactivation procedure.
 
-Результат етапу:
-- підтверджений перший зовнішній production-like сценарій «клієнт натиснув `/start` і пройшов базовий flow».
+Передумова:
+- P0 owner-run baseline закритий;
+- P1 manual onboarding v1 готовий;
+- якщо dry run іде через shared backend з кількома ботами, P2 multi-bot routing має бути готовий.
 
-### Stage 7 — Later improvements
+### P3 - later improvements
 
-Після першого успішного зовнішнього dry run:
+Після першого зовнішнього dry run:
 - self-service setup page;
-- hardening секретів (vault/KMS-подібні практики за потреби);
+- vault/KMS-подібне hardening секретів за потреби;
 - admin/analytics tooling;
 - optional Google Drive інтеграція для storage документів;
-- пізніше — Android/app шар.
+- Android/app layer.
 
-## 6) Принципи зберігання даних і секретів
+## 5) Найближчий порядок виконання
 
-- Bot tokens / API keys не повинні передаватися через звичайний chat-flow.
-- Секрети мають зберігатися на backend-стороні в керованому secure storage підході.
-- Google Drive може бути опційним пізнім шаром для storage документів,
-  але не є primary secret manager.
-- Setup page — це future convenience layer, а не передумова першого server milestone.
+1. Закрити P0 owner-run checklist на сервері.
+2. Перевірити backup/restore і зафіксувати поточну DB/storage migration discipline.
+3. Описати tenant contract до будь-якого multi-bot runtime.
+4. Підготувати manual onboarding v1.
+5. Реалізувати multi-bot routing тільки після tenant contract.
+6. Провести first external client dry run.
+7. Після dry run приймати рішення про `uv`, CI/server hardening і self-service/admin tooling.
 
-## 7) Ризики і non-goals на ранньому rollout етапі
+## 6) Definition of first success milestone
 
-Основні ризики:
-- помилки tenant isolation;
-- витік секретів;
-- помилки multi-bot routing;
-- передчасне ускладнення через per-client containerization як дефолт.
-
-Non-goals раннього етапу:
-- не будувати одразу повний self-service кабінет;
-- не заявляти fully automated onboarding до появи реального, перевіреного процесу;
-- не ускладнювати інфраструктуру раніше, ніж це потрібно для першого зовнішнього клієнта.
-
-## 8) Definition of first success milestone
-
-Перший milestone вважається досягнутим, коли одночасно виконано:
-- є перший зовнішній тест-клієнт з власним bot token і конфігурацією;
-- tenant routing спрямовує апдейти в правильний tenant context;
+Перший зовнішній milestone вважається досягнутим, коли одночасно виконано:
+- є зовнішній тест-клієнт з власним bot token і конфігурацією;
+- tenant routing спрямовує updates у правильний tenant context;
 - клієнт натискає `/start` у своєму боті;
 - onboarding проходить у межах очікуваного flow;
 - створюється перша тестова фактура;
-- підтверджено відсутність cross-tenant data leakage.
+- підтверджено відсутність cross-tenant data leakage;
+- є запис у `PROJECT_LOG.md` з результатами dry run.
 
-## 9) Зв’язок з іншими документами
+## 7) Non-goals раннього rollout
 
-- `docs/TZ_FakturaBot.md` — продуктове ТЗ і межі MVP.
-- `docs/Info_Help_Guidance_Layer.md` — окремий docs-first spec для `info_help` guidance layer.
+- Не будувати повний self-service кабінет до перевіреного ручного onboarding.
+- Не заявляти fully automated onboarding до появи реального процесу.
+- Не переводити кожного клієнта в окремий контейнер як дефолт без окремого рішення.
+- Не додавати multi-tenant SaaS логіку без оновлення ТЗ або явного запису в `PROJECT_LOG.md`.
+- Не робити DB migration без backup/restore плану.
+- Не змішувати dependency tooling migration (`uv`) зі schema/storage migration.
 
-Цей roadmap не дублює `info_help` spec, а фокусується на server rollout/onboarding інфраструктурному шляху.
+## 8) Пов'язані документи
+
+- `docs/TZ_FakturaBot.md` - продуктове ТЗ і межі MVP.
+- `PROJECT_LOG.md` - журнал рішень і виконаних змін.
+- `README.md` - поточна навігація по проєкту і статус реалізації.
+- `docs/local-only/FakturaBot_Server_Agent_Context.md` - приватний server runbook для реальних server дій.
+- `docs/Info_Help_Guidance_Layer.md` - окремий docs-first spec для `info_help` guidance layer.
+

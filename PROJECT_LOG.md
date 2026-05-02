@@ -1,5 +1,39 @@
 # PROJECT_LOG
 
+## 2026-05-02 - Session 042 - Server rollout roadmap audit and priorities
+
+Summary:
+- Audited `docs/FakturaBot_Server_Rollout_Roadmap.md` against the current README, project log, repo deployment files, and local-only server context.
+- Reworked the roadmap from a target-only plan into a current audit with stage statuses: done/partial/not started/future.
+- Added prioritized rollout tasks for owner-run baseline, DB/storage migration discipline, dependency management, tenant contract, manual onboarding, multi-bot routing, and first external dry run.
+- Clarified that the project currently has no full DB migration system; current behavior is bootstrap/fail-loud with one compatible `ALTER TABLE` path, and the next schema/storage change needs an explicit migration plan.
+- Clarified that moving from `requirements.txt` to `uv` is a P1 dependency-management decision, not a blocker for owner-run or first dry run and not the same risk category as DB migration.
+
+Verification:
+- Documentation-only change; tests not run.
+
+Notes:
+- No runtime code, DB schema, storage behavior, deployment script, server state, or dependency file was changed.
+- Real server actions still require checking `docs/local-only/FakturaBot_Server_Agent_Context.md` first.
+
+## 2026-05-02 - Session 041 - Docs archive correction and README refresh
+
+Summary:
+- Audited markdown documents at repo root, `docs/`, `docs/llm/`, `docs/local-only/`, and `docs/archive/` for current role/status.
+- Rewrote `README.md` as a current navigation/status document instead of the outdated Phase 4 snapshot.
+- Added `docs/archive/README.md` to mark archived documents as historical context, not current sources of truth.
+- Moved the old root `FakturaBot_Implementation_Phases_Spec.md` into `docs/archive/`.
+- Moved `docs/PayBySquare_Research_Spike.md` and `docs/PayBySquare_Manual_Verification_Checklist.md` into `docs/archive/`.
+- Kept active README references to archived Pay by Square rationale/manual QR scan verification materials.
+
+Verification:
+- Documentation/file organization only; tests not run.
+
+Notes:
+- Current source-of-truth order remains `docs/TZ_FakturaBot.md`, `PROJECT_LOG.md`, current code, then `CHANGELOG.md`.
+- No runtime code, DB schema, storage behavior, invoice flow, or Pay by Square implementation was changed.
+- README now explicitly says real SMTP/email sending, standalone `save_contract`, full OfficeFlow workspace runtime, Google Drive sync, bank matching, full OCR, and multi-tenant SaaS runtime are not implemented.
+
 ## 2026-05-01 - Session 070 - Local Codex Windows sandbox ACL fix documented
 
 Summary:
@@ -2907,4 +2941,28 @@ Prevent abandoned OfficeFlow/accounting temporary intake sessions from leaving s
 - No `storage/invoices` or `pdf_path` changes.
 - Confirmed accounting storage, invoice PDFs, and contracts are excluded from timeout cleanup.
 - No Google Drive sync or global cleanup scheduler was implemented.
+
+## 2026-05-02 - Session 041 - Accounting intake duplicate warning
+
+### Goal
+Warn before processing a receipt/incoming invoice that appears to duplicate already confirmed accounting metadata.
+
+### Changes
+- Added deterministic duplicate scanning over confirmed accounting metadata only.
+- Duplicate matching compares document type, issue date, normalized vendor name, total amount, and currency.
+- Added `AccountingDocumentIntakeStates.waiting_duplicate_decision`.
+- Duplicate decision uses the shared `resolve_yes_no(...)` DecisionResolver family.
+- If the user continues, the normal accounting preview is shown and explicit preview approval is still required before save.
+- Added voice routing for duplicate decisions through the same guarded helper.
+- Documented that filename is not duplicate truth and that Slice 1 does not use AI/fuzzy/image/PDF duplicate matching.
+
+### Verification
+- `python -m pytest -q tests\test_accounting_document_duplicates.py tests\test_accounting_document_intake_flow.py` - 35 passed.
+
+### Notes
+- No DB schema changes.
+- No invoice flow changes.
+- No `storage/invoices` or `pdf_path` changes.
+- No changes to `storage/contracts`.
+- No automatic overwrite, deletion, fuzzy matching, AI duplicate matching, or Google Drive sync was implemented.
 
