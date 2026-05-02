@@ -27,6 +27,7 @@
 - docs-only OfficeFlow storage proposal now records future Google Drive sync path rules: storage-relative confirmed accounting paths are canonical, while temp uploads and host-only paths are not.
 - accounting Document Intake now extracts raw `purchase_subject` / `Predmet nákupu` instead of premature accounting category candidates.
 - temporary OfficeFlow/accounting intake sessions now expire after 5 minutes and safely clean only upload staging paths.
+- accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
 
 ### Notes
 - Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, standalone contract save, or invoice PDF path changes.

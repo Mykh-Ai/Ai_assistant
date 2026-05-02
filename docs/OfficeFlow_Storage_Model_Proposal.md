@@ -142,6 +142,8 @@ Future Drive mirroring scope:
 
 This section documents a future requirement only. It does not implement Google Drive sync.
 
+Confirmed accounting metadata is also the source for Document Intake duplicate warnings. Filenames are not duplicate truth because they include a unique upload-derived suffix. Duplicate checks must scan only confirmed accounting metadata under workspace/year/month expenses folders and must not scan temporary uploads, `storage/invoices/`, or `storage/contracts/`.
+
 ---
 
 ## 7. Migration Rules For Later

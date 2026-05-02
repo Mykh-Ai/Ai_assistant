@@ -163,6 +163,14 @@ Temporary intake sessions currently have a narrow inactivity policy:
 - Confirmed accounting storage under `storage/workspaces/...`, outgoing invoice PDFs under `storage/invoices/`, and contract files under `storage/contracts/` are excluded.
 - A separate filesystem orphan cleanup helper may remove old upload-staging directories as a safety net; this is not Google Drive sync and not confirmed archive management.
 
+Accounting Document Intake Phase 1 duplicate detection is metadata-based:
+- confirmed metadata is compared before the normal preview is shown;
+- filename is not the canonical duplicate key because confirmed filenames include a unique Telegram-derived suffix;
+- Slice 1 matching is deterministic only: document type, issue date, normalized vendor name, total amount, and currency;
+- no AI, fuzzy matching, image comparison, or PDF content comparison is used;
+- a duplicate warning is advisory, not blocking;
+- if the user chooses to continue, the normal Slovak preview and explicit approval step are still required before saving.
+
 ---
 
 ## 7. Integration Points

@@ -11,6 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 
 from bot.config import Config
+from bot.services.accounting_document_duplicates import DuplicateMatch, find_duplicate_accounting_document
 from bot.services.accounting_document_lmm import (
     AccountingDocumentLmmError,
     AccountingDocumentLmmInput,
@@ -33,7 +34,7 @@ from bot.services.accounting_document_storage import (
     temp_staging_dir,
 )
 from bot.services.accounting_document_validation import validate_accounting_document_candidate
-from bot.services.decision_resolver import resolve_approve_edit_cancel
+from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.temp_intake_session import build_intake_session_metadata, ensure_intake_session_active
 
 
@@ -44,10 +45,12 @@ _STATE_CANDIDATE_KEY = 'accounting_document_candidate'
 _STATE_TEMP_ORIGINAL_KEY = 'accounting_document_temp_original_path'
 _STATE_FILE_UNIQUE_ID_KEY = 'accounting_document_file_unique_id'
 _STATE_EXTENSION_KEY = 'accounting_document_extension'
+_STATE_DUPLICATE_MATCH_KEY = 'accounting_document_duplicate_match'
 
 
 class AccountingDocumentIntakeStates(StatesGroup):
     waiting_upload = State()
+    waiting_duplicate_decision = State()
     waiting_preview_decision = State()
 
 
@@ -122,20 +125,15 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
         await message.answer(_format_validation_failure(validation.errors))
         return
 
-    await state.update_data(
-        **{
-            _STATE_CANDIDATE_KEY: candidate_to_metadata_dict(candidate),
-            _STATE_TEMP_ORIGINAL_KEY: str(staged_path),
-            _STATE_FILE_UNIQUE_ID_KEY: file_unique_id,
-            _STATE_EXTENSION_KEY: attachment['extension'],
-            **build_intake_session_metadata(
-                temp_paths=[staged_path],
-                cleanup_kind='accounting_document_preview',
-            ),
-        }
+    await _store_preview_or_duplicate_state(
+        message=message,
+        state=state,
+        config=config,
+        candidate=candidate,
+        staged_path=staged_path,
+        file_unique_id=file_unique_id,
+        extension=attachment['extension'],
     )
-    await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
-    await message.answer(_format_accounting_document_preview(candidate))
 
 
 async def process_staged_accounting_document(
@@ -177,6 +175,61 @@ async def accounting_document_preview_decision(message: Message, state: FSMConte
         config=config,
         decision_text=message.text or '',
     )
+
+
+@router.message(AccountingDocumentIntakeStates.waiting_duplicate_decision)
+async def accounting_document_duplicate_decision(message: Message, state: FSMContext, config: Config) -> None:
+    await handle_accounting_document_duplicate_decision_text(
+        message=message,
+        state=state,
+        config=config,
+        decision_text=message.text or '',
+    )
+
+
+async def handle_accounting_document_duplicate_decision_text(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    decision_text: str,
+) -> None:
+    if not await ensure_intake_session_active(message=message, state=state, storage_dir=config.storage_dir):
+        return
+
+    decision = await resolve_yes_no(
+        context_name='accounting_document_duplicate_save_decision',
+        user_input_text=decision_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if decision == 'unknown':
+        await message.answer('Prosím, odpovedzte áno alebo nie.')
+        return
+
+    data = await state.get_data()
+    source_path_value = data.get(_STATE_TEMP_ORIGINAL_KEY)
+    if decision == 'no':
+        if isinstance(source_path_value, str):
+            _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
+        await state.clear()
+        await message.answer('Spracovanie dokladu bolo zrušené.')
+        return
+
+    candidate = _candidate_from_state_payload(data.get(_STATE_CANDIDATE_KEY) if isinstance(data.get(_STATE_CANDIDATE_KEY), dict) else {})
+    if not isinstance(source_path_value, str):
+        await state.clear()
+        await message.answer('Návrh dokladu už nie je dostupný. Spustite /doklad znova.')
+        return
+
+    await state.update_data(
+        **build_intake_session_metadata(
+            temp_paths=[Path(source_path_value)],
+            cleanup_kind='accounting_document_preview',
+        )
+    )
+    await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
+    await message.answer(_format_accounting_document_preview(candidate))
 
 
 async def handle_accounting_document_preview_decision_text(
@@ -363,18 +416,46 @@ async def _process_accounting_document_from_staged_original(
         )
         return
 
-    await state.update_data(
-        **{
-            _STATE_CANDIDATE_KEY: candidate_to_metadata_dict(candidate),
-            _STATE_TEMP_ORIGINAL_KEY: str(staged_path),
-            _STATE_FILE_UNIQUE_ID_KEY: file_unique_id,
-            _STATE_EXTENSION_KEY: attachment_metadata['extension'],
-            **build_intake_session_metadata(
-                temp_paths=[staged_path],
-                cleanup_kind='accounting_document_preview',
-            ),
-        }
+    await _store_preview_or_duplicate_state(
+        message=message,
+        state=state,
+        config=config,
+        candidate=candidate,
+        staged_path=staged_path,
+        file_unique_id=file_unique_id,
+        extension=attachment_metadata['extension'],
     )
+
+
+async def _store_preview_or_duplicate_state(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    candidate: AccountingDocumentCandidate,
+    staged_path: Path,
+    file_unique_id: str,
+    extension: str,
+) -> None:
+    state_payload = {
+        _STATE_CANDIDATE_KEY: candidate_to_metadata_dict(candidate),
+        _STATE_TEMP_ORIGINAL_KEY: str(staged_path),
+        _STATE_FILE_UNIQUE_ID_KEY: file_unique_id,
+        _STATE_EXTENSION_KEY: extension,
+        **build_intake_session_metadata(
+            temp_paths=[staged_path],
+            cleanup_kind='accounting_document_preview',
+        ),
+    }
+    duplicate = find_duplicate_accounting_document(storage_dir=config.storage_dir, candidate=candidate)
+    if duplicate is not None:
+        state_payload[_STATE_DUPLICATE_MATCH_KEY] = duplicate.to_dict()
+        await state.update_data(**state_payload)
+        await state.set_state(AccountingDocumentIntakeStates.waiting_duplicate_decision)
+        await message.answer(_format_duplicate_warning(duplicate))
+        return
+
+    await state.update_data(**state_payload)
     await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
     await message.answer(_format_accounting_document_preview(candidate))
 
@@ -426,6 +507,23 @@ def _format_accounting_document_preview(candidate: AccountingDocumentCandidate) 
         f'Platba: {payment_value}\n'
         f'Predmet nákupu: {purchase_subject_value}\n\n'
         'Schváliť, upraviť alebo zrušiť?'
+    )
+
+
+def _format_duplicate_warning(match: DuplicateMatch) -> str:
+    document_type_label = _document_type_label(match.document_type).lower()
+    amount = match.total_amount.replace('.', ',')
+    purchase_subject = match.purchase_subject or 'nezistené'
+    vendor = match.vendor_name or 'nezistené'
+    return (
+        'Podobný doklad už existuje:\n\n'
+        f'Typ: {document_type_label}\n'
+        f'Dodávateľ: {vendor}\n'
+        f'Dátum: {match.issue_date}\n'
+        f'Suma: {amount} {match.currency}\n'
+        f'Predmet nákupu: {purchase_subject}\n\n'
+        'Chcete nový doklad aj napriek tomu spracovať?\n'
+        'Odpovedzte: áno / nie.'
     )
 
 

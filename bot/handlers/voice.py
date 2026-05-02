@@ -9,6 +9,7 @@ from aiogram.types import Message
 from bot.config import Config
 from bot.handlers.accounting_document_intake import (
     AccountingDocumentIntakeStates,
+    handle_accounting_document_duplicate_decision_text,
     handle_accounting_document_preview_decision_text,
 )
 from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm, process_contact_missing_fields
@@ -260,6 +261,13 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             )
         elif current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state:
             await handle_accounting_document_preview_decision_text(
+                message=message,
+                state=state,
+                config=config,
+                decision_text=recognized_text,
+            )
+        elif current_state == AccountingDocumentIntakeStates.waiting_duplicate_decision.state:
+            await handle_accounting_document_duplicate_decision_text(
                 message=message,
                 state=state,
                 config=config,

@@ -10,6 +10,7 @@ import pytest
 from bot.config import Config
 from bot.handlers.accounting_document_intake import (
     AccountingDocumentIntakeStates,
+    accounting_document_duplicate_decision,
     accounting_document_preview_decision,
     accounting_document_upload,
     cmd_accounting_document_intake,
@@ -169,6 +170,33 @@ def _expire_accounting_state(state: _DummyState, staged_path: Path) -> None:
     )
 
 
+def _write_duplicate_metadata(tmp_path: Path) -> Path:
+    metadata_dir = tmp_path / 'workspaces' / 'mykhailo-szco' / 'years' / '2026' / 'expenses' / '05' / 'receipts' / 'metadata'
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = metadata_dir / 'existing.json'
+    metadata_path.write_text(
+        json.dumps(
+            {
+                'document_type': 'receipt',
+                'business': {
+                    'vendor_name': 'Tesco Slovensko s.r.o.',
+                    'issue_date': '2026-05-01',
+                    'total_amount': '24.90',
+                    'currency': 'EUR',
+                    'purchase_subject': 'Kancelárske potreby',
+                },
+                'storage': {
+                    'original_path': str(tmp_path / 'workspaces' / 'existing.jpg'),
+                    'metadata_path': str(metadata_path),
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding='utf-8',
+    )
+    return metadata_path
+
+
 def _receipt_candidate() -> AccountingDocumentCandidate:
     return AccountingDocumentCandidate(
         document_type='receipt',
@@ -228,6 +256,117 @@ def test_upload_receipt_photo_active_state_saves_temp_and_shows_preview(monkeypa
     assert 'Dodávateľ: Tesco Slovensko s.r.o.' in message.answers[-1]
     assert 'Predmet nákupu: Kancelárske potreby' in message.answers[-1]
     assert 'Kategória' not in message.answers[-1]
+
+
+def test_duplicate_found_shows_warning_and_does_not_save_new_document(monkeypatch, tmp_path: Path) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(photo=[_DummyPhoto()])
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_duplicate_decision.state
+    assert 'Podobný doklad už existuje' in message.answers[-1]
+    assert 'Odpovedzte: áno / nie.' in message.answers[-1]
+    assert _staged_original_path(tmp_path).exists()
+    assert len(list((tmp_path / 'workspaces').rglob('*.json'))) == 1
+
+
+def test_duplicate_yes_proceeds_to_preview_without_saving(monkeypatch, tmp_path: Path) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    message = _DummyMessage(text='áno')
+    asyncio.run(accounting_document_duplicate_decision(message, state, config))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert 'Náhľad dokladu' in message.answers[-1]
+    assert _staged_original_path(tmp_path).exists()
+    assert len(list((tmp_path / 'workspaces').rglob('*.json'))) == 1
+
+
+def test_duplicate_yes_then_preview_approve_saves_new_document(monkeypatch, tmp_path: Path) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    asyncio.run(accounting_document_duplicate_decision(_DummyMessage(text='áno'), state, config))
+
+    async def _resolver(**kwargs) -> str:
+        return 'approve'
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť'), state, config))
+
+    assert state.current_state is None
+    assert len(list((tmp_path / 'workspaces').rglob('*.json'))) == 2
+    assert not _staged_original_path(tmp_path).exists()
+
+
+def test_duplicate_no_cleans_temp_and_clears_state(monkeypatch, tmp_path: Path) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    message = _DummyMessage(text='nie')
+    asyncio.run(accounting_document_duplicate_decision(message, state, config))
+
+    assert state.current_state is None
+    assert not _staged_original_path(tmp_path).exists()
+    assert len(list((tmp_path / 'workspaces').rglob('*.json'))) == 1
+    assert 'zrušené' in message.answers[-1]
+
+
+def test_duplicate_unknown_keeps_state_and_temp(monkeypatch, tmp_path: Path) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    message = _DummyMessage(text='možno')
+    asyncio.run(accounting_document_duplicate_decision(message, state, config))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_duplicate_decision.state
+    assert _staged_original_path(tmp_path).exists()
+    assert 'áno alebo nie' in message.answers[-1]
+
+
+def test_duplicate_decision_uses_shared_yes_no_resolver(monkeypatch, tmp_path: Path) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+    captured: dict[str, str] = {}
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+
+    async def _resolver(**kwargs) -> str:
+        captured['context_name'] = kwargs['context_name']
+        captured['user_input_text'] = kwargs['user_input_text']
+        return 'no'
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_yes_no', _resolver)
+    asyncio.run(accounting_document_duplicate_decision(_DummyMessage(text='Ah, não.'), state, config))
+
+    assert captured == {
+        'context_name': 'accounting_document_duplicate_save_decision',
+        'user_input_text': 'Ah, não.',
+    }
 
 
 def test_schvalit_approves_via_shared_resolver_and_confirmed_saves(monkeypatch, tmp_path: Path) -> None:
@@ -443,6 +582,48 @@ def test_voice_expired_accounting_preview_cleans_temp_and_does_not_fall_back_to_
     assert state.current_state is None
     assert not staged_path.exists()
     assert not (tmp_path / 'workspaces').exists()
+    assert 'nečinnosti' in message.answers[-1]
+
+
+def test_voice_duplicate_decision_routes_to_same_helper(monkeypatch, tmp_path: Path) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    invoice_fallback_calls: list[str] = []
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _voice_config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    _patch_accounting_voice(monkeypatch, 'áno', invoice_fallback_calls)
+    message = _DummyMessage(voice=_DummyVoice())
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert invoice_fallback_calls == []
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert 'Náhľad dokladu' in message.answers[-1]
+    assert _staged_original_path(tmp_path).exists()
+
+
+def test_voice_expired_duplicate_decision_cleans_temp_and_does_not_fall_back_to_invoice(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    invoice_fallback_calls: list[str] = []
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _voice_config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    _expire_accounting_state(state, _staged_original_path(tmp_path))
+    _patch_accounting_voice(monkeypatch, 'áno', invoice_fallback_calls)
+    message = _DummyMessage(voice=_DummyVoice())
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert invoice_fallback_calls == []
+    assert state.current_state is None
+    assert not _staged_original_path(tmp_path).exists()
     assert 'nečinnosti' in message.answers[-1]
 
 
