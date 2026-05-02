@@ -157,6 +157,12 @@ storage/uploads/attachment_intake/<id>/original.<ext>
 
 This is not confirmed accounting storage and not contract archive storage.
 
+Temporary intake sessions currently have a narrow inactivity policy:
+- OfficeFlow idle attachment routing states and accounting document preview expire after 5 minutes of user inactivity.
+- On expiry, only temporary upload staging paths under `storage/uploads/attachment_intake/` or `storage/uploads/accounting_intake/` may be cleaned.
+- Confirmed accounting storage under `storage/workspaces/...`, outgoing invoice PDFs under `storage/invoices/`, and contract files under `storage/contracts/` are excluded.
+- A separate filesystem orphan cleanup helper may remove old upload-staging directories as a safety net; this is not Google Drive sync and not confirmed archive management.
+
 ---
 
 ## 7. Integration Points

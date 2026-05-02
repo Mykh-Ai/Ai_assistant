@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import importlib
 import inspect
 from pathlib import Path
@@ -14,10 +15,13 @@ from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStat
 from bot.handlers.contacts import ContactStates, router as contacts_router
 from bot.handlers.officeflow_attachment_router import (
     OfficeFlowAttachmentRouterStates,
+    officeflow_route_choice,
+    officeflow_unknown_clarification,
     officeflow_accounting_proposal,
     officeflow_idle_attachment,
     router as officeflow_router,
 )
+from bot.services.temp_intake_session import build_intake_session_metadata
 from bot.services.officeflow_attachment_lmm import OfficeFlowAttachmentLmmError
 from bot.services.officeflow_attachment_models import OfficeFlowAttachmentClassification
 
@@ -159,9 +163,24 @@ def _stage_accounting_proposal_state(tmp_path: Path) -> tuple[_DummyState, Path]
                 'confidence': 'high',
                 'reason': 'receipt evidence',
             },
+            **build_intake_session_metadata(
+                temp_paths=[staged_path],
+                cleanup_kind='officeflow_attachment',
+            ),
         }
     )
     return state, staged_path
+
+
+def _expire_state_data(state: _DummyState, staged_path: Path) -> None:
+    now = datetime.now(UTC)
+    state.data.update(
+        build_intake_session_metadata(
+            temp_paths=[staged_path],
+            cleanup_kind='officeflow_attachment',
+            now=now - timedelta(minutes=6),
+        )
+    )
 
 
 def _patch_voice_stt_and_invoice_fallback(monkeypatch, recognized_text: str, invoice_fallback_calls: list[str]) -> None:
@@ -344,6 +363,52 @@ def test_accounting_proposal_no_cleans_staged_file(tmp_path: Path) -> None:
     assert 'zrušené' in message.answers[-1]
 
 
+def test_expired_accounting_proposal_cleans_staged_file_and_skips_continuation(monkeypatch, tmp_path: Path) -> None:
+    async def _process(**kwargs) -> None:
+        raise AssertionError('expired accounting proposal must not continue')
+
+    monkeypatch.setattr(officeflow_router_module, 'process_staged_accounting_document', _process)
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    _expire_state_data(state, staged_path)
+    message = _DummyMessage(text='ano')
+
+    asyncio.run(officeflow_accounting_proposal(message, state, _config(tmp_path)))
+
+    assert state.current_state is None
+    assert not staged_path.exists()
+    assert 'nečinnosti' in message.answers[-1]
+
+
+def test_expired_route_choice_cleans_staged_file_and_skips_contact(monkeypatch, tmp_path: Path) -> None:
+    async def _start_contact(**kwargs) -> None:
+        raise AssertionError('expired route choice must not start contact flow')
+
+    monkeypatch.setattr(officeflow_router_module, '_start_contact_from_staged_attachment', _start_contact)
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    state.current_state = OfficeFlowAttachmentRouterStates.route_choice.state
+    _expire_state_data(state, staged_path)
+    message = _DummyMessage(text='vytvoriť kontakt')
+
+    asyncio.run(officeflow_route_choice(message, state, _config(tmp_path)))
+
+    assert state.current_state is None
+    assert not staged_path.exists()
+    assert 'nečinnosti' in message.answers[-1]
+
+
+def test_expired_unknown_clarification_cleans_staged_file(tmp_path: Path) -> None:
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    state.current_state = OfficeFlowAttachmentRouterStates.unknown_clarification.state
+    _expire_state_data(state, staged_path)
+    message = _DummyMessage(text='bloček')
+
+    asyncio.run(officeflow_unknown_clarification(message, state, _config(tmp_path)))
+
+    assert state.current_state is None
+    assert not staged_path.exists()
+    assert 'nečinnosti' in message.answers[-1]
+
+
 def test_accounting_proposal_handler_has_no_local_confirmation_parser() -> None:
     source = inspect.getsource(officeflow_accounting_proposal)
     source += inspect.getsource(officeflow_router_module.handle_officeflow_accounting_proposal_text)
@@ -414,6 +479,29 @@ def test_voice_accounting_proposal_unknown_keeps_state_and_staging(monkeypatch, 
     assert staged_path.exists()
     assert 'odpovedzte' in message.answers[-1]
     assert 'nie' in message.answers[-1]
+
+
+def test_voice_expired_accounting_proposal_cleans_staging_and_does_not_fall_back_to_invoice(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    invoice_fallback_calls: list[str] = []
+
+    async def _process(**kwargs) -> None:
+        raise AssertionError('expired accounting proposal must not continue')
+
+    monkeypatch.setattr(officeflow_router_module, 'process_staged_accounting_document', _process)
+    _patch_voice_stt_and_invoice_fallback(monkeypatch, 'ano', invoice_fallback_calls)
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    _expire_state_data(state, staged_path)
+    message = _DummyMessage(voice=_DummyVoice())
+
+    asyncio.run(voice_module.handle_voice(message, _DummyBot(), _voice_config(tmp_path), state))
+
+    assert state.current_state is None
+    assert invoice_fallback_calls == []
+    assert not staged_path.exists()
+    assert 'nečinnosti' in message.answers[-1]
 
 
 def test_shared_router_is_idle_only_and_registered_before_contacts() -> None:

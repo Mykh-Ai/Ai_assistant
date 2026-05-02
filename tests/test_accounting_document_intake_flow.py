@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from bot.services.accounting_document_models import (
     AccountingDocumentSource,
 )
 from bot.services.decision_resolver import resolve_approve_edit_cancel
+from bot.services.temp_intake_session import build_intake_session_metadata
 
 
 class _DummyPhoto:
@@ -154,6 +156,17 @@ def _prepare_accounting_preview(monkeypatch, tmp_path: Path) -> tuple[_DummyStat
     asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
     assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
     return state, config
+
+
+def _expire_accounting_state(state: _DummyState, staged_path: Path) -> None:
+    now = datetime.now(UTC)
+    state.data.update(
+        build_intake_session_metadata(
+            temp_paths=[staged_path],
+            cleanup_kind='accounting_document_preview',
+            now=now - timedelta(minutes=6),
+        )
+    )
 
 
 def _receipt_candidate() -> AccountingDocumentCandidate:
@@ -317,6 +330,46 @@ def test_upravit_cyrillic_keeps_accounting_preview_state_if_unknown_or_edit(monk
     }
 
 
+def test_expired_accounting_preview_cleans_temp_and_skips_approve(monkeypatch, tmp_path: Path) -> None:
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    _expire_accounting_state(state, staged_path)
+    message = _DummyMessage(text='schváliť')
+
+    asyncio.run(accounting_document_preview_decision(message, state, config))
+
+    assert state.current_state is None
+    assert not staged_path.exists()
+    assert not (tmp_path / 'workspaces').exists()
+    assert 'nečinnosti' in message.answers[-1]
+
+
+def test_expired_accounting_preview_cleans_temp_and_skips_cancel(monkeypatch, tmp_path: Path) -> None:
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    _expire_accounting_state(state, staged_path)
+    message = _DummyMessage(text='zrušiť')
+
+    asyncio.run(accounting_document_preview_decision(message, state, config))
+
+    assert state.current_state is None
+    assert not staged_path.exists()
+    assert 'nečinnosti' in message.answers[-1]
+
+
+def test_expired_accounting_preview_cleans_temp_and_skips_edit(monkeypatch, tmp_path: Path) -> None:
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    _expire_accounting_state(state, staged_path)
+    message = _DummyMessage(text='upraviť')
+
+    asyncio.run(accounting_document_preview_decision(message, state, config))
+
+    assert state.current_state is None
+    assert not staged_path.exists()
+    assert 'nečinnosti' in message.answers[-1]
+
+
 @pytest.mark.parametrize(
     ('recognized_text', 'expected_state_cleared', 'expect_staged_file'),
     [
@@ -371,6 +424,26 @@ def test_voice_accounting_preview_unknown_keeps_state_and_staging(monkeypatch, t
     assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
     assert staged_path.exists()
     assert 'schváliť, upraviť alebo zrušiť' in message.answers[-1]
+
+
+def test_voice_expired_accounting_preview_cleans_temp_and_does_not_fall_back_to_invoice(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    invoice_fallback_calls: list[str] = []
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    _expire_accounting_state(state, staged_path)
+    _patch_accounting_voice(monkeypatch, 'schváliť', invoice_fallback_calls)
+    message = _DummyMessage(voice=_DummyVoice())
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert invoice_fallback_calls == []
+    assert state.current_state is None
+    assert not staged_path.exists()
+    assert not (tmp_path / 'workspaces').exists()
+    assert 'nečinnosti' in message.answers[-1]
 
 
 def test_upload_outside_active_state_is_not_intercepted(monkeypatch, tmp_path: Path) -> None:

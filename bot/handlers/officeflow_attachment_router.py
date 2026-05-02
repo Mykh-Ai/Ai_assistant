@@ -32,6 +32,7 @@ from bot.services.officeflow_attachment_storage import (
     stage_message_attachment,
 )
 from bot.services.supplier_service import SupplierService
+from bot.services.temp_intake_session import build_intake_session_metadata, ensure_intake_session_active
 
 
 router = Router(name='officeflow_attachment_router')
@@ -88,6 +89,9 @@ async def handle_officeflow_accounting_proposal_text(
     config: Config,
     answer_text: str,
 ) -> None:
+    if not await ensure_intake_session_active(message=message, state=state, storage_dir=config.storage_dir):
+        return
+
     decision = await resolve_yes_no(
         context_name='idle_attachment_accounting_proposal',
         user_input_text=answer_text,
@@ -142,6 +146,9 @@ async def handle_officeflow_route_choice_text(
     config: Config,
     answer_text: str,
 ) -> None:
+    if not await ensure_intake_session_active(message=message, state=state, storage_dir=config.storage_dir):
+        return
+
     decision = await resolve_attachment_route_choice(
         context_name='idle_attachment_route_choice',
         user_input_text=answer_text,
@@ -185,6 +192,9 @@ async def handle_officeflow_unknown_clarification_text(
     config: Config,
     answer_text: str,
 ) -> None:
+    if not await ensure_intake_session_active(message=message, state=state, storage_dir=config.storage_dir):
+        return
+
     decision = await resolve_attachment_document_type_choice(
         context_name='idle_attachment_document_type_choice',
         user_input_text=answer_text,
@@ -297,6 +307,10 @@ async def _store_attachment_state(
                 'reason': classification.reason,
             },
             _STATE_EXTRACTED_PDF_TEXT: attachment.extracted_pdf_text,
+            **build_intake_session_metadata(
+                temp_paths=[attachment.staged_path],
+                cleanup_kind='officeflow_attachment',
+            ),
         }
     )
 

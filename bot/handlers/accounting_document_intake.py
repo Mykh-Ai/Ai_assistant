@@ -34,6 +34,7 @@ from bot.services.accounting_document_storage import (
 )
 from bot.services.accounting_document_validation import validate_accounting_document_candidate
 from bot.services.decision_resolver import resolve_approve_edit_cancel
+from bot.services.temp_intake_session import build_intake_session_metadata, ensure_intake_session_active
 
 
 router = Router()
@@ -127,6 +128,10 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
             _STATE_TEMP_ORIGINAL_KEY: str(staged_path),
             _STATE_FILE_UNIQUE_ID_KEY: file_unique_id,
             _STATE_EXTENSION_KEY: attachment['extension'],
+            **build_intake_session_metadata(
+                temp_paths=[staged_path],
+                cleanup_kind='accounting_document_preview',
+            ),
         }
     )
     await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
@@ -181,6 +186,9 @@ async def handle_accounting_document_preview_decision_text(
     config: Config,
     decision_text: str,
 ) -> None:
+    if not await ensure_intake_session_active(message=message, state=state, storage_dir=config.storage_dir):
+        return
+
     decision = await resolve_approve_edit_cancel(
         context_name=_DECISION_CONTEXT,
         user_input_text=decision_text,
@@ -361,6 +369,10 @@ async def _process_accounting_document_from_staged_original(
             _STATE_TEMP_ORIGINAL_KEY: str(staged_path),
             _STATE_FILE_UNIQUE_ID_KEY: file_unique_id,
             _STATE_EXTENSION_KEY: attachment_metadata['extension'],
+            **build_intake_session_metadata(
+                temp_paths=[staged_path],
+                cleanup_kind='accounting_document_preview',
+            ),
         }
     )
     await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)

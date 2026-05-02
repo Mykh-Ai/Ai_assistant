@@ -2882,3 +2882,29 @@ Replace premature accounting category extraction in Document Intake Phase 1 with
 - No confirmed accounting storage layout changes.
 - No accounting categorization or Google Drive sync was implemented.
 
+## 2026-05-02 - Session 040 - Temporary intake inactivity timeout
+
+### Goal
+Prevent abandoned OfficeFlow/accounting temporary intake sessions from leaving staged upload files and stale FSM state.
+
+### Changes
+- Added shared temporary intake session helper with:
+  - 5-minute FSM/session timeout metadata;
+  - safe cleanup restricted to `storage/uploads/attachment_intake/` and `storage/uploads/accounting_intake/`;
+  - filesystem orphan cleanup helper for old upload-staging directories.
+- Added expiry metadata to OfficeFlow idle attachment routing states.
+- Added expiry metadata to accounting document preview state.
+- Guarded OfficeFlow attachment continuation handlers and accounting preview decisions before any business continuation.
+- Voice/STT replies reuse the same guarded continuation helpers, so expired voice replies do not fall into invoice fallback.
+- Documented the temporary intake lifecycle boundary in `docs/Document_Intake_Module_Proposal.md`.
+
+### Verification
+- `python -m pytest -q tests\test_temp_intake_session.py tests\test_officeflow_attachment_router.py tests\test_accounting_document_intake_flow.py` - 51 passed.
+
+### Notes
+- No DB schema changes.
+- No invoice flow changes.
+- No `storage/invoices` or `pdf_path` changes.
+- Confirmed accounting storage, invoice PDFs, and contracts are excluded from timeout cleanup.
+- No Google Drive sync or global cleanup scheduler was implemented.
+
