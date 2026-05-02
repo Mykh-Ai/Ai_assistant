@@ -43,7 +43,15 @@ Required pattern:
 - the handler calls `bot/services/decision_resolver.py`;
 - Python receives only family-level canonical outputs;
 - the handler branches only on canonical tokens such as `yes`, `no`, `approve`, `edit`, `cancel`, or `unknown`;
+- the confirmation context is registered in the central test matrix in `tests/test_decision_resolver.py`;
 - user-facing wording can mention Slovak examples, but parsing those examples belongs to the shared resolver family, not to the flow.
+
+Every new confirmation-like flow must add its `context_name` to one of the central test registries:
+- `YES_NO_CONTEXTS`;
+- `APPROVE_EDIT_CANCEL_CONTEXTS`;
+- or a new explicitly named DecisionResolver family matrix added with the new family.
+
+If the context is not in one of these matrices, the runtime flow is not considered covered by the Canonical DecisionResolver contract.
 
 ---
 
@@ -87,6 +95,7 @@ New families must define:
 - `unknown` behavior,
 - which handlers are allowed to consume those outputs,
 - tests for noisy/multilingual/STT-like input,
+- a central context registry in `tests/test_decision_resolver.py`,
 - tests that handlers branch only on canonical outputs.
 
 New families must be documented in `docs/llm/In_Action_Response_Registry.md` before or together with runtime implementation.

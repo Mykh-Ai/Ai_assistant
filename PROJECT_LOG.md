@@ -1,5 +1,22 @@
 # PROJECT_LOG
 
+## 2026-05-02 - Session 043 - Canonical DecisionResolver matrix tests
+
+Summary:
+- Added central Canonical DecisionResolver test registries for yes/no and approve/edit/cancel confirmation contexts.
+- Added exact multilingual/noisy/STT-like contract matrices covering existing FakturaBot and OfficeFlow confirmation contexts.
+- Added a static handler guard against local confirmation token parsers in `bot/handlers/*.py`.
+- Updated the shared resolver fallback to cover newly contracted Slovak/Cyrillic-compatible variants such as `potvrď`, `zmeniť`, and `zahodiť`.
+- Updated `docs/Canonical_Decision_Resolver_Contract.md` to require new confirmation-like flows to register their `context_name` in the central test matrix.
+
+Verification:
+- `python -m pytest -q tests\test_decision_resolver.py` -> `340 passed`.
+- `python -m pytest -q` -> `753 passed`.
+
+Notes:
+- No DB schema, storage behavior, invoice PDF path behavior, deployment scripts, or server state was changed.
+- No handler-local confirmation parser was added.
+
 ## 2026-05-02 - Session 042 - Server rollout roadmap audit and priorities
 
 Summary:

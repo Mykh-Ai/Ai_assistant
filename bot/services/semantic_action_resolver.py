@@ -353,6 +353,7 @@ def _fallback_bounded_confirmation_reply(
         approve_values = {
             'schvalit',
             'potvrdit',
+            'potvrd',
             'potvrdzujem',
             'approve',
             'confirm',
@@ -380,6 +381,7 @@ def _fallback_bounded_confirmation_reply(
             'upravte',
             'opravit',
             'opravte',
+            'zmenit',
             'edit',
             'change',
             'correct',
@@ -400,6 +402,7 @@ def _fallback_bounded_confirmation_reply(
                 'delete',
                 'discard',
                 'remove',
+                'zahodit',
                 'отменить',
                 'скасувати',
                 'нет',
@@ -415,6 +418,7 @@ def _fallback_bounded_confirmation_reply(
             cancel_values = {
                 'zrusit',
                 'cancel',
+                'zahodit',
                 'отменить',
                 'скасувати',
                 'нет',
