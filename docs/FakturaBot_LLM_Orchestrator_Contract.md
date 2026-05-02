@@ -421,6 +421,7 @@ Action/resolver audit must be synchronized with:
 Important:
 - command-only manual flows are still implemented user-facing actions and must not be treated as absent only because they bypass semantic top-level resolver.
 - explicit delete command flow maps to canonical action `delete_existing_invoice` and MUST require explicit user confirmation before any destructive action.
+- `show_recent_accounting_documents` is implemented as the `/blocky` read-only command and deterministic idle text aliases. It lists only confirmed accounting Document Intake metadata under workspace/year/month expenses folders. It is not a broad document browser, not contract storage, not outgoing invoice PDF browsing, not temp upload access, not delete/edit/search, and not Google Drive sync. `/blocky` does not call LMM.
 
 ---
 

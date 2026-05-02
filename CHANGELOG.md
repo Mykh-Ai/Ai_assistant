@@ -14,6 +14,7 @@
   - idle-only `StateFilter(None)` router above accounting/contact intake;
   - bounded accounting/contact-route proposals before any save/create side effects.
 - DecisionResolver families for idle attachment route and document-type clarification.
+- `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
 - invoice preview/post-PDF decisions, contact confirmations, onboarding confirmation, and existing-invoice delete confirmation now route through the shared DecisionResolver.

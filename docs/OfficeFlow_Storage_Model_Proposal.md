@@ -144,6 +144,14 @@ This section documents a future requirement only. It does not implement Google D
 
 Confirmed accounting metadata is also the source for Document Intake duplicate warnings. Filenames are not duplicate truth because they include a unique upload-derived suffix. Duplicate checks must scan only confirmed accounting metadata under workspace/year/month expenses folders and must not scan temporary uploads, `storage/invoices/`, or `storage/contracts/`.
 
+The `/blocky` recent accounting documents view also uses confirmed accounting metadata as its source. It scans only:
+
+```text
+storage/workspaces/<workspace>/years/*/expenses/*/<receipts|incoming_invoices>/metadata/*.json
+```
+
+It must not scan `storage/uploads/`, `storage/invoices/`, or `storage/contracts/`. It is read-only and does not implement document search, edit, delete, invoice PDF browsing, contract browsing, or Google Drive sync.
+
 ---
 
 ## 7. Migration Rules For Later

@@ -2983,3 +2983,26 @@ Warn before processing a receipt/incoming invoice that appears to duplicate alre
 - No changes to `storage/contracts`.
 - No automatic overwrite, deletion, fuzzy matching, AI duplicate matching, or Google Drive sync was implemented.
 
+## 2026-05-02 - Session 042 - Recent accounting documents view
+
+### Goal
+Add a lightweight read-only `/blocky` command for recent confirmed receipts/incoming accounting documents.
+
+### Changes
+- Added `show_recent_accounting_documents` as a command-backed read-only action.
+- Added confirmed metadata registry scanning for the last 5 receipts/incoming invoices.
+- Added `/blocky` and narrow deterministic aliases for recent bločky/receipts phrases.
+- Kept the view isolated from outgoing invoice PDFs, contracts, temp uploads, DB schema, and LMM routing.
+- Documented the `/blocky` storage boundary and non-goals.
+
+### Verification
+- `python -m pytest -q tests\test_accounting_document_registry.py tests\test_accounting_documents_handler.py tests\test_invoice_intent_prerouter.py` - 99 passed.
+- `python -m pytest -q` - 769 passed.
+
+### Notes
+- No DB schema changes.
+- No invoice flow changes.
+- No `storage/invoices` or `pdf_path` changes.
+- No `storage/contracts` changes.
+- No Google Drive sync, delete/edit/search, or broad document browser was implemented.
+
