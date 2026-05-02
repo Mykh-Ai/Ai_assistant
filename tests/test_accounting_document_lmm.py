@@ -117,7 +117,7 @@ def test_extraction_wrapper_passes_model_json_into_extraction_parser() -> None:
                 'iban': None,
                 'variable_symbol': '202605001',
                 'payment_method': 'bank_transfer',
-                'category_candidate': 'energy',
+                'purchase_subject': 'Dodávka elektrickej energie',
             },
             'quality': {'readability': 'good', 'missing_fields': [], 'warnings': []},
             'trace': {'raw_visible_text_excerpt': 'Faktura 202605001'},
@@ -257,7 +257,7 @@ def test_model_response_with_forbidden_side_effect_fields_is_rejected() -> None:
                 'iban': None,
                 'variable_symbol': None,
                 'payment_method': 'card',
-                'category_candidate': 'groceries',
+                'purchase_subject': 'Potraviny',
             },
             'quality': {'readability': 'good', 'missing_fields': [], 'warnings': []},
             'trace': {'raw_visible_text_excerpt': 'TESCO'},
@@ -310,6 +310,8 @@ def test_extraction_prompt_forbids_side_effect_fields() -> None:
         assert token in text
     assert 'Do not create paths.' in text
     assert 'Do not decide final accounting category.' in text
+    assert '"purchase_subject": "string|null"' in text
+    assert 'Do not return category, category_candidate, or final_category.' in text
 
 
 def test_wrapper_is_provider_isolated_and_mocked() -> None:

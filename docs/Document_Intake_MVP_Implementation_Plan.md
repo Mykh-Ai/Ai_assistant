@@ -104,7 +104,7 @@ Top-level shape:
     "iban": "string|null",
     "variable_symbol": "string|null",
     "payment_method": "cash|card|bank_transfer|unknown|null",
-    "category_candidate": "string|null"
+    "purchase_subject": "string|null"
   },
   "quality": {
     "readability": "good|partial|poor",
@@ -130,7 +130,8 @@ Incoming invoice:
 LMM must not:
 - claim that a document was saved,
 - invent IDs, paths, or DB references,
-- choose final category,
+- choose accounting, tax, or bookkeeping category,
+- infer category from the document,
 - execute side effects,
 - silently convert an unsupported document into a supported type.
 
@@ -160,10 +161,10 @@ Incoming invoice validation:
 - if `iban` is present, validate basic IBAN format.
 - if `variable_symbol` is present, validate numeric/simple symbol format.
 
-Category validation:
-- `category_candidate` is advisory only in Phase 1.
-- Python must not create or persist new categories automatically.
-- If no category dictionary exists, preview may show `Kategoria: nezaradene`.
+Purchase subject validation:
+- `purchase_subject` is a raw factual description of what was purchased.
+- It is not an accounting category and must not be used as tax/bookkeeping classification.
+- If unclear, preview should show the value as unknown/missing rather than inventing a category.
 
 Save gate:
 - no metadata is saved before explicit user confirmation.
@@ -246,7 +247,7 @@ Dátum: 01.05.2026
 Suma: 24,90 EUR
 DPH: 4,15 EUR
 Platba: karta
-Kategória: nezaradené
+Predmet nákupu: Kancelárske potreby
 
 Schváliť, upraviť alebo zrušiť?
 ```
@@ -262,7 +263,7 @@ Splatnosť: 15.05.2026
 Suma: 118,42 EUR
 IBAN: SK...
 Variabilný symbol: 202605001
-Kategória: nezaradené
+Predmet nákupu: Dodávka elektrickej energie
 
 Schváliť, upraviť alebo zrušiť?
 ```
@@ -307,7 +308,7 @@ Possible fields:
 - `document_number`,
 - `total_amount`,
 - `currency`,
-- `category`,
+- `purchase_subject`,
 - `original_path`,
 - `metadata_json`,
 - `status`,
@@ -383,7 +384,7 @@ Not in Phase 1:
 - Zevs s.r.o. runtime profile,
 - multi-workspace runtime,
 - multi-supplier runtime,
-- automatic category creation,
+- accounting category inference or automatic category creation,
 - accounting reports,
 - accountant package export,
 - changes to outgoing invoice numbering,

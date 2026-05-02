@@ -2859,3 +2859,26 @@ Align the OfficeFlow architecture framing document with the implemented Document
 - No Google Drive sync runtime was implemented.
 - No Zevs s.r.o. runtime profile or full workspace runtime was introduced.
 
+## 2026-05-02 - Session 039 - Accounting intake purchase subject extraction
+
+### Goal
+Replace premature accounting category extraction in Document Intake Phase 1 with raw factual purchase subject extraction.
+
+### Changes
+- Replaced accounting candidate/metadata field `category_candidate` with `purchase_subject`.
+- Updated the accounting extraction prompt to require raw facts only and forbid accounting/tax/bookkeeping category inference.
+- Updated Slovak accounting preview from `Kategória` to `Predmet nákupu`.
+- Kept read compatibility for legacy `category_candidate` payload/state values by mapping them into `purchase_subject`, while new metadata writes only `purchase_subject`.
+- Updated Document Intake docs to describe purchase subject as the factual item/service bought.
+- Added ASFINAG/vignette-style coverage for factual purchase subject extraction.
+
+### Verification
+- `python -m pytest -q tests\test_accounting_document_extraction.py tests\test_accounting_document_lmm.py tests\test_accounting_document_intake_flow.py` - 38 passed.
+
+### Notes
+- No DB schema changes.
+- No invoice flow changes.
+- No `storage/invoices` or `pdf_path` changes.
+- No confirmed accounting storage layout changes.
+- No accounting categorization or Google Drive sync was implemented.
+

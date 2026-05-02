@@ -164,6 +164,7 @@ def _receipt_candidate() -> AccountingDocumentCandidate:
         total_amount='24.90',
         currency='EUR',
         payment_method='card',
+        purchase_subject='Kancelárske potreby',
         quality=AccountingDocumentQuality(readability='good'),
         source=AccountingDocumentSource(input_type='photo', original_filename='photo.jpg'),
     )
@@ -212,6 +213,8 @@ def test_upload_receipt_photo_active_state_saves_temp_and_shows_preview(monkeypa
     assert 'Náhľad dokladu' in message.answers[-1]
     assert 'Typ: Bloček' in message.answers[-1]
     assert 'Dodávateľ: Tesco Slovensko s.r.o.' in message.answers[-1]
+    assert 'Predmet nákupu: Kancelárske potreby' in message.answers[-1]
+    assert 'Kategória' not in message.answers[-1]
 
 
 def test_schvalit_approves_via_shared_resolver_and_confirmed_saves(monkeypatch, tmp_path: Path) -> None:
@@ -246,6 +249,8 @@ def test_schvalit_approves_via_shared_resolver_and_confirmed_saves(monkeypatch, 
     metadata = json.loads(metadata_files[0].read_text(encoding='utf-8'))
     assert metadata['document_type'] == 'receipt'
     assert metadata['business']['vendor_name'] == 'Tesco Slovensko s.r.o.'
+    assert metadata['business']['purchase_subject'] == 'Kancelárske potreby'
+    assert 'category_candidate' not in metadata['business']
     assert not (tmp_path / 'uploads' / 'accounting_intake' / 'PHOTO123').exists()
     assert not (tmp_path / 'invoices').exists()
     assert not config.db_path.exists()
@@ -423,6 +428,7 @@ def test_poor_readability_cleans_temp_and_asks_for_better_file(monkeypatch, tmp_
             total_amount='24.90',
             currency='EUR',
             payment_method='card',
+            purchase_subject='Kancelárske potreby',
             quality=AccountingDocumentQuality(readability='poor'),
             source=AccountingDocumentSource(input_type='photo', original_filename='photo.jpg'),
         )

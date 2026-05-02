@@ -66,7 +66,8 @@ def parse_accounting_document_extraction(raw_json: str) -> AccountingDocumentCan
         iban=_nullable_string(business.get('iban')),
         variable_symbol=_nullable_string(business.get('variable_symbol')),
         payment_method=payment_method,
-        category_candidate=_nullable_string(business.get('category_candidate')),
+        purchase_subject=_nullable_string(business.get('purchase_subject'))
+        or _nullable_string(business.get('category_candidate')),
         quality=quality,
         source=source,
     )

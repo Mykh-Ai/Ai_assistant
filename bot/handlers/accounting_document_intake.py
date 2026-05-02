@@ -402,6 +402,7 @@ def _format_accounting_document_preview(candidate: AccountingDocumentCandidate) 
     amount_value = candidate.total_amount if candidate.total_amount is not None else 'nezistené'
     currency_value = candidate.currency or ''
     payment_value = candidate.payment_method or 'nezistené'
+    purchase_subject_value = candidate.purchase_subject or 'nezistené'
 
     return (
         'Náhľad dokladu\n'
@@ -411,7 +412,7 @@ def _format_accounting_document_preview(candidate: AccountingDocumentCandidate) 
         f'Suma: {amount_value} {currency_value}'.rstrip()
         + '\n'
         f'Platba: {payment_value}\n'
-        'Kategória: nezaradené\n\n'
+        f'Predmet nákupu: {purchase_subject_value}\n\n'
         'Schváliť, upraviť alebo zrušiť?'
     )
 
@@ -451,7 +452,8 @@ def _candidate_from_state_payload(payload: dict[str, Any]) -> AccountingDocument
         iban=_optional_str(business.get('iban')),
         variable_symbol=_optional_str(business.get('variable_symbol')),
         payment_method=_optional_str(business.get('payment_method')),
-        category_candidate=_optional_str(business.get('category_candidate')),
+        purchase_subject=_optional_str(business.get('purchase_subject'))
+        or _optional_str(business.get('category_candidate')),
         source=AccountingDocumentSource(
             input_type=str(source.get('input_type') or 'unknown'),
             original_filename=_optional_str(source.get('original_filename')),

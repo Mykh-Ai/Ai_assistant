@@ -96,7 +96,7 @@ Candidate fields:
 - total amount,
 - currency,
 - VAT amount if visible,
-- category candidate,
+- purchase subject / factual item or service description,
 - payment method if visible,
 - original file path.
 
@@ -112,7 +112,7 @@ Candidate fields:
 - currency,
 - IBAN if visible,
 - variable symbol if visible,
-- category candidate,
+- purchase subject / factual item or service summary,
 - original file path.
 
 ### Bank statement / bankovy vypis

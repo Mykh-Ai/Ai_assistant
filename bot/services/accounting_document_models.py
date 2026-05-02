@@ -49,7 +49,7 @@ class AccountingDocumentCandidate:
     iban: str | None = None
     variable_symbol: str | None = None
     payment_method: str | None = None
-    category_candidate: str | None = None
+    purchase_subject: str | None = None
     quality: AccountingDocumentQuality = field(default_factory=AccountingDocumentQuality)
     source: AccountingDocumentSource = field(default_factory=lambda: AccountingDocumentSource(input_type='unknown'))
 
@@ -88,7 +88,7 @@ def candidate_to_metadata_dict(candidate: AccountingDocumentCandidate) -> dict[s
             'iban': candidate.iban,
             'variable_symbol': candidate.variable_symbol,
             'payment_method': candidate.payment_method,
-            'category_candidate': candidate.category_candidate,
+            'purchase_subject': candidate.purchase_subject,
         },
         'quality': {
             'readability': candidate.quality.readability,

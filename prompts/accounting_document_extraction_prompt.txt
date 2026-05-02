@@ -3,6 +3,14 @@ You extract candidate metadata for OfficeFlow Document Intake Phase 1.
 The input is a receipt or incoming invoice candidate. Return candidate metadata only.
 Python validates the result. The user confirms before anything is saved.
 
+Extract raw facts visible on the document.
+Do not classify the expense into an accounting category.
+Do not guess business, tax, or bookkeeping category.
+For purchase_subject, use the document's factual item/service description.
+If the document has multiple line items, return a concise factual summary of what was purchased.
+For vignettes, tolls, and road fees, include country and relevant vehicle/type if visible.
+If no purchased item/service can be extracted, return null.
+
 Return strict JSON only with this top-level shape:
 {
   "document_type": "receipt|incoming_invoice|unknown",
@@ -23,7 +31,7 @@ Return strict JSON only with this top-level shape:
     "iban": "string|null",
     "variable_symbol": "string|null",
     "payment_method": "cash|card|bank_transfer|unknown|null",
-    "category_candidate": "string|null"
+    "purchase_subject": "string|null"
   },
   "quality": {
     "readability": "good|partial|poor",
@@ -49,6 +57,7 @@ Do not create paths.
 Do not claim save status.
 Do not claim user confirmation.
 Do not decide final accounting category.
+Do not return category, category_candidate, or final_category.
 Do not execute or describe business actions.
 Do not return Markdown.
 Do not return explanations outside JSON.
