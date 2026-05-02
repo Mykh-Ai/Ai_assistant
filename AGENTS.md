@@ -26,6 +26,44 @@
 - потім журнал рішень,
 - потім уже робити висновки.
 
+Спеціалізовані contract scopes мають додаткові джерела, які треба читати перед змінами у відповідній зоні:
+
+### LLM / action / FSM / semantic routing
+
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+
+### Confirmation-like decisions
+
+- `docs/Canonical_Decision_Resolver_Contract.md`
+
+### OfficeFlow / Document Intake
+
+- `docs/OfficeFlow_Architecture_Framing.md`
+- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/Document_Intake_Module_Proposal.md`
+- `docs/Document_Intake_MVP_Implementation_Plan.md`
+
+### User access / onboarding / authorization
+
+- `docs/User_Access_Model_Roadmap.md`
+
+## Mandatory pre-work contract-read step
+
+Перед змінами в handlers, FSM flows, top-level actions, in-action decisions, confirmation flows, LLM prompts, document intake, attachment router, voice/text routing, user access або authorization агент повинен спочатку прочитати релевантні contract docs.
+
+У відповіді або робочому підсумку перед зміною треба явно зафіксувати:
+- contracts read;
+- constraints extracted;
+- whether the change touches confirmation, routing, LLM, FSM, storage, DB, or access.
+
+If the agent did not list contracts read and extracted constraints, the task is not ready for implementation.
+
+Якщо зміна торкається кількох scopes, читати всі відповідні contracts. Не покладатися лише на назву файлу або стару пам’ять про архітектуру.
+
 ## Server-side operational context
 
 Для будь-яких дій на сервері FakturaBot спочатку перевіряти приватний локальний файл:
@@ -102,6 +140,57 @@ AI не повинен трактуватись як автономний вик
 - contract customer extraction
 - будь-яких реквізитів контрагентів
 - email / PDF сценаріїв
+
+## Canonical DecisionResolver rule
+
+Усі confirmation-like replies повинні проходити через `bot/services/decision_resolver.py`.
+
+Не додавати локальні парсери для:
+- `ano` / `nie`
+- `ok` / `tak`
+- `schvalit` / `upravit` / `zrusit`
+- Slovak diacritics variants
+- Cyrillic або multilingual variants
+
+Кожен новий confirmation-like flow повинен:
+- вибрати decision family: `yes_no` або `approve_edit_cancel`;
+- зареєструвати `context_name` у `tests/test_decision_resolver.py`;
+- додати handler-level tests, які доводять використання shared resolver, а не локального parser/branching.
+
+Це правило обов’язкове для invoice preview/post-PDF, contact confirmation, onboarding confirmation, accounting document preview, duplicate confirmation, delete/cancel flows та будь-яких майбутніх OfficeFlow confirmations.
+
+## User access / security boundary
+
+Unknown або unauthorized Telegram users must not create:
+- supplier profiles;
+- contacts;
+- invoices;
+- invoice PDFs;
+- accounting documents;
+- document metadata;
+- temporary upload files;
+- tenant storage directories;
+- workspaces.
+
+Unknown або unauthorized Telegram users must not trigger:
+- LLM calls;
+- STT calls;
+- LMM / Vision calls;
+- document classification/extraction calls.
+
+Pending access requests are not tenants, not supplier profiles, and not business onboarding. Approval is required before `/supplier` and before any business flow.
+
+Phase 1 controlled dry run uses one shared Telegram bot token, one backend, one SQLite DB, and allowlisted Telegram IDs. Per-client Telegram bot tokens / VPS / container / DB / API-key deployment is future commercial / installation-as-a-service only unless `docs/TZ_FakturaBot.md` and `PROJECT_LOG.md` explicitly say otherwise.
+
+## OfficeFlow attachment / document intake boundary
+
+Idle photo/PDF classification must only happen after authorization.
+
+Active FSM state wins over idle classifier. Якщо користувач перебуває в active FSM flow, attachment routing must respect that state before any idle OfficeFlow classifier.
+
+No automatic contact creation from receipts, incoming invoices, PDFs, photos, or idle attachments.
+
+No automatic expense/accounting document save before user approval. AI/LMM may extract or draft; Python validates; user confirms; only then system saves.
 
 ## Як працювати з документами
 
