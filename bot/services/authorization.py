@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 import logging
+import re
 from typing import Any
+import unicodedata
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message
@@ -22,6 +24,25 @@ ACCESS_REQUEST_MESSAGE = (
     'Po schv\u00e1len\u00ed budete m\u00f4c\u0165 pokra\u010dova\u0165 v nastaven\u00ed profilu.'
 )
 ADMIN_COMMANDS = {'/access_requests', '/approve', '/reject', '/block', '/users'}
+ADMIN_COMMAND_ALIASES = {
+    'access requests',
+    'access_requests',
+    'users',
+    'pouzivatelia',
+    'pouzivatel',
+    'ziadosti',
+    'ziadosti o pristup',
+    'zapros',
+    '\u0437\u0430\u043f\u0440\u043e\u0441',
+    '\u0437\u0430\u043f\u0438\u0442',
+    '\u0437\u0430\u043f\u0438\u0442\u0438',
+    '\u0437\u0430\u043f\u0438\u0442\u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u0443',
+    '\u0437\u0430\u044f\u0432\u043a\u0438',
+    '\u0437\u0430\u044f\u0432\u043a\u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u0443',
+    '\u043a\u043e\u0440\u0438\u0441\u0442\u0443\u0432\u0430\u0447\u0438',
+    '\u043a\u043e\u0440\u0438\u0441\u0442\u0443\u0432\u0430\u0447\u0456',
+    '\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438',
+}
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +144,17 @@ def _is_start_command(event: Message) -> bool:
 
 
 def _is_admin_command(event: Message) -> bool:
-    return _command_token(event) in ADMIN_COMMANDS
+    command = _command_token(event)
+    if command:
+        return command in ADMIN_COMMANDS
+    return _normalize_admin_alias(getattr(event, 'text', None) or '') in ADMIN_COMMAND_ALIASES
+
+
+def _normalize_admin_alias(value: str) -> str:
+    text = value.strip().lower().replace('_', ' ')
+    normalized = unicodedata.normalize('NFKD', text)
+    without_diacritics = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r'\s+', ' ', without_diacritics).strip()
 
 
 async def _notify_admins_about_access_request(*, event: Message, data: dict[str, Any], config: Config) -> None:

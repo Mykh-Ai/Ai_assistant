@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- deterministic admin text aliases for `/users` (`користувачі`) and `/access_requests` (`запит`, `запрос`) without LLM routing.
 - controlled access-request onboarding for unknown Telegram users: `/start` records a pending request only, admins can review with `/access_requests`, and admins can approve/reject/block users with deterministic admin commands.
 - `ADMIN_TELEGRAM_USER_IDS` config for bootstrap administrators plus persistent `access_requests` and `authorized_users` tables.
 - `ALLOWED_TELEGRAM_USER_IDS` config and centralized Telegram user authorization middleware for the controlled two-user dry run.

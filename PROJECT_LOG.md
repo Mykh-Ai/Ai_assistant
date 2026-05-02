@@ -1,5 +1,17 @@
 # PROJECT_LOG
 
+## 2026-05-02 - Session 047 - Admin command text aliases
+
+Summary:
+- Added deterministic text aliases for admin access commands:
+  - `користувачі` for `/users`;
+  - `запит` and `запрос` for `/access_requests`.
+- Kept aliases admin-only by recognizing them in the authorization middleware as admin command equivalents before handler routing.
+- Added tests for direct alias handlers and middleware pass-through for bootstrap admins.
+
+Verification:
+- `python -m pytest -q tests\test_access_request_flow.py` -> `9 passed`.
+
 ## 2026-05-02 - Session 046 - Controlled access-request onboarding
 
 Audit summary:

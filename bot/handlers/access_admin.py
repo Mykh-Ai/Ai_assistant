@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+import unicodedata
+
 from aiogram import Router
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import Message
 
 from bot.config import Config
@@ -12,8 +15,44 @@ from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_admin_telegram_u
 router = Router(name='access_admin')
 
 
+_ACCESS_REQUESTS_ALIASES = {
+    'access requests',
+    'access_requests',
+    'ziadosti',
+    'ziadosti o pristup',
+    'zapros',
+    '\u0437\u0430\u043f\u0440\u043e\u0441',
+    '\u0437\u0430\u043f\u0438\u0442',
+    '\u0437\u0430\u043f\u0438\u0442\u0438',
+    '\u0437\u0430\u043f\u0438\u0442\u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u0443',
+    '\u0437\u0430\u044f\u0432\u043a\u0438',
+    '\u0437\u0430\u044f\u0432\u043a\u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u0443',
+}
+
+_USERS_ALIASES = {
+    'users',
+    'pouzivatelia',
+    'pouzivatel',
+    '\u043a\u043e\u0440\u0438\u0441\u0442\u0443\u0432\u0430\u0447\u0438',
+    '\u043a\u043e\u0440\u0438\u0441\u0442\u0443\u0432\u0430\u0447\u0456',
+    '\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438',
+}
+
+
 @router.message(Command('access_requests'))
 async def cmd_access_requests(message: Message, config: Config) -> None:
+    await _send_access_requests(message, config)
+
+
+@router.message(
+    StateFilter(None),
+    lambda message: _normalize_alias(message.text or '') in _ACCESS_REQUESTS_ALIASES,
+)
+async def access_requests_alias(message: Message, config: Config) -> None:
+    await _send_access_requests(message, config)
+
+
+async def _send_access_requests(message: Message, config: Config) -> None:
     if not _is_admin_message(message, config):
         await message.answer(UNAUTHORIZED_MESSAGE)
         return
@@ -93,6 +132,18 @@ async def cmd_block(message: Message, config: Config) -> None:
 
 @router.message(Command('users'))
 async def cmd_users(message: Message, config: Config) -> None:
+    await _send_users(message, config)
+
+
+@router.message(
+    StateFilter(None),
+    lambda message: _normalize_alias(message.text or '') in _USERS_ALIASES,
+)
+async def users_alias(message: Message, config: Config) -> None:
+    await _send_users(message, config)
+
+
+async def _send_users(message: Message, config: Config) -> None:
     if not _is_admin_message(message, config):
         await message.answer(UNAUTHORIZED_MESSAGE)
         return
@@ -122,6 +173,13 @@ def _parse_telegram_id_arg(text: str) -> int | None:
     except ValueError:
         return None
     return telegram_id if telegram_id > 0 else None
+
+
+def _normalize_alias(value: str) -> str:
+    text = value.strip().lower().replace('_', ' ')
+    normalized = unicodedata.normalize('NFKD', text)
+    without_diacritics = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r'\s+', ' ', without_diacritics).strip()
 
 
 def _format_access_request_line(

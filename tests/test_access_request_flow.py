@@ -4,7 +4,15 @@ import asyncio
 from pathlib import Path
 
 from bot.config import Config
-from bot.handlers.access_admin import cmd_access_requests, cmd_approve, cmd_block, cmd_reject, cmd_users
+from bot.handlers.access_admin import (
+    access_requests_alias,
+    cmd_access_requests,
+    cmd_approve,
+    cmd_block,
+    cmd_reject,
+    cmd_users,
+    users_alias,
+)
 from bot.handlers.onboarding import cmd_onboarding
 from bot.services.access_control import ACCESS_STATUS_APPROVED, ACCESS_STATUS_PENDING, ACCESS_STATUS_REJECTED
 from bot.services.access_control import AUTHORIZED_STATUS_BLOCKED, AccessControlService
@@ -155,6 +163,38 @@ def test_admin_can_list_pending_access_requests(tmp_path: Path) -> None:
 
     assert 'telegram_id=900002' in message.answers[-1]
     assert 'username=requester' in message.answers[-1]
+
+
+def test_admin_text_aliases_can_list_users_and_access_requests(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = AccessControlService(config.db_path)
+    service.create_or_refresh_pending_request(request=_request(UNKNOWN_ID, username='requester'))
+    service.approve_user(telegram_id=BOOTSTRAP_ID, approved_by=ADMIN_ID)
+
+    access_message = _DummyMessage('\u0437\u0430\u043f\u0438\u0442', ADMIN_ID)
+    users_message = _DummyMessage('\u043a\u043e\u0440\u0438\u0441\u0442\u0443\u0432\u0430\u0447\u0456', ADMIN_ID)
+
+    asyncio.run(access_requests_alias(access_message, config))
+    asyncio.run(users_alias(users_message, config))
+
+    assert 'telegram_id=900002' in access_message.answers[-1]
+    assert 'telegram_id=900003' in users_message.answers[-1]
+
+
+def test_admin_text_alias_passes_middleware_for_bootstrap_admin_without_allowed_access(tmp_path: Path) -> None:
+    config = _config(tmp_path, admins=frozenset({ADMIN_ID}))
+    init_db(config.db_path)
+    message = _DummyMessage('\u0437\u0430\u043f\u0440\u043e\u0441', ADMIN_ID)
+    calls: list[str] = []
+
+    async def _handler(event, data):
+        calls.append('handler-called')
+
+    asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config}))
+
+    assert calls == ['handler-called']
+    assert message.answers == []
 
 
 def test_non_admin_cannot_list_or_decide_access(tmp_path: Path) -> None:
