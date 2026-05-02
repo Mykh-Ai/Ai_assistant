@@ -14,7 +14,9 @@ from bot.services.accounting_document_storage import (
     confirmed_paths,
     save_confirmed_accounting_document,
     stage_original_file,
+    temp_staging_dir,
     vendor_slug,
+    workspace_key_for_supplier,
 )
 
 
@@ -129,6 +131,26 @@ def test_metadata_json_written_next_to_confirmed_original(tmp_path: Path) -> Non
     assert metadata['storage']['original_path'] == str(result.original_path)
 
 
+def test_confirmed_storage_can_be_scoped_by_supplier_telegram_id(tmp_path: Path) -> None:
+    source = tmp_path / 'source.pdf'
+    source.write_bytes(b'%PDF')
+
+    result = save_confirmed_accounting_document(
+        storage_dir=tmp_path,
+        source_path=source,
+        candidate=_incoming_invoice_candidate(),
+        file_unique_id='EFGH5678',
+        supplier_telegram_id=111001,
+    )
+
+    relative = result.original_path.relative_to(tmp_path)
+    assert relative.parts[:2] == ('workspaces', workspace_key_for_supplier(111001))
+
+    metadata = json.loads(result.metadata_path.read_text(encoding='utf-8'))
+    assert metadata['storage']['workspace_key'] == workspace_key_for_supplier(111001)
+    assert metadata['storage']['supplier_telegram_id'] == 111001
+
+
 def test_stage_original_file_uses_temp_accounting_intake_area(tmp_path: Path) -> None:
     source = tmp_path / 'upload.pdf'
     source.write_bytes(b'%PDF')
@@ -141,6 +163,12 @@ def test_stage_original_file_uses_temp_accounting_intake_area(tmp_path: Path) ->
 
     assert staged == tmp_path / 'uploads' / 'accounting_intake' / 'TEMP123' / 'original.pdf'
     assert staged.read_bytes() == b'%PDF'
+
+
+def test_temp_staging_dir_can_be_scoped_by_supplier_telegram_id(tmp_path: Path) -> None:
+    assert temp_staging_dir(tmp_path, 'TEMP123', supplier_telegram_id=111001) == (
+        tmp_path / 'uploads' / 'accounting_intake' / '111001' / 'TEMP123'
+    )
 
 
 def test_cleanup_temp_staging_path_removes_only_accounting_intake_file(tmp_path: Path) -> None:

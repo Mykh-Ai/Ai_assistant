@@ -94,6 +94,24 @@ class ContactService:
 
         return self._row_to_profile(row)
 
+    def get_by_id_for_supplier(self, *, telegram_id: int, contact_id: int) -> ContactProfile | None:
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                (
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'contact_person, source_type, source_note, contract_path '
+                    'FROM contact '
+                    'WHERE id = ? AND supplier_telegram_id = ?'
+                ),
+                (contact_id, telegram_id),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_profile(row)
+
     def get_by_name_case_insensitive(self, telegram_id: int, name: str) -> ContactProfile | None:
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row

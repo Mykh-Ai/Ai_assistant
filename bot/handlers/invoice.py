@@ -57,6 +57,28 @@ def _extract_invoice_reference(text: str) -> str | None:
     return matches[-1]
 
 
+def _invoice_pdf_path(storage_dir: Path, supplier_telegram_id: int, invoice_number: str) -> Path:
+    return storage_dir / 'invoices' / str(supplier_telegram_id) / f'{invoice_number}.pdf'
+
+
+def _message_supplier_telegram_id(message: Message) -> int | None:
+    return getattr(getattr(message, 'from_user', None), 'id', None)
+
+
+def _get_invoice_for_message_supplier(
+    invoice_service: InvoiceService,
+    message: Message,
+    invoice_id: int,
+):
+    supplier_telegram_id = _message_supplier_telegram_id(message)
+    if supplier_telegram_id is None:
+        return invoice_service.get_invoice_by_id(invoice_id)
+    return invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=supplier_telegram_id,
+        invoice_id=invoice_id,
+    )
+
+
 def _format_existing_invoice_summary(
     *,
     invoice_number: str,
@@ -1089,7 +1111,7 @@ async def _build_and_store_preview(
     parsed_draft: dict,
 ) -> None:
     message_id = getattr(message, 'message_id', None)
-    if message.from_user is None:
+    if hasattr(message, 'from_user') and message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
@@ -1098,7 +1120,6 @@ async def _build_and_store_preview(
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
         await state.clear()
         return
-
     customer_name = (parsed_draft.get('customer_name') or '').strip()
     if not customer_name:
         await _start_invoice_slot_clarification(
@@ -1385,7 +1406,10 @@ async def _build_and_store_preview(
 
     due_date_obj = issue_date_obj + timedelta(days=due_days)
     invoice_service = InvoiceService(config.db_path)
-    proposed_invoice_number = invoice_service.generate_next_invoice_number(issue_date_obj.year)
+    proposed_invoice_number = invoice_service.generate_next_invoice_number(
+        issue_date_obj.year,
+        supplier_telegram_id=message.from_user.id,
+    )
 
     normalized = {
         'raw_text': raw_text,
@@ -1683,7 +1707,7 @@ async def process_invoice_slot_clarification(
         )
         return
     elif unresolved_slot == _SLOT_SERVICE:
-        if message.from_user is None:
+        if hasattr(message, 'from_user') and message.from_user is None:
             await message.answer('Nepodarilo sa identifikovať používateľa.')
             return
         supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
@@ -1707,7 +1731,7 @@ async def process_invoice_slot_clarification(
         parsed_draft['service_term_sk'] = service_short_name
         parsed_draft['item_name_raw'] = service_short_name
     elif unresolved_slot == _SLOT_CUSTOMER:
-        if message.from_user is None:
+        if hasattr(message, 'from_user') and message.from_user is None:
             await message.answer('Nepodarilo sa identifikovať používateľa.')
             return
         contact_service = ContactService(config.db_path)
@@ -1815,7 +1839,7 @@ async def process_invoice_text(
         )
         return
     if top_level_intent == _EDIT_EXISTING_INVOICE_INTENT:
-        if message.from_user is None:
+        if hasattr(message, 'from_user') and message.from_user is None:
             await message.answer('Nepodarilo sa identifikovať používateľa.')
             return
         invoice_reference = _extract_invoice_reference(invoice_text)
@@ -1835,7 +1859,10 @@ async def process_invoice_text(
         matched_invoice = invoice_matches[0]
         contact_name = 'Neznámy odberateľ'
         if matched_invoice.contact_id is not None:
-            contact = ContactService(config.db_path).get_by_id(matched_invoice.contact_id)
+            contact = ContactService(config.db_path).get_by_id_for_supplier(
+                telegram_id=message.from_user.id,
+                contact_id=matched_invoice.contact_id,
+            )
             if contact is not None:
                 contact_name = contact.name
         matched_items = InvoiceService(config.db_path).get_items_by_invoice_id(matched_invoice.id)
@@ -1874,7 +1901,7 @@ async def process_invoice_text(
         )
         return
     if top_level_intent == _DELETE_EXISTING_INVOICE_INTENT:
-        if message.from_user is None:
+        if hasattr(message, 'from_user') and message.from_user is None:
             await message.answer('Nepodarilo sa identifikovať používateľa.')
             return
         invoice_reference = _extract_invoice_reference(invoice_text)
@@ -1894,7 +1921,10 @@ async def process_invoice_text(
         matched_invoice = invoice_matches[0]
         contact_name = 'Neznámy odberateľ'
         if matched_invoice.contact_id is not None:
-            contact = ContactService(config.db_path).get_by_id(matched_invoice.contact_id)
+            contact = ContactService(config.db_path).get_by_id_for_supplier(
+                telegram_id=message.from_user.id,
+                contact_id=matched_invoice.contact_id,
+            )
             if contact is not None:
                 contact_name = contact.name
         matched_items = InvoiceService(config.db_path).get_items_by_invoice_id(matched_invoice.id)
@@ -2104,7 +2134,7 @@ async def _finalize_invoice_draft(
     config: Config,
     draft: dict[str, object],
 ) -> None:
-    if message.from_user is None:
+    if hasattr(message, 'from_user') and message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         await state.clear()
         return
@@ -2120,7 +2150,6 @@ async def _finalize_invoice_draft(
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
         await state.clear()
         return
-
     contact = ContactService(config.db_path).get_by_name_case_insensitive(
         message.from_user.id,
         str(draft['customer_name']),
@@ -2133,7 +2162,8 @@ async def _finalize_invoice_draft(
     proposed_invoice_number = str(draft.get('invoice_number') or '').strip()
     if not proposed_invoice_number:
         proposed_invoice_number = InvoiceService(config.db_path).generate_next_invoice_number(
-            int(str(draft['issue_date'])[:4])
+            int(str(draft['issue_date'])[:4]),
+            supplier_telegram_id=message.from_user.id,
         )
         draft['invoice_number'] = proposed_invoice_number
         await state.update_data(invoice_draft=draft)
@@ -2147,7 +2177,10 @@ async def _finalize_invoice_draft(
         return
 
     invoice_service = InvoiceService(config.db_path)
-    if not invoice_service.is_invoice_number_available(invoice_number=proposed_invoice_number):
+    if not invoice_service.is_invoice_number_available(
+        invoice_number=proposed_invoice_number,
+        supplier_telegram_id=message.from_user.id,
+    ):
         await state.update_data(edit_stage='draft')
         await state.set_state(InvoiceStates.waiting_edit_invoice_number_value)
         await message.answer(
@@ -2179,12 +2212,15 @@ async def _finalize_invoice_draft(
             invoice_number=proposed_invoice_number,
         )
 
-        invoice = invoice_service.get_invoice_by_id(invoice_id)
+        invoice = invoice_service.get_invoice_for_supplier_by_id(
+            supplier_telegram_id=message.from_user.id,
+            invoice_id=invoice_id,
+        )
         if invoice is None:
             raise RuntimeError('Invoice save succeeded, but invoice cannot be loaded.')
 
         items = invoice_service.get_items_by_invoice_id(invoice_id)
-        pdf_path = config.storage_dir / 'invoices' / f'{invoice.invoice_number}.pdf'
+        pdf_path = _invoice_pdf_path(config.storage_dir, message.from_user.id, invoice.invoice_number)
         generate_invoice_pdf(
             target_path=pdf_path,
             supplier=supplier,
@@ -2466,6 +2502,20 @@ async def process_invoice_postpdf_decision(
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+    invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return
+
     pdf_path_value = state_data.get('last_pdf_path')
     pdf_path = None
     if isinstance(pdf_path_value, str) and pdf_path_value.strip():
@@ -2487,7 +2537,7 @@ async def process_invoice_postpdf_decision(
                 )
             )
         try:
-            InvoiceService(config.db_path).update_invoice_status(invoice_id, 'pripravena')
+            invoice_service.update_invoice_status(invoice_id, 'pripravena')
         except Exception:
             logger.exception('Invoice status update failed')
             await state.clear()
@@ -2535,7 +2585,7 @@ async def process_invoice_postpdf_decision(
             )
         )
     try:
-        InvoiceService(config.db_path).delete_invoice_with_items(invoice_id)
+        invoice_service.delete_invoice_with_items(invoice_id)
     except Exception:
         logger.exception('Invoice cleanup failed')
         await state.clear()
@@ -2573,13 +2623,16 @@ async def _rebuild_pdf_for_existing_invoice(
     config: Config,
     invoice_id: int,
 ) -> bool:
-    if message.from_user is None:
+    if hasattr(message, 'from_user') and message.from_user is None:
         await state.clear()
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return False
 
     invoice_service = InvoiceService(config.db_path)
-    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
     if invoice is None:
         await state.clear()
         await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
@@ -2591,14 +2644,17 @@ async def _rebuild_pdf_for_existing_invoice(
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
         return False
 
-    contact = ContactService(config.db_path).get_by_id(invoice.contact_id)
+    contact = ContactService(config.db_path).get_by_id_for_supplier(
+        telegram_id=message.from_user.id,
+        contact_id=invoice.contact_id,
+    )
     if contact is None:
         await state.clear()
         await message.answer('Kontakt odberateľa sa nenašiel v databáze.')
         return False
 
     items = invoice_service.get_items_by_invoice_id(invoice_id)
-    pdf_path = config.storage_dir / 'invoices' / f'{invoice.invoice_number}.pdf'
+    pdf_path = _invoice_pdf_path(config.storage_dir, message.from_user.id, invoice.invoice_number)
     try:
         generate_invoice_pdf(
             target_path=pdf_path,
@@ -2658,8 +2714,16 @@ async def start_invoice_edit_flow(
     config: Config,
     invoice_id: int,
 ) -> None:
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
+        return
+
     invoice_service = InvoiceService(config.db_path)
-    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
     if invoice is None:
         await state.clear()
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
@@ -2767,13 +2831,16 @@ async def invoice_delete_existing_invoice_confirm(message: Message, state: FSMCo
         await message.answer('Nepodarilo sa dokončiť vymazanie faktúry. Spustite /invoice znova.')
         return
 
-    if message.from_user is None:
+    if hasattr(message, 'from_user') and message.from_user is None:
         await state.clear()
         await message.answer('Nepodarilo sa overiť vlastníka faktúry. Vymazanie bolo zastavené.')
         return
 
     invoice_service = InvoiceService(config.db_path)
-    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
     if invoice is None:
         await state.clear()
         await message.answer('Faktúra už neexistuje alebo nie je dostupná. Vymazanie bolo zastavené.')
@@ -2835,7 +2902,21 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
+        return
+
     invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return
+
     items = invoice_service.get_items_by_invoice_id(invoice_id)
     option_descriptions = [item.description_normalized or item.description_raw for item in items]
     target_index = await _resolve_item_target_index_bounded(
@@ -2853,7 +2934,10 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
         await message.answer('Taká položka neexistuje. Zadajte prosím platné číslo položky (napr. 1 alebo 2).')
         return
 
-    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
     if invoice is None:
         await state.clear()
         await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
@@ -2915,8 +2999,16 @@ async def invoice_edit_scope(message: Message, state: FSMContext, config: Config
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
+        return
+
     invoice_service = InvoiceService(config.db_path)
-    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
     if invoice is None:
         await state.clear()
         await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
@@ -3001,7 +3093,12 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
         await state.clear()
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
-    invoice = InvoiceService(config.db_path).get_invoice_by_id(invoice_id)
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
+        return
+    invoice_service = InvoiceService(config.db_path)
+    invoice = _get_invoice_for_message_supplier(invoice_service, message, invoice_id)
     if invoice is None:
         await state.clear()
         await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
@@ -3119,7 +3216,20 @@ async def invoice_edit_item_action(message: Message, state: FSMContext, config: 
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
     invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return
     target_item = next(
         (item for item in invoice_service.get_items_by_invoice_id(invoice_id) if item.id == int(target_item_id)),
         None,
@@ -3207,7 +3317,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         )
         return
 
-    if not isinstance(invoice_id, int) or not isinstance(target_item_id, int) or message.from_user is None:
+    if not isinstance(invoice_id, int) or not isinstance(target_item_id, int):
         await state.clear()
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
@@ -3237,6 +3347,24 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         return
 
     invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return
+
+    target_item = next(
+        (item for item in invoice_service.get_items_by_invoice_id(invoice_id) if item.id == int(target_item_id)),
+        None,
+    )
+    if target_item is None:
+        await state.clear()
+        await message.answer('PoloЕѕka na Гєpravu uЕѕ nie je dostupnГЎ. Spustite /invoice znova.')
+        return
+
     invoice_service.update_item_service(
         item_id=int(target_item_id),
         service_short_name=resolved_alias,
@@ -3267,6 +3395,11 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
         )
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
+        return
+
     state_data = await state.get_data()
     invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
     if state_data.get('edit_stage') == 'draft':
@@ -3284,7 +3417,10 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
                 '(pri nejasnom hlase pošlite presný text).'
             )
             return
-        if not InvoiceService(config.db_path).is_invoice_number_available(invoice_number=candidate_number):
+        if not InvoiceService(config.db_path).is_invoice_number_available(
+            invoice_number=candidate_number,
+            supplier_telegram_id=message.from_user.id,
+        ):
             await message.answer('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
             return
         draft['invoice_number'] = candidate_number
@@ -3303,7 +3439,10 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
         return
 
     invoice_service = InvoiceService(config.db_path)
-    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
     if invoice is None:
         await state.clear()
         await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
@@ -3321,6 +3460,7 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
 
     if not invoice_service.is_invoice_number_available(
         invoice_number=candidate_number,
+        supplier_telegram_id=message.from_user.id,
         exclude_invoice_id=invoice_id,
     ):
         await message.answer('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
@@ -3369,6 +3509,11 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         await message.answer(
             'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.'
         )
+        return
+
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
     state_data = await state.get_data()
@@ -3427,7 +3572,8 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
             draft['issue_date'] = candidate_date_iso
             if not bool(draft.get('invoice_number_manual_override')):
                 draft['invoice_number'] = InvoiceService(config.db_path).generate_next_invoice_number(
-                    candidate_date_obj.year
+                    candidate_date_obj.year,
+                    supplier_telegram_id=message.from_user.id,
                 )
             success_text = 'Dátum vystavenia bol upravený.'
         elif date_operation == _EDIT_INVOICE_OPERATION_DELIVERY_DATE:
@@ -3451,8 +3597,16 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
+        return
+
     invoice_service = InvoiceService(config.db_path)
-    invoice = invoice_service.get_invoice_by_id(invoice_id)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
     if invoice is None:
         await state.clear()
         await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
@@ -3607,7 +3761,19 @@ async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, c
         await state.clear()
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
     invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return
     item = next((it for it in invoice_service.get_items_by_invoice_id(invoice_id) if it.id == int(target_item_id)), None)
     if item is None:
         await state.clear()
@@ -3703,7 +3869,20 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
     invoice_service = InvoiceService(config.db_path)
+    invoice = invoice_service.get_invoice_for_supplier_by_id(
+        supplier_telegram_id=message.from_user.id,
+        invoice_id=invoice_id,
+    )
+    if invoice is None:
+        await state.clear()
+        await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
+        return
     target_item = next(
         (item for item in invoice_service.get_items_by_invoice_id(invoice_id) if item.id == int(target_item_id)),
         None,

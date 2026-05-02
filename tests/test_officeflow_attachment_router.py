@@ -145,7 +145,7 @@ def _voice_config(tmp_path: Path) -> Config:
 
 def _stage_accounting_proposal_state(tmp_path: Path) -> tuple[_DummyState, Path]:
     state = _DummyState(OfficeFlowAttachmentRouterStates.accounting_proposal.state)
-    staged_path = tmp_path / 'uploads' / 'attachment_intake' / 'PHOTO123' / 'original.jpg'
+    staged_path = tmp_path / 'uploads' / 'attachment_intake' / '111' / 'PHOTO123' / 'original.jpg'
     staged_path.parent.mkdir(parents=True, exist_ok=True)
     staged_path.write_bytes(b'photo')
     state.data.update(
@@ -212,7 +212,7 @@ def test_idle_photo_receipt_stages_and_asks_accounting_proposal(monkeypatch, tmp
 
     asyncio.run(officeflow_idle_attachment(message, state, _config(tmp_path), _DummyBot()))
 
-    staged_path = tmp_path / 'uploads' / 'attachment_intake' / 'PHOTO123' / 'original.jpg'
+    staged_path = tmp_path / 'uploads' / 'attachment_intake' / '111' / 'PHOTO123' / 'original.jpg'
     assert staged_path.exists()
     assert state.current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state
     assert 'výdavkový doklad' in message.answers[-1]
@@ -279,7 +279,7 @@ def test_lmm_error_cleans_staged_attachment_and_sends_slovak_failure(monkeypatch
 
     assert state.current_state is None
     assert 'nepodarilo bezpečne zaradiť' in message.answers[-1]
-    assert not (tmp_path / 'uploads' / 'attachment_intake' / 'PHOTO123').exists()
+    assert not (tmp_path / 'uploads' / 'attachment_intake' / '111' / 'PHOTO123').exists()
 
 
 def test_accounting_proposal_uses_decision_resolver_yes_no(monkeypatch, tmp_path: Path) -> None:
@@ -292,7 +292,7 @@ def test_accounting_proposal_uses_decision_resolver_yes_no(monkeypatch, tmp_path
 
     monkeypatch.setattr(officeflow_router_module, 'resolve_yes_no', _resolver)
     state = _DummyState(OfficeFlowAttachmentRouterStates.accounting_proposal.state)
-    staged_path = tmp_path / 'uploads' / 'attachment_intake' / 'PHOTO123' / 'original.jpg'
+    staged_path = tmp_path / 'uploads' / 'attachment_intake' / '111' / 'PHOTO123' / 'original.jpg'
     staged_path.parent.mkdir(parents=True, exist_ok=True)
     staged_path.write_bytes(b'photo')
     state.data.update(

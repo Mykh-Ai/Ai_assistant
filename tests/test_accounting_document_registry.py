@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from bot.services.accounting_document_registry import list_recent_accounting_documents
+from bot.services.accounting_document_storage import workspace_key_for_supplier
 
 
 def _write_metadata(
@@ -23,8 +24,9 @@ def _write_metadata(
     category_candidate: str | None = None,
     upload_date: str | None = '2026-05-02',
     mtime: int | None = None,
+    workspace_key: str = 'mykhailo-szco',
 ) -> Path:
-    metadata_dir = storage_dir / 'workspaces' / 'mykhailo-szco' / 'years' / year / 'expenses' / month / folder / 'metadata'
+    metadata_dir = storage_dir / 'workspaces' / workspace_key / 'years' / year / 'expenses' / month / folder / 'metadata'
     metadata_dir.mkdir(parents=True, exist_ok=True)
     metadata_path = metadata_dir / f'{stem}.json'
     business = {
@@ -70,6 +72,28 @@ def test_registry_returns_last_5_confirmed_documents_sorted_by_upload_date(tmp_p
 
     assert len(summaries) == 5
     assert [summary.vendor_name for summary in summaries] == ['Vendor 6', 'Vendor 5', 'Vendor 4', 'Vendor 3', 'Vendor 2']
+
+
+def test_registry_recent_documents_are_scoped_to_workspace_key(tmp_path: Path) -> None:
+    _write_metadata(
+        tmp_path,
+        stem='user-a',
+        vendor_name='User A Vendor',
+        workspace_key=workspace_key_for_supplier(111001),
+    )
+    _write_metadata(
+        tmp_path,
+        stem='user-b',
+        vendor_name='User B Vendor',
+        workspace_key=workspace_key_for_supplier(222002),
+    )
+
+    summaries = list_recent_accounting_documents(
+        storage_dir=tmp_path,
+        workspace_key=workspace_key_for_supplier(111001),
+    )
+
+    assert [summary.vendor_name for summary in summaries] == ['User A Vendor']
 
 
 def test_registry_falls_back_to_metadata_mtime_when_upload_date_missing_or_bad(tmp_path: Path) -> None:

@@ -6,6 +6,7 @@ from aiogram.enums import ParseMode
 
 from bot.config import load_config
 from bot.handlers import routers
+from bot.services.authorization import TelegramUserAuthorizationMiddleware
 from bot.services.db import init_db
 
 
@@ -23,6 +24,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
+    dp.message.outer_middleware(TelegramUserAuthorizationMiddleware())
 
     for router in routers:
         dp.include_router(router)

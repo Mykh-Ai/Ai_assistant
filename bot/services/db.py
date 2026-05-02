@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS invoice (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     supplier_telegram_id INTEGER NOT NULL,
     contact_id INTEGER NOT NULL,
-    invoice_number TEXT NOT NULL UNIQUE,
+    invoice_number TEXT NOT NULL,
     issue_date TEXT NOT NULL,
     delivery_date TEXT NOT NULL,
     due_date TEXT NOT NULL,
@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS invoice (
     status TEXT NOT NULL,
     pdf_path TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(supplier_telegram_id, invoice_number)
 );
 """
 
@@ -89,6 +90,29 @@ CREATE TABLE IF NOT EXISTS supplier_service_alias (
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(supplier_id, alias)
+);
+"""
+
+ACCESS_REQUEST_SCHEMA = """
+CREATE TABLE IF NOT EXISTS access_requests (
+    telegram_id INTEGER PRIMARY KEY,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    status TEXT NOT NULL,
+    requested_at TEXT NOT NULL,
+    decided_at TEXT,
+    decided_by INTEGER
+);
+"""
+
+AUTHORIZED_USER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS authorized_users (
+    telegram_id INTEGER PRIMARY KEY,
+    role TEXT NOT NULL DEFAULT 'user',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    approved_by INTEGER
 );
 """
 
@@ -166,6 +190,25 @@ SUPPLIER_SERVICE_ALIAS_EXPECTED_COLUMNS = {
     'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
 
+ACCESS_REQUEST_EXPECTED_COLUMNS = {
+    'telegram_id': 'INTEGER PRIMARY KEY',
+    'username': 'TEXT',
+    'first_name': 'TEXT',
+    'last_name': 'TEXT',
+    'status': 'TEXT NOT NULL',
+    'requested_at': 'TEXT NOT NULL',
+    'decided_at': 'TEXT',
+    'decided_by': 'INTEGER',
+}
+
+AUTHORIZED_USER_EXPECTED_COLUMNS = {
+    'telegram_id': 'INTEGER PRIMARY KEY',
+    'role': 'TEXT NOT NULL',
+    'status': 'TEXT NOT NULL',
+    'created_at': 'TEXT NOT NULL',
+    'approved_by': 'INTEGER',
+}
+
 
 def _bootstrap_supplier_table(connection: sqlite3.Connection) -> None:
     existing_columns = {
@@ -213,12 +256,58 @@ def _bootstrap_invoice_table(connection: sqlite3.Connection) -> None:
         return
 
     if set(existing_columns.keys()) == set(INVOICE_EXPECTED_COLUMNS.keys()):
+        _ensure_invoice_tenant_unique_index(connection)
         return
 
     raise RuntimeError(
         'Incompatible local schema for table invoice. '
         'Manual migration/intervention is required; automatic DROP is disabled.'
     )
+
+
+def _ensure_invoice_tenant_unique_index(connection: sqlite3.Connection) -> None:
+    index_rows = connection.execute('PRAGMA index_list(invoice)').fetchall()
+    unique_indexes = [row for row in index_rows if row[2]]
+    has_tenant_unique = False
+    has_global_invoice_number_unique = False
+    for index_row in unique_indexes:
+        index_name = index_row[1]
+        columns = [
+            info_row[2]
+            for info_row in connection.execute(f'PRAGMA index_info({index_name})').fetchall()
+        ]
+        if columns == ['supplier_telegram_id', 'invoice_number']:
+            has_tenant_unique = True
+        if columns == ['invoice_number']:
+            has_global_invoice_number_unique = True
+
+    if has_tenant_unique and not has_global_invoice_number_unique:
+        return
+
+    if has_global_invoice_number_unique:
+        _migrate_invoice_global_unique_to_tenant_unique(connection)
+        return
+
+    connection.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_supplier_number '
+        'ON invoice (supplier_telegram_id, invoice_number)'
+    )
+
+
+def _migrate_invoice_global_unique_to_tenant_unique(connection: sqlite3.Connection) -> None:
+    connection.execute('ALTER TABLE invoice RENAME TO invoice_legacy_global_unique')
+    connection.execute(INVOICE_SCHEMA)
+    connection.execute(
+        (
+            'INSERT INTO invoice '
+            '(id, supplier_telegram_id, contact_id, invoice_number, issue_date, delivery_date, due_date, '
+            'due_days, total_amount, currency, status, pdf_path, created_at, updated_at) '
+            'SELECT id, supplier_telegram_id, contact_id, invoice_number, issue_date, delivery_date, due_date, '
+            'due_days, total_amount, currency, status, pdf_path, created_at, updated_at '
+            'FROM invoice_legacy_global_unique'
+        )
+    )
+    connection.execute('DROP TABLE invoice_legacy_global_unique')
 
 
 def _bootstrap_invoice_item_table(connection: sqlite3.Connection) -> None:
@@ -271,6 +360,42 @@ def _bootstrap_supplier_service_alias_table(connection: sqlite3.Connection) -> N
     )
 
 
+def _bootstrap_access_request_table(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1]: row[2] for row in connection.execute('PRAGMA table_info(access_requests)')
+    }
+
+    if not existing_columns:
+        connection.execute(ACCESS_REQUEST_SCHEMA)
+        return
+
+    if set(existing_columns.keys()) == set(ACCESS_REQUEST_EXPECTED_COLUMNS.keys()):
+        return
+
+    raise RuntimeError(
+        'Incompatible local schema for table access_requests. '
+        'Manual migration/intervention is required; automatic DROP is disabled.'
+    )
+
+
+def _bootstrap_authorized_user_table(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1]: row[2] for row in connection.execute('PRAGMA table_info(authorized_users)')
+    }
+
+    if not existing_columns:
+        connection.execute(AUTHORIZED_USER_SCHEMA)
+        return
+
+    if set(existing_columns.keys()) == set(AUTHORIZED_USER_EXPECTED_COLUMNS.keys()):
+        return
+
+    raise RuntimeError(
+        'Incompatible local schema for table authorized_users. '
+        'Manual migration/intervention is required; automatic DROP is disabled.'
+    )
+
+
 @contextmanager
 def managed_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(db_path)
@@ -289,4 +414,6 @@ def init_db(db_path: Path) -> None:
         _bootstrap_invoice_table(connection)
         _bootstrap_invoice_item_table(connection)
         _bootstrap_supplier_service_alias_table(connection)
+        _bootstrap_access_request_table(connection)
+        _bootstrap_authorized_user_table(connection)
         connection.commit()

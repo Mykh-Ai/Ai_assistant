@@ -55,6 +55,7 @@ async def stage_message_attachment(
     message: Message,
     bot: Bot,
     storage_dir: Path,
+    supplier_telegram_id: int | None = None,
 ) -> OfficeFlowAttachment | None:
     metadata = extract_supported_attachment_metadata(message)
     if metadata is None:
@@ -62,7 +63,17 @@ async def stage_message_attachment(
 
     safe_id = _safe_id(str(metadata['file_unique_id'] or uuid4()))
     extension = str(metadata['extension'])
-    staged_path = storage_dir / 'uploads' / 'attachment_intake' / safe_id / f'original{extension}'
+    if supplier_telegram_id is None:
+        staged_path = storage_dir / 'uploads' / 'attachment_intake' / safe_id / f'original{extension}'
+    else:
+        staged_path = (
+            storage_dir
+            / 'uploads'
+            / 'attachment_intake'
+            / str(supplier_telegram_id)
+            / safe_id
+            / f'original{extension}'
+        )
     staged_path.parent.mkdir(parents=True, exist_ok=True)
 
     file_meta = await bot.get_file(str(metadata['file_id']))
@@ -95,12 +106,7 @@ def cleanup_staged_attachment(*, storage_dir: Path, staged_path: Path) -> None:
     if staged_path.is_file():
         staged_path.unlink()
 
-    parent = staged_path.parent
-    if parent.exists() and parent.resolve().parent == attachment_intake_dir:
-        try:
-            parent.rmdir()
-        except OSError:
-            pass
+    _remove_empty_upload_parents(staged_path.parent, attachment_intake_dir)
 
 
 def _safe_id(value: str) -> str:
@@ -125,3 +131,16 @@ def _extract_pdf_text_quietly(path: Path) -> str | None:
     except Exception:
         return None
     return text or None
+
+
+def _remove_empty_upload_parents(start_dir: Path, stop_dir: Path) -> None:
+    current = start_dir
+    while current.exists() and current.resolve() != stop_dir:
+        try:
+            parent = current.parent
+            current.rmdir()
+        except OSError:
+            return
+        if parent.resolve() == stop_dir:
+            return
+        current = parent

@@ -22,7 +22,7 @@ README є навігаційним оглядом. Якщо README конфлі�
 Реально реалізовано:
 
 - `/start` - базова перевірка бота.
-- `/supplier`, `/onboarding` - ручний onboarding постачальника з SQLite persistence; SMTP-поля зберігаються як optional.
+- `/supplier`, `/onboarding` - ручний onboarding постачальника з SQLite persistence; per-user SMTP credential collection is deprecated and onboarding collects only business email.
 - `/service` - локальні alias-назви послуг для нормалізації позицій у фактурі.
 - `/contact`, `/contact_add` - ручне створення контрагента.
 - AI-assisted contact intake з текстового PDF/contract-like документа: Python зберігає/читає документ, AI пропонує draft, Python валідовує, користувач підтверджує перед save.
@@ -144,3 +144,13 @@ AI не є автономним виконавцем.
 - Python saves or performs side effects.
 
 Це обов'язково для invoice draft, contact extraction, accounting document intake, email/PDF сценаріїв і будь-яких реквізитів контрагентів.
+## 2026-05-02 FakturaBot Controlled Dry-Run Note
+
+FakturaBot currently supports a controlled multi-user dry run, not full SaaS multi-tenancy:
+- one backend/codebase, one Telegram bot token, one SQLite DB;
+- `ALLOWED_TELEGRAM_USER_IDS` remains a bootstrap/static allowlist;
+- `ADMIN_TELEGRAM_USER_IDS` bootstraps admin approval for controlled access requests;
+- unknown `/start` creates only a pending access request until an admin approves it;
+- invoice/contact/supplier/accounting-document runtime data is scoped by `telegram_id` / `supplier_telegram_id`;
+- invoice PDFs use tenant-scoped paths under `storage/invoices/{supplier_telegram_id}/`;
+- per-user SMTP host/user/password onboarding is deprecated; only business email is collected.

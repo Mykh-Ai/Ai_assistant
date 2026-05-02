@@ -22,6 +22,8 @@ class Config:
     debug_invoice_transparency: bool
     db_path: Path
     storage_dir: Path
+    allowed_telegram_user_ids: frozenset[int] = frozenset()
+    admin_telegram_user_ids: frozenset[int] = frozenset()
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -47,6 +49,13 @@ def load_config() -> Config:
     }
     db_path = Path(os.getenv('DB_PATH', 'storage/fakturabot.db')).resolve()
     storage_dir = Path(os.getenv('STORAGE_DIR', 'storage')).resolve()
+    allowed_telegram_user_ids = _parse_allowed_telegram_user_ids(
+        os.getenv('ALLOWED_TELEGRAM_USER_IDS', '')
+    )
+    admin_telegram_user_ids = _parse_telegram_user_ids(
+        os.getenv('ADMIN_TELEGRAM_USER_IDS', ''),
+        env_name='ADMIN_TELEGRAM_USER_IDS',
+    )
     ensure_storage_dirs(storage_dir)
 
     return Config(
@@ -57,4 +66,26 @@ def load_config() -> Config:
         debug_invoice_transparency=debug_invoice_transparency,
         db_path=db_path,
         storage_dir=storage_dir,
+        allowed_telegram_user_ids=allowed_telegram_user_ids,
+        admin_telegram_user_ids=admin_telegram_user_ids,
     )
+
+
+def _parse_allowed_telegram_user_ids(raw_value: str) -> frozenset[int]:
+    return _parse_telegram_user_ids(raw_value, env_name='ALLOWED_TELEGRAM_USER_IDS')
+
+
+def _parse_telegram_user_ids(raw_value: str, *, env_name: str) -> frozenset[int]:
+    ids: set[int] = set()
+    for part in raw_value.split(','):
+        value = part.strip()
+        if not value:
+            continue
+        try:
+            parsed = int(value)
+        except ValueError as exc:
+            raise RuntimeError(f'{env_name} must contain comma-separated integers') from exc
+        if parsed <= 0:
+            raise RuntimeError(f'{env_name} must contain positive Telegram user ids')
+        ids.add(parsed)
+    return frozenset(ids)

@@ -27,6 +27,20 @@ LLM output is strictly:
 
 LLM never executes actions directly.
 
+### Authorization and tenant boundary
+
+Python authorization and tenant scoping must happen before any LLM/STT/LMM call.
+
+Rules for the controlled multi-user dry run:
+- Telegram users must be authorized by Python before user-facing handlers invoke semantic resolution, STT, or document LMM extraction.
+- Authorization means either static bootstrap membership in `ALLOWED_TELEGRAM_USER_IDS` or an active row in `authorized_users`.
+- Unknown `/start` may create only a minimal access request for administrator review; it must not call LLM/STT/LMM or create supplier/contact/invoice/accounting-document state.
+- Admin access commands (`/access_requests`, `/approve`, `/reject`, `/block`, `/users`) are deterministic Python commands and must not call LLM/STT/LMM.
+- LLM must not decide authorization.
+- LLM must not decide tenant identity.
+- LLM must not receive another tenant's stored data.
+- DB filtering, invoice-number generation, file-path generation, duplicate checks, and persistence decisions remain deterministic Python logic scoped by `telegram_id` / `supplier_telegram_id`.
+
 ---
 
 ## 2) Bounded Semantic Canonicalization

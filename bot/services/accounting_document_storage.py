@@ -24,6 +24,12 @@ from bot.services.accounting_document_validation import (
 WORKSPACE_KEY = 'mykhailo-szco'
 
 
+def workspace_key_for_supplier(supplier_telegram_id: int) -> str:
+    if supplier_telegram_id <= 0:
+        raise AccountingDocumentStorageError('supplier_telegram_id_required')
+    return f'telegram-{supplier_telegram_id}'
+
+
 class AccountingDocumentStorageError(ValueError):
     pass
 
@@ -88,9 +94,15 @@ def confirmed_filename(
     )
 
 
-def temp_staging_dir(storage_dir: Path, file_unique_id: str | None = None) -> Path:
+def temp_staging_dir(
+    storage_dir: Path,
+    file_unique_id: str | None = None,
+    supplier_telegram_id: int | None = None,
+) -> Path:
     safe_id = _safe_file_unique_id(file_unique_id or str(uuid4()))
-    return storage_dir / 'uploads' / 'accounting_intake' / safe_id
+    if supplier_telegram_id is None:
+        return storage_dir / 'uploads' / 'accounting_intake' / safe_id
+    return storage_dir / 'uploads' / 'accounting_intake' / str(supplier_telegram_id) / safe_id
 
 
 def stage_original_file(
@@ -98,8 +110,9 @@ def stage_original_file(
     storage_dir: Path,
     source_path: Path,
     file_unique_id: str | None = None,
+    supplier_telegram_id: int | None = None,
 ) -> Path:
-    target_dir = temp_staging_dir(storage_dir, file_unique_id)
+    target_dir = temp_staging_dir(storage_dir, file_unique_id, supplier_telegram_id)
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f'original{normalize_extension(source_path.name)}'
     shutil.copy2(source_path, target_path)
@@ -115,12 +128,7 @@ def cleanup_temp_staging_path(*, storage_dir: Path, staged_path: Path) -> None:
     if staged_path.is_file():
         staged_path.unlink()
 
-    parent = staged_path.parent
-    if parent.exists() and parent.resolve().parent == accounting_intake_dir:
-        try:
-            parent.rmdir()
-        except OSError:
-            pass
+    _remove_empty_upload_parents(staged_path.parent, accounting_intake_dir)
 
 
 def confirmed_paths(
@@ -129,6 +137,8 @@ def confirmed_paths(
     candidate: AccountingDocumentCandidate,
     file_unique_id: str,
     extension: str,
+    supplier_telegram_id: int | None = None,
+    workspace_key: str | None = None,
 ) -> AccountingDocumentConfirmedPaths:
     validation = validate_accounting_document_candidate(candidate)
     if not validation.can_save or validation.normalized_issue_date is None:
@@ -137,10 +147,15 @@ def confirmed_paths(
     issue_date = validation.normalized_issue_date
     plural_folder = _document_type_folder(candidate.document_type)
     filename = confirmed_filename(candidate=candidate, file_unique_id=file_unique_id, extension=extension)
+    resolved_workspace_key = workspace_key or (
+        workspace_key_for_supplier(supplier_telegram_id)
+        if supplier_telegram_id is not None
+        else WORKSPACE_KEY
+    )
     base_dir = (
         storage_dir
         / 'workspaces'
-        / WORKSPACE_KEY
+        / resolved_workspace_key
         / 'years'
         / f'{issue_date.year:04d}'
         / 'expenses'
@@ -161,6 +176,8 @@ def save_confirmed_accounting_document(
     candidate: AccountingDocumentCandidate,
     file_unique_id: str,
     extension: str | None = None,
+    supplier_telegram_id: int | None = None,
+    workspace_key: str | None = None,
 ) -> AccountingDocumentSaveResult:
     selected_extension = extension or source_path.suffix
     paths = confirmed_paths(
@@ -168,14 +185,22 @@ def save_confirmed_accounting_document(
         candidate=candidate,
         file_unique_id=file_unique_id,
         extension=selected_extension,
+        supplier_telegram_id=supplier_telegram_id,
+        workspace_key=workspace_key,
     )
     paths.original_path.parent.mkdir(parents=True, exist_ok=True)
     paths.metadata_path.parent.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(source_path, paths.original_path)
     metadata = candidate_to_metadata_dict(candidate)
+    resolved_workspace_key = workspace_key or (
+        workspace_key_for_supplier(supplier_telegram_id)
+        if supplier_telegram_id is not None
+        else WORKSPACE_KEY
+    )
     metadata['storage'] = {
-        'workspace_key': WORKSPACE_KEY,
+        'workspace_key': resolved_workspace_key,
+        'supplier_telegram_id': supplier_telegram_id,
         'original_path': str(paths.original_path),
         'metadata_path': str(paths.metadata_path),
     }
@@ -206,3 +231,16 @@ def _assert_not_invoice_path(storage_dir: Path, path: Path) -> None:
     resolved_path = path.resolve()
     if resolved_path == invoices_dir or invoices_dir in resolved_path.parents:
         raise AccountingDocumentStorageError('refusing_to_write_to_invoice_storage')
+
+
+def _remove_empty_upload_parents(start_dir: Path, stop_dir: Path) -> None:
+    current = start_dir
+    while current.exists() and current.resolve() != stop_dir:
+        try:
+            parent = current.parent
+            current.rmdir()
+        except OSError:
+            return
+        if parent.resolve() == stop_dir:
+            return
+        current = parent

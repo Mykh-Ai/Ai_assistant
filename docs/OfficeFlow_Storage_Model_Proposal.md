@@ -180,3 +180,8 @@ This proposal does not implement:
 - category persistence,
 - Google Drive sync,
 - Zevs s.r.o. profile.
+## 2026-05-02 Tenant-Scoped Runtime Addendum
+
+For the controlled two-user FakturaBot dry run, new outgoing invoice PDFs are tenant-scoped at runtime: `storage/invoices/{supplier_telegram_id}/{invoice_number}.pdf`. The invoice table still stores `pdf_path` as the canonical pointer to the generated PDF.
+
+For accounting Document Intake, tenant-scoped runtime calls use workspace keys such as `telegram-{supplier_telegram_id}`. Duplicate checks and recent-document views must scan only the requesting tenant workspace. The older `mykhailo-szco` workspace key remains a compatibility/default key for existing local data and tests, not a cross-user runtime workspace.

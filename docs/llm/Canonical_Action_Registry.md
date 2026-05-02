@@ -42,7 +42,9 @@ Important distinction:
 | Flow (working name) | Category | Status | Entry mode | Source evidence | Notes |
 |---|---|---|---|---|---|
 | `supplier_onboarding` (`/supplier`, `/onboarding`) | bootstrap/admin/setup flow | implemented | command + text in-flow | Command handler `cmd_onboarding()` starts 12-step supplier profile flow and persists via `SupplierService.create_or_replace(...)`. | Includes bounded final confirm (`ano/nie`) but parsed deterministically in Python (no semantic resolver here). |
-| `start` (`/start`) | bootstrap/admin/setup flow | implemented | command | `cmd_start()` command response exists. | Health/intro command, not business action. |
+| `start` (`/start`) | bootstrap/admin/setup flow | implemented | command | `cmd_start()` command response exists; authorization middleware handles unknown users before the start handler. | Health/intro command for authorized users; unknown users create a minimal pending access request only. |
+| `access_request` (`/start` from unknown user) | bootstrap/admin/setup flow | implemented | command | Authorization middleware writes `access_requests` when an unknown user sends `/start`. | Deterministic Python only; no supplier profile, tenant workspace, invoice/contact/document mutation, STT, LLM, or LMM call. |
+| `access_admin` (`/access_requests`, `/approve`, `/reject`, `/block`, `/users`) | bootstrap/admin/setup flow | implemented | command | `bot/handlers/access_admin.py`; admin status comes from `ADMIN_TELEGRAM_USER_IDS` or active `authorized_users` admin/owner role. | Admin-only deterministic Python commands; not semantic actions and not LLM-routed. |
 
 ## C) Canonical wording vs noisy input examples
 

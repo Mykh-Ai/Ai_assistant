@@ -32,6 +32,7 @@ from bot.services.accounting_document_storage import (
     save_confirmed_accounting_document,
     stage_original_file,
     temp_staging_dir,
+    workspace_key_for_supplier,
 )
 from bot.services.accounting_document_validation import validate_accounting_document_candidate
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
@@ -48,6 +49,10 @@ _STATE_EXTENSION_KEY = 'accounting_document_extension'
 _STATE_DUPLICATE_MATCH_KEY = 'accounting_document_duplicate_match'
 
 
+def _message_supplier_telegram_id(message: Message) -> int | None:
+    return getattr(getattr(message, 'from_user', None), 'id', None)
+
+
 class AccountingDocumentIntakeStates(StatesGroup):
     waiting_upload = State()
     waiting_duplicate_decision = State()
@@ -56,6 +61,9 @@ class AccountingDocumentIntakeStates(StatesGroup):
 
 @router.message(Command('doklad', 'expense', 'intake'))
 async def cmd_accounting_document_intake(message: Message, state: FSMContext) -> None:
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
     await state.clear()
     await state.set_state(AccountingDocumentIntakeStates.waiting_upload)
     await message.answer(
@@ -74,8 +82,17 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
         await message.answer('Pošlite, prosím, fotku alebo PDF bločka / prijatej faktúry.')
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
+    supplier_telegram_id = _message_supplier_telegram_id(message)
     file_unique_id = attachment['file_unique_id']
-    staged_path = temp_staging_dir(config.storage_dir, file_unique_id) / f'original{attachment["extension"]}'
+    staged_path = (
+        temp_staging_dir(config.storage_dir, file_unique_id, supplier_telegram_id)
+        / f'original{attachment["extension"]}'
+    )
     staged_path.parent.mkdir(parents=True, exist_ok=True)
 
     telegram_file = await bot.get_file(attachment['file_id'])
@@ -145,11 +162,18 @@ async def process_staged_accounting_document(
     attachment_metadata: dict[str, str],
     document_type_hint: str | None = None,
 ) -> None:
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
+    supplier_telegram_id = _message_supplier_telegram_id(message)
     file_unique_id = attachment_metadata.get('file_unique_id')
     accounting_staged_path = stage_original_file(
         storage_dir=config.storage_dir,
         source_path=staged_path,
         file_unique_id=file_unique_id,
+        supplier_telegram_id=supplier_telegram_id,
     )
     await _process_accounting_document_from_staged_original(
         message=message,
@@ -279,6 +303,12 @@ async def handle_accounting_document_preview_decision_text(
         await message.answer('Návrh dokladu už nie je dostupný. Spustite /doklad znova.')
         return
 
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
+    supplier_telegram_id = _message_supplier_telegram_id(message)
     try:
         result = save_confirmed_accounting_document(
             storage_dir=config.storage_dir,
@@ -286,6 +316,7 @@ async def handle_accounting_document_preview_decision_text(
             candidate=_candidate_from_state_payload(candidate_payload),
             file_unique_id=file_unique_id,
             extension=extension if isinstance(extension, str) else None,
+            supplier_telegram_id=supplier_telegram_id,
         )
     except (AccountingDocumentStorageError, OSError, ValueError):
         await message.answer('Doklad sa nepodarilo uložiť. Skúste /doklad znova.')
@@ -447,7 +478,21 @@ async def _store_preview_or_duplicate_state(
             cleanup_kind='accounting_document_preview',
         ),
     }
-    duplicate = find_duplicate_accounting_document(storage_dir=config.storage_dir, candidate=candidate)
+    if hasattr(message, 'from_user') and message.from_user is None:
+        _cleanup_temp_quietly(config.storage_dir, staged_path)
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
+    supplier_telegram_id = _message_supplier_telegram_id(message)
+    if supplier_telegram_id is None:
+        duplicate = find_duplicate_accounting_document(storage_dir=config.storage_dir, candidate=candidate)
+    else:
+        duplicate = find_duplicate_accounting_document(
+            storage_dir=config.storage_dir,
+            candidate=candidate,
+            workspace_key=workspace_key_for_supplier(supplier_telegram_id),
+        )
     if duplicate is not None:
         state_payload[_STATE_DUPLICATE_MATCH_KEY] = duplicate.to_dict()
         await state.update_data(**state_payload)

@@ -742,11 +742,11 @@ def test_waiting_confirm_logs_resolver_and_branch_observability(tmp_path: Path, 
     assert any('"event": "confirm_branch_decision"' in rec.message for rec in caplog.records)
 
 
-def _create_invoice_with_pdf(db_path: Path, pdf_path: Path) -> int:
+def _create_invoice_with_pdf(db_path: Path, pdf_path: Path, supplier_telegram_id: int = 1) -> int:
     service = InvoiceService(db_path)
     invoice_id = service.create_invoice_with_one_item(
         CreateInvoicePayload(
-            supplier_telegram_id=777,
+            supplier_telegram_id=supplier_telegram_id,
             contact_id=1,
             issue_date='2026-04-12',
             delivery_date='2026-04-12',
@@ -846,8 +846,8 @@ def test_waiting_pdf_decision_edit_starts_item_edit_subflow_and_cancel_still_cle
     _setup_profiles(db_path, telegram_id)
     edit_pdf_path = tmp_path / 'edit.pdf'
     cancel_pdf_path = tmp_path / 'cancel.pdf'
-    edit_invoice_id = _create_invoice_with_pdf(db_path, edit_pdf_path)
-    cancel_invoice_id = _create_invoice_with_pdf(db_path, cancel_pdf_path)
+    edit_invoice_id = _create_invoice_with_pdf(db_path, edit_pdf_path, supplier_telegram_id=telegram_id)
+    cancel_invoice_id = _create_invoice_with_pdf(db_path, cancel_pdf_path, supplier_telegram_id=telegram_id)
     service = InvoiceService(db_path)
     edit_invoice = service.get_invoice_by_id(edit_invoice_id)
     cancel_invoice = service.get_invoice_by_id(cancel_invoice_id)
@@ -929,10 +929,10 @@ def test_replace_service_keeps_existing_item_description_and_rebuilds_pdf(tmp_pa
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'old.pdf')})
     asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
-    asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'položka', 'answer': message.answer})(), state=state, config=config))
-    asyncio.run(invoice_edit_item_action(message=type('M', (), {'text': 'zmeniť službu', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_scope(message=type('M', (), {'from_user': message.from_user, 'text': 'položka', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_action(message=type('M', (), {'from_user': message.from_user, 'text': 'zmeniť službu', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_service_value
-    asyncio.run(invoice_edit_service_value(message=type('M', (), {'text': 'montaz', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    asyncio.run(invoice_edit_service_value(message=type('M', (), {'from_user': message.from_user, 'text': 'montaz', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
 
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     assert item.description_raw == 'montaz'
@@ -973,12 +973,12 @@ def test_set_replace_and_clear_item_description_preserve_service_and_rebuild_pdf
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'old.pdf')})
     asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
-    asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'položka', 'answer': message.answer})(), state=state, config=config))
-    asyncio.run(invoice_edit_item_action(message=type('M', (), {'text': 'pridať detaily k položke', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_scope(message=type('M', (), {'from_user': message.from_user, 'text': 'položka', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_action(message=type('M', (), {'from_user': message.from_user, 'text': 'pridať detaily k položke', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_description_value
 
     # add details
-    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'práce v hale A', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'from_user': message.from_user, 'text': 'práce v hale A', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     assert item.item_description_raw == 'práce v hale A'
     assert item.description_normalized == 'Servis zariadenia'
@@ -990,13 +990,13 @@ def test_set_replace_and_clear_item_description_preserve_service_and_rebuild_pdf
     state.data['edit_invoice_id'] = invoice_id
     state.data['edit_target_item_id'] = item.id
     state.data['edit_item_action_mode'] = 'add_item_details'
-    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'práce v hale B', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'from_user': message.from_user, 'text': 'práce v hale B', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     assert item.item_description_raw == 'práce v hale A; práce v hale B'
 
     # replace main description
     state.data['edit_item_action_mode'] = 'replace_main_description'
-    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': 'Nový hlavný opis', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'from_user': message.from_user, 'text': 'Nový hlavný opis', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     assert item.description_raw == 'Nový hlavný opis'
     assert item.description_normalized == 'Nový hlavný opis'
@@ -1098,7 +1098,7 @@ def test_reject_too_long_item_description_returns_bounded_prompt_and_keeps_previ
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'last_invoice_id': invoice_id, 'edit_invoice_id': invoice_id, 'edit_target_item_id': InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0].id})
     long_text = ' '.join(['veľmi'] * 80)
-    asyncio.run(invoice_edit_description_value(message=type('M', (), {'text': long_text, 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_description_value(message=type('M', (), {'from_user': message.from_user, 'text': long_text, 'answer': message.answer})(), state=state, config=config))
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     assert item.item_description_raw == 'pôvodný opis'
     assert 'príliš dlhý' in message.answers[-1]
@@ -1118,7 +1118,7 @@ def test_item_action_phrase_novy_opis_routes_to_description_branch(tmp_path: Pat
     state = _DummyState(data={'edit_target_item_id': 11})
     asyncio.run(
         invoice_edit_item_action(
-            message=type('M', (), {'text': 'nový opis položky', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'nový opis položky', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -1141,7 +1141,7 @@ def test_item_action_phrase_zmenit_sluzbu_routes_to_service_branch(tmp_path: Pat
     state = _DummyState(data={'edit_target_item_id': 11})
     asyncio.run(
         invoice_edit_item_action(
-            message=type('M', (), {'text': 'zmeniť službu', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'zmeniť službu', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -1163,7 +1163,7 @@ def test_item_action_phrase_upravit_mnozstvo_routes_to_numeric_branch(tmp_path: 
     state = _DummyState(data={'edit_target_item_id': 11})
     asyncio.run(
         invoice_edit_item_action(
-            message=type('M', (), {'text': 'upraviť množstvo', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť množstvo', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -1186,7 +1186,7 @@ def test_item_action_phrase_upravit_cena_za_mj_routes_to_numeric_branch(tmp_path
     state = _DummyState(data={'edit_target_item_id': 11})
     asyncio.run(
         invoice_edit_item_action(
-            message=type('M', (), {'text': 'upraviť cenu za m.j.', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť cenu za m.j.', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -1209,7 +1209,7 @@ def test_item_action_phrase_upravit_sumu_routes_to_numeric_branch(tmp_path: Path
     state = _DummyState(data={'edit_target_item_id': 11})
     asyncio.run(
         invoice_edit_item_action(
-            message=type('M', (), {'text': 'upraviť sumu položky', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť sumu položky', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -1238,7 +1238,7 @@ def test_item_action_resolver_maps_multilingual_numeric_phrases(tmp_path: Path) 
         state = _DummyState(data={'edit_target_item_id': 11})
         asyncio.run(
             invoice_edit_item_action(
-                message=type('M', (), {'text': phrase, 'answer': message.answer})(),
+                message=type('M', (), {'from_user': message.from_user, 'text': phrase, 'answer': message.answer})(),
                 state=state,
                 config=config,
             )
@@ -1311,6 +1311,10 @@ def test_item_action_phrase_vymazat_detaily_reports_when_missing(tmp_path: Path)
         def __init__(self, db_path: Path) -> None:
             _ = db_path
 
+        def get_invoice_for_supplier_by_id(self, *, supplier_telegram_id: int, invoice_id: int):  # noqa: ANN001
+            _ = supplier_telegram_id
+            return type('Invoice', (), {'id': invoice_id, 'supplier_telegram_id': supplier_telegram_id})()
+
         def get_items_by_invoice_id(self, invoice_id: int):  # noqa: ANN001
             _ = invoice_id
             return [type('Item', (), {'id': 11, 'item_description_raw': None})()]
@@ -1318,7 +1322,7 @@ def test_item_action_phrase_vymazat_detaily_reports_when_missing(tmp_path: Path)
     with patch('bot.handlers.invoice.InvoiceService', _InvoiceServiceWithoutDetails):
         asyncio.run(
             invoice_edit_item_action(
-                message=type('M', (), {'text': 'vymazať detaily položky', 'answer': message.answer})(),
+                message=type('M', (), {'from_user': message.from_user, 'text': 'vymazať detaily položky', 'answer': message.answer})(),
                 state=state,
                 config=config,
             )
@@ -1348,7 +1352,7 @@ def test_draft_numeric_edit_quantity_recalculates_total(tmp_path: Path) -> None:
     }
     message = _DummyMessage(1)
     state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_quantity'})
-    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '3', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': '3', 'answer': message.answer})(), state=state, config=config))
     item = draft['items'][0]
     assert item['quantity'] == 3.0
     assert item['amount'] == 30.0
@@ -1370,7 +1374,7 @@ def test_draft_numeric_edit_unit_price_recalculates_total(tmp_path: Path) -> Non
     draft = _draft_for_tests(contact_id=1)
     message = _DummyMessage(1)
     state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_unit_price'})
-    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '250,50', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': '250,50', 'answer': message.answer})(), state=state, config=config))
     item = draft['items'][0]
     assert item['unit_price'] == 250.5
     assert item['amount'] == 250.5
@@ -1398,7 +1402,7 @@ def test_draft_numeric_edit_total_recalculates_unit_price(tmp_path: Path) -> Non
     draft['amount'] = 20.0
     message = _DummyMessage(1)
     state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_total_amount'})
-    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '50', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': '50', 'answer': message.answer})(), state=state, config=config))
     item = draft['items'][0]
     assert item['amount'] == 50.0
     assert item['unit_price'] == 25.0
@@ -1421,13 +1425,13 @@ def test_draft_numeric_invalid_and_negative_values_are_rejected(tmp_path: Path) 
 
     invalid_message = _DummyMessage(1)
     invalid_state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_quantity'})
-    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': 'dve a pol', 'answer': invalid_message.answer})(), state=invalid_state, config=config))
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': invalid_message.from_user, 'text': 'dve a pol', 'answer': invalid_message.answer})(), state=invalid_state, config=config))
     assert invalid_message.answers[-1] == 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.'
 
     for mode, value in [('edit_item_quantity', '-1'), ('edit_item_unit_price', '-0.5'), ('edit_item_total_amount', '-10')]:
         message = _DummyMessage(1)
         state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': mode})
-        asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': value, 'answer': message.answer})(), state=state, config=config))
+        asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': value, 'answer': message.answer})(), state=state, config=config))
         assert message.answers[-1] == 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.'
 
 
@@ -1441,7 +1445,7 @@ def test_persisted_numeric_edit_total_rebuilds_pdf_and_updates_invoice_total(tmp
     config = Config(bot_token='token', openai_api_key='key', openai_stt_model='whisper-1', openai_llm_model='gpt-4o', debug_invoice_transparency=False, db_path=db_path, storage_dir=tmp_path)
     item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_total_amount'})
-    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '50', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': '50', 'answer': message.answer, 'answer_document': message.answer_document, 'from_user': message.from_user})(), state=state, config=config))
     updated = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
     assert updated.total_price == 50.0
     assert InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount == 50.0
@@ -1497,7 +1501,7 @@ def test_persisted_numeric_invalid_and_negative_are_rejected_without_db_mutation
     for value in ['text', '-1']:
         message = _DummyMessage(telegram_id)
         state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_total_amount'})
-        asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': value, 'answer': message.answer, 'from_user': message.from_user})(), state=state, config=config))
+        asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': value, 'answer': message.answer, 'from_user': message.from_user})(), state=state, config=config))
         after_item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
         after_invoice_total = InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount
         assert (after_item.quantity, after_item.unit_price, after_item.total_price, after_invoice_total) == before
@@ -1516,7 +1520,7 @@ def test_persisted_total_edit_rejects_quantity_not_positive(tmp_path: Path, monk
 
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_total_amount'})
-    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'text': '50', 'answer': message.answer, 'from_user': message.from_user})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': '50', 'answer': message.answer, 'from_user': message.from_user})(), state=state, config=config))
     assert message.answers[-1] == 'Množstvo položky musí byť väčšie ako 0.'
 
 
@@ -1545,7 +1549,7 @@ def test_single_item_default_targeting_is_applied_on_edit_entry(tmp_path: Path) 
     state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'x.pdf')})
     asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
     assert state.current_state == InvoiceStates.waiting_edit_scope
-    asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'položka', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_scope(message=type('M', (), {'from_user': message.from_user, 'text': 'položka', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_item_action
     assert state.data.get('edit_target_item_index') == 1
     assert isinstance(state.data.get('edit_target_item_id'), int)
@@ -1589,10 +1593,10 @@ def test_multi_item_missing_target_triggers_bounded_clarification(tmp_path: Path
     state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(tmp_path / 'x.pdf')})
     asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
     assert state.current_state == InvoiceStates.waiting_edit_scope
-    asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'položka', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_scope(message=type('M', (), {'from_user': message.from_user, 'text': 'položka', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_item_target
 
-    asyncio.run(invoice_edit_item_target(message=type('M', (), {'text': 'uprav to', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_target(message=type('M', (), {'from_user': message.from_user, 'text': 'uprav to', 'answer': message.answer})(), state=state, config=config))
     assert message.answers[-1].startswith('Prosím, spresnite číslo položky')
 
 
@@ -1630,7 +1634,7 @@ def test_multi_item_target_accepts_numeric_selection_via_bounded_resolver(tmp_pa
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'edit_invoice_id': invoice_id})
     state.current_state = InvoiceStates.waiting_edit_item_target
-    asyncio.run(invoice_edit_item_target(message=type('M', (), {'text': '2', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_target(message=type('M', (), {'from_user': message.from_user, 'text': '2', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_item_action
     assert state.data.get('edit_target_item_index') == 2
 
@@ -1669,7 +1673,7 @@ def test_multi_item_target_accepts_spoken_ordinal_via_bounded_resolver(tmp_path:
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'edit_invoice_id': invoice_id})
     state.current_state = InvoiceStates.waiting_edit_item_target
-    asyncio.run(invoice_edit_item_target(message=type('M', (), {'text': 'druhá položka', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_target(message=type('M', (), {'from_user': message.from_user, 'text': 'druhá položka', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_item_action
     assert state.data.get('edit_target_item_index') == 2
 
@@ -1708,7 +1712,7 @@ def test_multi_item_target_ambiguous_keeps_state_and_requests_clarification(tmp_
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'edit_invoice_id': invoice_id})
     state.current_state = InvoiceStates.waiting_edit_item_target
-    asyncio.run(invoice_edit_item_target(message=type('M', (), {'text': 'tú druhú servisnú', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_target(message=type('M', (), {'from_user': message.from_user, 'text': 'tú druhú servisnú', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_item_target
     assert message.answers[-1].startswith('Prosím, spresnite číslo položky')
 
@@ -1752,7 +1756,7 @@ def test_multi_item_target_out_of_range_keeps_state_and_fail_loud(tmp_path: Path
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'edit_invoice_id': invoice_id})
     state.current_state = InvoiceStates.waiting_edit_item_target
-    asyncio.run(invoice_edit_item_target(message=type('M', (), {'text': '3', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_item_target(message=type('M', (), {'from_user': message.from_user, 'text': '3', 'answer': message.answer})(), state=state, config=config))
     assert state.current_state == InvoiceStates.waiting_edit_item_target
     assert message.answers[-1].startswith('Taká položka neexistuje.')
 
@@ -1795,8 +1799,8 @@ def test_edit_invoice_number_free_value_updates_invoice_and_rebuilds_pdf(tmp_pat
     state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(old_pdf)})
 
     asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
-    asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'faktúra', 'answer': message.answer})(), state=state, config=config))
-    asyncio.run(invoice_edit_invoice_action(message=type('M', (), {'text': 'upraviť číslo faktúry', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_scope(message=type('M', (), {'from_user': message.from_user, 'text': 'faktúra', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_invoice_action(message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť číslo faktúry', 'answer': message.answer})(), state=state, config=config))
     asyncio.run(
         invoice_edit_invoice_number_value(
             message=type(
@@ -1814,7 +1818,7 @@ def test_edit_invoice_number_free_value_updates_invoice_and_rebuilds_pdf(tmp_pat
     assert updated_invoice.invoice_number == '20260099'
     assert state.current_state == InvoiceStates.waiting_pdf_decision
     assert message.documents
-    assert (tmp_path / 'invoices' / '20260099.pdf').exists()
+    assert (tmp_path / 'invoices' / str(telegram_id) / '20260099.pdf').exists()
     assert not old_pdf.exists()
     assert message.answers[-1] == 'Číslo faktúry bolo upravené. Napíšte: schváliť, upraviť alebo zrušiť.'
 
@@ -1843,7 +1847,7 @@ def test_invoice_level_action_prompt_does_not_offer_contact_edit(tmp_path: Path)
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'last_invoice_id': invoice_id})
     state.current_state = InvoiceStates.waiting_edit_scope
-    asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'faktúra', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_scope(message=type('M', (), {'from_user': message.from_user, 'text': 'faktúra', 'answer': message.answer})(), state=state, config=config))
     assert 'upraviť kontakt' not in message.answers[-1]
 
 
@@ -1901,7 +1905,7 @@ def test_invoice_action_contact_text_is_unknown_and_state_is_preserved(tmp_path:
     state.current_state = InvoiceStates.waiting_edit_invoice_action
     asyncio.run(
         invoice_edit_invoice_action(
-            message=type('M', (), {'text': 'upraviť kontakt', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť kontakt', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -1952,7 +1956,7 @@ def test_edit_invoice_number_duplicate_rejected_and_state_kept(tmp_path: Path, m
 
     asyncio.run(
         invoice_edit_invoice_number_value(
-            message=type('M', (), {'text': other_invoice.invoice_number, 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': other_invoice.invoice_number, 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -1996,7 +2000,7 @@ def test_edit_invoice_number_invalid_value_rejected_and_kept_in_state(tmp_path: 
 
     asyncio.run(
         invoice_edit_invoice_number_value(
-            message=type('M', (), {'text': 'ABC-2026', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'ABC-2026', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -2047,8 +2051,8 @@ def test_edit_invoice_date_valid_value_updates_issue_date_and_rebuilds_pdf(tmp_p
     state = _DummyState(data={'last_invoice_id': invoice_id, 'last_pdf_path': str(old_pdf)})
 
     asyncio.run(process_invoice_postpdf_decision(message=message, state=state, config=config, decision_text='upraviť'))
-    asyncio.run(invoice_edit_scope(message=type('M', (), {'text': 'faktúra', 'answer': message.answer})(), state=state, config=config))
-    asyncio.run(invoice_edit_invoice_action(message=type('M', (), {'text': 'upraviť dátum vystavenia', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_scope(message=type('M', (), {'from_user': message.from_user, 'text': 'faktúra', 'answer': message.answer})(), state=state, config=config))
+    asyncio.run(invoice_edit_invoice_action(message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť dátum vystavenia', 'answer': message.answer})(), state=state, config=config))
     asyncio.run(
         invoice_edit_invoice_date_value(
             message=type(
@@ -2108,7 +2112,7 @@ def test_edit_invoice_date_invalid_format_rejected_and_kept_in_state(tmp_path: P
 
     asyncio.run(
         invoice_edit_invoice_date_value(
-            message=type('M', (), {'text': '2026-03-15', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': '2026-03-15', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -2157,7 +2161,7 @@ def test_edit_invoice_date_impossible_date_rejected_and_kept_in_state(tmp_path: 
 
     asyncio.run(
         invoice_edit_invoice_date_value(
-            message=type('M', (), {'text': '31.02.2026', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': '31.02.2026', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -2195,7 +2199,7 @@ def test_edit_invoice_date_generic_action_requires_clarification(tmp_path: Path)
     state.current_state = InvoiceStates.waiting_edit_invoice_action
     asyncio.run(
         invoice_edit_invoice_action(
-            message=type('M', (), {'text': 'upraviť dátum', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť dátum', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -2231,7 +2235,7 @@ def test_edit_invoice_delivery_date_success(tmp_path: Path, monkeypatch) -> None
     state.current_state = InvoiceStates.waiting_edit_invoice_action
     asyncio.run(
         invoice_edit_invoice_action(
-            message=type('M', (), {'text': 'upraviť dátum dodania', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť dátum dodania', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -2286,14 +2290,14 @@ def test_edit_invoice_due_date_rejects_before_issue_date(tmp_path: Path, monkeyp
     state.current_state = InvoiceStates.waiting_edit_invoice_action
     asyncio.run(
         invoice_edit_invoice_action(
-            message=type('M', (), {'text': 'upraviť dátum splatnosti', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť dátum splatnosti', 'answer': message.answer})(),
             state=state,
             config=config,
         )
     )
     asyncio.run(
         invoice_edit_invoice_date_value(
-            message=type('M', (), {'text': '01.01.2026', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': '01.01.2026', 'answer': message.answer})(),
             state=state,
             config=config,
         )
@@ -2340,7 +2344,7 @@ def test_edit_invoice_date_voice_input_is_normalized_via_bounded_contract(tmp_pa
     state.current_state = InvoiceStates.waiting_edit_invoice_action
     asyncio.run(
         invoice_edit_invoice_action(
-            message=type('M', (), {'text': 'upraviť dátum dodania', 'answer': message.answer})(),
+            message=type('M', (), {'from_user': message.from_user, 'text': 'upraviť dátum dodania', 'answer': message.answer})(),
             state=state,
             config=config,
         )

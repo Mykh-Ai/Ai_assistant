@@ -70,23 +70,38 @@ class InvoiceService:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
 
-    def generate_next_invoice_number(self, issue_year: int) -> str:
+    def generate_next_invoice_number(self, issue_year: int, supplier_telegram_id: int | None = None) -> str:
         with managed_connection(self._db_path) as connection:
-            return self._generate_next_invoice_number(connection, issue_year)
+            return self._generate_next_invoice_number(connection, issue_year, supplier_telegram_id)
 
 
     @staticmethod
-    def _generate_next_invoice_number(connection: sqlite3.Connection, issue_year: int) -> str:
+    def _generate_next_invoice_number(
+        connection: sqlite3.Connection,
+        issue_year: int,
+        supplier_telegram_id: int | None,
+    ) -> str:
         prefix = f'{issue_year}'
-        row = connection.execute(
-            (
-                'SELECT invoice_number FROM invoice '
-                'WHERE invoice_number LIKE ? '
-                'ORDER BY invoice_number DESC '
-                'LIMIT 1'
-            ),
-            (f'{prefix}%',),
-        ).fetchone()
+        if supplier_telegram_id is None:
+            row = connection.execute(
+                (
+                    'SELECT invoice_number FROM invoice '
+                    'WHERE invoice_number LIKE ? '
+                    'ORDER BY invoice_number DESC '
+                    'LIMIT 1'
+                ),
+                (f'{prefix}%',),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                (
+                    'SELECT invoice_number FROM invoice '
+                    'WHERE supplier_telegram_id = ? AND invoice_number LIKE ? '
+                    'ORDER BY invoice_number DESC '
+                    'LIMIT 1'
+                ),
+                (supplier_telegram_id, f'{prefix}%'),
+            ).fetchone()
 
         if row is None:
             return f'{prefix}0001'
@@ -142,27 +157,35 @@ class InvoiceService:
         issue_year = int(issue_date[:4])
 
         with managed_connection(self._db_path) as connection:
-            invoice_number_to_save = invoice_number or self._generate_next_invoice_number(connection, issue_year)
-            cursor = connection.execute(
-                (
-                    'INSERT INTO invoice '
-                    '(supplier_telegram_id, contact_id, invoice_number, issue_date, delivery_date, due_date, '
-                    'due_days, total_amount, currency, status, pdf_path, created_at, updated_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
-                ),
-                (
-                    supplier_telegram_id,
-                    contact_id,
-                    invoice_number_to_save,
-                    issue_date,
-                    delivery_date,
-                    due_date,
-                    due_days,
-                    total_amount,
-                    currency,
-                    status,
-                ),
+            invoice_number_to_save = invoice_number or self._generate_next_invoice_number(
+                connection,
+                issue_year,
+                supplier_telegram_id,
             )
+            try:
+                cursor = connection.execute(
+                    (
+                        'INSERT INTO invoice '
+                        '(supplier_telegram_id, contact_id, invoice_number, issue_date, delivery_date, due_date, '
+                        'due_days, total_amount, currency, status, pdf_path, created_at, updated_at) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
+                    ),
+                    (
+                        supplier_telegram_id,
+                        contact_id,
+                        invoice_number_to_save,
+                        issue_date,
+                        delivery_date,
+                        due_date,
+                        due_days,
+                        total_amount,
+                        currency,
+                        status,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                connection.rollback()
+                raise RuntimeError('Invoice save failed: invoice number already exists for this supplier.') from exc
             invoice_id = cursor.lastrowid
             if invoice_id is None:
                 raise RuntimeError('Invoice save failed: missing invoice id after insert.')
@@ -219,6 +242,12 @@ class InvoiceService:
             pdf_path=row['pdf_path'],
         )
 
+    def get_invoice_for_supplier_by_id(self, *, supplier_telegram_id: int, invoice_id: int) -> InvoiceRecord | None:
+        invoice = self.get_invoice_by_id(invoice_id)
+        if invoice is None or invoice.supplier_telegram_id != supplier_telegram_id:
+            return None
+        return invoice
+
     def get_invoice_by_number(self, invoice_number: str) -> InvoiceRecord | None:
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
@@ -229,6 +258,38 @@ class InvoiceService:
                     'FROM invoice WHERE invoice_number = ?'
                 ),
                 (invoice_number,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return InvoiceRecord(
+            id=row['id'],
+            supplier_telegram_id=row['supplier_telegram_id'],
+            contact_id=row['contact_id'],
+            invoice_number=row['invoice_number'],
+            issue_date=row['issue_date'],
+            delivery_date=row['delivery_date'],
+            due_date=row['due_date'],
+            due_days=row['due_days'],
+            total_amount=row['total_amount'],
+            currency=row['currency'],
+            status=row['status'],
+            pdf_path=row['pdf_path'],
+        )
+
+    def get_invoice_by_number_for_supplier(
+        self, *, supplier_telegram_id: int, invoice_number: str
+    ) -> InvoiceRecord | None:
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                (
+                    'SELECT id, supplier_telegram_id, contact_id, invoice_number, issue_date, delivery_date, '
+                    'due_date, due_days, total_amount, currency, status, pdf_path '
+                    'FROM invoice WHERE supplier_telegram_id = ? AND invoice_number = ?'
+                ),
+                (supplier_telegram_id, invoice_number),
             ).fetchone()
 
         if row is None:
@@ -285,17 +346,36 @@ class InvoiceService:
             for row in rows
         ]
 
-    def is_invoice_number_available(self, *, invoice_number: str, exclude_invoice_id: int | None = None) -> bool:
+    def is_invoice_number_available(
+        self,
+        *,
+        invoice_number: str,
+        supplier_telegram_id: int | None = None,
+        exclude_invoice_id: int | None = None,
+    ) -> bool:
         with managed_connection(self._db_path) as connection:
-            if exclude_invoice_id is None:
+            if supplier_telegram_id is None and exclude_invoice_id is None:
                 row = connection.execute(
                     'SELECT id FROM invoice WHERE invoice_number = ? LIMIT 1',
                     (invoice_number,),
                 ).fetchone()
-            else:
+            elif supplier_telegram_id is None:
                 row = connection.execute(
                     'SELECT id FROM invoice WHERE invoice_number = ? AND id != ? LIMIT 1',
                     (invoice_number, exclude_invoice_id),
+                ).fetchone()
+            elif exclude_invoice_id is None:
+                row = connection.execute(
+                    'SELECT id FROM invoice WHERE supplier_telegram_id = ? AND invoice_number = ? LIMIT 1',
+                    (supplier_telegram_id, invoice_number),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    (
+                        'SELECT id FROM invoice '
+                        'WHERE supplier_telegram_id = ? AND invoice_number = ? AND id != ? LIMIT 1'
+                    ),
+                    (supplier_telegram_id, invoice_number, exclude_invoice_id),
                 ).fetchone()
         return row is None
 

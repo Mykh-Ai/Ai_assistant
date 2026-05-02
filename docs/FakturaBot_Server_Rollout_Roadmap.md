@@ -1,3 +1,49 @@
+## 2026-05-02 Controlled Two-User Dry Run Update
+
+The immediate rollout model is a controlled two-user dry run, not full SaaS:
+- one shared backend/codebase;
+- one Telegram bot token for now;
+- one SQLite DB for now;
+- `ALLOWED_TELEGRAM_USER_IDS` remains a bootstrap/static allowlist;
+- `ADMIN_TELEGRAM_USER_IDS` is required to bootstrap at least one admin before relying on access-request approval;
+- unknown users can request access through `/start`, but only admin approval in `authorized_users` enables normal bot usage;
+- public self-service onboarding is disabled/not allowed;
+- data isolation is by deterministic Python scoping on `telegram_id` / `supplier_telegram_id`.
+
+Runtime guardrails for this stage:
+- unauthorized Telegram users must be blocked before onboarding, contact/invoice/accounting-document mutation, temp file creation, STT, LLM, or LMM calls;
+- unknown `/start` creates only a minimal pending access request and sends a neutral Slovak response;
+- admin access commands are `/access_requests`, `/approve <telegram_id>`, `/reject <telegram_id>`, `/block <telegram_id>`, and `/users`;
+- invoice numbers are tenant-aware with `UNIQUE(supplier_telegram_id, invoice_number)`;
+- invoice PDFs use `storage/invoices/{supplier_telegram_id}/{invoice_number}.pdf`;
+- accounting document temp storage, confirmed storage, duplicate checks, and recent-document views are tenant-scoped;
+- per-user SMTP host/user/password collection is deprecated and unused.
+
+Before server rollout with the second real user:
+- back up the SQLite DB and storage directory;
+- apply the code update and let `init_db()` migrate the invoice table from global invoice-number uniqueness to tenant-aware uniqueness;
+- smoke-check existing owner invoice flow, PDF path persistence, accounting document intake, and recent documents;
+- set `ADMIN_TELEGRAM_USER_IDS` in server `.env` without committing or logging real values;
+- keep `ALLOWED_TELEGRAM_USER_IDS` for bootstrap/static access if needed;
+- test unknown `/start` -> pending access request -> admin `/approve` -> user `/supplier`;
+- purge legacy SMTP values if present:
+
+```sql
+UPDATE supplier
+SET smtp_host = NULL,
+    smtp_user = NULL,
+    smtp_pass = NULL;
+```
+
+Remaining out of scope:
+- multiple bot-token orchestration;
+- workspace admin UI;
+- billing;
+- Postmark integration;
+- encrypted secret vault for per-tenant secrets;
+- bank-statement matching;
+- expense categorization.
+
 # FakturaBot Server Rollout Roadmap
 
 ## 1) Мета документа
@@ -34,18 +80,29 @@
 
 ## 3) Поточна rollout концепція
 
+### User access rollout phases
+
+Detailed source: `docs/User_Access_Model_Roadmap.md`.
+
+- Phase 1 - Static allowlist / controlled second user is the current operational model: one shared Telegram `BOT_TOKEN`, one backend, one SQLite DB, multiple users allowlisted via `ALLOWED_TELEGRAM_USER_IDS`, no public onboarding, and no automatic signup.
+- Phase 2 - Admin-approved access request flow is the next automation step: unknown `/start` may create only a pending access request, and an admin can approve/reject/block users without editing `.env` or restarting the bot. This is controlled onboarding automation, not public signup.
+- Phase 3 - Future commercial deployment model is out of scope for the current implementation: separate Telegram bot tokens, per-client VPS/container/workspace, separate DB/storage/API keys, SaaS admin UI, billing, and support tooling are future/commercial options only.
+
 Near-term напрямок:
 - один shared backend service;
 - один codebase;
 - одна керована server/runtime база;
-- tenant isolation на рівні клієнта/бота/конфігурації/даних/сесій;
+- для Phase 1: один shared Telegram bot token, один backend, одна SQLite DB;
+- tenant isolation на рівні `telegram_id` / `supplier_telegram_id`;
 - Telegram-first rollout;
-- ручний onboarding перших клієнтів;
-- setup page/self-service onboarding - пізніше;
+- ручний allowlist onboarding контрольованого другого користувача;
+- admin-approved access request flow - наступний крок;
+- setup page/self-service onboarding - не поточна ціль;
 - Android/UI шар - пізніше.
 
 Що не є базовою стратегією першого rollout:
 - multi-Docker-per-client як дефолт для кожного нового клієнта;
+- separate bot token per client як поточна модель;
 - повністю автоматичний SaaS onboarding до перевіреного ручного процесу;
 - передчасна рольова система або admin panel.
 
@@ -119,7 +176,8 @@ Definition of done:
 Задачі:
 - створити public checklist без секретів;
 - створити/оновити local-only runbook для реальних token/API key дій;
-- описати створення tenant config/storage;
+- описати Phase 1 manual allowlist flow через `ALLOWED_TELEGRAM_USER_IDS`;
+- описати tenant-scoped smoke-check для другого користувача без створення public signup;
 - описати smoke-check після активації tenant bot;
 - визначити rollback/deactivation steps для тестового клієнта.
 
@@ -137,16 +195,17 @@ Definition of done:
 ### P2 - first external client dry run
 
 Задачі:
-- підготувати клієнтський bot token/config;
-- активувати tenant;
-- дати клієнту інструкцію натиснути `/start`;
+- для Phase 1: вручну додати Telegram user ID другого користувача в real untracked server `.env` через `ALLOWED_TELEGRAM_USER_IDS`;
+- не створювати окремий клієнтський bot token/config для поточного dry run;
+- дати другому користувачу інструкцію натиснути `/start`;
 - пройти onboarding і створити першу тестову фактуру;
 - перевірити логи, ізоляцію і rollback/deactivation procedure.
 
 Передумова:
 - P0 owner-run baseline закритий;
-- P1 manual onboarding v1 готовий;
-- якщо dry run іде через shared backend з кількома ботами, P2 multi-bot routing має бути готовий.
+- P1 manual allowlist onboarding v1 готовий;
+- Phase 2 admin-approved access request flow не є передумовою для Phase 1 dry run;
+- P2 multi-bot routing не є передумовою для Phase 1 dry run і належить до майбутньої Phase 3/commercial моделі.
 
 ### P3 - later improvements
 
@@ -170,12 +229,14 @@ Definition of done:
 ## 6) Definition of first success milestone
 
 Перший зовнішній milestone вважається досягнутим, коли одночасно виконано:
-- є зовнішній тест-клієнт з власним bot token і конфігурацією;
-- tenant routing спрямовує updates у правильний tenant context;
-- клієнт натискає `/start` у своєму боті;
+- є другий реальний користувач, вручну доданий у `ALLOWED_TELEGRAM_USER_IDS` у real untracked server `.env`;
+- використовується один shared Telegram bot token, один backend і одна SQLite DB;
+- tenant isolation працює через `telegram_id` / `supplier_telegram_id`;
+- користувач натискає `/start` у shared боті;
 - onboarding проходить у межах очікуваного flow;
 - створюється перша тестова фактура;
 - підтверджено відсутність cross-tenant data leakage;
+- невідомий Telegram user залишається заблокованим без створення business/temp даних і без LLM/STT/LMM calls;
 - є запис у `PROJECT_LOG.md` з результатами dry run.
 
 ## 7) Non-goals раннього rollout
@@ -190,8 +251,8 @@ Definition of done:
 ## 8) Пов'язані документи
 
 - `docs/TZ_FakturaBot.md` - продуктове ТЗ і межі MVP.
+- `docs/User_Access_Model_Roadmap.md` - phases for current allowlist, next access-request automation, and future commercial deployment.
 - `PROJECT_LOG.md` - журнал рішень і виконаних змін.
 - `README.md` - поточна навігація по проєкту і статус реалізації.
 - `docs/local-only/FakturaBot_Server_Agent_Context.md` - приватний server runbook для реальних server дій.
 - `docs/Info_Help_Guidance_Layer.md` - окремий docs-first spec для `info_help` guidance layer.
-

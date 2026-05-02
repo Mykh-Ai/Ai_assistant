@@ -391,3 +391,8 @@ Not in Phase 1:
 - changes to `storage/invoices`,
 - changes to `pdf_path`,
 - changes to current FakturaBot DB schema unless a separate implementation decision selects a DB-backed option.
+## 2026-05-02 Tenant-Scoped Runtime Addendum
+
+Accounting Document Intake now runs inside the controlled two-user dry-run boundary. Runtime temp staging, confirmed storage, duplicate checks, and recent-document views must be scoped to the requesting Telegram user via a workspace key such as `telegram-{supplier_telegram_id}`. Unauthorized Telegram users must be blocked before any temp file creation or LMM call.
+
+This addendum supersedes older statements that Document Intake does not change invoice PDF paths: outgoing invoice PDFs are now tenant-scoped under `storage/invoices/{supplier_telegram_id}/{invoice_number}.pdf` for the controlled dry run, while `pdf_path` remains the persisted pointer.

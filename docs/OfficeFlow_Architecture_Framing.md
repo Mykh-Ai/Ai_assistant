@@ -236,3 +236,8 @@ This document does not authorize:
 - adding OCR/LLM extraction runtime for a general Document Intake module beyond the currently implemented bounded receipt/incoming-invoice intake.
 
 Any runtime migration must be planned separately with backup, compatibility, and regression tests for the existing invoice flow.
+## 2026-05-02 Tenant-Scoped Runtime Addendum
+
+For the controlled two-user FakturaBot dry run, outgoing invoice PDFs are no longer flat by invoice number at runtime. New generated invoice PDFs use `storage/invoices/{supplier_telegram_id}/{invoice_number}.pdf`, while DB `pdf_path` remains the pointer to the generated file.
+
+Accounting Document Intake confirmed storage remains under `storage/workspaces/...`, but runtime calls now use a tenant workspace key such as `telegram-{supplier_telegram_id}` for confirmed files, duplicate checks, and recent-document views. The legacy `mykhailo-szco` workspace key remains as a compatibility default for older tests/data only.

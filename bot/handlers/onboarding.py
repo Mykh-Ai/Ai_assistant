@@ -30,18 +30,8 @@ class OnboardingStates(StatesGroup):
     iban = State()
     swift = State()
     email = State()
-    smtp_host = State()
-    smtp_user = State()
-    smtp_pass = State()
     days_due = State()
     confirm = State()
-
-
-def _normalize_optional_input(value: str) -> str | None:
-    normalized = value.strip()
-    if not normalized or normalized in {'-', '/skip'}:
-        return None
-    return normalized
 
 
 def _summary(data: dict[str, object]) -> str:
@@ -55,9 +45,6 @@ def _summary(data: dict[str, object]) -> str:
         f'• IBAN: {data["iban"]}\n'
         f'• SWIFT: {data["swift"]}\n'
         f'• Email: {data["email"]}\n'
-        f'• SMTP host: {data["smtp_host"] or "-"}\n'
-        f'• SMTP user: {data["smtp_user"] or "-"}\n'
-        f'• SMTP heslo: {"********" if data["smtp_pass"] else "-"}\n'
         f'• Splatnosť: {data["days_due"]} dní\n\n'
         'Napíšte <b>ano</b> pre potvrdenie alebo <b>nie</b> pre zrušenie.'
     )
@@ -83,7 +70,7 @@ async def cmd_onboarding(message: Message, state: FSMContext, config: Config) ->
 
     await state.clear()
     await state.set_state(OnboardingStates.name)
-    await message.answer('1/12 Zadajte názov firmy / obchodné meno:')
+    await message.answer('1/9 Zadajte názov firmy / obchodné meno:')
 
 
 @router.message(OnboardingStates.name)
@@ -94,7 +81,7 @@ async def onboarding_name(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(name=value)
     await state.set_state(OnboardingStates.ico)
-    await message.answer('2/12 Zadajte ICO (8 číslic):')
+    await message.answer('2/9 Zadajte ICO (8 číslic):')
 
 
 @router.message(OnboardingStates.ico)
@@ -105,7 +92,7 @@ async def onboarding_ico(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(ico=value)
     await state.set_state(OnboardingStates.dic)
-    await message.answer('3/12 Zadajte DIC (10 číslic):')
+    await message.answer('3/9 Zadajte DIC (10 číslic):')
 
 
 @router.message(OnboardingStates.dic)
@@ -116,7 +103,7 @@ async def onboarding_dic(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(dic=value)
     await state.set_state(OnboardingStates.ic_dph)
-    await message.answer('4/12 Zadajte IC DPH (alebo "-", ak ho nemáte):')
+    await message.answer('4/9 Zadajte IC DPH (alebo "-", ak ho nemáte):')
 
 
 @router.message(OnboardingStates.ic_dph)
@@ -131,7 +118,7 @@ async def onboarding_ic_dph(message: Message, state: FSMContext) -> None:
         await state.update_data(ic_dph=value.upper().replace(' ', ''))
 
     await state.set_state(OnboardingStates.address)
-    await message.answer('5/12 Zadajte adresu:')
+    await message.answer('5/9 Zadajte adresu:')
 
 
 @router.message(OnboardingStates.address)
@@ -142,7 +129,7 @@ async def onboarding_address(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(address=value)
     await state.set_state(OnboardingStates.iban)
-    await message.answer('6/12 Zadajte IBAN:')
+    await message.answer('6/9 Zadajte IBAN:')
 
 
 @router.message(OnboardingStates.iban)
@@ -153,7 +140,7 @@ async def onboarding_iban(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(iban=value.upper().replace(' ', ''))
     await state.set_state(OnboardingStates.swift)
-    await message.answer('7/12 Zadajte SWIFT/BIC:')
+    await message.answer('7/9 Zadajte SWIFT/BIC:')
 
 
 @router.message(OnboardingStates.swift)
@@ -164,7 +151,7 @@ async def onboarding_swift(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(swift=value.upper())
     await state.set_state(OnboardingStates.email)
-    await message.answer('8/12 Zadajte email:')
+    await message.answer('8/9 Zadajte email:')
 
 
 @router.message(OnboardingStates.email)
@@ -174,32 +161,8 @@ async def onboarding_email(message: Message, state: FSMContext) -> None:
         await message.answer('Neplatný email. Skúste znova:')
         return
     await state.update_data(email=value)
-    await state.set_state(OnboardingStates.smtp_host)
-    await message.answer('9/12 Zadajte SMTP host (voliteľné, "-" alebo /skip pre preskočenie):')
-
-
-@router.message(OnboardingStates.smtp_host)
-async def onboarding_smtp_host(message: Message, state: FSMContext) -> None:
-    value = _normalize_optional_input(message.text or '')
-    await state.update_data(smtp_host=value)
-    await state.set_state(OnboardingStates.smtp_user)
-    await message.answer('10/12 Zadajte SMTP user (voliteľné, "-" alebo /skip pre preskočenie):')
-
-
-@router.message(OnboardingStates.smtp_user)
-async def onboarding_smtp_user(message: Message, state: FSMContext) -> None:
-    value = _normalize_optional_input(message.text or '')
-    await state.update_data(smtp_user=value)
-    await state.set_state(OnboardingStates.smtp_pass)
-    await message.answer('11/12 Zadajte SMTP heslo (voliteľné, "-" alebo /skip pre preskočenie):')
-
-
-@router.message(OnboardingStates.smtp_pass)
-async def onboarding_smtp_pass(message: Message, state: FSMContext) -> None:
-    value = _normalize_optional_input(message.text or '')
-    await state.update_data(smtp_pass=value)
     await state.set_state(OnboardingStates.days_due)
-    await message.answer('12/12 Zadajte štandardnú splatnosť v dňoch (celé číslo > 0):')
+    await message.answer('9/9 Zadajte štandardnú splatnosť v dňoch (celé číslo > 0):')
 
 
 @router.message(OnboardingStates.days_due)
@@ -252,9 +215,9 @@ async def onboarding_confirm(
             iban=data['iban'],
             swift=data['swift'],
             email=data['email'],
-            smtp_host=data.get('smtp_host'),
-            smtp_user=data.get('smtp_user'),
-            smtp_pass=data.get('smtp_pass'),
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
             days_due=int(data['days_due']),
         )
     )

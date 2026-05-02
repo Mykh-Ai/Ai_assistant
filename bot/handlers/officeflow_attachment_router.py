@@ -51,7 +51,16 @@ class OfficeFlowAttachmentRouterStates(StatesGroup):
 
 @router.message(StateFilter(None), F.photo | F.document)
 async def officeflow_idle_attachment(message: Message, state: FSMContext, config: Config, bot: Bot) -> None:
-    attachment = await stage_message_attachment(message=message, bot=bot, storage_dir=config.storage_dir)
+    if message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+    attachment = await stage_message_attachment(
+        message=message,
+        bot=bot,
+        storage_dir=config.storage_dir,
+        supplier_telegram_id=message.from_user.id,
+    )
     if attachment is None:
         await message.answer('Tento typ prílohy zatiaľ nepodporujem. Pošlite, prosím, fotku alebo PDF.')
         return

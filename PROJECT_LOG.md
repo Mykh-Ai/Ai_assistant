@@ -1,5 +1,85 @@
 # PROJECT_LOG
 
+## 2026-05-02 - Session 046 - Controlled access-request onboarding
+
+Audit summary:
+- User-facing entry points remain centrally protected by Telegram authorization middleware before `/start`, `/supplier`, invoice, contact, accounting-document intake, OfficeFlow attachment routing, voice/STT, text pre-routing, and other mutating handlers can run.
+- The previous static `ALLOWED_TELEGRAM_USER_IDS` model was safe for the two-user dry run but operationally inconvenient for additional access requests.
+- Unknown users must not create supplier profiles, contacts, invoices, accounting documents, temp storage workspaces, or trigger LLM/STT/LMM calls.
+- Admin access management must remain deterministic Python logic and must not be routed through LLM/STT/LMM.
+
+Summary:
+- Added `ADMIN_TELEGRAM_USER_IDS` config parsing while preserving `ALLOWED_TELEGRAM_USER_IDS` as bootstrap/static access.
+- Added persistent `access_requests` and `authorized_users` tables through `init_db()` with fail-loud compatibility checks and no destructive migration.
+- Added `AccessControlService` for pending requests, approvals, rejections, blocking, active-user checks, and admin checks.
+- Updated authorization middleware so unknown `/start` creates or refreshes only a minimal pending access request, sends a neutral Slovak access message, and optionally notifies configured admins.
+- Added admin-only `/access_requests`, `/approve <telegram_id>`, `/reject <telegram_id>`, `/block <telegram_id>`, and `/users` commands.
+- Preserved local/test behavior when both `ALLOWED_TELEGRAM_USER_IDS` and `ADMIN_TELEGRAM_USER_IDS` are empty.
+- Updated docs to describe controlled access requests, admin approval, bootstrap allowlists/admins, one-bot model, and the no-public-signup boundary.
+
+Verification:
+- `python -m pytest -q tests\test_access_request_flow.py tests\test_tenant_safety.py` -> `13 passed`.
+- `python -m pytest -q` -> `787 passed`.
+
+Notes:
+- This is not public self-service signup and does not add billing, payments, SaaS dashboard, multiple bot tokens, Postmark, email/password accounts, or full tenant provisioning.
+- Blocked users keep existing data but cannot pass the authorization guard.
+
+## 2026-05-02 - Session 045 - User access rollout phases documented
+
+Summary:
+- Added `docs/User_Access_Model_Roadmap.md` to separate Phase 1 static allowlist dry run, Phase 2 admin-approved access request automation, and Phase 3 future commercial deployment.
+- Updated the server rollout roadmap to state that the current second-user dry run uses one shared Telegram bot token, one backend, one SQLite DB, and `ALLOWED_TELEGRAM_USER_IDS`.
+- Reframed the TZ deployment section so the current shared-bot controlled dry run is distinct from the future commercial/per-client installation model.
+- Added a local-only safe `docs/local-only/New_User_Onboarding_Checklist.md` checklist with no real Telegram IDs, tokens, names, or private client data.
+- Preserved the future per-client bot/VPS/container/DB/storage/API-key model as out of scope for the current dry run and Phase 2 access-request work.
+- Strengthened the documentation-only wording so Phase 2 is treated as planned/not implemented unless current code, tests, and `PROJECT_LOG.md` separately confirm implementation.
+
+Verification:
+- Documentation-only change; tests not run.
+
+## 2026-05-02 - Session 044 - Minimal tenant-safety hardening for controlled two-user dry run
+
+Audit summary:
+- User-facing Telegram entry points include `/start`, `/supplier`/onboarding, invoice creation and edit/delete/view flows, contact flows, accounting document intake, OfficeFlow idle attachment routing, voice routing, and generic text/document pre-routing.
+- Supplier profile access was already keyed by `telegram_id`; contact list/name flows were supplier-scoped, while invoice PDF rebuild/display paths still used unscoped contact lookup and were changed to scoped lookup.
+- Invoice number generation and DB uniqueness were global; this was changed to tenant-aware `UNIQUE(supplier_telegram_id, invoice_number)` with per-supplier generation and availability checks.
+- Existing invoice edit/delete/view resolution already used supplier-scoped number reference matching in the main pre-router; persisted edit subflows were hardened to reload invoices by current `supplier_telegram_id` before mutations.
+- Invoice PDF storage was flat by `invoice_number`; it is now tenant-scoped under `storage/invoices/{supplier_telegram_id}/{invoice_number}.pdf`.
+- Accounting document confirmed storage, duplicate detection, recent-document views, and temp staging previously used a fixed workspace/default temp path; runtime paths now pass the current Telegram user and use tenant workspaces such as `telegram-{supplier_telegram_id}`.
+- Legacy supplier SMTP fields (`smtp_host`, `smtp_user`, `smtp_pass`) existed and onboarding collected them historically; onboarding now collects only business email and saves SMTP fields as `None`.
+- LLM/STT/LMM cost boundary is now protected by centralized Telegram user authorization middleware before handlers run.
+
+Summary:
+- Added `ALLOWED_TELEGRAM_USER_IDS` config parsing and centralized Telegram user authorization middleware with neutral unauthorized response.
+- Registered authorization middleware in `bot/main.py` so unauthorized users are blocked before onboarding, contacts, invoices, accounting intake, OfficeFlow attachment routing, voice/STT, LLM, and LMM handler work.
+- Changed invoice schema/bootstrap to migrate from global invoice-number uniqueness to tenant-aware uniqueness, retaining existing rows and documenting the need for DB backup before rollout.
+- Updated invoice number generation, availability checks, invoice lookup-by-number, invoice PDF paths, contact lookups during invoice PDF rebuild, and persisted invoice edit/delete flows to respect the requesting Telegram user.
+- Added tenant-scoped accounting document temp storage, confirmed storage metadata, duplicate checks, and recent-document views.
+- Deprecated per-user SMTP credential collection in onboarding while keeping DB columns for compatibility.
+- Updated docs with the controlled two-user model, allowlist requirement, tenant-scoped storage rules, SMTP purge SQL, and out-of-scope items.
+
+Migration note:
+- `init_db()` now rebuilds the `invoice` table when it detects the legacy global `UNIQUE(invoice_number)` shape and recreates it with `UNIQUE(supplier_telegram_id, invoice_number)`.
+- Before server rollout, back up the SQLite DB and storage directory. Rollback risk is mainly schema rollback/manual restore if the live DB contains unexpected duplicate rows for the same supplier and invoice number.
+- Existing legacy SMTP values should be purged after backup with:
+
+```sql
+UPDATE supplier
+SET smtp_host = NULL,
+    smtp_user = NULL,
+    smtp_pass = NULL;
+```
+
+Verification:
+- `python -m pytest -q tests\test_tenant_safety.py tests\test_accounting_document_storage.py tests\test_accounting_document_duplicates.py tests\test_accounting_document_registry.py tests\test_onboarding_decisions.py tests\test_onboarding_no_smtp.py` -> `37 passed`.
+- `python -m pytest -q` -> `780 passed`.
+
+Notes:
+- This is not full SaaS multi-tenancy.
+- Out of scope remains multiple bot-token orchestration, workspace admin UI, billing, Postmark integration, encrypted tenant secret vault, bank-statement matching, and expense categorization.
+- Python remains the execution authority; LLM/STT/LMM does not decide authorization, tenant identity, DB scoping, invoice numbering, file paths, or persistence.
+
 ## 2026-05-02 - Session 043 - Canonical DecisionResolver matrix tests
 
 Summary:

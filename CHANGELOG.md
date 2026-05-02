@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- controlled access-request onboarding for unknown Telegram users: `/start` records a pending request only, admins can review with `/access_requests`, and admins can approve/reject/block users with deterministic admin commands.
+- `ADMIN_TELEGRAM_USER_IDS` config for bootstrap administrators plus persistent `access_requests` and `authorized_users` tables.
+- `ALLOWED_TELEGRAM_USER_IDS` config and centralized Telegram user authorization middleware for the controlled two-user dry run.
 - docs-only Canonical DecisionResolver policy for confirmation-like replies across invoice, contact, onboarding, delete confirmation, and future Document Intake flows.
 - shared runtime `bot/services/decision_resolver.py` adapter for canonical `approve_edit_cancel` and `yes_no` decision families.
 - accounting Document Intake Phase 1 foundation for receipts and incoming invoices:
@@ -17,6 +20,10 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- authorization now accepts either bootstrap `ALLOWED_TELEGRAM_USER_IDS` membership or an active `authorized_users` row; blocked users are denied before normal handlers run.
+- invoice numbering and uniqueness are now tenant-aware by `supplier_telegram_id`; invoice PDFs now use tenant-scoped paths under `storage/invoices/{supplier_telegram_id}/`.
+- accounting document temp storage, confirmed storage, duplicate detection, and recent-document views are now scoped to the requesting Telegram user workspace.
+- supplier onboarding no longer collects per-user SMTP host/user/password and saves those legacy fields as `NULL`/`None`.
 - invoice preview/post-PDF decisions, contact confirmations, onboarding confirmation, and existing-invoice delete confirmation now route through the shared DecisionResolver.
 - voice confirm-state transcripts now route to the active confirmation handler instead of falling through to top-level invoice routing.
 - accounting Document Intake now passes real Telegram photo/PDF bytes into the LMM boundary as image/PDF payloads, with temp staging cleanup for cancel/error/confirmed-save paths.
@@ -31,7 +38,10 @@
 - accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
 
 ### Notes
-- Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, standalone contract save, or invoice PDF path changes.
+- Controlled multi-user dry run remains one backend, one bot token, and one SQLite DB; access is limited to bootstrap allowlisted or admin-approved Telegram users, and this is not full SaaS multi-tenancy.
+- Public automatic signup remains out of scope; unknown users can only request access and must be approved by an admin before onboarding, LLM/STT/LMM, invoices, contacts, or document intake.
+- Legacy supplier SMTP values should be purged after backup with `UPDATE supplier SET smtp_host = NULL, smtp_user = NULL, smtp_pass = NULL;`.
+- Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, Zevs runtime profile, standalone contract save, bank-statement matching, or expense categorization.
 
 ## [0.6.1] - 2026-04-12
 

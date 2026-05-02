@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from bot.config import Config
-from bot.handlers.onboarding import OnboardingStates, onboarding_confirm
+from bot.handlers.onboarding import OnboardingStates, onboarding_confirm, onboarding_email
 from bot.services.db import init_db
 from bot.services.supplier_service import SupplierService
 
@@ -45,6 +45,12 @@ class _DummyState:
     async def get_data(self) -> dict:
         return dict(self.data)
 
+    async def update_data(self, **kwargs) -> None:
+        self.data.update(kwargs)
+
+    async def set_state(self, state) -> None:
+        self.current_state = state
+
     async def clear(self) -> None:
         self.current_state = None
         self.data.clear()
@@ -73,6 +79,9 @@ def test_onboarding_confirm_accepts_shared_yes_alias(tmp_path: Path) -> None:
     saved = SupplierService(config.db_path).get_by_telegram_id(111)
     assert saved is not None
     assert saved.name == 'Dodavatel'
+    assert saved.smtp_host is None
+    assert saved.smtp_user is None
+    assert saved.smtp_pass is None
     assert state.current_state is None
 
 

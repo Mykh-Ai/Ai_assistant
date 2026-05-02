@@ -202,3 +202,8 @@ Do not implement in this step:
 - Zevs s.r.o. profile,
 - changes to outgoing invoice flow,
 - changes to existing `storage/invoices` or `pdf_path`.
+## 2026-05-02 Tenant-Scoped Runtime Addendum
+
+For the controlled two-user dry run, accounting document intake temp files, confirmed files, duplicate checks, and recent-document views are scoped to the requesting Telegram user workspace, e.g. `telegram-{supplier_telegram_id}`. Unauthorized users must be rejected before staging files or calling LMM/LLM/STT services.
+
+Outgoing invoice PDFs are now tenant-scoped under `storage/invoices/{supplier_telegram_id}/{invoice_number}.pdf`; `pdf_path` remains the persisted file pointer.

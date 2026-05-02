@@ -10,6 +10,7 @@ from aiogram.types import Message
 from bot.config import Config
 from bot.services.accounting_document_models import DOCUMENT_TYPE_INCOMING_INVOICE, DOCUMENT_TYPE_RECEIPT
 from bot.services.accounting_document_registry import AccountingDocumentSummary, list_recent_accounting_documents
+from bot.services.accounting_document_storage import workspace_key_for_supplier
 
 
 router = Router()
@@ -43,7 +44,18 @@ async def recent_accounting_documents_alias(message: Message, config: Config) ->
 
 
 async def _send_recent_accounting_documents(*, message: Message, config: Config) -> None:
-    summaries = list_recent_accounting_documents(storage_dir=config.storage_dir, limit=5)
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+    supplier_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    if supplier_telegram_id is None:
+        summaries = list_recent_accounting_documents(storage_dir=config.storage_dir, limit=5)
+    else:
+        summaries = list_recent_accounting_documents(
+            storage_dir=config.storage_dir,
+            workspace_key=workspace_key_for_supplier(supplier_telegram_id),
+            limit=5,
+        )
     if not summaries:
         await message.answer('Zatiaľ nemáte uložené žiadne bločky ani prijaté doklady.')
         return

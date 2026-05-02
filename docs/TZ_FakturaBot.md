@@ -80,32 +80,46 @@ Phase 1 migration частково впроваджує цей принцип у
 
 ## 2. Архітектурна концепція
 
-### 2.1 Модель стартового розгортання
+### 2.1 Current controlled dry-run deployment model
 
-На першому етапі:
-- один сервер,
-- один deployable instance / один Docker stack,
-- один Telegram-бот,
-- один реальний користувач (автор),
-- одна локальна база даних.
+Це активна поточна модель для контрольованого dry run і безпечного onboarding другого реального користувача:
+- один shared Telegram bot token (`BOT_TOKEN`);
+- один backend process / deployable service;
+- одна SQLite DB;
+- кілька allowlisted Telegram users через `ALLOWED_TELEGRAM_USER_IDS`;
+- strict tenant isolation by `telegram_id` / `supplier_telegram_id`;
+- без per-user Telegram bot tokens;
+- без public SaaS;
+- без public self-service onboarding;
+- без automatic signup;
+- без збору per-user SMTP credentials.
 
-Реалізаційно це може бути один Docker-контейнер або невеликий Docker stack, але концептуально це один інстанс для одного реального користувача на старті.
+Unknown Telegram users must be blocked neutrally before onboarding or business data mutation. Unknown users must not create supplier profiles, contacts, invoices, invoice PDFs, accounting documents, metadata, temporary upload files, tenant storage directories, or any other business/runtime artifacts, and must not trigger LLM, STT, or LMM calls.
+
+This controlled shared-bot model is the current runtime model for safely onboarding the second user. It does not replace the future commercial / installation-as-a-service deployment model.
 
 Ціль цієї версії:
-- отримати живий продукт,
-- самому пройти повний user flow,
-- показувати демо людям,
-- на цій основі продавати розгортання та кастомізацію.
+- отримати живий продукт;
+- пройти повний user flow на реальних даних власника;
+- безпечно додати другого контрольованого користувача;
+- перевірити tenant isolation перед будь-яким ширшим onboarding;
+- на цій основі приймати окреме рішення про майбутнє комерційне розгортання та кастомізацію.
 
-### 2.2 Перспективна модель
+### 2.2 Future commercial / installation-as-a-service deployment model
 
-Після успішного MVP базове ядро має підтримувати модель:
-- один клієнт = один інстанс,
-- окремі налаштування,
-- окремі реквізити,
-- окремий prompt/context,
-- окремий словник скорочень,
-- окремі сценарії.
+Після успішного MVP базове ядро може підтримувати future commercial / installation-as-a-service model. Це не поточний runtime:
+- один клієнт = один інстанс або інша окрема deployment/workspace одиниця;
+- possible separate Telegram bot token per client;
+- possible per-client VPS/container/workspace;
+- possible separate DB/storage/API keys/secrets per client;
+- окремі налаштування;
+- окремі реквізити;
+- окремий prompt/context;
+- окремий словник скорочень;
+- окремі сценарії;
+- possible SaaS/admin UI, billing, support tooling, and stronger secrets management.
+
+Ця future commercial / installation-as-a-service model не є поточним dry-run runtime і не є Phase 2 access-request automation. Її не можна трактувати як уже реалізовану або як вимогу для контрольованого другого користувача. Per-client Telegram bot tokens, per-client VPS/container, and per-client API keys are future/commercial options only.
 
 OfficeFlow framing додає майбутні поняття `workspace` і `supplier profile` як документаційну модель, але не реалізує multi-workspace або multi-supplier runtime у межах поточного FakturaBot MVP. Поточний робочий supplier profile для SZČO Mykhailo Alieksieienko залишається чинним.
 
@@ -729,7 +743,7 @@ Splatnosť: 29.04.2026
 4. Вкладення: PDF фактура.
 5. Бот підтверджує: "✅ Faktúra odoslaná na novak@firma.sk"
 
-SMTP налаштовується при онбордингу (Gmail App Password або власний SMTP).
+Per-user SMTP host/user/password collection is deprecated. Supplier onboarding collects only the business email; future sending should use a centralized transactional provider such as Postmark or equivalent.
 
 ---
 
@@ -1037,3 +1051,68 @@ FakturaBot v1.0 — це не спроба побудувати великий S
 10. Продукт мислиться як частина ширшої моделі кастомних ботів для малого бізнесу.  
 11. Для test/dev операцій додано явну дію `delete_existing_invoice` з обов’язковим підтвердженням `áno/nie` та supplier-scoped пошуком за суфіксом/повним номером.  
 
+## 2026-05-02 Controlled Two-User Dry Run Addendum
+
+Current controlled multi-user model for the next dry run:
+- one shared backend/codebase;
+- one Telegram bot token for now;
+- one SQLite DB for now;
+- Phase 1 access only for Telegram users listed in bootstrap `ALLOWED_TELEGRAM_USER_IDS`;
+- Phase 2 may add admin-approved access without `.env` edits only when the current code and `PROJECT_LOG.md` confirm it is implemented/deployed;
+- no public self-service onboarding;
+- deterministic tenant isolation by `telegram_id` / `supplier_telegram_id`.
+
+This is not full SaaS multi-tenancy. Out of scope for this step:
+- multiple bot-token orchestration;
+- workspace admin UI;
+- billing;
+- Postmark integration;
+- encrypted secret vault for per-tenant secrets;
+- bank-statement matching;
+- expense categorization.
+
+Python remains the source of truth for authorization, tenant identity, DB filters, invoice-number generation, file-path generation, duplicate checks, and persistence. LLM/STT may help with bounded extraction or action/value resolution only after the Telegram user is authorized, and must not decide authorization or tenant identity.
+
+Tenant-sensitive runtime rules:
+- invoice numbers are unique per supplier: `UNIQUE(supplier_telegram_id, invoice_number)`;
+- the same invoice number may exist for different suppliers;
+- invoice PDF files are stored under `storage/invoices/{supplier_telegram_id}/{invoice_number}.pdf`;
+- accounting document confirmed storage uses a tenant workspace key such as `telegram-{supplier_telegram_id}`;
+- accounting document temporary upload staging is tenant-scoped before any LMM call or confirmed save;
+- contact and supplier profile operations are scoped to the current Telegram user.
+
+Legacy per-user SMTP credential collection is deprecated for the dry run. Supplier onboarding collects only the business email. Existing DB columns `smtp_host`, `smtp_user`, and `smtp_pass` remain for compatibility but are unused by the dry-run flow and should be cleared if legacy values exist:
+
+```sql
+UPDATE supplier
+SET smtp_host = NULL,
+    smtp_user = NULL,
+    smtp_pass = NULL;
+```
+
+Future email sending should use a centralized transactional email provider, for example Postmark or equivalent, with a project-owned sender domain and DKIM/DMARC/Return-Path configured later. Per-user SMTP credentials must not be collected in onboarding.
+
+## 2026-05-02 Controlled Access-Request Onboarding Addendum
+
+This section specifies Phase 2 controlled onboarding automation. Do not treat it as the current dry-run model unless the current code and `PROJECT_LOG.md` confirm it is implemented and deployed.
+
+When Phase 2 is implemented, unknown Telegram users may request access through `/start`, but this is not public automatic signup:
+- `/start` from an unknown user records or refreshes a minimal `access_requests` row with Telegram metadata only;
+- no supplier profile, tenant workspace, contact, invoice, accounting document, temp intake workspace, LLM, STT, or LMM call is created for unknown users;
+- the user receives a neutral Slovak message that administrator approval is required;
+- configured admins may review pending requests with `/access_requests`;
+- configured admins may use `/approve <telegram_id>`, `/reject <telegram_id>`, `/block <telegram_id>`, and `/users`;
+- non-admin users cannot run access-management commands.
+
+Authorization model:
+- a user is authorized when their Telegram ID is in `ALLOWED_TELEGRAM_USER_IDS`, or when `authorized_users.status = 'active'`;
+- a user is an admin when their Telegram ID is in `ADMIN_TELEGRAM_USER_IDS`, or when `authorized_users.role` is `admin`/`owner` and status is `active`;
+- blocked users are denied before normal handlers run, even if they previously had access;
+- approved users still must complete `/supplier` onboarding before invoice creation.
+
+Operational config:
+- `ALLOWED_TELEGRAM_USER_IDS` remains a bootstrap/static allowlist for compatibility and emergency access;
+- `ADMIN_TELEGRAM_USER_IDS` is the bootstrap admin configuration;
+- real Telegram IDs must be configured in environment variables only, not committed or documented with real values.
+
+Out of scope remains public signup, email/password accounts, billing, payments, SaaS dashboard, multiple Telegram bot tokens, per-user bot-token orchestration, Postmark sending, and automatic tenant creation with full privileges.

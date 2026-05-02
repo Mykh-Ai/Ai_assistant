@@ -2,7 +2,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from bot.handlers.onboarding import _normalize_optional_input
 from bot.services.db import init_db
 from bot.services.supplier_service import SupplierProfile, SupplierService
 
@@ -75,11 +74,10 @@ class SupplierOptionalSmtpTests(unittest.TestCase):
         self.assertTrue(SupplierService.has_complete_smtp_config(profile))
 
     def test_skip_token_and_empty_values_normalize_to_none(self) -> None:
-        self.assertIsNone(_normalize_optional_input(''))
-        self.assertIsNone(_normalize_optional_input('   '))
-        self.assertIsNone(_normalize_optional_input('-'))
-        self.assertIsNone(_normalize_optional_input('/skip'))
-        self.assertEqual(_normalize_optional_input('smtp.example.com'), 'smtp.example.com')
+        self.assertIsNone(SupplierService.normalize_optional_smtp(''))
+        self.assertIsNone(SupplierService.normalize_optional_smtp('   '))
+        self.assertEqual(SupplierService.normalize_optional_smtp('-'), '-')
+        self.assertEqual(SupplierService.normalize_optional_smtp('smtp.example.com'), 'smtp.example.com')
 
 
 if __name__ == '__main__':

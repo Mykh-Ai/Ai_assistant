@@ -5,6 +5,7 @@ from pathlib import Path
 
 from bot.services.accounting_document_duplicates import find_duplicate_accounting_document, normalize_vendor_name
 from bot.services.accounting_document_models import AccountingDocumentCandidate
+from bot.services.accounting_document_storage import workspace_key_for_supplier
 
 
 def _candidate(
@@ -69,6 +70,24 @@ def test_duplicate_found_for_matching_confirmed_metadata(tmp_path: Path) -> None
     assert match is not None
     assert match.vendor_name == 'ASFINAG'
     assert match.metadata_path == str(metadata_path)
+
+
+def test_duplicate_detection_is_scoped_to_workspace_key(tmp_path: Path) -> None:
+    _write_metadata(
+        tmp_path,
+        base=f'workspaces/{workspace_key_for_supplier(222002)}/years/2026/expenses/03/receipts/metadata',
+    )
+
+    assert find_duplicate_accounting_document(
+        storage_dir=tmp_path,
+        candidate=_candidate(),
+        workspace_key=workspace_key_for_supplier(111001),
+    ) is None
+    assert find_duplicate_accounting_document(
+        storage_dir=tmp_path,
+        candidate=_candidate(),
+        workspace_key=workspace_key_for_supplier(222002),
+    ) is not None
 
 
 def test_no_duplicate_when_amount_differs(tmp_path: Path) -> None:

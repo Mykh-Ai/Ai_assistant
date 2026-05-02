@@ -252,7 +252,7 @@ The existing flow should not be reused unchanged for draft review. It should be 
 
 The `invoice` table currently requires:
 
-- `invoice_number TEXT NOT NULL UNIQUE`
+- `invoice_number TEXT NOT NULL` with tenant-aware `UNIQUE(supplier_telegram_id, invoice_number)`
 - `status TEXT NOT NULL`
 - optional `pdf_path`
 
@@ -483,3 +483,11 @@ This section describes the original Session 053 audit task only.
 In Session 053, no code, tests, DB schema, runtime routing, numbering logic, PDF generation logic, billing logic, or post-PDF edit behavior was changed by this document.
 
 Session 054 superseded that guarantee by implementing runtime changes for preview-stage draft review and draft edit-flow. The remaining guarantees after Session 054 are narrower: no DB schema migration, no billing/quota logic, no removal of post-PDF compatibility, and no global numbering strategy change.
+## 2026-05-02 Tenant-Scoped Invoice Addendum
+
+For the controlled two-user dry run, invoice numbering is tenant-aware:
+- DB uniqueness is `UNIQUE(supplier_telegram_id, invoice_number)`, not global `UNIQUE(invoice_number)`;
+- invoice number generation and availability checks must pass the requesting `supplier_telegram_id`;
+- full-number and last-digits invoice lookup for view/edit/delete must be scoped to the requesting `supplier_telegram_id`;
+- generated PDFs use `storage/invoices/{supplier_telegram_id}/{invoice_number}.pdf`;
+- `pdf_path` remains the persisted pointer to the generated PDF.
