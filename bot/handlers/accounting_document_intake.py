@@ -166,9 +166,24 @@ async def accounting_document_waiting_upload(message: Message) -> None:
 
 @router.message(AccountingDocumentIntakeStates.waiting_preview_decision)
 async def accounting_document_preview_decision(message: Message, state: FSMContext, config: Config) -> None:
+    await handle_accounting_document_preview_decision_text(
+        message=message,
+        state=state,
+        config=config,
+        decision_text=message.text or '',
+    )
+
+
+async def handle_accounting_document_preview_decision_text(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    decision_text: str,
+) -> None:
     decision = await resolve_approve_edit_cancel(
         context_name=_DECISION_CONTEXT,
-        user_input_text=message.text or '',
+        user_input_text=decision_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
     )
@@ -179,8 +194,8 @@ async def accounting_document_preview_decision(message: Message, state: FSMConte
 
     if decision == 'edit':
         await message.answer(
-            'Úprava polí zatiaľ nie je v tomto kroku implementovaná. '
-            'Napíšte schváliť alebo zrušiť.'
+            'Úprava výdavkového dokladu zatiaľ nie je dostupná. '
+            'Môžete ho schváliť alebo zrušiť.'
         )
         return
 

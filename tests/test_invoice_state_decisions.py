@@ -2505,7 +2505,7 @@ def test_waiting_pdf_decision_unknown_logs_contract_gap_and_does_not_cancel(tmp_
                     message=message,
                     state=state,
                     config=config,
-                    decision_text='ЗРУШИТИ',
+                    decision_text='Ah, não.',
                 )
             )
         finally:

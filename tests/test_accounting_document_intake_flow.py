@@ -4,6 +4,8 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
 from bot.config import Config
 from bot.handlers.accounting_document_intake import (
     AccountingDocumentIntakeStates,
@@ -11,6 +13,7 @@ from bot.handlers.accounting_document_intake import (
     accounting_document_upload,
     cmd_accounting_document_intake,
 )
+from bot.handlers.voice import handle_voice
 from bot.services.accounting_document_classifier import AccountingDocumentClassification
 from bot.services.accounting_document_models import (
     AccountingDocumentCandidate,
@@ -40,6 +43,11 @@ class _DummyDocument:
         self.mime_type = mime_type
 
 
+class _DummyVoice:
+    def __init__(self, file_id: str = 'voice-id') -> None:
+        self.file_id = file_id
+
+
 class _DummyMessage:
     def __init__(
         self,
@@ -47,11 +55,14 @@ class _DummyMessage:
         text: str | None = None,
         photo: list[_DummyPhoto] | None = None,
         document: _DummyDocument | None = None,
+        voice: _DummyVoice | None = None,
     ) -> None:
         self.text = text
         self.photo = photo or []
         self.document = document
+        self.voice = voice
         self.answers: list[str] = []
+        self.message_id = 77
 
     async def answer(self, text: str) -> None:
         self.answers.append(text)
@@ -106,6 +117,43 @@ def _config(tmp_path: Path) -> Config:
         db_path=tmp_path / 'fakturabot.db',
         storage_dir=tmp_path,
     )
+
+
+def _voice_config(tmp_path: Path) -> Config:
+    return Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'fakturabot.db',
+        storage_dir=tmp_path,
+    )
+
+
+def _staged_original_path(tmp_path: Path) -> Path:
+    return tmp_path / 'uploads' / 'accounting_intake' / 'PHOTO123' / 'original.jpg'
+
+
+def _patch_accounting_voice(monkeypatch, recognized_text: str, invoice_fallback_calls: list[str]) -> None:
+    async def _transcribe(*args, **kwargs) -> str:
+        return recognized_text
+
+    async def _process_invoice_text(**kwargs) -> None:
+        invoice_fallback_calls.append(str(kwargs.get('invoice_text')))
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _transcribe)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _process_invoice_text)
+
+
+def _prepare_accounting_preview(monkeypatch, tmp_path: Path) -> tuple[_DummyState, Config]:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _voice_config(tmp_path)
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    return state, config
 
 
 def _receipt_candidate() -> AccountingDocumentCandidate:
@@ -232,6 +280,91 @@ def test_unknown_decision_asks_for_clarification(monkeypatch, tmp_path: Path) ->
     asyncio.run(accounting_document_preview_decision(message, state, config))
 
     assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert 'schváliť, upraviť alebo zrušiť' in message.answers[-1]
+
+
+def test_upravit_keeps_accounting_preview_state_without_save(monkeypatch, tmp_path: Path) -> None:
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    message = _DummyMessage(text='upraviť')
+
+    asyncio.run(accounting_document_preview_decision(message, state, config))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert staged_path.exists()
+    assert 'Úprava výdavkového dokladu zatiaľ nie je dostupná.' in message.answers[-1]
+    assert not (tmp_path / 'workspaces').exists()
+
+
+def test_upravit_cyrillic_keeps_accounting_preview_state_if_unknown_or_edit(monkeypatch, tmp_path: Path) -> None:
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    message = _DummyMessage(text='управить')
+
+    asyncio.run(accounting_document_preview_decision(message, state, config))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert staged_path.exists()
+    assert not (tmp_path / 'workspaces').exists()
+    assert message.answers[-1] in {
+        'Úprava výdavkového dokladu zatiaľ nie je dostupná. Môžete ho schváliť alebo zrušiť.',
+        'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.',
+    }
+
+
+@pytest.mark.parametrize(
+    ('recognized_text', 'expected_state_cleared', 'expect_staged_file'),
+    [
+        ('schváliť', True, False),
+        ('zrušiť', True, False),
+    ],
+)
+def test_voice_accounting_preview_approve_cancel_use_same_decision_path(
+    monkeypatch,
+    tmp_path: Path,
+    recognized_text: str,
+    expected_state_cleared: bool,
+    expect_staged_file: bool,
+) -> None:
+    invoice_fallback_calls: list[str] = []
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    _patch_accounting_voice(monkeypatch, recognized_text, invoice_fallback_calls)
+
+    asyncio.run(handle_voice(_DummyMessage(voice=_DummyVoice()), _DummyBot(), config, state))
+
+    assert invoice_fallback_calls == []
+    assert (state.current_state is None) is expected_state_cleared
+    assert staged_path.exists() is expect_staged_file
+
+
+def test_voice_accounting_preview_edit_keeps_state_and_staging(monkeypatch, tmp_path: Path) -> None:
+    invoice_fallback_calls: list[str] = []
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    _patch_accounting_voice(monkeypatch, 'upraviť', invoice_fallback_calls)
+    message = _DummyMessage(voice=_DummyVoice())
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert invoice_fallback_calls == []
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert staged_path.exists()
+    assert 'Úprava výdavkového dokladu zatiaľ nie je dostupná.' in message.answers[-1]
+
+
+def test_voice_accounting_preview_unknown_keeps_state_and_staging(monkeypatch, tmp_path: Path) -> None:
+    invoice_fallback_calls: list[str] = []
+    state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
+    staged_path = _staged_original_path(tmp_path)
+    _patch_accounting_voice(monkeypatch, 'Ah, não.', invoice_fallback_calls)
+    message = _DummyMessage(voice=_DummyVoice())
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert invoice_fallback_calls == []
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert staged_path.exists()
     assert 'schváliť, upraviť alebo zrušiť' in message.answers[-1]
 
 

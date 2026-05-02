@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
+import inspect
 
 import pytest
 
+from bot.handlers import accounting_document_intake, invoice, officeflow_attachment_router, voice
 from bot.services.decision_resolver import (
     resolve_approve_edit_cancel,
     resolve_attachment_document_type_choice,
     resolve_attachment_route_choice,
     resolve_yes_no,
 )
+
+
+officeflow_attachment_router_module = importlib.import_module('bot.handlers.officeflow_attachment_router')
 
 
 @pytest.mark.parametrize(
@@ -66,6 +72,107 @@ def test_postpdf_approve_edit_cancel_canonical_outputs(user_input: str, expected
             model='gpt-4o',
         )
     ) == expected
+
+
+@pytest.mark.parametrize(
+    'context_name',
+    ['invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview'],
+)
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'schváliť',
+        'schvalit',
+        'potvrdiť',
+        'potvrdit',
+        'ano',
+        'tak',
+        'OK',
+        'схвалити',
+        'схвалить',
+        'подтвердить',
+        'підтвердити',
+        'да',
+        'так',
+        'upraviť',
+        'upravit',
+        'opraviť',
+        'opravit',
+        'edit',
+        'редагувати',
+        'изменить',
+        'исправить',
+        'управить',
+        'змінити',
+        'zrušiť',
+        'zrusit',
+        'nie',
+        'no',
+        'cancel',
+        'скасувати',
+        'отменить',
+        'зрушити',
+        'зрушить',
+        'видалити',
+        'удалить',
+        'Ah, não.',
+    ],
+)
+def test_approve_edit_cancel_resolver_returns_only_canonical_outputs(context_name: str, user_input: str) -> None:
+    assert asyncio.run(
+        resolve_approve_edit_cancel(
+            context_name=context_name,
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) in {'approve', 'edit', 'cancel', 'unknown'}
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('схвалити', 'approve'),
+        ('схвалить', 'approve'),
+        ('подтвердить', 'approve'),
+        ('підтвердити', 'approve'),
+        ('редагувати', 'edit'),
+        ('изменить', 'edit'),
+        ('исправить', 'edit'),
+        ('управить', 'edit'),
+        ('змінити', 'edit'),
+        ('скасувати', 'cancel'),
+        ('отменить', 'cancel'),
+        ('зрушити', 'cancel'),
+        ('зрушить', 'cancel'),
+        ('видалити', 'cancel'),
+        ('удалить', 'cancel'),
+    ],
+)
+def test_approve_edit_cancel_multilingual_variants_resolve_in_shared_layer(user_input: str, expected: str) -> None:
+    assert asyncio.run(
+        resolve_approve_edit_cancel(
+            context_name='accounting_document_intake_preview',
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
+
+
+def test_relevant_handlers_do_not_branch_on_legacy_approve_edit_cancel_tokens() -> None:
+    sources = '\n'.join(
+        [
+            inspect.getsource(invoice.process_invoice_preview_confirmation),
+            inspect.getsource(invoice.process_invoice_postpdf_decision),
+            inspect.getsource(accounting_document_intake.handle_accounting_document_preview_decision_text),
+            inspect.getsource(officeflow_attachment_router_module.handle_officeflow_accounting_proposal_text),
+            inspect.getsource(voice.handle_voice),
+        ]
+    )
+
+    for legacy_token in ("== 'schvalit'", "== 'upravit'", "== 'zrusit'"):
+        assert legacy_token not in sources
 
 
 @pytest.mark.parametrize(

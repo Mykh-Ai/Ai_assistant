@@ -370,6 +370,10 @@ def _fallback_bounded_confirmation_reply(
             'ulozime',
             'да',
             'так',
+            'схвалити',
+            'схвалить',
+            'подтвердить',
+            'підтвердити',
         }
         edit_values = {
             'upravit',
@@ -387,6 +391,7 @@ def _fallback_bounded_confirmation_reply(
             'змінити',
             'змініть',
             'поміняй',
+            'управить',
         }
         if context_name in {'invoice_preview_confirmation', 'accounting_document_intake_preview'}:
             cancel_values = {
@@ -401,9 +406,26 @@ def _fallback_bounded_confirmation_reply(
                 'ні',
                 'nie',
                 'no',
+                'зрушити',
+                'зрушить',
+                'видалити',
+                'удалить',
             }
         else:
-            cancel_values = {'zrusit', 'cancel', 'отменить', 'скасувати', 'нет', 'ні', 'nie', 'no'}
+            cancel_values = {
+                'zrusit',
+                'cancel',
+                'отменить',
+                'скасувати',
+                'нет',
+                'ні',
+                'nie',
+                'no',
+                'зрушити',
+                'зрушить',
+                'видалити',
+                'удалить',
+            }
 
         return _resolve_local_decision_markers(
             normalized=normalized,

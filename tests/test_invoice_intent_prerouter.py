@@ -467,11 +467,11 @@ def test_preview_bounded_confirmation_multilingual_and_noisy_inputs(user_input: 
         ('schváliť', 'schvalit'),
         ('upraviť', 'upravit'),
         ('zrušiť', 'zrusit'),
-        ('Удалить.', 'unknown'),
+        ('Удалить.', 'zrusit'),
         ('delete', 'unknown'),
         ('отменить', 'zrusit'),
-        ('зрушити', 'unknown'),
-        ('зрушить', 'unknown'),
+        ('зрушити', 'zrusit'),
+        ('зрушить', 'zrusit'),
     ],
 )
 def test_postpdf_bounded_confirmation_multilingual_synonyms(user_input: str, expected: str) -> None:

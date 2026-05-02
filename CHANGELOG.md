@@ -22,6 +22,7 @@
 - accounting Document Intake exposes a staged-file processing entrypoint so the idle router can continue into the existing accounting preview/confirmation flow without changing invoice storage or DB schema.
 - idle attachment accounting proposal confirmation now uses the shared `yes_no` decision family without a flow-specific yes/no fallback.
 - OfficeFlow idle attachment voice confirmations now route STT text back into the OfficeFlow continuation handlers instead of falling through to top-level invoice routing.
+- accounting document preview voice confirmations now route through the same Canonical DecisionResolver path as text, with safe edit-unavailable handling.
 
 ### Notes
 - Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, standalone contract save, or invoice PDF path changes.

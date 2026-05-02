@@ -2807,3 +2807,29 @@ Fix OfficeFlow idle attachment accounting proposal voice replies being consumed 
 - No invoice flow semantics, `storage/invoices`, or `pdf_path` changes.
 - No accounting/contact auto-save behavior changes.
 
+## 2026-05-02 — Session 037 — Accounting preview DecisionResolver voice parity
+
+### Goal
+Apply the Canonical DecisionResolver contract consistently to accounting document preview approve/edit/cancel decisions for text and voice.
+
+### Changes
+- Refactored accounting document preview decision handling to expose an explicit-text helper.
+- Routed `AccountingDocumentIntakeStates.waiting_preview_decision` voice/STT input through that same helper before invoice fallback.
+- Kept approve/edit/cancel resolution on `decision_resolver.resolve_approve_edit_cancel(...)`.
+- Updated accounting preview `edit` behavior to fail safe without saving or cleanup:
+  - keep FSM state;
+  - keep staged original;
+  - reply that accounting document editing is not available yet.
+- Added shared resolver coverage for additional multilingual approve/edit/cancel variants.
+- Added contract tests that relevant handlers do not branch on legacy `schvalit` / `upravit` / `zrusit` decisions.
+
+### Verification
+- `python -m pytest -q tests\test_decision_resolver.py tests\test_accounting_document_intake_flow.py tests\test_voice_state_routing.py tests\test_officeflow_attachment_router.py` — 232 passed.
+- `python -m pytest -q` — 550 passed.
+
+### Notes
+- No DB schema changes.
+- No `storage/invoices` or `pdf_path` changes.
+- No full accounting document edit-flow was implemented.
+- Invoice draft/post-PDF edit behavior was not changed.
+
