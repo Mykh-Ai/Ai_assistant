@@ -23,6 +23,11 @@ This framing exists to prepare a docs-first transition from standalone FakturaBo
 
 Current FakturaBot is implemented as a Telegram-first MVP for creating outgoing invoices from text, voice, and contract-derived contact data.
 
+The outgoing invoice module remains unchanged by Document Intake Phase 1:
+- generated invoice PDFs still use the existing `storage/invoices/` folder,
+- persisted invoice rows still use the existing `pdf_path` behavior,
+- existing invoice PDFs are not migrated.
+
 Current confirmed runtime concepts:
 - one supplier profile stored in the `supplier` table,
 - contacts scoped to the current supplier/user context,
@@ -30,14 +35,35 @@ Current confirmed runtime concepts:
 - outgoing invoice records in SQLite,
 - generated invoice PDFs under the configured `storage/invoices/` folder,
 - uploaded contract documents under the configured `storage/contracts/` folder,
+- accounting Document Intake Phase 1 for receipts and incoming invoices,
+- neutral idle attachment staging before routing,
 - bounded LLM orchestration where Python owns validation and side effects.
+
+Accounting Document Intake Phase 1 currently supports:
+- `/doklad`, `/expense`, and `/intake` for state-scoped receipt/incoming-invoice uploads,
+- shared idle attachment pre-routing for idle photo/PDF uploads,
+- Python-owned validation and user approval before confirmed accounting storage,
+- confirmed accounting document storage under:
+
+```text
+storage/workspaces/mykhailo-szco/years/<YYYY>/expenses/<MM>/<receipts|incoming_invoices>/<originals|metadata>/
+```
+
+Neutral idle attachment staging currently uses:
+
+```text
+storage/uploads/attachment_intake/<id>/original.<ext>
+```
+
+This neutral staging area is temporary and is not confirmed business storage.
 
 Current runtime does **not** provide:
 - OfficeFlow umbrella module routing,
 - workspace runtime,
 - multiple supplier profiles inside one workspace,
 - yearly storage folders,
-- expense/incoming document processing,
+- full workspace runtime despite the implemented accounting storage folder shape,
+- expense/incoming document processing beyond Accounting Document Intake Phase 1 for receipts and incoming invoices,
 - bank statement processing,
 - document category persistence,
 - Zevs s.r.o. runtime supplier profile.
@@ -82,9 +108,11 @@ Future framing:
 
 A module is a bounded business capability within OfficeFlow.
 
-Planned module framing:
+Planned/current module framing:
 - **FakturaBot / Outgoing Invoices**: current module, implemented.
-- **Document Intake**: future module for incoming documents and long-living document capture, not implemented as an expenses runtime.
+- **Accounting Document Intake Phase 1**: current incremental runtime for receipts and incoming invoices.
+- **Shared idle attachment router**: current idle pre-router above accounting intake and contact/contract intake.
+- **Broader Document Intake**: future module for additional incoming documents and long-living document capture.
 
 ---
 
@@ -106,9 +134,43 @@ Non-goals for this module:
 - document category management,
 - long-term accounting package export.
 
-### Document Intake module: future intake layer
+### Accounting Document Intake Phase 1: implemented intake layer
 
-Planned responsibility:
+Current responsibility:
+- receive receipt and incoming-invoice photo/PDF uploads in the accounting intake FSM flow,
+- classify and extract bounded candidate metadata through LMM wrappers,
+- validate candidate metadata in Python,
+- show a Slovak preview,
+- save confirmed originals and metadata only after explicit user approval.
+
+Current confirmed storage:
+
+```text
+storage/workspaces/mykhailo-szco/years/<YYYY>/expenses/<MM>/<receipts|incoming_invoices>/<originals|metadata>/
+```
+
+This storage path is implemented for the current `mykhailo-szco` accounting intake runtime, but it does not mean full OfficeFlow workspace runtime is implemented.
+
+### Shared idle attachment router: implemented pre-router foundation
+
+Current responsibility:
+- run only when no FSM state is active,
+- stage idle photo/PDF originals under neutral temporary storage,
+- classify document type as `receipt`, `incoming_invoice`, `contract`, `contact_source`, or `unknown`,
+- map the document type to a Python-owned action proposal,
+- ask the user before entering accounting or contact/contract processing.
+
+Current neutral staging:
+
+```text
+storage/uploads/attachment_intake/<id>/original.<ext>
+```
+
+The idle router is not a top-level business module and does not save confirmed accounting documents, create contacts, or archive contracts by itself.
+
+### Document Intake module: broader future intake layer
+
+Broader planned responsibility:
 - receive and classify incoming business documents,
 - keep original files,
 - prepare candidate metadata for user review,
@@ -121,7 +183,7 @@ Future document types:
 - bank statements / bankove vypisy,
 - other incoming documents if explicitly added later.
 
-This module must follow the same authority split:
+The broader module must follow the same authority split:
 - Python orchestrates,
 - AI extracts or drafts candidate metadata,
 - Python validates,
@@ -148,7 +210,15 @@ Yearly accounting documents:
 - bank statements for a year,
 - accountant exports/packages for a year.
 
-The current runtime stores invoices and contracts in flat storage folders. That remains the current behavior until an explicit migration plan exists.
+The current outgoing invoice runtime stores invoice PDFs in the flat `storage/invoices/` folder and keeps DB `pdf_path` behavior unchanged. Existing invoice PDFs are not migrated by Accounting Document Intake Phase 1.
+
+Contracts still use the existing contract/contact helper path under `storage/contracts/` where that older flow applies.
+
+Accounting Document Intake Phase 1 is the current exception to the previously purely flat runtime storage: confirmed receipts and incoming invoices are now stored under the implemented workspace/year/month accounting path for `mykhailo-szco`.
+
+See also:
+- `docs/Document_Intake_Module_Proposal.md`
+- `docs/OfficeFlow_Storage_Model_Proposal.md`, including the future Google Drive sync rule that confirmed accounting metadata should use storage-relative paths resolved from `STORAGE_ROOT`, not host-only absolute paths.
 
 ---
 
@@ -160,7 +230,9 @@ This document does not authorize:
 - changing `pdf_path`,
 - adding workspace runtime,
 - adding Zevs s.r.o. runtime profile,
-- adding expenses or bank statement runtime,
-- adding OCR/LLM extraction runtime for a general Document Intake module.
+- adding bank statement runtime,
+- treating Accounting Document Intake Phase 1 as full OfficeFlow workspace runtime,
+- migrating outgoing invoices into the workspace/year folder model,
+- adding OCR/LLM extraction runtime for a general Document Intake module beyond the currently implemented bounded receipt/incoming-invoice intake.
 
 Any runtime migration must be planned separately with backup, compatibility, and regression tests for the existing invoice flow.

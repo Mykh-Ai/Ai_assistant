@@ -125,7 +125,26 @@ years/2026/bank_statements/04/
 
 ---
 
-## 6. Migration Rules For Later
+## 6. Future Google Drive Sync Rules
+
+Future Google Drive sync must treat confirmed accounting storage as the source tree to mirror, not as a place for ad hoc path interpretation.
+
+Required path model:
+- confirmed accounting metadata must keep stable storage-relative paths;
+- sync code must resolve files as `STORAGE_ROOT + relative_path`;
+- host-only paths such as `/bot/repo/data/storage/...` must not be used as canonical sync keys;
+- runtime container paths such as `/bot/data/storage/...` may be stored for diagnostics, but they are not the canonical sync key.
+
+Future Drive mirroring scope:
+- mirror confirmed accounting storage under the workspace/year/month accounting document structure;
+- do not mirror neutral temp upload staging as a confirmed accounting archive;
+- files under `storage/uploads/`, including `storage/uploads/attachment_intake/<id>/original.<ext>`, must never be synced as confirmed accounting documents.
+
+This section documents a future requirement only. It does not implement Google Drive sync.
+
+---
+
+## 7. Migration Rules For Later
 
 Any future migration from the current flat storage must follow these rules:
 - backup DB and files first,
@@ -138,7 +157,7 @@ Any future migration from the current flat storage must follow these rules:
 
 ---
 
-## 7. Explicit Non-Goals
+## 8. Explicit Non-Goals
 
 This proposal does not implement:
 - workspace runtime,
@@ -149,4 +168,5 @@ This proposal does not implement:
 - bank statement processing,
 - OCR/LLM extraction,
 - category persistence,
+- Google Drive sync,
 - Zevs s.r.o. profile.

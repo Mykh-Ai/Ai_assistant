@@ -23,6 +23,8 @@
 - idle attachment accounting proposal confirmation now uses the shared `yes_no` decision family without a flow-specific yes/no fallback.
 - OfficeFlow idle attachment voice confirmations now route STT text back into the OfficeFlow continuation handlers instead of falling through to top-level invoice routing.
 - accounting document preview voice confirmations now route through the same Canonical DecisionResolver path as text, with safe edit-unavailable handling.
+- docs-only OfficeFlow architecture framing now reflects Document Intake Phase 1 runtime storage and explicitly preserves outgoing invoice `storage/invoices` + `pdf_path` behavior.
+- docs-only OfficeFlow storage proposal now records future Google Drive sync path rules: storage-relative confirmed accounting paths are canonical, while temp uploads and host-only paths are not.
 
 ### Notes
 - Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, DB schema changes, Zevs runtime profile, supplier profile changes, standalone contract save, or invoice PDF path changes.

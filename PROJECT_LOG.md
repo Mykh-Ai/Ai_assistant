@@ -2833,3 +2833,29 @@ Apply the Canonical DecisionResolver contract consistently to accounting documen
 - No full accounting document edit-flow was implemented.
 - Invoice draft/post-PDF edit behavior was not changed.
 
+## 2026-05-02 - Session 038 - OfficeFlow architecture framing after Document Intake Phase 1
+
+### Goal
+Align the OfficeFlow architecture framing document with the implemented Document Intake Phase 1 runtime without implying a full workspace runtime or invoice storage migration.
+
+### Changes
+- Updated `docs/OfficeFlow_Architecture_Framing.md` to document that FakturaBot outgoing invoices remain unchanged and still use `storage/invoices/` plus `pdf_path`.
+- Documented current accounting Document Intake Phase 1 support for receipts and incoming invoices.
+- Documented confirmed accounting storage under `storage/workspaces/mykhailo-szco/years/<YYYY>/expenses/<MM>/<receipts|incoming_invoices>/<originals|metadata>/`.
+- Documented neutral idle attachment staging under `storage/uploads/attachment_intake/<id>/original.<ext>`.
+- Added cross-references to `docs/Document_Intake_Module_Proposal.md` and `docs/OfficeFlow_Storage_Model_Proposal.md`.
+- Documented future Google Drive sync storage rules in `docs/OfficeFlow_Storage_Model_Proposal.md`:
+  - confirmed accounting metadata should use storage-relative paths;
+  - future sync should resolve files as `STORAGE_ROOT + relative_path`;
+  - host-only paths and temp upload staging are not canonical sync inputs.
+
+### Verification
+- Tests not run; documentation-only update.
+
+### Notes
+- No code changes.
+- No DB schema changes.
+- No `storage/invoices` or `pdf_path` changes.
+- No Google Drive sync runtime was implemented.
+- No Zevs s.r.o. runtime profile or full workspace runtime was introduced.
+
