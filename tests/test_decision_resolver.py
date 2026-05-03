@@ -51,7 +51,6 @@ YES_NO_CASES = (
     ('no', 'no'),
     ('ні', 'no'),
     ('нет', 'no'),
-    ('Ah, não.', 'unknown'),
     ('asi', 'unknown'),
     ('random text', 'unknown'),
 )
@@ -83,7 +82,6 @@ APPROVE_EDIT_CANCEL_CASES = (
     ('zahodiť', 'cancel'),
     ('ні', 'cancel'),
     ('нет', 'cancel'),
-    ('Ah, não.', 'unknown'),
     ('asi', 'unknown'),
     ('random text', 'unknown'),
 )
@@ -128,6 +126,41 @@ def test_approve_edit_cancel_context_matrix_exact_mappings(
             model='gpt-4o',
         )
     ) == expected
+
+
+def test_delete_invoice_yes_no_stt_ano_noise_maps_to_yes() -> None:
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='delete_existing_invoice_confirm',
+            user_input_text='Ah, não.',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'yes'
+
+
+@pytest.mark.parametrize('context_name', ['invoice_preview_confirmation', 'invoice_postpdf_decision'])
+def test_invoice_approve_edit_cancel_stt_ano_noise_maps_to_approve(context_name: str) -> None:
+    assert asyncio.run(
+        resolve_approve_edit_cancel(
+            context_name=context_name,
+            user_input_text='Ah, não.',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'approve'
+
+
+@pytest.mark.parametrize('context_name', ['contact_confirm', 'idle_attachment_accounting_proposal'])
+def test_non_invoice_yes_no_stt_ano_noise_stays_unknown(context_name: str) -> None:
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name=context_name,
+            user_input_text='Ah, não.',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'unknown'
 
 
 def _string_literal_values(node: ast.AST) -> set[str]:
@@ -372,7 +405,7 @@ def test_idle_attachment_accounting_yes_variants_use_shared_resolver(user_input:
     ) == 'yes'
 
 
-def test_yes_no_stt_noise_is_unknown_for_idle_attachment_accounting() -> None:
+def test_yes_no_stt_ano_noise_is_unknown_for_idle_attachment_accounting() -> None:
     assert asyncio.run(
         resolve_yes_no(
             context_name='idle_attachment_accounting_proposal',

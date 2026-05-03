@@ -172,6 +172,55 @@ def test_top_level_semantic_resolver_actions() -> None:
     ) == 'unknown'
 
 
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        '\u0443\u0434\u0430\u043b\u0438 \u0444\u0430\u043a\u0442\u0443\u0440\u0443 7',
+        '\u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0444\u0430\u043a\u0442\u0443\u0440\u0443 \u043d\u043e\u043c\u0435\u0440 10',
+        '\u0432\u0438\u0434\u0430\u043b\u0438 \u0444\u0430\u043a\u0442\u0443\u0440\u0443 11',
+        '\u0432\u044b\u043c\u0430\u0436\u044c \u0444\u0430\u043a\u0442\u0443\u0440\u0443 \u0447\u0438\u0441\u043b\u0430 7',
+        'vyma\u017e fakturu cislo 10',
+        'VIMA\u0160 FAKTURU \u010cISLO 11',
+    ],
+)
+def test_top_level_delete_invoice_stt_variants_beat_create_invoice(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=[
+                'create_invoice',
+                'add_contact',
+                'add_service_alias',
+                'send_invoice',
+                'edit_existing_invoice',
+                'delete_existing_invoice',
+                'edit_invoice',
+                'unknown',
+            ],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'delete_existing_invoice'
+
+
+def test_top_level_delete_invoice_priority_runs_before_llm_when_key_is_configured() -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=[
+                'create_invoice',
+                'edit_existing_invoice',
+                'delete_existing_invoice',
+                'unknown',
+            ],
+            user_input_text='\u0443\u0434\u0430\u043b\u0438 \u0444\u0430\u043a\u0442\u0443\u0440\u0443 10',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    ) == 'delete_existing_invoice'
+
+
 def test_invoice_create_not_misrouted_to_add_contact_when_company_mentioned() -> None:
     assert asyncio.run(
         resolve_semantic_action(
@@ -381,17 +430,17 @@ def test_state_semantic_resolver_actions() -> None:
     ) == 'schvalit'
 
 
-def test_bounded_confirmation_resolver_is_conservative_for_noisy_short_replies() -> None:
+def test_bounded_confirmation_resolver_maps_known_stt_ano_noise() -> None:
     assert asyncio.run(
         resolve_bounded_confirmation_reply(
-            context_name='invoice_preview_confirmation',
+            context_name='delete_existing_invoice_confirm',
             expected_reply_type='yes_no_confirmation',
             allowed_outputs=['ano', 'nie', 'unknown'],
             user_input_text='Ah, não.',
             api_key=None,
             model='gpt-4o',
         )
-    ) == 'unknown'
+    ) == 'ano'
     assert asyncio.run(
         resolve_bounded_confirmation_reply(
             context_name='invoice_postpdf_decision',
@@ -401,7 +450,7 @@ def test_bounded_confirmation_resolver_is_conservative_for_noisy_short_replies()
             api_key=None,
             model='gpt-4o',
         )
-    ) == 'unknown'
+    ) == 'schvalit'
 
 
 def test_bounded_confirmation_resolver_positive_regressions() -> None:

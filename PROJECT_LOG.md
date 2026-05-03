@@ -1,5 +1,17 @@
 # PROJECT_LOG
 
+## 2026-05-03 - Session 052 - Voice delete intent and STT confirmation noise
+
+Summary:
+- Hardened top-level invoice intent routing so explicit delete phrases such as `udalit fakturu 10`, `vidaly fakturu 11`, `vymaz fakturu 7`, or noisy STT variants are routed to `delete_existing_invoice` before generic invoice creation.
+- Kept deletion outside `create_invoice`; delete remains a separate bounded top-level action and still requires explicit `yes_no` confirmation before any destructive DB/PDF action.
+- Added a narrow confirmation fallback for the observed STT pattern `Ah, nao` / `Ah, nao!` as Slovak `ano`, without adding broad Portuguese-language support.
+- Added `top_level_intent_resolved` logs so server diagnostics show the canonical top-level intent selected for voice/text inputs.
+
+Verification:
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py tests\test_decision_resolver.py tests\test_invoice_state_decisions.py tests\test_contact_intake_semantic_flow.py tests\test_accounting_document_intake_flow.py tests\test_officeflow_attachment_router.py` -> `561 passed`.
+- `python -m pytest -q` -> `804 passed`.
+
 ## 2026-05-03 - Session 051 - Contact address validation and optional customer email
 
 Summary:

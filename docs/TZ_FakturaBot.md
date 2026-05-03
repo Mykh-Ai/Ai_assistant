@@ -30,6 +30,14 @@ The contact address must include a house/building number. City-only or street-on
 
 When a contact email is empty, the generated invoice PDF must omit the customer `Email:` line entirely instead of rendering an empty value or placeholder. Supplier email remains part of the supplier profile block.
 
+## 2026-05-03 Addendum: voice delete intent and known STT `ano` noise
+
+Explicit voice/text requests to delete an existing invoice must route to the bounded top-level action `delete_existing_invoice`, not to generic `create_invoice`, whenever the user input contains a clear delete/remove verb together with an invoice/faktura target. The rule is independent of the invoice number value; numbers such as `7`, `10`, `11`, or full canonical invoice numbers are all references to be resolved later by supplier-scoped Python lookup.
+
+Deletion must remain outside the `create_invoice` flow. `delete_existing_invoice` still requires a separate shared `yes_no` DecisionResolver confirmation before Python deletes invoice rows or PDF files.
+
+The observed STT phrase `Ah, nao` / `Ah, nao!` is treated narrowly as Slovak `ano` in confirmation contexts because the current STT repeatedly produces that phrase for spoken `ano`. This is an STT-noise compatibility rule, not broad Portuguese language support.
+
 ## 1. Опис продукту
 
 FakturaBot — це Telegram-бот, який допомагає створювати фактури зі смартфона через голосові повідомлення, текстові команди та витяг реквізитів із договору.

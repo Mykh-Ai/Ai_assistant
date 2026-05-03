@@ -1824,6 +1824,19 @@ async def process_invoice_text(
             },
         },
     )
+    logger.info(
+        json.dumps(
+            {
+                'event': 'top_level_intent_resolved',
+                'request_id': flow_request_id,
+                'telegram_update_id': None,
+                'telegram_message_id': message_id,
+                'top_level_intent': top_level_intent,
+                'input_text': invoice_text,
+            },
+            ensure_ascii=False,
+        )
+    )
     if top_level_intent == _ADD_CONTACT_INTENT:
         await start_add_contact_intake(
             message=message,

@@ -24,6 +24,42 @@ def _tokenize(value: str) -> set[str]:
     return normalized
 
 
+def _matches_top_level_delete_invoice(tokens: set[str]) -> bool:
+    delete_verbs = {
+        'vymaz',
+        'vymazat',
+        'zmaz',
+        'zmazat',
+        'odstran',
+        'odstranit',
+        'delete',
+        'remove',
+        'vimas',
+        'vima',
+        'vimaz',
+        '\u0432\u0438\u0434\u0430\u043b\u0438',
+        '\u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438',
+        '\u0443\u0434\u0430\u043b\u0438',
+        '\u0443\u0434\u0430\u043b\u0438\u0442\u044c',
+        '\u0432\u044b\u043c\u0430\u0436\u044c',
+        '\u0432\u044b\u043c\u0430\u0437\u0430\u0442\u044c',
+    }
+    invoice_targets = {
+        'fakturu',
+        'faktura',
+        'faktury',
+        'invoice',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0443',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0430',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u044b',
+    }
+    return bool(tokens.intersection(delete_verbs)) and bool(tokens.intersection(invoice_targets))
+
+
+def _is_stt_ano_noise(normalized: str) -> bool:
+    return normalized in {'ah nao', 'a nao'}
+
+
 def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> str:
     tokens = _tokenize(text)
     if context_name == 'invoice_edit_item_target_selection':
@@ -88,9 +124,7 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'send_invoice'
         if 'edit_existing_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить', 'управить'}):
             return 'edit_existing_invoice'
-        if 'delete_existing_invoice' in allowed and tokens.intersection(
-            {'vymazat', 'zmazat', 'odstranit', 'delete', 'видалити', 'удалить'}
-        ) and tokens.intersection({'fakturu', 'faktura', 'invoice', 'фактуру', 'фактура'}):
+        if 'delete_existing_invoice' in allowed and _matches_top_level_delete_invoice(tokens):
             return 'delete_existing_invoice'
         if 'edit_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить'}):
             return 'edit_invoice'
@@ -288,9 +322,11 @@ def _resolve_local_decision_markers(
     return _UNKNOWN
 
 
-def _fallback_yes_no_confirmation(*, normalized: str, allowed_outputs: set[str]) -> str:
+def _fallback_yes_no_confirmation(*, context_name: str, normalized: str, allowed_outputs: set[str]) -> str:
     positive = {'ano', 'tak', 'ok', 'da', 'yes', 'так', 'да'}
     negative = {'nie', 'net', 'no', 'ні', 'нет'}
+    if context_name == 'delete_existing_invoice_confirm' and _is_stt_ano_noise(normalized) and 'ano' in allowed_outputs:
+        return 'ano'
     if normalized in positive and 'ano' in allowed_outputs:
         return 'ano'
     if normalized in negative and 'nie' in allowed_outputs:
@@ -310,7 +346,19 @@ def _fallback_bounded_confirmation_reply(
         return _UNKNOWN
 
     if expected_reply_type == 'yes_no_confirmation':
-        return _fallback_yes_no_confirmation(normalized=normalized, allowed_outputs=allowed_outputs)
+        return _fallback_yes_no_confirmation(
+            context_name=context_name,
+            normalized=normalized,
+            allowed_outputs=allowed_outputs,
+        )
+
+    if (
+        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision'}
+        and _is_stt_ano_noise(normalized)
+        and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
+    ):
+        if 'schvalit' in allowed_outputs:
+            return 'schvalit'
 
     if context_name == 'idle_attachment_route_choice' and expected_reply_type == 'attachment_route_choice':
         tokens = set(normalized.split())
@@ -542,6 +590,10 @@ async def resolve_semantic_action(
     if not cleaned:
         return _UNKNOWN
 
+    local_priority = _fallback_for_context(context_name, cleaned, allowed)
+    if context_name == 'top_level_action' and local_priority == 'delete_existing_invoice':
+        return local_priority
+
     if api_key and api_key.startswith('sk-'):
         try:
             client = AsyncOpenAI(api_key=api_key)
@@ -584,7 +636,7 @@ async def resolve_semantic_action(
         except Exception:
             pass
 
-    return _fallback_for_context(context_name, cleaned, allowed)
+    return local_priority
 
 
 async def resolve_semantic_value(

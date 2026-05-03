@@ -649,7 +649,7 @@ def test_waiting_confirm_rejects_total_mismatch_for_items(tmp_path: Path, monkey
     assert InvoiceService(db_path).get_invoice_by_number('20260001') is None
 
 
-def test_waiting_confirm_noisy_transcript_returns_retry_unknown(tmp_path: Path) -> None:
+def test_waiting_confirm_stt_ano_noise_approves_and_reports_missing_draft(tmp_path: Path) -> None:
     config = Config(
         bot_token='token',
         openai_api_key='key',
@@ -671,11 +671,11 @@ def test_waiting_confirm_noisy_transcript_returns_retry_unknown(tmp_path: Path) 
         )
     )
 
-    assert state.cleared is False
-    assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
+    assert state.cleared is True
+    assert 'Spustite /invoice znova.' in message.answers[-1]
 
 
-def test_waiting_confirm_noisy_transcript_with_exclamation_returns_retry_unknown(tmp_path: Path) -> None:
+def test_waiting_confirm_stt_ano_noise_with_exclamation_approves_and_reports_missing_draft(tmp_path: Path) -> None:
     config = Config(
         bot_token='token',
         openai_api_key='key',
@@ -697,8 +697,8 @@ def test_waiting_confirm_noisy_transcript_with_exclamation_returns_retry_unknown
         )
     )
 
-    assert state.cleared is False
-    assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
+    assert state.cleared is True
+    assert 'Spustite /invoice znova.' in message.answers[-1]
 
 
 def test_waiting_confirm_logs_resolver_and_branch_observability(tmp_path: Path, monkeypatch, caplog) -> None:
@@ -732,7 +732,7 @@ def test_waiting_confirm_logs_resolver_and_branch_observability(tmp_path: Path, 
                 message=message,
                 state=state,
                 config=config,
-                confirmation_text='Ah, não.',
+                confirmation_text='random text',
             )
         )
 
@@ -2435,7 +2435,7 @@ def test_postpdf_cancel_db_cleanup_happens_even_when_unlink_fails(tmp_path: Path
     assert message.answers[-1] == 'Faktúra bola zrušená. Číslo faktúry nebolo finálne potvrdené.'
 
 
-def test_waiting_pdf_decision_noisy_transcript_stays_unknown_without_cleanup(tmp_path: Path) -> None:
+def test_waiting_pdf_decision_stt_ano_noise_approves_invoice(tmp_path: Path) -> None:
     db_path = tmp_path / 'noisy-unknown.db'
     init_db(db_path)
     pdf_path = tmp_path / 'noisy-unknown.pdf'
@@ -2461,9 +2461,11 @@ def test_waiting_pdf_decision_noisy_transcript_stays_unknown_without_cleanup(tmp
         )
     )
 
-    assert state.cleared is False
-    assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
-    assert InvoiceService(db_path).get_invoice_by_id(invoice_id) is not None
+    assert state.cleared is True
+    assert message.answers[-1] == 'Faktúra bola potvrdená.'
+    invoice = InvoiceService(db_path).get_invoice_by_id(invoice_id)
+    assert invoice is not None
+    assert invoice.status == 'pripravena'
     assert pdf_path.exists()
 
 
@@ -2509,7 +2511,7 @@ def test_waiting_pdf_decision_unknown_logs_contract_gap_and_does_not_cancel(tmp_
                     message=message,
                     state=state,
                     config=config,
-                    decision_text='Ah, não.',
+                    decision_text='random text',
                 )
             )
         finally:
