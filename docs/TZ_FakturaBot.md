@@ -38,6 +38,14 @@ Deletion must remain outside the `create_invoice` flow. `delete_existing_invoice
 
 The observed STT phrase `Ah, nao` / `Ah, nao!` is treated narrowly as Slovak `ano` in confirmation contexts because the current STT repeatedly produces that phrase for spoken `ano`. This is an STT-noise compatibility rule, not broad Portuguese language support.
 
+## 2026-05-03 Addendum: confirmed semantic aliases for invoice customer lookup
+
+When `create_invoice` cannot directly resolve the extracted customer candidate but the existing supplier-scoped contact lookup finds exactly one safe close candidate, the bot may ask a bounded confirmation question such as `Mysleli ste odberateľa REALTIME TECHNOLOGIES SK, s.r.o.? áno / nie`.
+
+Only after an explicit shared `yes_no` DecisionResolver confirmation may the bot save a supplier-scoped confirmed alias from the cleaned extracted customer candidate to that contact. The raw full STT transcript must not be stored as an alias. If the user rejects the suggestion, the flow returns to customer clarification without saving an alias.
+
+Country suffix tokens are safety-sensitive. A candidate without a country suffix may be matched to one unique stored country-suffixed contact only after confirmation. A user candidate with an explicit country token such as `CZ` must not silently match an `SK` contact.
+
 ## 1. Опис продукту
 
 FakturaBot — це Telegram-бот, який допомагає створювати фактури зі смартфона через голосові повідомлення, текстові команди та витяг реквізитів із договору.

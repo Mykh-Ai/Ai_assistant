@@ -17,6 +17,7 @@ from bot.handlers.invoice import (
     _SLOT_ITEMS,
     _resolve_delivery_date,
     _resolve_service_alias_bounded,
+    process_invoice_customer_alias_confirm,
     process_invoice_slot_clarification,
 )
 from bot.services.contact_service import ContactProfile, ContactService
@@ -640,6 +641,198 @@ def test_preview_missing_due_days_uses_supplier_default_without_clarification(co
     draft = state.data['invoice_draft']
     assert draft['due_days'] == 14
     assert state.last_state == InvoiceStates.waiting_confirm
+
+
+def test_preview_single_close_customer_candidate_asks_for_alias_confirmation(
+    configured_db: tuple[Path, int, int],
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    ContactService(db_path).create_or_replace(
+        ContactProfile(
+            supplier_telegram_id=telegram_id,
+            name='REALTIME TECHNOLOGIES SK, s.r.o.',
+            ico='12312312',
+            dic='1231231231',
+            ic_dph=None,
+            address='Bratislava 12',
+            email='real@example.com',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('invoice for Real-Time Technologies')
+    payload['biznis_sk']['odberatel_kandidat'] = 'Real-Time Technologies'
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(
+        _build_and_store_preview(
+            message=message,
+            state=state,
+            config=config,
+            request_id='alias-request-id',
+            raw_text=payload['vstup']['povodny_text'],
+            parsed_draft=parsed,
+        )
+    )
+
+    assert state.last_state == InvoiceStates.waiting_customer_alias_confirm
+    assert state.data['invoice_partial_draft']['candidate_text'] == 'Real-Time Technologies'
+    assert state.data['invoice_partial_draft']['candidate_contact_name'] == 'REALTIME TECHNOLOGIES SK, s.r.o.'
+    assert message.answers[-1].startswith('Mysleli ste odberat')
+    assert 'REALTIME TECHNOLOGIES SK, s.r.o.' in message.answers[-1]
+    assert 'invoice_draft' not in state.data
+
+
+def test_customer_alias_confirmation_yes_saves_clean_candidate_and_rebuilds_preview(
+    configured_db: tuple[Path, int, int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    ContactService(db_path).create_or_replace(
+        ContactProfile(
+            supplier_telegram_id=telegram_id,
+            name='REALTIME TECHNOLOGIES SK, s.r.o.',
+            ico='12312312',
+            dic='1231231231',
+            ic_dph=None,
+            address='Bratislava 12',
+            email='real@example.com',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+    contact = ContactService(db_path).get_by_name(telegram_id, 'REALTIME TECHNOLOGIES SK, s.r.o.')
+    assert contact is not None and contact.id is not None
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+    parsed = {'customer_name': 'Real-Time Technologies', 'service_term_sk': 'oprava'}
+    state.data['invoice_partial_draft'] = {
+        'request_id': 'alias-request-id',
+        'raw_text': 'vystav fakturu pre Real-Time Technologies za opravu 150',
+        'parsed_draft': parsed,
+        'unresolved_slot': 'customer_name',
+        'candidate_text': 'Real-Time Technologies',
+        'candidate_contact_id': contact.id,
+        'candidate_contact_name': contact.name,
+    }
+
+    async def _yes(**kwargs):
+        return 'yes'
+
+    captured: dict[str, object] = {}
+
+    async def _fake_build_and_store_preview(**kwargs):
+        captured['parsed_draft'] = kwargs['parsed_draft']
+        captured['raw_text'] = kwargs['raw_text']
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_yes_no', _yes)
+    monkeypatch.setattr('bot.handlers.invoice._build_and_store_preview', _fake_build_and_store_preview)
+
+    asyncio.run(
+        process_invoice_customer_alias_confirm(
+            message=message,
+            state=state,
+            config=config,
+            answer_text='ano',
+        )
+    )
+
+    rebuilt = captured['parsed_draft']
+    assert isinstance(rebuilt, dict)
+    assert rebuilt['customer_name'] == 'REALTIME TECHNOLOGIES SK, s.r.o.'
+    assert captured['raw_text'] == 'vystav fakturu pre Real-Time Technologies za opravu 150'
+    resolved = ContactService(db_path).resolve_contact_lookup(telegram_id, 'Real-Time Technologies')
+    assert resolved.state == 'alias_match'
+    assert resolved.matched_contact is not None
+    assert resolved.matched_contact.id == contact.id
+
+
+def test_customer_alias_confirmation_no_does_not_save_alias(
+    configured_db: tuple[Path, int, int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    ContactService(db_path).create_or_replace(
+        ContactProfile(
+            supplier_telegram_id=telegram_id,
+            name='REALTIME TECHNOLOGIES SK, s.r.o.',
+            ico='12312312',
+            dic='1231231231',
+            ic_dph=None,
+            address='Bratislava 12',
+            email='real@example.com',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+    contact = ContactService(db_path).get_by_name(telegram_id, 'REALTIME TECHNOLOGIES SK, s.r.o.')
+    assert contact is not None and contact.id is not None
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+    state.data['invoice_partial_draft'] = {
+        'request_id': 'alias-request-id',
+        'raw_text': 'full voice transcript should not be saved',
+        'parsed_draft': {'customer_name': 'Real-Time Technologies'},
+        'unresolved_slot': 'customer_name',
+        'candidate_text': 'Real-Time Technologies',
+        'candidate_contact_id': contact.id,
+        'candidate_contact_name': contact.name,
+    }
+
+    async def _no(**kwargs):
+        return 'no'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_yes_no', _no)
+
+    asyncio.run(
+        process_invoice_customer_alias_confirm(
+            message=message,
+            state=state,
+            config=config,
+            answer_text='nie',
+        )
+    )
+
+    assert state.last_state == InvoiceStates.waiting_slot_clarification
+    resolved = ContactService(db_path).resolve_contact_lookup(telegram_id, 'Real-Time Technologies')
+    assert resolved.state == 'single_candidate_confirm_required'
+    assert message.answers
 
 
 def test_preview_invalid_due_days_keeps_clarification_path(configured_db: tuple[Path, int, int]) -> None:

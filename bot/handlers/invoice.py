@@ -120,6 +120,7 @@ class InvoiceStates(StatesGroup):
     waiting_input = State()
     waiting_service_clarification = State()
     waiting_slot_clarification = State()
+    waiting_customer_alias_confirm = State()
     waiting_confirm = State()
     waiting_pdf_decision = State()
     waiting_edit_scope = State()
@@ -1156,16 +1157,32 @@ async def _build_and_store_preview(
         payload={
             'lookup_state': lookup_result.state,
             'matched_contact_id': lookup_result.matched_contact.id if lookup_result.matched_contact else None,
-            'candidate_count': len(lookup_result.candidates) if lookup_result.state == 'multiple_candidates' else None,
+            'candidate_count': (
+                len(lookup_result.candidates)
+                if lookup_result.state in {'multiple_candidates', 'single_candidate_confirm_required'}
+                else None
+            ),
             'candidate_names': (
                 [candidate.name for candidate in lookup_result.candidates]
-                if lookup_result.state == 'multiple_candidates'
+                if lookup_result.state in {'multiple_candidates', 'single_candidate_confirm_required'}
                 else None
             ),
         },
     )
-    if lookup_result.state in {'exact_match', 'normalized_match'} and lookup_result.matched_contact is not None:
+    if lookup_result.state in {'exact_match', 'normalized_match', 'alias_match'} and lookup_result.matched_contact is not None:
         contact = lookup_result.matched_contact
+    elif lookup_result.state == 'single_candidate_confirm_required' and len(lookup_result.candidates) == 1:
+        await _start_invoice_customer_alias_confirm(
+            message=message,
+            state=state,
+            config=config,
+            request_id=request_id,
+            raw_text=raw_text,
+            parsed_draft=parsed_draft,
+            candidate_text=customer_name,
+            candidate_contact=lookup_result.candidates[0],
+        )
+        return
     else:
         bounded_customer_candidates = (
             [candidate.name for candidate in lookup_result.candidates]
@@ -1535,6 +1552,135 @@ async def _start_invoice_slot_clarification(
     if update_hint:
         prompt = f'{prompt}\n{update_hint}'
     await message.answer(prompt)
+
+
+async def _start_invoice_customer_alias_confirm(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    request_id: str,
+    raw_text: str,
+    parsed_draft: dict[str, object],
+    candidate_text: str,
+    candidate_contact: ContactProfile,
+) -> None:
+    if candidate_contact.id is None:
+        await _start_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            request_id=request_id,
+            raw_text=raw_text,
+            parsed_draft=parsed_draft,
+            unresolved_slot=_SLOT_CUSTOMER,
+        )
+        return
+
+    partial_payload = {
+        'request_id': request_id,
+        'raw_text': raw_text,
+        'parsed_draft': parsed_draft,
+        'unresolved_slot': _SLOT_CUSTOMER,
+        'candidate_text': candidate_text,
+        'candidate_contact_id': candidate_contact.id,
+        'candidate_contact_name': candidate_contact.name,
+    }
+
+    _emit_invoice_debug_log(
+        config=config,
+        event='invoice_customer_alias_confirmation_started',
+        request_id=request_id,
+        telegram_update_id=getattr(message, 'update_id', None),
+        telegram_message_id=getattr(message, 'message_id', None),
+        payload={
+            'candidate_text': candidate_text,
+            'candidate_contact_id': candidate_contact.id,
+            'candidate_contact_name': candidate_contact.name,
+        },
+    )
+
+    await state.update_data(invoice_partial_draft=partial_payload)
+    await state.set_state(InvoiceStates.waiting_customer_alias_confirm)
+    await message.answer(
+        f'Mysleli ste odberateľa {candidate_contact.name}? Odpovedzte: áno / nie'
+    )
+
+
+async def process_invoice_customer_alias_confirm(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    answer_text: str,
+) -> None:
+    decision = await resolve_yes_no(
+        context_name='invoice_customer_alias_confirm',
+        user_input_text=answer_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if decision == 'unknown':
+        await message.answer('Prosím, odpovedzte: áno / nie')
+        return
+
+    state_data = await state.get_data()
+    partial = state_data.get('invoice_partial_draft')
+    if not isinstance(partial, dict):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    parsed_draft = partial.get('parsed_draft')
+    if not isinstance(parsed_draft, dict):
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    if decision == 'no':
+        await state.set_state(InvoiceStates.waiting_slot_clarification)
+        await message.answer(
+            f'{_SLOT_PROMPTS[_SLOT_CUSTOMER]}\nProsím, spresnite názov odberateľa a skúste to znova.'
+        )
+        return
+
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
+    contact_id = partial.get('candidate_contact_id')
+    candidate_text = str(partial.get('candidate_text') or '').strip()
+    if not isinstance(contact_id, int) or not candidate_text:
+        await state.clear()
+        await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    contact_service = ContactService(config.db_path)
+    contact = contact_service.get_by_id_for_supplier(
+        telegram_id=message.from_user.id,
+        contact_id=contact_id,
+    )
+    if contact is None or contact.id is None:
+        await state.clear()
+        await message.answer('Odberateľ už nie je dostupný. Spustite /invoice znova.')
+        return
+
+    contact_service.create_confirmed_contact_alias(
+        supplier_telegram_id=message.from_user.id,
+        alias_text=candidate_text,
+        contact_id=contact.id,
+        source='invoice_customer_alias_confirm',
+    )
+    parsed_draft['customer_name'] = contact.name
+    await _build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id=str(partial.get('request_id') or uuid4()),
+        raw_text=str(partial.get('raw_text') or candidate_text),
+        parsed_draft=parsed_draft,
+    )
 
 
 def _parse_date_clarification(value: str, *, issue_date_obj: date) -> str | None:
@@ -2807,6 +2953,16 @@ async def invoice_slot_clarification(message: Message, state: FSMContext, config
         state=state,
         config=config,
         clarification_text=(message.text or ''),
+    )
+
+
+@router.message(InvoiceStates.waiting_customer_alias_confirm)
+async def invoice_customer_alias_confirm(message: Message, state: FSMContext, config: Config) -> None:
+    await process_invoice_customer_alias_confirm(
+        message=message,
+        state=state,
+        config=config,
+        answer_text=(message.text or ''),
     )
 
 

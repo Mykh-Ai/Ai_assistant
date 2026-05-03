@@ -171,11 +171,13 @@ Migrated runtime paths:
 - manual contact confirmation;
 - supplier onboarding confirmation;
 - existing invoice delete confirmation.
+- invoice customer alias confirmation.
 
 Voice routing now sends confirm-state transcripts to the active confirmation handler for:
 - invoice preview confirmation;
 - invoice post-PDF decision;
 - existing invoice delete confirmation;
+- invoice customer alias confirmation;
 - contact semantic intake confirmation;
 - manual contact confirmation;
 - supplier onboarding confirmation.

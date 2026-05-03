@@ -424,6 +424,41 @@ def test_voice_waiting_slot_clarification_routes_to_slot_handler(monkeypatch, tm
     assert captured_text == ['два крат по 1500']
 
 
+def test_voice_waiting_customer_alias_confirm_routes_to_alias_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+    captured_text: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ano'
+
+    async def _alias(**kwargs) -> None:
+        calls.append('alias')
+        captured_text.append(kwargs.get('answer_text'))
+
+    async def _generic(**kwargs) -> None:
+        calls.append('generic')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_customer_alias_confirm', _alias)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_preview_confirmation', _generic)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_service_clarification', _generic)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_slot_clarification', _generic)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_postpdf_decision', _generic)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _generic)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_customer_alias_confirm.state),
+        )
+    )
+
+    assert calls == ['alias']
+    assert captured_text == ['ano']
+
+
 def test_voice_waiting_edit_description_requires_text_input(monkeypatch, tmp_path: Path) -> None:
     async def _stt(*args, **kwargs) -> str:
         return 'dopln text pre halu B'

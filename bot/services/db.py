@@ -127,6 +127,23 @@ CREATE TABLE IF NOT EXISTS invoice_number_settings (
 );
 """
 
+CONFIRMED_SEMANTIC_ALIAS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS confirmed_semantic_alias (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplier_telegram_id INTEGER NOT NULL,
+    domain TEXT NOT NULL,
+    alias_text TEXT NOT NULL,
+    alias_normalized TEXT NOT NULL,
+    alias_compressed TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(supplier_telegram_id, domain, target_type, alias_normalized)
+);
+"""
+
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'telegram_id': 'INTEGER NOT NULL UNIQUE',
@@ -224,6 +241,20 @@ INVOICE_NUMBER_SETTINGS_EXPECTED_COLUMNS = {
     'supplier_telegram_id': 'INTEGER NOT NULL',
     'issue_year': 'INTEGER NOT NULL',
     'first_invoice_number': 'TEXT NOT NULL',
+    'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+    'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+}
+
+CONFIRMED_SEMANTIC_ALIAS_EXPECTED_COLUMNS = {
+    'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'supplier_telegram_id': 'INTEGER NOT NULL',
+    'domain': 'TEXT NOT NULL',
+    'alias_text': 'TEXT NOT NULL',
+    'alias_normalized': 'TEXT NOT NULL',
+    'alias_compressed': 'TEXT NOT NULL',
+    'target_type': 'TEXT NOT NULL',
+    'target_id': 'INTEGER NOT NULL',
+    'source': 'TEXT NOT NULL',
     'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
@@ -455,6 +486,24 @@ def _bootstrap_invoice_number_settings_table(connection: sqlite3.Connection) -> 
     )
 
 
+def _bootstrap_confirmed_semantic_alias_table(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1]: row[2] for row in connection.execute('PRAGMA table_info(confirmed_semantic_alias)')
+    }
+
+    if not existing_columns:
+        connection.execute(CONFIRMED_SEMANTIC_ALIAS_SCHEMA)
+        return
+
+    if set(existing_columns.keys()) == set(CONFIRMED_SEMANTIC_ALIAS_EXPECTED_COLUMNS.keys()):
+        return
+
+    raise RuntimeError(
+        'Incompatible local schema for table confirmed_semantic_alias. '
+        'Manual migration/intervention is required; automatic DROP is disabled.'
+    )
+
+
 @contextmanager
 def managed_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(db_path)
@@ -476,4 +525,5 @@ def init_db(db_path: Path) -> None:
         _bootstrap_access_request_table(connection)
         _bootstrap_authorized_user_table(connection)
         _bootstrap_invoice_number_settings_table(connection)
+        _bootstrap_confirmed_semantic_alias_table(connection)
         connection.commit()

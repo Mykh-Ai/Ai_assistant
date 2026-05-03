@@ -23,6 +23,7 @@ from bot.handlers.invoice import (
     invoice_edit_item_target,
     invoice_edit_scope,
     invoice_edit_service_value,
+    process_invoice_customer_alias_confirm,
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
     process_invoice_service_clarification,
@@ -139,6 +140,13 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 state=state,
                 config=config,
                 clarification_text=recognized_text,
+            )
+        elif current_state == InvoiceStates.waiting_customer_alias_confirm.state:
+            await process_invoice_customer_alias_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+                answer_text=recognized_text,
             )
         elif current_state == InvoiceStates.waiting_pdf_decision.state:
             if config.debug_invoice_transparency:

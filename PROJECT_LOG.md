@@ -1,5 +1,30 @@
 # PROJECT_LOG
 
+## 2026-05-03 - Session 053 - Confirmed customer alias learning
+
+Summary:
+- Added a reusable confirmed semantic alias contract for bounded, user-confirmed alias learning.
+- Added a supplier-scoped `confirmed_semantic_alias` table for aliases learned only after explicit confirmation.
+- Integrated confirmed customer aliases into the existing `ContactService.resolve_contact_lookup(...)` path instead of adding a separate invoice lookup.
+- Added invoice customer alias confirmation: when one safe close customer candidate is found, the bot asks a shared `yes_no` DecisionResolver question and saves only the cleaned extracted customer candidate after `yes`.
+- Kept raw STT transcripts out of alias storage and preserved country-token safety: explicit `CZ` does not silently match stored `SK`.
+- Added a service-layer supplier-scope guard so aliases cannot be created for another supplier's contact id.
+- Added voice routing for the new alias-confirmation FSM state.
+
+Contracts read:
+- `docs/TZ_FakturaBot.md`
+- `PROJECT_LOG.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Verification:
+- `python -m compileall bot\services bot\handlers` -> passed.
+- `python -m pytest -q tests\test_contact_lookup_normalization.py tests\test_invoice_phase2_ai_layer.py tests\test_voice_state_routing.py tests\test_decision_resolver.py` -> `448 passed`.
+- `python -m pytest -q` -> `826 passed`.
+
 ## 2026-05-03 - Session 052 - Voice delete intent and STT confirmation noise
 
 Summary:
