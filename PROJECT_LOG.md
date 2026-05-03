@@ -1,5 +1,18 @@
 # PROJECT_LOG
 
+## 2026-05-03 - Session 048 - Access approval onboarding next step
+
+Summary:
+- Updated `/approve <telegram_id>` so the approved user receives a direct bot message after approval.
+- Reused the same next-step text for `/approve` notification and `/start` when an approved user has no supplier profile yet.
+- The approved-user message tells the user that access is approved and that `/supplier` is the next command when they are ready to enter supplier registration data.
+- Kept supplier onboarding explicit: approval does not create a supplier profile, tenant business data, invoices, documents, temp files, or AI/STT/LMM calls.
+- Added masked access approval notification logs for server diagnostics.
+
+Verification:
+- `python -m pytest -q tests\test_access_request_flow.py` -> `11 passed`.
+- `python -m pytest -q` -> `791 passed`.
+
 ## 2026-05-02 - Session 047 - Admin command text aliases
 
 Summary:

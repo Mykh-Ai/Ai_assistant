@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 
+from aiogram import Bot
 from aiogram import Router
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message
 
 from bot.config import Config
+from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE
 from bot.services.access_control import ACCESS_STATUS_PENDING, AccessControlService
 from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_admin_telegram_user
 
 
 router = Router(name='access_admin')
+logger = logging.getLogger(__name__)
 
 
 _ACCESS_REQUESTS_ALIASES = {
@@ -77,7 +81,7 @@ async def _send_access_requests(message: Message, config: Config) -> None:
 
 
 @router.message(Command('approve'))
-async def cmd_approve(message: Message, config: Config) -> None:
+async def cmd_approve(message: Message, config: Config, bot: Bot | None = None) -> None:
     if not _is_admin_message(message, config):
         await message.answer(UNAUTHORIZED_MESSAGE)
         return
@@ -87,11 +91,27 @@ async def cmd_approve(message: Message, config: Config) -> None:
         await message.answer('Pouzitie: /approve <telegram_id>')
         return
 
-    AccessControlService(config.db_path).approve_user(
+    if message.from_user is None:
+        await message.answer('Nepodarilo sa identifikovať administrátora.')
+        return
+
+    access_service = AccessControlService(config.db_path)
+    access_service.approve_user(
         telegram_id=telegram_id,
         approved_by=message.from_user.id,
     )
-    await message.answer(f'Pouzivatel {telegram_id} bol schvaleny.')
+    logger.info('access_user_approved telegram_id=%s approved_by=%s', _mask_telegram_id(telegram_id), _mask_telegram_id(message.from_user.id))
+
+    notification_bot = bot or getattr(message, 'bot', None)
+    notification_sent = await _notify_approved_user(bot=notification_bot, telegram_id=telegram_id)
+    if notification_sent:
+        await message.answer(f'Pouzivatel {telegram_id} bol schvaleny. Pouzivatel dostal instrukcie pre /supplier.')
+        return
+
+    await message.answer(
+        f'Pouzivatel {telegram_id} bol schvaleny, ale notifikaciu sa nepodarilo odoslat. '
+        'Poslite mu prosim instrukciu: /supplier.'
+    )
 
 
 @router.message(Command('reject'))
@@ -193,3 +213,25 @@ def _format_access_request_line(
     username_value = username or '-'
     full_name = ' '.join(part for part in [first_name, last_name] if part).strip() or '-'
     return f'- telegram_id={telegram_id}, username={username_value}, meno={full_name}, status={status}'
+
+
+async def _notify_approved_user(*, bot: Bot | None, telegram_id: int) -> bool:
+    if bot is None or not hasattr(bot, 'send_message'):
+        logger.warning('access_approval_notification_skipped telegram_id=%s reason=no_bot', _mask_telegram_id(telegram_id))
+        return False
+    try:
+        await bot.send_message(telegram_id, APPROVED_ACCESS_NEXT_STEP_MESSAGE)
+    except Exception:
+        logger.exception('access_approval_notification_failed telegram_id=%s', _mask_telegram_id(telegram_id))
+        return False
+    logger.info('access_approval_notification_sent telegram_id=%s', _mask_telegram_id(telegram_id))
+    return True
+
+
+def _mask_telegram_id(telegram_id: int | None) -> str:
+    if telegram_id is None:
+        return '-'
+    value = str(telegram_id)
+    if len(value) <= 4:
+        return '***'
+    return f'{value[:2]}***{value[-2:]}'

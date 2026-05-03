@@ -14,6 +14,7 @@ from bot.handlers.access_admin import (
     users_alias,
 )
 from bot.handlers.onboarding import cmd_onboarding
+from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE, cmd_start
 from bot.services.access_control import ACCESS_STATUS_APPROVED, ACCESS_STATUS_PENDING, ACCESS_STATUS_REJECTED
 from bot.services.access_control import AUTHORIZED_STATUS_BLOCKED, AccessControlService
 from bot.services.authorization import ACCESS_REQUEST_MESSAGE, TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
@@ -83,6 +84,11 @@ class _DummyBot:
 
     async def send_message(self, telegram_id: int, text: str) -> None:
         self.sent.append((telegram_id, text))
+
+
+class _FailingBot:
+    async def send_message(self, telegram_id: int, text: str) -> None:
+        raise RuntimeError('telegram unavailable')
 
 
 def _config(
@@ -220,13 +226,16 @@ def test_admin_can_approve_pending_user_and_user_can_reach_supplier_onboarding(t
         request=_request(UNKNOWN_ID, username='requester')
     )
     admin_message = _DummyMessage(f'/approve {UNKNOWN_ID}', ADMIN_ID)
+    bot = _DummyBot()
 
-    asyncio.run(cmd_approve(admin_message, config))
+    asyncio.run(cmd_approve(admin_message, config, bot=bot))
 
     request = AccessControlService(config.db_path).get_access_request(UNKNOWN_ID)
     user = AccessControlService(config.db_path).get_authorized_user(UNKNOWN_ID)
     assert request is not None and request.status == ACCESS_STATUS_APPROVED
     assert user is not None and user.status == 'active'
+    assert bot.sent == [(UNKNOWN_ID, APPROVED_ACCESS_NEXT_STEP_MESSAGE)]
+    assert '/supplier' in admin_message.answers[-1]
 
     supplier_message = _DummyMessage('/supplier', UNKNOWN_ID)
     state = _DummyState()
@@ -248,6 +257,35 @@ def test_admin_can_approve_pending_user_and_user_can_reach_supplier_onboarding(t
     assert state.current_state is not None
     assert supplier_message.answers[-1].startswith('1/9')
     assert SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID) is None
+
+
+def test_approved_user_start_without_supplier_profile_gets_supplier_next_step(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=UNKNOWN_ID, approved_by=ADMIN_ID)
+    message = _DummyMessage('/start', UNKNOWN_ID)
+
+    asyncio.run(cmd_start(message, config))
+
+    assert message.answers == [APPROVED_ACCESS_NEXT_STEP_MESSAGE]
+    assert '/supplier' in message.answers[-1]
+    assert SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID) is None
+
+
+def test_approve_keeps_user_active_when_approval_notification_fails(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).create_or_refresh_pending_request(
+        request=_request(UNKNOWN_ID, username='requester')
+    )
+    admin_message = _DummyMessage(f'/approve {UNKNOWN_ID}', ADMIN_ID)
+
+    asyncio.run(cmd_approve(admin_message, config, bot=_FailingBot()))
+
+    user = AccessControlService(config.db_path).get_authorized_user(UNKNOWN_ID)
+    assert user is not None and user.status == 'active'
+    assert 'nepodarilo odoslat' in admin_message.answers[-1]
+    assert '/supplier' in admin_message.answers[-1]
 
 
 def test_rejected_user_remains_unauthorized_on_future_start(tmp_path: Path) -> None:
