@@ -1,5 +1,18 @@
 # PROJECT_LOG
 
+## 2026-05-03 - Session 049 - Supplier onboarding first invoice number and SMTP schema repair
+
+Summary:
+- Fixed the new-user supplier save failure seen on the server by migrating legacy `supplier.smtp_host`, `supplier.smtp_user`, and `supplier.smtp_pass` `NOT NULL` columns to nullable columns during `init_db()`.
+- Added a tenant-scoped `invoice_number_settings` table for the first invoice number FakturaBot should generate per supplier/year.
+- Extended `/supplier` onboarding: after email, the bot now asks for the first invoice number for the current year, then asks the default due-days question as the last step.
+- Invoice numbering now starts from the configured first number for a supplier/year and then continues from the larger of existing bot invoices or that configured first number.
+- No historical invoice import or automatic fake invoice creation was added.
+
+Verification:
+- `python -m pytest -q tests\test_onboarding_no_smtp.py tests\test_onboarding_decisions.py tests\test_tenant_safety.py tests\test_supplier_smtp_optional.py` -> `15 passed`.
+- `python -m pytest -q` -> `794 passed`.
+
 ## 2026-05-03 - Session 048 - Access approval onboarding next step
 
 Summary:

@@ -6,6 +6,7 @@ from pathlib import Path
 from bot.config import Config
 from bot.handlers.onboarding import OnboardingStates, onboarding_confirm, onboarding_email
 from bot.services.db import init_db
+from bot.services.invoice_service import InvoiceService
 from bot.services.supplier_service import SupplierService
 
 
@@ -39,6 +40,8 @@ class _DummyState:
             'smtp_host': None,
             'smtp_user': None,
             'smtp_pass': None,
+            'invoice_number_issue_year': 2026,
+            'first_invoice_number': '20260025',
             'days_due': '14',
         }
 
@@ -82,6 +85,10 @@ def test_onboarding_confirm_accepts_shared_yes_alias(tmp_path: Path) -> None:
     assert saved.smtp_host is None
     assert saved.smtp_user is None
     assert saved.smtp_pass is None
+    assert InvoiceService(config.db_path).get_first_invoice_number(
+        supplier_telegram_id=111,
+        issue_year=2026,
+    ) == '20260025'
     assert state.current_state is None
 
 

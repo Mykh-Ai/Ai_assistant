@@ -8,6 +8,20 @@
 
 ---
 
+## 2026-05-03 Addendum: supplier onboarding invoice-number baseline
+
+Controlled user onboarding must collect one additional invoice setting before the default due-days question:
+- first invoice number FakturaBot should generate for the current calendar year;
+- format stays canonical `RRRRNNNN`, for example `20260025`;
+- the setting is tenant-scoped by `supplier_telegram_id` and `issue_year`.
+
+Runtime numbering rule:
+- if the supplier has no bot-created invoice in that year, the next generated number is the configured first number;
+- if bot-created invoices already exist, the next generated number is the larger of the configured first number and the next number after the supplier's latest invoice;
+- the setting does not import historical external invoices and does not create placeholder invoice rows.
+
+Supplier email sending remains optional in the controlled dry run. Legacy local/server SQLite databases with `supplier.smtp_host`, `supplier.smtp_user`, or `supplier.smtp_pass` as `NOT NULL` must be migrated by application bootstrap to the current nullable schema so supplier onboarding can save without SMTP credentials.
+
 ## 1. Опис продукту
 
 FakturaBot — це Telegram-бот, який допомагає створювати фактури зі смартфона через голосові повідомлення, текстові команди та витяг реквізитів із договору.

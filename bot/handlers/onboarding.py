@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from datetime import date
+
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -8,6 +10,7 @@ from aiogram.types import Message
 
 from bot.config import Config
 from bot.services.decision_resolver import resolve_yes_no
+from bot.services.invoice_service import InvoiceService
 from bot.services.supplier_service import SupplierProfile, SupplierService
 from bot.services.validation import (
     validate_days_due,
@@ -16,6 +19,7 @@ from bot.services.validation import (
     validate_iban,
     validate_ic_dph,
     validate_ico,
+    validate_invoice_number_for_year,
 )
 
 router = Router(name='onboarding')
@@ -30,6 +34,7 @@ class OnboardingStates(StatesGroup):
     iban = State()
     swift = State()
     email = State()
+    first_invoice_number = State()
     days_due = State()
     confirm = State()
 
@@ -45,6 +50,7 @@ def _summary(data: dict[str, object]) -> str:
         f'• IBAN: {data["iban"]}\n'
         f'• SWIFT: {data["swift"]}\n'
         f'• Email: {data["email"]}\n'
+        f'• Prvé číslo faktúry od bota ({data["invoice_number_issue_year"]}): {data["first_invoice_number"]}\n'
         f'• Splatnosť: {data["days_due"]} dní\n\n'
         'Napíšte <b>ano</b> pre potvrdenie alebo <b>nie</b> pre zrušenie.'
     )
@@ -70,7 +76,7 @@ async def cmd_onboarding(message: Message, state: FSMContext, config: Config) ->
 
     await state.clear()
     await state.set_state(OnboardingStates.name)
-    await message.answer('1/9 Zadajte názov firmy / obchodné meno:')
+    await message.answer('1/10 Zadajte názov firmy / obchodné meno:')
 
 
 @router.message(OnboardingStates.name)
@@ -81,7 +87,7 @@ async def onboarding_name(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(name=value)
     await state.set_state(OnboardingStates.ico)
-    await message.answer('2/9 Zadajte ICO (8 číslic):')
+    await message.answer('2/10 Zadajte ICO (8 číslic):')
 
 
 @router.message(OnboardingStates.ico)
@@ -92,7 +98,7 @@ async def onboarding_ico(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(ico=value)
     await state.set_state(OnboardingStates.dic)
-    await message.answer('3/9 Zadajte DIC (10 číslic):')
+    await message.answer('3/10 Zadajte DIC (10 číslic):')
 
 
 @router.message(OnboardingStates.dic)
@@ -103,7 +109,7 @@ async def onboarding_dic(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(dic=value)
     await state.set_state(OnboardingStates.ic_dph)
-    await message.answer('4/9 Zadajte IC DPH (alebo "-", ak ho nemáte):')
+    await message.answer('4/10 Zadajte IC DPH (alebo "-", ak ho nemáte):')
 
 
 @router.message(OnboardingStates.ic_dph)
@@ -118,7 +124,7 @@ async def onboarding_ic_dph(message: Message, state: FSMContext) -> None:
         await state.update_data(ic_dph=value.upper().replace(' ', ''))
 
     await state.set_state(OnboardingStates.address)
-    await message.answer('5/9 Zadajte adresu:')
+    await message.answer('5/10 Zadajte adresu:')
 
 
 @router.message(OnboardingStates.address)
@@ -129,7 +135,7 @@ async def onboarding_address(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(address=value)
     await state.set_state(OnboardingStates.iban)
-    await message.answer('6/9 Zadajte IBAN:')
+    await message.answer('6/10 Zadajte IBAN:')
 
 
 @router.message(OnboardingStates.iban)
@@ -140,7 +146,7 @@ async def onboarding_iban(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(iban=value.upper().replace(' ', ''))
     await state.set_state(OnboardingStates.swift)
-    await message.answer('7/9 Zadajte SWIFT/BIC:')
+    await message.answer('7/10 Zadajte SWIFT/BIC:')
 
 
 @router.message(OnboardingStates.swift)
@@ -151,7 +157,7 @@ async def onboarding_swift(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(swift=value.upper())
     await state.set_state(OnboardingStates.email)
-    await message.answer('8/9 Zadajte email:')
+    await message.answer('8/10 Zadajte email:')
 
 
 @router.message(OnboardingStates.email)
@@ -160,9 +166,31 @@ async def onboarding_email(message: Message, state: FSMContext) -> None:
     if not validate_email(value):
         await message.answer('Neplatný email. Skúste znova:')
         return
-    await state.update_data(email=value)
+    issue_year = date.today().year
+    await state.update_data(email=value, invoice_number_issue_year=issue_year)
+    await state.set_state(OnboardingStates.first_invoice_number)
+    await message.answer(
+        f'9/10 Zadajte prvé číslo faktúry, ktoré má FakturaBot vytvoriť v roku {issue_year}.\n'
+        'Ak ste už vystavili faktúry mimo bota, zadajte ďalšie voľné číslo.\n'
+        f'Príklad: ak posledná faktúra bola {issue_year}0024, zadajte {issue_year}0025.\n'
+        f'Ak ešte nemáte žiadne faktúry, zadajte {issue_year}0001.'
+    )
+
+
+@router.message(OnboardingStates.first_invoice_number)
+async def onboarding_first_invoice_number(message: Message, state: FSMContext) -> None:
+    value = (message.text or '').strip()
+    data = await state.get_data()
+    issue_year = int(data.get('invoice_number_issue_year') or date.today().year)
+    if not validate_invoice_number_for_year(value, issue_year):
+        await message.answer(
+            f'Neplatné číslo faktúry. Zadajte číslo vo formáte {issue_year}NNNN, '
+            f'napríklad {issue_year}0001:'
+        )
+        return
+    await state.update_data(first_invoice_number=value)
     await state.set_state(OnboardingStates.days_due)
-    await message.answer('9/9 Zadajte štandardnú splatnosť v dňoch (celé číslo > 0):')
+    await message.answer('10/10 Zadajte štandardnú splatnosť v dňoch (celé číslo > 0):')
 
 
 @router.message(OnboardingStates.days_due)
@@ -204,6 +232,7 @@ async def onboarding_confirm(
 
     data = await state.get_data()
     service = SupplierService(config.db_path)
+    invoice_service = InvoiceService(config.db_path)
     service.create_or_replace(
         SupplierProfile(
             telegram_id=message.from_user.id,
@@ -220,6 +249,11 @@ async def onboarding_confirm(
             smtp_pass=None,
             days_due=int(data['days_due']),
         )
+    )
+    invoice_service.set_first_invoice_number(
+        supplier_telegram_id=message.from_user.id,
+        issue_year=int(data['invoice_number_issue_year']),
+        first_invoice_number=str(data['first_invoice_number']),
     )
 
     await state.clear()

@@ -116,6 +116,17 @@ CREATE TABLE IF NOT EXISTS authorized_users (
 );
 """
 
+INVOICE_NUMBER_SETTINGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS invoice_number_settings (
+    supplier_telegram_id INTEGER NOT NULL,
+    issue_year INTEGER NOT NULL,
+    first_invoice_number TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(supplier_telegram_id, issue_year)
+);
+"""
+
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'telegram_id': 'INTEGER NOT NULL UNIQUE',
@@ -209,6 +220,14 @@ AUTHORIZED_USER_EXPECTED_COLUMNS = {
     'approved_by': 'INTEGER',
 }
 
+INVOICE_NUMBER_SETTINGS_EXPECTED_COLUMNS = {
+    'supplier_telegram_id': 'INTEGER NOT NULL',
+    'issue_year': 'INTEGER NOT NULL',
+    'first_invoice_number': 'TEXT NOT NULL',
+    'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+    'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+}
+
 
 def _bootstrap_supplier_table(connection: sqlite3.Connection) -> None:
     existing_columns = {
@@ -220,6 +239,7 @@ def _bootstrap_supplier_table(connection: sqlite3.Connection) -> None:
         return
 
     if set(existing_columns.keys()) == set(SUPPLIER_EXPECTED_COLUMNS.keys()):
+        _ensure_supplier_smtp_nullable(connection)
         return
 
     raise RuntimeError(
@@ -263,6 +283,27 @@ def _bootstrap_invoice_table(connection: sqlite3.Connection) -> None:
         'Incompatible local schema for table invoice. '
         'Manual migration/intervention is required; automatic DROP is disabled.'
     )
+
+
+def _ensure_supplier_smtp_nullable(connection: sqlite3.Connection) -> None:
+    table_info = connection.execute('PRAGMA table_info(supplier)').fetchall()
+    column_by_name = {row[1]: row for row in table_info}
+    if not any(column_by_name[column_name][3] for column_name in ('smtp_host', 'smtp_user', 'smtp_pass')):
+        return
+
+    connection.execute('ALTER TABLE supplier RENAME TO supplier_legacy_smtp_notnull')
+    connection.execute(SUPPLIER_SCHEMA)
+    connection.execute(
+        (
+            'INSERT INTO supplier '
+            '(id, telegram_id, name, ico, dic, ic_dph, address, iban, swift, email, '
+            'smtp_host, smtp_user, smtp_pass, days_due, created_at, updated_at) '
+            'SELECT id, telegram_id, name, ico, dic, ic_dph, address, iban, swift, email, '
+            'smtp_host, smtp_user, smtp_pass, days_due, created_at, updated_at '
+            'FROM supplier_legacy_smtp_notnull'
+        )
+    )
+    connection.execute('DROP TABLE supplier_legacy_smtp_notnull')
 
 
 def _ensure_invoice_tenant_unique_index(connection: sqlite3.Connection) -> None:
@@ -396,6 +437,24 @@ def _bootstrap_authorized_user_table(connection: sqlite3.Connection) -> None:
     )
 
 
+def _bootstrap_invoice_number_settings_table(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1]: row[2] for row in connection.execute('PRAGMA table_info(invoice_number_settings)')
+    }
+
+    if not existing_columns:
+        connection.execute(INVOICE_NUMBER_SETTINGS_SCHEMA)
+        return
+
+    if set(existing_columns.keys()) == set(INVOICE_NUMBER_SETTINGS_EXPECTED_COLUMNS.keys()):
+        return
+
+    raise RuntimeError(
+        'Incompatible local schema for table invoice_number_settings. '
+        'Manual migration/intervention is required; automatic DROP is disabled.'
+    )
+
+
 @contextmanager
 def managed_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(db_path)
@@ -416,4 +475,5 @@ def init_db(db_path: Path) -> None:
         _bootstrap_supplier_service_alias_table(connection)
         _bootstrap_access_request_table(connection)
         _bootstrap_authorized_user_table(connection)
+        _bootstrap_invoice_number_settings_table(connection)
         connection.commit()

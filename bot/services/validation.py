@@ -32,6 +32,11 @@ def validate_days_due(value: str) -> bool:
     return int(value.strip()) > 0
 
 
+def validate_invoice_number_for_year(value: str, issue_year: int) -> bool:
+    normalized = value.strip()
+    return bool(re.fullmatch(r'\d{8}', normalized)) and normalized.startswith(str(issue_year))
+
+
 def parse_strict_date_dd_mm_yyyy(value: str) -> date | None:
     normalized = value.strip()
     if not re.fullmatch(r'\d{2}\.\d{2}\.\d{4}', normalized):

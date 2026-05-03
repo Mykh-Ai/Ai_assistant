@@ -255,7 +255,7 @@ def test_admin_can_approve_pending_user_and_user_can_reach_supplier_onboarding(t
 
     assert calls == ['handler-called']
     assert state.current_state is not None
-    assert supplier_message.answers[-1].startswith('1/9')
+    assert supplier_message.answers[-1].startswith('1/10')
     assert SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID) is None
 
 

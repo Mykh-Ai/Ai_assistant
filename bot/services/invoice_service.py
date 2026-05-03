@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 
 from bot.services.db import managed_connection
+from bot.services.validation import validate_invoice_number_for_year
 
 
 @dataclass
@@ -82,6 +83,18 @@ class InvoiceService:
         supplier_telegram_id: int | None,
     ) -> str:
         prefix = f'{issue_year}'
+        configured_first_number = None
+        if supplier_telegram_id is not None:
+            configured_row = connection.execute(
+                (
+                    'SELECT first_invoice_number FROM invoice_number_settings '
+                    'WHERE supplier_telegram_id = ? AND issue_year = ?'
+                ),
+                (supplier_telegram_id, issue_year),
+            ).fetchone()
+            if configured_row is not None:
+                configured_first_number = str(configured_row[0])
+
         if supplier_telegram_id is None:
             row = connection.execute(
                 (
@@ -104,10 +117,48 @@ class InvoiceService:
             ).fetchone()
 
         if row is None:
-            return f'{prefix}0001'
+            return configured_first_number or f'{prefix}0001'
 
         last_num = int(str(row[0])[4:])
-        return f'{prefix}{last_num + 1:04d}'
+        next_number = f'{prefix}{last_num + 1:04d}'
+        if configured_first_number is None:
+            return next_number
+        return max(next_number, configured_first_number)
+
+    def set_first_invoice_number(
+        self,
+        *,
+        supplier_telegram_id: int,
+        issue_year: int,
+        first_invoice_number: str,
+    ) -> None:
+        normalized = first_invoice_number.strip()
+        if not validate_invoice_number_for_year(normalized, issue_year):
+            raise ValueError('invalid_first_invoice_number')
+        with managed_connection(self._db_path) as connection:
+            connection.execute(
+                (
+                    'INSERT INTO invoice_number_settings '
+                    '(supplier_telegram_id, issue_year, first_invoice_number, created_at, updated_at) '
+                    'VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
+                    'ON CONFLICT(supplier_telegram_id, issue_year) DO UPDATE SET '
+                    'first_invoice_number=excluded.first_invoice_number, '
+                    'updated_at=CURRENT_TIMESTAMP'
+                ),
+                (supplier_telegram_id, issue_year, normalized),
+            )
+            connection.commit()
+
+    def get_first_invoice_number(self, *, supplier_telegram_id: int, issue_year: int) -> str | None:
+        with managed_connection(self._db_path) as connection:
+            row = connection.execute(
+                (
+                    'SELECT first_invoice_number FROM invoice_number_settings '
+                    'WHERE supplier_telegram_id = ? AND issue_year = ?'
+                ),
+                (supplier_telegram_id, issue_year),
+            ).fetchone()
+        return str(row[0]) if row is not None else None
 
     def create_invoice_with_one_item(self, payload: CreateInvoicePayload) -> int:
         return self.create_invoice_with_items(

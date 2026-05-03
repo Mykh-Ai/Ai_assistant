@@ -232,6 +232,36 @@ def test_invoice_full_number_and_last_digits_resolution_are_supplier_scoped(tmp_
     ) == 1
 
 
+def test_configured_first_invoice_number_is_supplier_scoped(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    contact_service = ContactService(config.db_path)
+    SupplierService(config.db_path).create_or_replace(_supplier(USER_A, '001'))
+    SupplierService(config.db_path).create_or_replace(_supplier(USER_B, '002'))
+    contact_service.create_or_replace(_contact(USER_A, 'Customer A'))
+    contact_a = contact_service.get_by_name(USER_A, 'Customer A')
+    assert contact_a is not None
+    invoice_service = InvoiceService(config.db_path)
+
+    invoice_service.set_first_invoice_number(
+        supplier_telegram_id=USER_A,
+        issue_year=2026,
+        first_invoice_number='20260025',
+    )
+
+    assert invoice_service.generate_next_invoice_number(2026, supplier_telegram_id=USER_A) == '20260025'
+    assert invoice_service.generate_next_invoice_number(2026, supplier_telegram_id=USER_B) == '20260001'
+
+    _create_invoice(
+        invoice_service,
+        supplier_telegram_id=USER_A,
+        contact_id=int(contact_a.id),
+        invoice_number='20260025',
+    )
+
+    assert invoice_service.generate_next_invoice_number(2026, supplier_telegram_id=USER_A) == '20260026'
+
+
 def test_invoice_number_availability_and_unique_constraint_are_tenant_aware(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
