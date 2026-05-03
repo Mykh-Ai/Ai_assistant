@@ -51,7 +51,7 @@ async def start_add_service_alias_intake(message: Message, state: FSMContext, co
     )
 
 
-@router.message(Command('service'))
+@router.message(Command('service', 'alias'))
 async def cmd_service(message: Message, state: FSMContext, config: Config) -> None:
     await start_add_service_alias_intake(message=message, state=state, config=config)
 

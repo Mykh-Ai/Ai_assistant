@@ -14,13 +14,13 @@ from bot.handlers.access_admin import (
     users_alias,
 )
 from bot.handlers.onboarding import cmd_onboarding
-from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE, cmd_start
+from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE, READY_WITH_SUPPLIER_MESSAGE, cmd_start
 from bot.services.access_control import ACCESS_STATUS_APPROVED, ACCESS_STATUS_PENDING, ACCESS_STATUS_REJECTED
 from bot.services.access_control import AUTHORIZED_STATUS_BLOCKED, AccessControlService
 from bot.services.authorization import ACCESS_REQUEST_MESSAGE, TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
 from bot.services.contact_service import ContactService
 from bot.services.db import init_db, managed_connection
-from bot.services.supplier_service import SupplierService
+from bot.services.supplier_service import SupplierProfile, SupplierService
 
 
 ADMIN_ID = 900001
@@ -270,6 +270,42 @@ def test_approved_user_start_without_supplier_profile_gets_supplier_next_step(tm
     assert message.answers == [APPROVED_ACCESS_NEXT_STEP_MESSAGE]
     assert '/supplier' in message.answers[-1]
     assert SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID) is None
+
+
+def test_start_with_supplier_profile_gets_operational_next_steps(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=UNKNOWN_ID, approved_by=ADMIN_ID)
+    SupplierService(config.db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=UNKNOWN_ID,
+            name='Dodavatel',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Bratislava',
+            iban='SK3112000000198742637541',
+            swift='TATRSKBX',
+            email='supplier@example.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    message = _DummyMessage('/start', UNKNOWN_ID)
+
+    asyncio.run(cmd_start(message, config))
+
+    assert message.answers == [READY_WITH_SUPPLIER_MESSAGE]
+    assert '/alias' in message.answers[-1]
+    assert '/contact' in message.answers[-1]
+    assert '/invoice' in message.answers[-1]
+    assert 'dodaj novú službu' in message.answers[-1]
+    assert 'krátky názov' in message.answers[-1]
+    assert 'opravy' in message.answers[-1]
+    assert 'Opravy vyhradených zariadení elektrických' in message.answers[-1]
+    assert 'dodaj nový kontakt' in message.answers[-1]
 
 
 def test_approve_keeps_user_active_when_approval_notification_fails(tmp_path: Path) -> None:

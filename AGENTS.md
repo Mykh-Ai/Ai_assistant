@@ -84,6 +84,8 @@ If the agent did not list contracts read and extracted constraints, the task is 
 
 Не робити прихованих концептуальних змін.
 
+Before making file changes, the agent must present a concise action plan and wait for the user's approval. Read-only investigation can be done without approval. If the user explicitly requests a narrow file edit, that request counts as approval for that scoped edit only.
+
 Агент повинен питати дозвіл лише перед важливими змінами, зміною концепції, ризиковими діями або видаленням файлів / логіки.
 Не засипати користувача постійними погодженнями для дрібних, очевидних або безпечних змін.
 
@@ -94,6 +96,8 @@ Read-only дії в межах репозиторію не потребують 
 - пошук по коду або документації;
 - перегляд `git status`, `git diff`, `git log`, `git branch`;
 - інші команди, які не змінюють файли, git history, runtime state або зовнішні сервіси.
+
+The agent must not ask for permission before running read-only commands. If a command does not modify files, git history, runtime state, DB/storage, or external services, run it directly without a separate approval request.
 
 Якщо read-only команда падає через sandbox / environment setup, агент не повинен перетворювати це на цикл погоджень.
 Правильна поведінка:

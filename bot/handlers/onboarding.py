@@ -25,6 +25,20 @@ from bot.services.validation import (
 router = Router(name='onboarding')
 
 
+SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE = (
+    'Profil dodávateľa bol uložený.\n\n'
+    'Teraz si môžete pripraviť fakturáciu:\n'
+    '1. Nastavte krátky názov služby cez /alias.\n'
+    '   Môžete začať aj hlasom alebo textom: „dodaj novú službu“.\n'
+    '   Potom napíšte krátky názov, napríklad „opravy“, a plný názov pre faktúru/PDF, napríklad '
+    '„Opravy vyhradených zariadení elektrických“.\n'
+    '2. Pridajte odberateľa cez /contact.\n'
+    '   Môžete to spustiť aj hlasom alebo textom: „dodaj nový kontakt“.\n'
+    '3. Potom vytvorte faktúru cez /invoice alebo ju jednoducho nadiktujte.\n\n'
+    'Ak už máte aliasy alebo odberateľov uložených, príslušný krok môžete preskočiť.'
+)
+
+
 class OnboardingStates(StatesGroup):
     name = State()
     ico = State()
@@ -257,4 +271,4 @@ async def onboarding_confirm(
     )
 
     await state.clear()
-    await message.answer('Profil dodávateľa bol uložený.')
+    await message.answer(SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE)

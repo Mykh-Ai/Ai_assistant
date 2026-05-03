@@ -108,3 +108,15 @@ def test_manual_service_command_flow_still_works(tmp_path: Path) -> None:
     assert supplier is not None and supplier.id is not None
     display_name = ServiceAliasService(config.db_path).resolve_service_display_name(supplier.id, 'opravy')
     assert display_name == 'Opravy elektromotorov'
+
+
+def test_alias_command_starts_same_service_alias_flow(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    start_msg = _DummyMessage(text='/alias')
+
+    asyncio.run(cmd_service(start_msg, state, config))
+
+    assert state.current_state == ServiceAliasStates.waiting_short_name
+    assert 'Pridanie názvu služby (krok 1/2)' in start_msg.answers[-1]

@@ -4,7 +4,12 @@ import asyncio
 from pathlib import Path
 
 from bot.config import Config
-from bot.handlers.onboarding import OnboardingStates, onboarding_confirm, onboarding_email
+from bot.handlers.onboarding import (
+    SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE,
+    OnboardingStates,
+    onboarding_confirm,
+    onboarding_email,
+)
 from bot.services.db import init_db
 from bot.services.invoice_service import InvoiceService
 from bot.services.supplier_service import SupplierService
@@ -90,6 +95,15 @@ def test_onboarding_confirm_accepts_shared_yes_alias(tmp_path: Path) -> None:
         issue_year=2026,
     ) == '20260025'
     assert state.current_state is None
+    assert message.answers[-1] == SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE
+    assert '/alias' in message.answers[-1]
+    assert '/contact' in message.answers[-1]
+    assert '/invoice' in message.answers[-1]
+    assert 'dodaj novú službu' in message.answers[-1]
+    assert 'krátky názov' in message.answers[-1]
+    assert 'opravy' in message.answers[-1]
+    assert 'Opravy vyhradených zariadení elektrických' in message.answers[-1]
+    assert 'dodaj nový kontakt' in message.answers[-1]
 
 
 def test_onboarding_confirm_accepts_shared_no_alias(tmp_path: Path) -> None:

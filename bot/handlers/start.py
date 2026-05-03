@@ -16,7 +16,15 @@ APPROVED_ACCESS_NEXT_STEP_MESSAGE = (
 
 READY_WITH_SUPPLIER_MESSAGE = (
     'FakturaBot je pripravený.\n\n'
-    'Profil dodávateľa je nastavený. Môžete vytvárať faktúry hlasom alebo textom.'
+    'Profil dodávateľa je nastavený.\n\n'
+    'Teraz si môžete pripraviť fakturáciu:\n'
+    '1. Nastavte krátky názov služby cez /alias.\n'
+    '   Môžete začať aj hlasom alebo textom: „dodaj novú službu“.\n'
+    '   Potom napíšte krátky názov, napríklad „opravy“, a plný názov pre faktúru/PDF, napríklad '
+    '„Opravy vyhradených zariadení elektrických“.\n'
+    '2. Pridajte odberateľa cez /contact.\n'
+    '   Môžete to spustiť aj hlasom alebo textom: „dodaj nový kontakt“.\n'
+    '3. Potom vytvorte faktúru cez /invoice alebo ju jednoducho nadiktujte.'
 )
 
 

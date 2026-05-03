@@ -1,5 +1,20 @@
 # PROJECT_LOG
 
+## 2026-05-03 - Session 050 - Supplier onboarding saved next-step guidance
+
+Summary:
+- Updated the successful `/supplier` completion message so the user is told what to do after the supplier profile is saved.
+- The message now starts with `/alias`, then points the user to `/contact`, then `/invoice` or text/voice invoice creation.
+- Added `/alias` as a command alias for the existing service-alias flow; `/service` remains supported.
+- Updated `/start` for users with an existing supplier profile to show the same operational next steps.
+- Clarified that `/alias` means short service name -> full invoice/PDF service title, for example `opravy` -> `Opravy vyhradených zariadení elektrických`.
+- User-facing guidance now says these flows can be started by Slovak voice/text examples such as `dodaj novú službu` and `dodaj nový kontakt`.
+- Kept the supplier save confirmation on the existing shared DecisionResolver path; no DB schema, access model, LLM, STT, LMM, storage, or invoice numbering changes.
+
+Verification:
+- `python -m pytest -q tests\test_onboarding_decisions.py tests\test_access_request_flow.py tests\test_service_alias_flow.py` -> `16 passed`.
+- `python -m pytest -q` -> `796 passed`.
+
 ## 2026-05-03 - Session 049 - Supplier onboarding first invoice number and SMTP schema repair
 
 Summary:
