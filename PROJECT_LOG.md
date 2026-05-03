@@ -1,5 +1,18 @@
 # PROJECT_LOG
 
+## 2026-05-03 - Session 051 - Contact address validation and optional customer email
+
+Summary:
+- Made customer/contact email optional in manual and document/semantic contact intake.
+- Kept DB schema unchanged by storing an omitted contact email as an empty string.
+- Added contact address validation requiring a house/building number, so incomplete addresses such as city-only or street-only values do not pass confirmation.
+- Updated contact intake missing-field behavior so missing email no longer blocks contact save, while incomplete address still requires clarification.
+- Updated invoice PDF customer block rendering so the customer `Email:` line is omitted when contact email is empty.
+
+Verification:
+- `python -m pytest -q tests\test_contact_intake_semantic_flow.py tests\test_pdf_generator_layout_wrapping.py` -> `28 passed`.
+- `python -m pytest -q` -> `801 passed`.
+
 ## 2026-05-03 - Session 050 - Supplier onboarding saved next-step guidance
 
 Summary:

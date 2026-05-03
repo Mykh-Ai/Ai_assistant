@@ -22,6 +22,14 @@ Runtime numbering rule:
 
 Supplier email sending remains optional in the controlled dry run. Legacy local/server SQLite databases with `supplier.smtp_host`, `supplier.smtp_user`, or `supplier.smtp_pass` as `NOT NULL` must be migrated by application bootstrap to the current nullable schema so supplier onboarding can save without SMTP credentials.
 
+## 2026-05-03 Addendum: contact address and optional customer email
+
+Customer/contact onboarding must not require the customer's email address. If the user does not provide it, the contact may still be saved and the local SQLite `contact.email` value may remain an empty string for compatibility with the current schema.
+
+The contact address must include a house/building number. City-only or street-only values are not sufficient for invoice contact data and must be clarified before contact confirmation.
+
+When a contact email is empty, the generated invoice PDF must omit the customer `Email:` line entirely instead of rendering an empty value or placeholder. Supplier email remains part of the supplier profile block.
+
 ## 1. Опис продукту
 
 FakturaBot — це Telegram-бот, який допомагає створювати фактури зі смартфона через голосові повідомлення, текстові команди та витяг реквізитів із договору.

@@ -8,7 +8,9 @@ from bot.handlers.contacts import (
     ContactStates,
     _process_source_after_name_step,
     _start_add_contact_from_source,
+    contact_address,
     contact_confirm,
+    contact_email,
     contact_intake_from_document,
     contact_name_hint,
     process_contact_missing_fields,
@@ -116,7 +118,7 @@ def _setup_supplier(db_path: Path, telegram_id: int = 111) -> None:
     )
 
 
-def test_add_contact_from_text_pdf_like_content_with_missing_email(tmp_path: Path) -> None:
+def test_add_contact_from_text_pdf_like_content_allows_missing_email(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _setup_supplier(config.db_path)
     state = _DummyState()
@@ -133,18 +135,9 @@ def test_add_contact_from_text_pdf_like_content_with_missing_email(tmp_path: Pat
         )
     )
 
-    assert state.current_state == ContactStates.intake_missing
-    assert 'e-mailovú adresu' in message.answers[-1]
-
-    asyncio.run(
-        process_contact_missing_fields(
-            message=message,
-            state=state,
-            user_text='kontakt@zs.sk',
-        )
-    )
     assert state.current_state == ContactStates.intake_confirm
     assert 'Návrh kontaktu' in message.answers[-1]
+    assert 'Email: -' in message.answers[-1]
 
 
 def test_add_contact_missing_address_prompt(tmp_path: Path) -> None:
@@ -164,7 +157,57 @@ def test_add_contact_missing_address_prompt(tmp_path: Path) -> None:
     )
 
     assert state.current_state == ContactStates.intake_missing
-    assert 'určiť adresu' in message.answers[-1]
+    assert 'adresu' in message.answers[-1]
+
+
+def test_add_contact_address_without_house_number_is_missing(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    message = _DummyMessage()
+
+    asyncio.run(
+        _start_add_contact_from_source(
+            message=message,
+            state=state,
+            config=config,
+            source_text='pridaj kontakt',
+            document_text='Objednávateľ: ZS s.r.o.\nIČO: 12345678\nDIČ: 1234567890\nAdresa: Hlavná, Košice',
+        )
+    )
+
+    assert state.current_state == ContactStates.intake_missing
+    assert state.data['contact_missing_fields'] == ['address']
+    assert 'čísla domu' in message.answers[-1]
+
+
+def test_manual_contact_address_requires_house_number(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    state.current_state = ContactStates.address
+    message = _DummyMessage()
+    message.text = 'Hlavná, Košice'
+
+    asyncio.run(contact_address(message, state))
+
+    assert state.current_state == ContactStates.address
+    assert 'číslo domu' in message.answers[-1]
+
+
+def test_manual_contact_email_can_be_skipped(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    state.current_state = ContactStates.email
+    message = _DummyMessage()
+    message.text = '-'
+
+    asyncio.run(contact_email(message, state))
+
+    assert state.current_state == ContactStates.contact_person
+    assert state.data['email'] == ''
+    assert 'kontaktnú osobu' in message.answers[-1]
 
 
 def test_contact_saved_after_confirmation(tmp_path: Path) -> None:

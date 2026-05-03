@@ -3,6 +3,7 @@ import unittest
 from bot.services.pdf_generator import (
     FONT_BOLD,
     FONT_REGULAR,
+    _format_customer_party_lines,
     _format_supplier_ic_dph_line,
     _item_row_description_first_baseline,
     _font_supports_glyphs,
@@ -13,6 +14,7 @@ from bot.services.pdf_generator import (
     _resolve_unicode_font_paths,
     _wrap_text_lines,
 )
+from bot.services.contact_service import ContactProfile
 from reportlab.lib.units import mm
 
 
@@ -109,6 +111,40 @@ class PdfGeneratorLayoutWrappingTests(unittest.TestCase):
 
     def test_supplier_ic_dph_wording_for_vat_supplier(self) -> None:
         self.assertEqual(_format_supplier_ic_dph_line('SK1234567890'), 'IČ DPH: SK1234567890')
+
+    def test_customer_party_lines_omit_empty_email(self) -> None:
+        customer = ContactProfile(
+            supplier_telegram_id=1,
+            name='Odberateľ s.r.o.',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Hlavná 1, Košice',
+            email='',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+
+        self.assertNotIn('Email:', '\n'.join(_format_customer_party_lines(customer)))
+
+    def test_customer_party_lines_include_present_email(self) -> None:
+        customer = ContactProfile(
+            supplier_telegram_id=1,
+            name='Odberateľ s.r.o.',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Hlavná 1, Košice',
+            email='customer@example.com',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+
+        self.assertIn('Email: customer@example.com', _format_customer_party_lines(customer))
 
 
 if __name__ == '__main__':

@@ -21,6 +21,11 @@ def validate_email(value: str) -> bool:
     return bool(re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', value.strip()))
 
 
+def validate_contact_address(value: str) -> bool:
+    normalized = value.strip()
+    return bool(normalized) and bool(re.search(r'[^\W\d_]', normalized, flags=re.UNICODE)) and bool(re.search(r'\d', normalized))
+
+
 def validate_iban(value: str) -> bool:
     normalized = value.strip().upper().replace(' ', '')
     return bool(re.fullmatch(r'[A-Z]{2}[0-9A-Z]{13,32}', normalized))

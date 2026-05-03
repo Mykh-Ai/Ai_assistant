@@ -14,7 +14,7 @@ from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.decision_resolver import resolve_yes_no
 from bot.services.semantic_action_resolver import resolve_semantic_action
 from bot.services.supplier_service import SupplierService
-from bot.services.validation import validate_dic, validate_email, validate_ic_dph, validate_ico
+from bot.services.validation import validate_contact_address, validate_dic, validate_email, validate_ic_dph, validate_ico
 
 router = Router(name='contacts')
 
@@ -48,7 +48,7 @@ def _summary(data: dict[str, str]) -> str:
         f'DIC: {data["dic"]}\n'
         f'IC DPH: {data["ic_dph"] or "-"}\n'
         f'Adresa: {data["address"]}\n'
-        f'Email: {data["email"]}\n'
+        f'Email: {data["email"] or "-"}\n'
         f'Kontaktná osoba: {data["contact_person"] or "-"}'
         f'{duplicate_note}\n\n'
         'Napíšte ano pre uloženie alebo nie pre zrušenie.'
@@ -70,10 +70,8 @@ def _contact_draft_summary(data: dict[str, str]) -> str:
 
 
 def _missing_prompt(field: str) -> str:
-    if field == 'email':
-        return 'Nepodarilo sa nájsť e-mailovú adresu. Doplňte ju, prosím.'
     if field == 'address':
-        return 'Nepodarilo sa jednoznačne určiť adresu. Spresnite ju, prosím.'
+        return 'Nepodarilo sa jednoznačne určiť adresu vrátane čísla domu. Príklad: Hlavná 1, Košice.'
     if field == 'name':
         return 'Nepodarilo sa jednoznačne určiť názov spoločnosti. Spresnite ho, prosím.'
     if field == 'ico':
@@ -85,9 +83,11 @@ def _missing_prompt(field: str) -> str:
 
 def _missing_required_fields(data: dict[str, str]) -> list[str]:
     missing: list[str] = []
-    for field in ('name', 'ico', 'dic', 'address', 'email'):
+    for field in ('name', 'ico', 'dic'):
         if not str(data.get(field, '')).strip():
             missing.append(field)
+    if not validate_contact_address(str(data.get('address', ''))):
+        missing.append('address')
     return missing
 
 
@@ -213,7 +213,20 @@ async def process_contact_missing_fields(
         return
 
     if current == 'email' and not validate_email(value):
+        if value == '-':
+            draft[current] = ''
+            missing = missing[1:]
+            await state.update_data(contact_intake_draft=draft, contact_missing_fields=missing)
+            if missing:
+                await message.answer(_missing_prompt(missing[0]))
+                return
+            await state.set_state(ContactStates.intake_confirm)
+            await message.answer(_contact_draft_summary(draft))
+            return
         await message.answer('Neplatný email. Skúste znova:')
+        return
+    if current == 'address' and not validate_contact_address(value):
+        await message.answer('Adresa musí obsahovať aj číslo domu. Príklad: Hlavná 1, Košice.')
         return
     if current == 'ico' and not validate_ico(value):
         await message.answer('Neplatné ICO. Formát: 8 číslic. Skúste znova:')
@@ -424,17 +437,22 @@ async def contact_ic_dph(message: Message, state: FSMContext) -> None:
 @router.message(ContactStates.address)
 async def contact_address(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
-    if not value:
-        await message.answer('Adresa nemôže byť prázdna. Skúste znova:')
+    if not validate_contact_address(value):
+        await message.answer('Adresa musí obsahovať aj číslo domu. Príklad: Hlavná 1, Košice.')
         return
     await state.update_data(address=value)
     await state.set_state(ContactStates.email)
-    await message.answer('6/7 Zadajte email:')
+    await message.answer('6/7 Zadajte email (voliteľné, pošlite "-", ak ho nechcete uviesť):')
 
 
 @router.message(ContactStates.email)
 async def contact_email(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
+    if value == '-':
+        await state.update_data(email='')
+        await state.set_state(ContactStates.contact_person)
+        await message.answer('7/7 Zadajte kontaktnú osobu (voliteľné, pošlite "-"):')
+        return
     if not validate_email(value):
         await message.answer('Neplatný email. Skúste znova:')
         return

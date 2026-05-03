@@ -76,6 +76,18 @@ def _format_supplier_ic_dph_line(ic_dph: str | None) -> str:
     return f'IČ DPH: {ic_dph or "Nie je platiteľ DPH"}'
 
 
+def _format_customer_party_lines(customer: ContactProfile) -> list[str]:
+    lines = [
+        customer.name,
+        f'IČO: {customer.ico}   DIČ: {customer.dic}',
+        f'IČ DPH: {customer.ic_dph or "-"}',
+        customer.address,
+    ]
+    if customer.email.strip():
+        lines.append(f'Email: {customer.email}')
+    return lines
+
+
 def _font_supports_glyphs(font_path: Path, glyphs: tuple[str, ...] = REQUIRED_GLYPHS) -> bool:
     font = TTFont('FakturaBot-Glyph-Probe', str(font_path))
     cmap = font.face.charToGlyph
@@ -256,13 +268,7 @@ def generate_invoice_pdf(
         supplier.address,
         f'Email: {supplier.email}',
     ]
-    customer_lines = [
-        customer.name,
-        f'IČO: {customer.ico}   DIČ: {customer.dic}',
-        f'IČ DPH: {customer.ic_dph or "-"}',
-        customer.address,
-        f'Email: {customer.email}',
-    ]
+    customer_lines = _format_customer_party_lines(customer)
 
     supplier_block_h = _draw_party_block(pdf, left_x, block_top, col_width, 'Dodávateľ', supplier_lines, bg_secondary)
     customer_block_h = _draw_party_block(
