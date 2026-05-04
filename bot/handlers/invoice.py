@@ -226,6 +226,9 @@ def _resolve_contact_lookup(contact_service: ContactService, telegram_id: int, n
     return contact_service.resolve_contact_lookup(telegram_id, name)
 
 
+_ALIAS_LEARNING_RESOLUTION_SOURCES = {'fuzzy_match', 'bounded_llm'}
+
+
 def _normalize_semantic_lookup_key(value: str) -> str:
     lowered = value.casefold().strip()
     separators_normalized = re.sub(r'[^\w\sÀ-žЀ-ӿ]+', ' ', lowered, flags=re.UNICODE)
@@ -1135,6 +1138,8 @@ async def _build_and_store_preview(
         return
 
     contact_service = ContactService(config.db_path)
+    alias_learning_candidate = str(parsed_draft.get('customer_alias_candidate') or '').strip()
+    contact_resolution_source = str(parsed_draft.get('customer_resolution_source') or '').strip()
     normalized_lookup, _compressed_lookup = contact_service.normalize_lookup_forms(customer_name)
     _emit_invoice_debug_log(
         config=config,
@@ -1159,18 +1164,21 @@ async def _build_and_store_preview(
             'matched_contact_id': lookup_result.matched_contact.id if lookup_result.matched_contact else None,
             'candidate_count': (
                 len(lookup_result.candidates)
-                if lookup_result.state in {'multiple_candidates', 'single_candidate_confirm_required'}
+                if lookup_result.state in {'multiple_candidates', 'single_candidate_confirm_required', 'fuzzy_match'}
                 else None
             ),
             'candidate_names': (
                 [candidate.name for candidate in lookup_result.candidates]
-                if lookup_result.state in {'multiple_candidates', 'single_candidate_confirm_required'}
+                if lookup_result.state in {'multiple_candidates', 'single_candidate_confirm_required', 'fuzzy_match'}
                 else None
             ),
         },
     )
-    if lookup_result.state in {'exact_match', 'normalized_match', 'alias_match'} and lookup_result.matched_contact is not None:
+    if lookup_result.state in {'exact_match', 'normalized_match', 'alias_match', 'fuzzy_match'} and lookup_result.matched_contact is not None:
         contact = lookup_result.matched_contact
+        if lookup_result.state == 'fuzzy_match':
+            contact_resolution_source = 'fuzzy_match'
+            alias_learning_candidate = alias_learning_candidate or customer_name
     elif lookup_result.state == 'single_candidate_confirm_required' and len(lookup_result.candidates) == 1:
         await _start_invoice_customer_alias_confirm(
             message=message,
@@ -1216,6 +1224,8 @@ async def _build_and_store_preview(
             )
             return
         contact = resolved_contact
+        contact_resolution_source = 'bounded_llm'
+        alias_learning_candidate = alias_learning_candidate or customer_name
 
     if contact is None:
         await _start_invoice_slot_clarification(
@@ -1448,6 +1458,13 @@ async def _build_and_store_preview(
         'due_days': due_days,
         'due_date': due_date_obj.isoformat(),
     }
+    if (
+        alias_learning_candidate
+        and contact_resolution_source in _ALIAS_LEARNING_RESOLUTION_SOURCES
+        and contact.id is not None
+    ):
+        normalized['customer_alias_candidate'] = alias_learning_candidate
+        normalized['customer_resolution_source'] = contact_resolution_source
     _emit_invoice_debug_log(
         config=config,
         event='invoice_preview_before_save',
@@ -1463,6 +1480,8 @@ async def _build_and_store_preview(
             'service_term_canonical_internal': first_item['item_term_canonical_internal'],
             'item_count': len(normalized_items),
             'lookup_state': lookup_result.state,
+            'customer_resolution_source': contact_resolution_source or lookup_result.state,
+            'customer_alias_candidate': alias_learning_candidate or None,
         },
     )
 
@@ -1951,6 +1970,8 @@ async def process_invoice_slot_clarification(
                 prompt = f'{prompt}\nMožnosti: {", ".join(allowed_customer_candidates[:5])}.'
             await message.answer(prompt)
             return
+        parsed_draft['customer_alias_candidate'] = clarification_text
+        parsed_draft['customer_resolution_source'] = 'bounded_llm'
         parsed_draft['customer_name'] = resolved_contact.name
     elif not _apply_slot_clarification(parsed_draft, unresolved_slot, clarification_text):
         await message.answer(_SLOT_PROMPTS.get(unresolved_slot, 'Spresnite údaj, prosím.'))
@@ -2337,6 +2358,32 @@ async def _start_invoice_draft_edit_flow(*, message: Message, state: FSMContext)
     )
 
 
+def _store_preview_confirmed_customer_alias(
+    *,
+    config: Config,
+    supplier_telegram_id: int,
+    draft: dict[str, object],
+    contact_id: int,
+) -> None:
+    source = str(draft.get('customer_resolution_source') or '').strip()
+    if source not in _ALIAS_LEARNING_RESOLUTION_SOURCES:
+        return
+
+    alias_candidate = str(draft.get('customer_alias_candidate') or '').strip()
+    if not alias_candidate:
+        return
+
+    try:
+        ContactService(config.db_path).create_confirmed_contact_alias(
+            supplier_telegram_id=supplier_telegram_id,
+            alias_text=alias_candidate,
+            contact_id=contact_id,
+            source=f'invoice_preview_approved_{source}',
+        )
+    except Exception:
+        logger.exception('Failed to store preview-approved customer alias')
+
+
 async def _finalize_invoice_draft(
     *,
     message: Message,
@@ -2461,6 +2508,12 @@ async def _finalize_invoice_draft(
         await message.answer_document(
             FSInputFile(pdf_path),
             caption=f'PDF faktúra {invoice.invoice_number} bola vytvorená.',
+        )
+        _store_preview_confirmed_customer_alias(
+            config=config,
+            supplier_telegram_id=message.from_user.id,
+            draft=draft,
+            contact_id=int(contact_id),
         )
         await state.clear()
         await message.answer(f'Faktúra {invoice.invoice_number} bola vytvorená.')

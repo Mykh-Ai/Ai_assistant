@@ -387,6 +387,8 @@ def test_customer_resolution_uses_bounded_candidates_when_lookup_is_noisy(config
     draft = state.data['invoice_draft']
     assert draft['contact_id'] == contact_id
     assert draft['customer_name'] == 'Tech Company s.r.o.'
+    assert draft['customer_alias_candidate'] == 'tek kompaniu'
+    assert draft['customer_resolution_source'] == 'bounded_llm'
 
 
 def test_service_resolution_uses_bounded_alias_selection_for_noisy_variant(configured_db: tuple[Path, int, int], monkeypatch) -> None:
@@ -643,7 +645,7 @@ def test_preview_missing_due_days_uses_supplier_default_without_clarification(co
     assert state.last_state == InvoiceStates.waiting_confirm
 
 
-def test_preview_single_close_customer_candidate_asks_for_alias_confirmation(
+def test_preview_high_confidence_customer_candidate_skips_alias_confirmation(
     configured_db: tuple[Path, int, int],
 ) -> None:
     db_path, telegram_id, _ = configured_db
@@ -674,8 +676,8 @@ def test_preview_single_close_customer_candidate_asks_for_alias_confirmation(
     message = _DummyMessage(telegram_id)
     state = _DummyState()
 
-    payload = _valid_payload('invoice for Real-Time Technologies')
-    payload['biznis_sk']['odberatel_kandidat'] = 'Real-Time Technologies'
+    payload = _valid_payload('invoice for Realtim Technologies SK')
+    payload['biznis_sk']['odberatel_kandidat'] = 'Realtim Technologies SK'
     _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
 
     asyncio.run(
@@ -689,12 +691,14 @@ def test_preview_single_close_customer_candidate_asks_for_alias_confirmation(
         )
     )
 
-    assert state.last_state == InvoiceStates.waiting_customer_alias_confirm
-    assert state.data['invoice_partial_draft']['candidate_text'] == 'Real-Time Technologies'
-    assert state.data['invoice_partial_draft']['candidate_contact_name'] == 'REALTIME TECHNOLOGIES SK, s.r.o.'
-    assert message.answers[-1].startswith('Mysleli ste odberat')
+    assert state.last_state == InvoiceStates.waiting_confirm
+    draft = state.data['invoice_draft']
+    assert draft['contact_id'] is not None
+    assert draft['customer_name'] == 'REALTIME TECHNOLOGIES SK, s.r.o.'
+    assert draft['customer_alias_candidate'] == 'Realtim Technologies SK'
+    assert draft['customer_resolution_source'] == 'fuzzy_match'
     assert 'REALTIME TECHNOLOGIES SK, s.r.o.' in message.answers[-1]
-    assert 'invoice_draft' not in state.data
+    assert 'invoice_partial_draft' not in state.data
 
 
 def test_customer_alias_confirmation_yes_saves_clean_candidate_and_rebuilds_preview(
@@ -831,7 +835,7 @@ def test_customer_alias_confirmation_no_does_not_save_alias(
 
     assert state.last_state == InvoiceStates.waiting_slot_clarification
     resolved = ContactService(db_path).resolve_contact_lookup(telegram_id, 'Real-Time Technologies')
-    assert resolved.state == 'single_candidate_confirm_required'
+    assert resolved.state == 'fuzzy_match'
     assert message.answers
 
 

@@ -40,11 +40,11 @@ The observed STT phrase `Ah, nao` / `Ah, nao!` is treated narrowly as Slovak `an
 
 ## 2026-05-03 Addendum: confirmed semantic aliases for invoice customer lookup
 
-When `create_invoice` cannot directly resolve the extracted customer candidate but the existing supplier-scoped contact lookup finds exactly one safe close candidate, the bot may ask a bounded confirmation question such as `Mysleli ste odberateľa REALTIME TECHNOLOGIES SK, s.r.o.? áno / nie`.
+When `create_invoice` cannot directly resolve the extracted customer candidate but the existing supplier-scoped contact lookup finds exactly one safe high-confidence candidate, the bot may use that local contact directly in the invoice preview instead of asking a separate `áno / nie` alias question. The preview must show the canonical local contact name, and the invoice is still saved only after the user approves the preview.
 
-Only after an explicit shared `yes_no` DecisionResolver confirmation may the bot save a supplier-scoped confirmed alias from the cleaned extracted customer candidate to that contact. The raw full STT transcript must not be stored as an alias. If the user rejects the suggestion, the flow returns to customer clarification without saving an alias.
+The bot may save a supplier-scoped confirmed alias from the cleaned extracted customer candidate to that contact only after either an explicit shared `yes_no` DecisionResolver confirmation or approval of an invoice preview that visibly used the resolved contact. The raw full STT transcript must not be stored as an alias. If the user rejects/cancels the suggestion or preview, the flow must not save an alias.
 
-Country suffix tokens are safety-sensitive. A candidate without a country suffix may be matched to one unique stored country-suffixed contact only after confirmation. A user candidate with an explicit country token such as `CZ` must not silently match an `SK` contact.
+Country suffix tokens are safety-sensitive. A candidate without a country suffix may be matched to one unique stored country-suffixed contact when it is the only plausible high-confidence target. If both `SK` and `CZ` variants are plausible and the user omits the country token, the bot must ask for clarification. A user candidate with an explicit country token such as `CZ` must not silently match an `SK` contact.
 
 ## 2026-05-04 Addendum: staged profile onboarding and user database deletion wording
 

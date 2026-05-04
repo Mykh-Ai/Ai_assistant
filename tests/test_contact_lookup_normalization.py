@@ -120,15 +120,51 @@ def test_no_match_state(tmp_path: Path) -> None:
     assert result.candidates == []
 
 
-def test_single_country_suffix_candidate_requires_confirmation(tmp_path: Path) -> None:
+def test_single_country_suffix_candidate_auto_resolves_when_unambiguous(tmp_path: Path) -> None:
     service = _service(tmp_path)
     service.create_or_replace(_contact('REALTIME TECHNOLOGIES SK, s.r.o.'))
 
     result = service.resolve_contact_lookup(TELEGRAM_ID, 'Real-Time Technologies')
 
-    assert result.state == 'single_candidate_confirm_required'
-    assert result.matched_contact is None
+    assert result.state == 'fuzzy_match'
+    assert result.matched_contact is not None
+    assert result.matched_contact.name == 'REALTIME TECHNOLOGIES SK, s.r.o.'
     assert [candidate.name for candidate in result.candidates] == ['REALTIME TECHNOLOGIES SK, s.r.o.']
+
+
+def test_high_confidence_transcription_typo_auto_resolves(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.create_or_replace(_contact('REALTIME TECHNOLOGIES SK, s.r.o.'))
+
+    result = service.resolve_contact_lookup(TELEGRAM_ID, 'Realtim Technologies SK')
+
+    assert result.state == 'fuzzy_match'
+    assert result.matched_contact is not None
+    assert result.matched_contact.name == 'REALTIME TECHNOLOGIES SK, s.r.o.'
+
+
+def test_high_confidence_pronunciation_variant_auto_resolves_with_unrelated_contact(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.create_or_replace(_contact('REALTIME TECHNOLOGIES SK, s.r.o.'))
+    service.create_or_replace(_contact('ZEVS s.r.o.'))
+
+    result = service.resolve_contact_lookup(TELEGRAM_ID, 'Real Team Technologies')
+
+    assert result.state == 'fuzzy_match'
+    assert result.matched_contact is not None
+    assert result.matched_contact.name == 'REALTIME TECHNOLOGIES SK, s.r.o.'
+    assert [candidate.name for candidate in result.candidates] == ['REALTIME TECHNOLOGIES SK, s.r.o.']
+
+
+def test_low_similarity_single_contact_does_not_auto_resolve(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.create_or_replace(_contact('REALTIME TECHNOLOGIES SK, s.r.o.'))
+
+    result = service.resolve_contact_lookup(TELEGRAM_ID, 'Lajno')
+
+    assert result.state == 'no_match'
+    assert result.matched_contact is None
+    assert result.candidates == []
 
 
 def test_explicit_country_token_does_not_match_different_country(tmp_path: Path) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 import re
 import sqlite3
@@ -29,6 +30,7 @@ ContactLookupState = Literal[
     'exact_match',
     'normalized_match',
     'alias_match',
+    'fuzzy_match',
     'single_candidate_confirm_required',
     'multiple_candidates',
     'no_match',
@@ -52,6 +54,8 @@ class ContactService:
     _CONTACT_ALIAS_DOMAIN = 'invoice_customer'
     _CONTACT_ALIAS_TARGET_TYPE = 'contact'
     _TRAILING_COUNTRY_TOKENS = {'sk', 'cz'}
+    _HIGH_CONFIDENCE_FUZZY_RATIO = 0.90
+    _MIN_FUZZY_COMPRESSED_LENGTH = 6
 
     def get_all_by_supplier(self, telegram_id: int) -> list[ContactProfile]:
         with managed_connection(self._db_path) as connection:
@@ -269,16 +273,24 @@ class ContactService:
 
     @classmethod
     def _country_sensitive_close_match(cls, query: str, profile_name: str) -> bool:
+        forms = cls._country_sensitive_base_forms(query, profile_name)
+        if forms is None:
+            return False
+        query_compressed, profile_compressed = forms
+        return bool(query_compressed and profile_compressed and query_compressed == profile_compressed)
+
+    @classmethod
+    def _country_sensitive_base_forms(cls, query: str, profile_name: str) -> tuple[str, str] | None:
         query_tokens = cls._lookup_tokens_without_legal_suffix(query)
         profile_tokens = cls._lookup_tokens_without_legal_suffix(profile_name)
         if not query_tokens or not profile_tokens:
-            return False
+            return None
 
         query_has_country = cls._has_trailing_country_token(query_tokens)
         profile_has_country = cls._has_trailing_country_token(profile_tokens)
         if query_has_country:
             if not profile_has_country or query_tokens[-1] != profile_tokens[-1]:
-                return False
+                return None
             query_base = query_tokens[:-1]
             profile_base = profile_tokens[:-1]
         else:
@@ -287,7 +299,37 @@ class ContactService:
 
         query_compressed = ''.join(query_base)
         profile_compressed = ''.join(profile_base)
-        return bool(query_compressed and profile_compressed and query_compressed == profile_compressed)
+        if not query_compressed or not profile_compressed:
+            return None
+        return query_compressed, profile_compressed
+
+    @classmethod
+    def _country_sensitive_fuzzy_ratio(cls, query: str, profile_name: str) -> float:
+        forms = cls._country_sensitive_base_forms(query, profile_name)
+        if forms is None:
+            return 0.0
+        query_compressed, profile_compressed = forms
+        if (
+            len(query_compressed) < cls._MIN_FUZZY_COMPRESSED_LENGTH
+            or len(profile_compressed) < cls._MIN_FUZZY_COMPRESSED_LENGTH
+        ):
+            return 0.0
+        return SequenceMatcher(None, query_compressed, profile_compressed).ratio()
+
+    @classmethod
+    def _high_confidence_fuzzy_candidates(
+        cls,
+        query: str,
+        profiles: list[ContactProfile],
+    ) -> list[ContactProfile]:
+        scored: list[tuple[float, ContactProfile]] = []
+        for profile in profiles:
+            ratio = cls._country_sensitive_fuzzy_ratio(query, profile.name)
+            if ratio >= cls._HIGH_CONFIDENCE_FUZZY_RATIO:
+                scored.append((ratio, profile))
+
+        scored.sort(key=lambda item: (-item[0], item[1].name.casefold()))
+        return [profile for _ratio, profile in scored]
 
     def create_confirmed_contact_alias(
         self,
@@ -417,8 +459,9 @@ class ContactService:
                 compressed_query=query_compressed,
             )
 
+        supplier_profiles = self.get_all_by_supplier(telegram_id)
         candidates: list[ContactProfile] = []
-        for profile in self.get_all_by_supplier(telegram_id):
+        for profile in supplier_profiles:
             profile_normalized, profile_compressed = self.normalize_lookup_forms(profile.name)
             is_match = False
             if query_normalized and profile_normalized and query_normalized == profile_normalized:
@@ -429,24 +472,10 @@ class ContactService:
             if is_match:
                 candidates.append(profile)
 
-        if not candidates:
-            for profile in self.get_all_by_supplier(telegram_id):
-                if self._country_sensitive_close_match(raw_query, profile.name):
-                    candidates.append(profile)
-
         if len(candidates) == 1:
-            state: ContactLookupState = (
-                'normalized_match'
-                if self._country_sensitive_close_match(raw_query, candidates[0].name) is False
-                else 'single_candidate_confirm_required'
-            )
-            if query_normalized and candidates[0].name:
-                profile_normalized, profile_compressed = self.normalize_lookup_forms(candidates[0].name)
-                if query_normalized == profile_normalized or query_compressed == profile_compressed:
-                    state = 'normalized_match'
             return ContactLookupResult(
-                state=state,
-                matched_contact=candidates[0] if state == 'normalized_match' else None,
+                state='normalized_match',
+                matched_contact=candidates[0],
                 candidates=candidates,
                 raw_query=raw_query,
                 normalized_query=query_normalized,
@@ -458,6 +487,27 @@ class ContactService:
                 state='multiple_candidates',
                 matched_contact=None,
                 candidates=candidates,
+                raw_query=raw_query,
+                normalized_query=query_normalized,
+                compressed_query=query_compressed,
+            )
+
+        fuzzy_candidates = self._high_confidence_fuzzy_candidates(raw_query, supplier_profiles)
+        if len(fuzzy_candidates) == 1:
+            return ContactLookupResult(
+                state='fuzzy_match',
+                matched_contact=fuzzy_candidates[0],
+                candidates=fuzzy_candidates,
+                raw_query=raw_query,
+                normalized_query=query_normalized,
+                compressed_query=query_compressed,
+            )
+
+        if len(fuzzy_candidates) > 1:
+            return ContactLookupResult(
+                state='multiple_candidates',
+                matched_contact=None,
+                candidates=fuzzy_candidates,
                 raw_query=raw_query,
                 normalized_query=query_normalized,
                 compressed_query=query_compressed,

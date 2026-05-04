@@ -277,6 +277,93 @@ def test_waiting_confirm_accepts_multilingual_yes_and_generates_pdf(tmp_path: Pa
     assert message.answers[-1] == 'Faktúra 20260001 bola vytvorená.'
 
 
+def test_preview_approval_stores_confirmed_customer_alias(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 9101
+    db_path = tmp_path / 'preview-alias.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF-1.4 fake')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+
+    draft = _draft_for_tests(contact_id, invoice_number='20260015')
+    draft['customer_alias_candidate'] = 'Realtim Technologies SK'
+    draft['customer_resolution_source'] = 'fuzzy_match'
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'invoice_draft': draft})
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='schvalit',
+        )
+    )
+
+    with managed_connection(db_path) as connection:
+        row = connection.execute(
+            (
+                'SELECT alias_text, target_id, source '
+                'FROM confirmed_semantic_alias '
+                'WHERE supplier_telegram_id = ? AND alias_text = ?'
+            ),
+            (telegram_id, 'Realtim Technologies SK'),
+        ).fetchone()
+
+    assert row is not None
+    assert row[1] == contact_id
+    assert row[2] == 'invoice_preview_approved_fuzzy_match'
+
+
+def test_preview_cancel_does_not_store_customer_alias(tmp_path: Path) -> None:
+    telegram_id = 9102
+    db_path = tmp_path / 'preview-alias-cancel.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    draft = _draft_for_tests(contact_id, invoice_number='20260015')
+    draft['customer_alias_candidate'] = 'Realtim Technologies SK'
+    draft['customer_resolution_source'] = 'fuzzy_match'
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'invoice_draft': draft})
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='zrusit',
+        )
+    )
+
+    with managed_connection(db_path) as connection:
+        count = connection.execute(
+            'SELECT COUNT(*) FROM confirmed_semantic_alias WHERE supplier_telegram_id = ?',
+            (telegram_id,),
+        ).fetchone()[0]
+
+    assert count == 0
+
+
 def test_waiting_confirm_accepts_multilingual_no_and_clears_state(tmp_path: Path) -> None:
     config = Config(
         bot_token='token',

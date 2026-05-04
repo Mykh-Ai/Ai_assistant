@@ -132,7 +132,7 @@ Decision families:
 
 Existing machine tokens such as `schvalit`, `upravit`, `zrusit`, `ano`, and `nie` remain current runtime compatibility vocabulary where already used. New confirmation-like flows should not add per-module local parsers and should converge text, voice transcript, and future Telegram button/callback input into the same canonical decision path.
 
-Confirmed alias learning for noisy semantic values is governed by `docs/Confirmed_Semantic_Alias_Learning_Contract.md`. The same authority split applies: AI/STT may produce only a bounded candidate, Python must validate and ask for explicit confirmation, and only a confirmed cleaned candidate may be stored as an alias.
+Confirmed alias learning for noisy semantic values is governed by `docs/Confirmed_Semantic_Alias_Learning_Contract.md`. The same authority split applies: AI/STT may produce only a bounded candidate, Python must validate against scoped local targets, and only a confirmed cleaned candidate may be stored as an alias. Confirmation may be an explicit DecisionResolver confirmation or approval of a workflow preview where the resolved target is visibly shown.
 
 Preview backward-compatible aliases:
 - `ano` maps to `schvalit`;

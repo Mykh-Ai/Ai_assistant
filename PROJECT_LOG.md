@@ -1,5 +1,24 @@
 # PROJECT_LOG
 
+## 2026-05-04 - Session 056 - Preview-approved contact alias learning
+
+Summary:
+- Changed supplier-scoped contact lookup so high-confidence customer-name variants such as missing-letter STT transcriptions can resolve to one safe local contact without a separate `áno / nie` alias prompt.
+- Kept country-token guardrails: explicit `CZ` does not silently match `SK`, and multiple plausible country variants remain ambiguous.
+- Added preview-approved alias learning: when fuzzy or bounded LLM customer resolution is used in the invoice preview, the cleaned customer candidate is stored as a confirmed alias only after the user approves the invoice preview.
+- Kept raw full STT/request text out of alias storage and left unrelated low-similarity contacts from forcing clarification.
+
+Contracts read:
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+
+Verification:
+- `python -m compileall bot\services bot\handlers` -> passed.
+- `python -m pytest -q tests\test_contact_lookup_normalization.py tests\test_invoice_phase2_ai_layer.py tests\test_invoice_state_decisions.py` -> `142 passed`.
+- `python -m pytest -q` -> `858 passed`.
+
 ## 2026-05-04 - Session 055 - Alias confirmation STT retry guard
 
 Summary:
