@@ -120,3 +120,15 @@ def test_alias_command_starts_same_service_alias_flow(tmp_path: Path) -> None:
 
     assert state.current_state == ServiceAliasStates.waiting_short_name
     assert 'Pridanie názvu služby (krok 1/2)' in start_msg.answers[-1]
+
+
+def test_sluzbu_command_starts_same_service_alias_flow(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    start_msg = _DummyMessage(text='/sluzbu')
+
+    asyncio.run(cmd_service(start_msg, state, config))
+
+    assert state.current_state == ServiceAliasStates.waiting_short_name
+    assert start_msg.answers

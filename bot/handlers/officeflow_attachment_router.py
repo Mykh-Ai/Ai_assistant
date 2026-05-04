@@ -270,7 +270,7 @@ async def _start_contact_from_staged_attachment(*, message: Message, state: FSMC
         if isinstance(staged_path_value, str):
             _cleanup_attachment_quietly(config.storage_dir, Path(staged_path_value))
         await state.clear()
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         return
 
     metadata = data.get(_STATE_ATTACHMENT_METADATA)

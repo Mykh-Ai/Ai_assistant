@@ -46,6 +46,28 @@ Only after an explicit shared `yes_no` DecisionResolver confirmation may the bot
 
 Country suffix tokens are safety-sensitive. A candidate without a country suffix may be matched to one unique stored country-suffixed contact only after confirmation. A user candidate with an explicit country token such as `CZ` must not silently match an `SK` contact.
 
+## 2026-05-04 Addendum: staged profile onboarding and user database deletion wording
+
+After administrator approval, the user is authorized in `authorized_users` and the access request is marked approved. The user-facing approval notification must not say that the supplier profile already exists. It may say that the user's FakturaBot working database is ready, and the next action is `/start`.
+
+For an approved user without a supplier profile, `/start` must point to `/moj_profil` as the main user-facing profile command. `/supplier` remains a legacy/technical alias for the same supplier onboarding surface.
+
+After the supplier profile is saved, the bot must guide the user to one next step only: create the first service through `/sluzbu`. It must not present `/contact` and `/invoice` in the same first next-step message for a new user.
+
+`/moj_profil` is the user-facing profile surface. If no supplier profile exists, it starts supplier profile creation. If the profile exists, it shows a read-only profile summary and points to `/upravit_profil` for targeted field edits.
+
+`/upravit_profil` edits one supplier-profile field at a time and must validate the new value in Python before saving. The save confirmation uses the shared `yes_no` DecisionResolver context `supplier_profile_edit_confirm`.
+
+Future full user database deletion is the destructive top-level action `delete_user_database`. User-facing entry examples are `/vymazat_databazu`, `Chcem vymazať moju databázu`, and similar voice/text phrases. The manual destructive confirmation phrase is `vymazať databázu`. Runtime hard delete is a separate follow-up implementation and must delete the user's whole FakturaBot working database slice only after explicit confirmation.
+
+After the first staged setup, `/start` becomes a deterministic setup/status router for approved users:
+- approved without supplier profile: show only the next step `/moj_profil`;
+- supplier profile exists but no service alias exists: show only the next step `/sluzbu`;
+- supplier profile and service alias exist but no contact exists: show only the next step `/contact`;
+- supplier profile, service alias, and contacts exist: show the main operational menu with `/invoice`, `/add_blocek`, `/blocek`, `/upravit_profil`, `/moj_profil`, and `/menu`.
+
+For accounting receipts, `/blocek` is the user-facing read-only recent receipts/accounting-documents view. `/add_blocek` and `/dodat_blocek` start adding a new receipt/blocek through the existing accounting Document Intake flow. `/doklad` remains a broader legacy/reserved document-intake entry and must not be promoted as the main receipt command in `/start`.
+
 ## 1. Опис продукту
 
 FakturaBot — це Telegram-бот, який допомагає створювати фактури зі смартфона через голосові повідомлення, текстові команди та витяг реквізитів із договору.

@@ -1,6 +1,6 @@
 # PROJECT_LOG
 
-## 2026-05-04 - Session 053.2 - Alias confirmation STT retry guard
+## 2026-05-04 - Session 055 - Alias confirmation STT retry guard
 
 Summary:
 - Treated ambiguous STT yes/no noise such as `Ah non !` narrowly as `unknown` in `invoice_customer_alias_confirm`, before LLM fallback can misread it as a real `no`.
@@ -15,6 +15,39 @@ Contracts read:
 Verification:
 - `python -m compileall bot\services bot\handlers` -> passed.
 - `python -m pytest -q tests\test_decision_resolver.py tests\test_invoice_phase2_ai_layer.py` -> `428 passed`.
+
+## 2026-05-04 - Session 054 - Staged user onboarding profile commands
+
+Summary:
+- Updated admin approval notification so the approved user is told access was approved, their FakturaBot working database is ready, and the next action is `/start`.
+- Changed `/start` into a staged setup/status router: `/moj_profil` for approved users without profile, `/sluzbu` after profile, `/contact` after service aliases, and an advanced menu after profile + service aliases + contacts.
+- Added `/moj_profil` as the user-facing supplier profile surface: it starts profile creation when missing and shows a read-only profile summary when present.
+- Added `/upravit_profil` for targeted one-field supplier profile edits with Python validation and shared `yes_no` DecisionResolver confirmation context `supplier_profile_edit_confirm`.
+- Changed post-profile onboarding guidance to point only to `/sluzbu` as the next staged step, instead of showing service/contact/invoice commands together.
+- Added `/sluzbu` as the primary user-facing service-alias command while preserving `/service` and `/alias`.
+- Added `/blocek` as the user-facing recent receipts/accounting-documents view, while preserving legacy `/blocky`.
+- Added `/add_blocek` and `/dodat_blocek` as user-facing commands for adding a new receipt/blocek through the existing accounting Document Intake flow; `/doklad` remains legacy/reserved and is not promoted in `/start`.
+- Updated missing-profile guidance from `/supplier` to `/moj_profil` in invoice/contact/document-intake paths.
+- Documented `delete_user_database` as the reserved destructive top-level action for a follow-up hard-delete implementation; no hard-delete runtime was implemented in this session.
+
+Contracts read:
+- `docs/TZ_FakturaBot.md`
+- `docs/User_Access_Model_Roadmap.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/OfficeFlow_Architecture_Framing.md`
+- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/Document_Intake_Module_Proposal.md`
+- `docs/Document_Intake_MVP_Implementation_Plan.md`
+
+Verification:
+- `python -m pytest -q tests\test_access_request_flow.py tests\test_onboarding_decisions.py tests\test_service_alias_flow.py tests\test_decision_resolver.py tests\test_accounting_documents_handler.py tests\test_accounting_document_intake_flow.py` -> `425 passed`.
+- `python -m pytest -q` -> `852 passed`.
+
 ## 2026-05-03 - Session 053 - Confirmed customer alias learning
 
 Summary:

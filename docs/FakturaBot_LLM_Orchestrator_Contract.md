@@ -90,6 +90,11 @@ Rules:
 Reference ambiguous action:
 - `add_service_alias` (manual `/service` flow exists now; top-level semantic/voice invoke is future runtime work).
 
+Profile and data-management actions:
+- `show_supplier_profile` is the user-facing `/moj_profil` profile surface; if no supplier profile exists it starts supplier profile creation.
+- `edit_supplier` is the targeted `/upravit_profil` flow for changing one supplier-profile field after Python validation and shared confirmation.
+- `delete_user_database` is reserved for full user database deletion. User-facing examples include `/vymazat_databazu` and voice/text phrases such as `Chcem vymazať moju databázu`. Runtime hard delete is a follow-up implementation and must require exact manual confirmation `vymazať databázu`.
+
 Hint fields:
 - `meaning`
 - optional `positive_examples`

@@ -15,6 +15,7 @@ Design rule:
 | `invoice_preview_confirmation` | in-action response group | implemented | mixed (text + voice) | `schvalit`, `upravit`, `zrusit`, `unknown` | `process_invoice_preview_confirmation()` resolves with context `invoice_preview_confirmation`; voice routes to this handler from `waiting_confirm`. | Preview is now draft-review decision. Backward-compatible aliases: `ano` -> `schvalit`, `nie` -> `zrusit`. `upravit` enters draft edit backend without DB/PDF side effects. |
 | `invoice_postpdf_decision` | in-action response group | implemented | mixed (text + voice) | `schvalit`, `upravit`, `zrusit`, `unknown` | `process_invoice_postpdf_decision()` resolves with context `invoice_postpdf_decision`; voice routes from `waiting_pdf_decision`. | `upravit` enters bounded edit subflow; full `edit_invoice` operation map is still partial in runtime. |
 | `invoice_customer_alias_confirm` | in-action response group | implemented | mixed (text + voice) | `yes`, `no`, `unknown` | `process_invoice_customer_alias_confirm()` resolves with context `invoice_customer_alias_confirm`; voice routes from `waiting_customer_alias_confirm`. | Used only after the existing contact lookup finds one close supplier-scoped customer candidate. `yes` stores the cleaned extracted customer candidate as a supplier-scoped confirmed alias for that contact; it must not store the full STT transcript. `no` returns to customer clarification without saving. |
+| `supplier_profile_edit_confirm` | in-action response group | implemented | text | `yes`, `no`, `unknown` | `supplier_profile_edit_confirm()` resolves with context `supplier_profile_edit_confirm` before saving one targeted supplier-profile field. | Python validates the field value before confirmation and updates only the selected supplier-profile field after `yes`. |
 | `contact_confirm` (semantic intake) | in-action response group | implemented | mixed (text + voice) | `ano`, `nie`, `unknown` | `process_contact_intake_confirm()` resolves with context `contact_confirm`; voice routes from `ContactStates.intake_confirm`. | Used for AI-assisted contact intake path. |
 | `edit_invoice:invoice_level` | in-action response group | partial (2 implemented, 1 planned) | mixed entry with bounded clarification | `edit_invoice_number`, `edit_invoice_date`, `edit_invoice_contact`, `unknown` | Product + contract docs map these as invoice-level subflow ops under `edit_invoice`; runtime currently implements `edit_invoice_number` + `edit_invoice_date` (strict Phase 1 `DD.MM.RRRR`). | `edit_invoice` remains top-level reserved token; runtime must execute via bounded subflow only. Integrity-sensitive fields fail safe on ambiguity/conflict. |
 | `edit_invoice:item_level` | in-action response group | implemented | mixed entry; precision-sensitive steps are text-first | `replace_service`, `edit_item_description`, `edit_item_quantity`, `edit_item_unit_price`, `edit_item_total_amount`, `unknown` | Product + contract docs define full item-level map; runtime implements service/description and numeric item edit operations with bounded value capture. | Item targeting required for precision-sensitive item edits. Single-item can default to first item; multi-item requires explicit selection or bounded clarification. |
@@ -31,7 +32,7 @@ No new confirmation-like response group should be added here unless explicitly a
 | Response group | Category | Status | Entry mode | Allowed values | Source evidence | Notes |
 |---|---|---|---|---|---|---|
 | `contact_manual_confirm` | in-action response group | implemented | text | `ano`, `nie` | `contact_confirm()` parses lowercased text directly. | Manual contact wizard path. |
-| `supplier_onboarding_confirm` | in-action response group | implemented | text | `ano`, `nie` | `onboarding_confirm()` parses lowercased text directly. | Bootstrap/setup flow confirmation. |
+| `supplier_onboarding_confirm` | in-action response group | implemented | text | `yes`, `no`, `unknown` | `onboarding_confirm()` resolves with shared `yes_no` DecisionResolver context `onboarding_confirm`. | Bootstrap/setup flow confirmation. |
 
 ## C) Slot clarification and bounded value groups
 
@@ -43,7 +44,7 @@ No new confirmation-like response group should be added here unless explicitly a
 
 ## D) Audit correction focus
 
-The previously reported in-action set did not connect service-alias functionality because `/service` is a separate command flow and does not currently define semantic canonical in-action tokens.
+The previously reported in-action set did not connect service-alias functionality because `/service` was a separate command flow and did not define semantic canonical in-action tokens.
 This is expected and should be documented as a manual command flow, not as a missing in-action resolver group.
 
 ## E) Reserved/partial contract notes for `edit_invoice` map

@@ -97,6 +97,15 @@ def test_blocky_command_with_no_documents_shows_empty_response(tmp_path: Path) -
     assert message.answers[-1] == 'Zatiaľ nemáte uložené žiadne bločky ani prijaté doklady.'
 
 
+def test_blocek_command_uses_recent_blocky_view(tmp_path: Path) -> None:
+    _write_metadata(tmp_path, stem='receipt', vendor_name='ASFINAG')
+    message = _DummyMessage('/blocek')
+
+    asyncio.run(cmd_blocky(message, _config(tmp_path)))
+
+    assert 'ASFINAG' in message.answers[-1]
+
+
 def test_blocky_output_maps_document_type_labels(tmp_path: Path) -> None:
     _write_metadata(tmp_path, stem='receipt', document_type='receipt', folder='receipts', vendor_name='Receipt')
     _write_metadata(

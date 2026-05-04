@@ -6,13 +6,18 @@ from pathlib import Path
 from bot.config import Config
 from bot.handlers.onboarding import (
     SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE,
+    SupplierProfileEditStates,
     OnboardingStates,
+    cmd_upravit_profil,
     onboarding_confirm,
     onboarding_email,
+    supplier_profile_edit_confirm,
+    supplier_profile_edit_field,
+    supplier_profile_edit_value,
 )
 from bot.services.db import init_db
 from bot.services.invoice_service import InvoiceService
-from bot.services.supplier_service import SupplierService
+from bot.services.supplier_service import SupplierProfile, SupplierService
 
 
 class _DummyUser:
@@ -96,14 +101,9 @@ def test_onboarding_confirm_accepts_shared_yes_alias(tmp_path: Path) -> None:
     ) == '20260025'
     assert state.current_state is None
     assert message.answers[-1] == SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE
-    assert '/alias' in message.answers[-1]
-    assert '/contact' in message.answers[-1]
-    assert '/invoice' in message.answers[-1]
-    assert 'dodaj novú službu' in message.answers[-1]
-    assert 'krátky názov' in message.answers[-1]
-    assert 'opravy' in message.answers[-1]
-    assert 'Opravy vyhradených zariadení elektrických' in message.answers[-1]
-    assert 'dodaj nový kontakt' in message.answers[-1]
+    assert '/sluzbu' in message.answers[-1]
+    assert '/contact' not in message.answers[-1]
+    assert '/invoice' not in message.answers[-1]
 
 
 def test_onboarding_confirm_accepts_shared_no_alias(tmp_path: Path) -> None:
@@ -116,4 +116,46 @@ def test_onboarding_confirm_accepts_shared_no_alias(tmp_path: Path) -> None:
 
     assert SupplierService(config.db_path).get_by_telegram_id(111) is None
     assert state.current_state is None
-    assert message.answers[-1] == 'Onboarding bol zrušený. Pre nový pokus spustite /supplier.'
+    assert '/moj_profil' in message.answers[-1]
+
+
+def test_upravit_profil_updates_one_field_with_shared_confirmation(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    SupplierService(config.db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=111,
+            name='Dodavatel',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Stara adresa 1',
+            iban='SK3112000000198742637541',
+            swift='TATRSKBX',
+            email='supplier@example.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    state = _DummyState()
+
+    asyncio.run(cmd_upravit_profil(_DummyMessage('/upravit_profil'), state, config))
+    assert state.current_state == SupplierProfileEditStates.field
+
+    asyncio.run(supplier_profile_edit_field(_DummyMessage('adresa'), state))
+    assert state.current_state == SupplierProfileEditStates.value
+
+    asyncio.run(supplier_profile_edit_value(_DummyMessage('Nova adresa 22'), state))
+    assert state.current_state == SupplierProfileEditStates.confirm
+
+    confirm_message = _DummyMessage('ano')
+    asyncio.run(supplier_profile_edit_confirm(confirm_message, state, config))
+
+    saved = SupplierService(config.db_path).get_by_telegram_id(111)
+    assert saved is not None
+    assert saved.address == 'Nova adresa 22'
+    assert saved.ico == '12345678'
+    assert state.current_state is None
+    assert '/sluzbu' in confirm_message.answers[-1]

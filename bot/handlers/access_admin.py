@@ -105,12 +105,12 @@ async def cmd_approve(message: Message, config: Config, bot: Bot | None = None) 
     notification_bot = bot or getattr(message, 'bot', None)
     notification_sent = await _notify_approved_user(bot=notification_bot, telegram_id=telegram_id)
     if notification_sent:
-        await message.answer(f'Pouzivatel {telegram_id} bol schvaleny. Pouzivatel dostal instrukcie pre /supplier.')
+        await message.answer(f'Pouzivatel {telegram_id} bol schvaleny. Pouzivatel dostal instrukcie pre /start.')
         return
 
     await message.answer(
         f'Pouzivatel {telegram_id} bol schvaleny, ale notifikaciu sa nepodarilo odoslat. '
-        'Poslite mu prosim instrukciu: /supplier.'
+        'Poslite mu prosim instrukciu: /start.'
     )
 
 

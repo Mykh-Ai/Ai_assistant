@@ -65,6 +65,9 @@ Expected behavior:
 - admin can block users;
 - approved users become authorized without editing `.env` and without restarting the bot;
 - approval is required before `/supplier`, invoice, contact, accounting-document, and other business flows.
+- after approval, the user-facing next step is `/start`, then `/moj_profil`; `/supplier` remains a legacy/technical onboarding alias;
+- after the supplier profile is saved, onboarding points only to the next staged step `/sluzbu` instead of showing contact and invoice commands at the same time;
+- the approved-user notification may mention that the user's FakturaBot working database can be deleted through the future `delete_user_database` flow (`/vymazat_databazu`, voice/text intent), but runtime hard delete is a separate follow-up implementation.
 
 Implemented bootstrap/admin configuration:
 - `ADMIN_TELEGRAM_USER_IDS` bootstraps administrators;

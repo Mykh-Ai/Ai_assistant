@@ -233,6 +233,17 @@ def test_doklad_starts_intake_fsm_and_asks_for_upload() -> None:
     assert 'fotku alebo PDF' in message.answers[-1]
 
 
+def test_blocek_add_commands_start_same_accounting_intake_fsm() -> None:
+    for command in ('/add_blocek', '/dodat_blocek'):
+        state = _DummyState()
+        message = _DummyMessage(text=command)
+
+        asyncio.run(cmd_accounting_document_intake(message, state))
+
+        assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+        assert 'fotku alebo PDF' in message.answers[-1]
+
+
 def test_upload_receipt_photo_active_state_saves_temp_and_shows_preview(monkeypatch, tmp_path: Path) -> None:
     captured_bytes: list[bytes | None] = []
 

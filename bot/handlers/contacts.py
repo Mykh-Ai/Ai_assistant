@@ -119,7 +119,7 @@ async def start_add_contact_intake(
 
     supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
     if supplier is None:
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         return
 
     await state.clear()
@@ -301,7 +301,7 @@ async def cmd_contact(message: Message, state: FSMContext, config: Config) -> No
 
     supplier_service = SupplierService(config.db_path)
     if supplier_service.get_by_telegram_id(message.from_user.id) is None:
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier a potom pridajte kontakt.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil a potom pridajte kontakt.')
         return
 
     existing_state = await state.get_state()

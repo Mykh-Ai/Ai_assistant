@@ -59,7 +59,7 @@ class AccountingDocumentIntakeStates(StatesGroup):
     waiting_preview_decision = State()
 
 
-@router.message(Command('doklad', 'expense', 'intake'))
+@router.message(Command('doklad', 'expense', 'intake', 'add_blocek', 'dodat_blocek'))
 async def cmd_accounting_document_intake(message: Message, state: FSMContext) -> None:
     if hasattr(message, 'from_user') and message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')

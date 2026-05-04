@@ -170,6 +170,7 @@ Migrated runtime paths:
 - contact semantic intake confirmation;
 - manual contact confirmation;
 - supplier onboarding confirmation;
+- targeted supplier profile edit confirmation;
 - existing invoice delete confirmation.
 - invoice customer alias confirmation.
 
@@ -181,6 +182,7 @@ Voice routing now sends confirm-state transcripts to the active confirmation han
 - contact semantic intake confirmation;
 - manual contact confirmation;
 - supplier onboarding confirmation.
+- targeted supplier profile edit confirmation.
 
 Not implemented by this migration:
 - OfficeFlow Document Intake runtime;

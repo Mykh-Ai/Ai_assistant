@@ -1118,7 +1118,7 @@ async def _build_and_store_preview(
 
     supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
     if supplier is None:
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         await state.clear()
         return
     customer_name = (parsed_draft.get('customer_name') or '').strip()
@@ -1271,7 +1271,7 @@ async def _build_and_store_preview(
             return
 
         if supplier.id is None:
-            await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+            await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
             await state.clear()
             return
 
@@ -1910,7 +1910,7 @@ async def process_invoice_slot_clarification(
         supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
         if supplier is None or supplier.id is None:
             await state.clear()
-            await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+            await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
             return
         service_short_name, _service_display_name, allowed_aliases = await _resolve_service_alias_bounded(
             alias_service=ServiceAliasService(config.db_path),
@@ -2357,7 +2357,7 @@ async def _finalize_invoice_draft(
 
     supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
     if supplier is None:
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         await state.clear()
         return
     contact = ContactService(config.db_path).get_by_name_case_insensitive(
@@ -2851,7 +2851,7 @@ async def _rebuild_pdf_for_existing_invoice(
     supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
     if supplier is None:
         await state.clear()
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         return False
 
     contact = ContactService(config.db_path).get_by_id_for_supplier(
@@ -3500,7 +3500,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
         if supplier is None:
             await state.clear()
-            await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+            await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
             return
 
         alias_service = ServiceAliasService(config.db_path)
@@ -3514,7 +3514,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         if not resolved_alias or not resolved_display_name:
             prompt = (
                 'Nepodarilo sa jednoznačne určiť službu z povolených aliasov. '
-                'Skúste iný názov alebo najprv pridajte alias cez /service.'
+                'Skúste iný názov alebo najprv pridajte alias cez /sluzbu.'
             )
             if allowed_aliases:
                 prompt += f'\nMožnosti: {", ".join(allowed_aliases[:5])}.'
@@ -3545,7 +3545,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
     supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
     if supplier is None:
         await state.clear()
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         return
 
     alias_service = ServiceAliasService(config.db_path)
@@ -3559,7 +3559,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
     if not resolved_alias or not resolved_display_name:
         prompt = (
             'Nepodarilo sa jednoznačne určiť službu z povolených aliasov. '
-            'Skúste iný názov alebo najprv pridajte alias cez /service.'
+            'Skúste iný názov alebo najprv pridajte alias cez /sluzbu.'
         )
         if allowed_aliases:
             prompt += f'\nMožnosti: {", ".join(allowed_aliases[:5])}.'

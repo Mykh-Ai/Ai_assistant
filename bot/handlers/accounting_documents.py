@@ -30,7 +30,7 @@ _RECENT_ACCOUNTING_DOCUMENT_ALIASES = {
 }
 
 
-@router.message(StateFilter(None), Command('blocky'))
+@router.message(StateFilter(None), Command('blocky', 'blocek'))
 async def cmd_blocky(message: Message, config: Config) -> None:
     await _send_recent_accounting_documents(message=message, config=config)
 

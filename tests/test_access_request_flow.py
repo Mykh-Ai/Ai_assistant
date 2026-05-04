@@ -13,13 +13,21 @@ from bot.handlers.access_admin import (
     cmd_users,
     users_alias,
 )
-from bot.handlers.onboarding import cmd_onboarding
-from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE, READY_WITH_SUPPLIER_MESSAGE, cmd_start
+from bot.handlers.onboarding import OnboardingStates, cmd_moj_profil, cmd_onboarding
+from bot.handlers.start import (
+    ADVANCED_START_MESSAGE,
+    APPROVED_ACCESS_NEXT_STEP_MESSAGE,
+    APPROVED_WITHOUT_SUPPLIER_MESSAGE,
+    READY_WITH_SUPPLIER_MESSAGE,
+    READY_WITH_SERVICE_MESSAGE,
+    cmd_start,
+)
 from bot.services.access_control import ACCESS_STATUS_APPROVED, ACCESS_STATUS_PENDING, ACCESS_STATUS_REJECTED
 from bot.services.access_control import AUTHORIZED_STATUS_BLOCKED, AccessControlService
 from bot.services.authorization import ACCESS_REQUEST_MESSAGE, TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
-from bot.services.contact_service import ContactService
+from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db, managed_connection
+from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierProfile, SupplierService
 
 
@@ -235,7 +243,7 @@ def test_admin_can_approve_pending_user_and_user_can_reach_supplier_onboarding(t
     assert request is not None and request.status == ACCESS_STATUS_APPROVED
     assert user is not None and user.status == 'active'
     assert bot.sent == [(UNKNOWN_ID, APPROVED_ACCESS_NEXT_STEP_MESSAGE)]
-    assert '/supplier' in admin_message.answers[-1]
+    assert '/start' in admin_message.answers[-1]
 
     supplier_message = _DummyMessage('/supplier', UNKNOWN_ID)
     state = _DummyState()
@@ -267,8 +275,22 @@ def test_approved_user_start_without_supplier_profile_gets_supplier_next_step(tm
 
     asyncio.run(cmd_start(message, config))
 
-    assert message.answers == [APPROVED_ACCESS_NEXT_STEP_MESSAGE]
-    assert '/supplier' in message.answers[-1]
+    assert message.answers == [APPROVED_WITHOUT_SUPPLIER_MESSAGE]
+    assert '/moj_profil' in message.answers[-1]
+    assert SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID) is None
+
+
+def test_moj_profil_without_supplier_starts_supplier_profile_onboarding(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=UNKNOWN_ID, approved_by=ADMIN_ID)
+    message = _DummyMessage('/moj_profil', UNKNOWN_ID)
+    state = _DummyState()
+
+    asyncio.run(cmd_moj_profil(message, state, config))
+
+    assert state.current_state == OnboardingStates.name
+    assert message.answers[-1].startswith('1/10')
     assert SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID) is None
 
 
@@ -298,14 +320,93 @@ def test_start_with_supplier_profile_gets_operational_next_steps(tmp_path: Path)
     asyncio.run(cmd_start(message, config))
 
     assert message.answers == [READY_WITH_SUPPLIER_MESSAGE]
-    assert '/alias' in message.answers[-1]
+    assert '/sluzbu' in message.answers[-1]
+    assert '/contact' not in message.answers[-1]
+    assert '/invoice' not in message.answers[-1]
+
+
+def test_start_with_profile_and_service_prompts_for_contact(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=UNKNOWN_ID, approved_by=ADMIN_ID)
+    SupplierService(config.db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=UNKNOWN_ID,
+            name='Dodavatel',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Bratislava',
+            iban='SK3112000000198742637541',
+            swift='TATRSKBX',
+            email='supplier@example.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    supplier = SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(config.db_path).create_mapping(supplier.id, 'opravy', 'Opravy')
+    message = _DummyMessage('/start', UNKNOWN_ID)
+
+    asyncio.run(cmd_start(message, config))
+
+    assert message.answers == [READY_WITH_SERVICE_MESSAGE]
     assert '/contact' in message.answers[-1]
+    assert '/invoice' not in message.answers[-1]
+
+
+def test_start_ready_user_gets_advanced_menu(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=UNKNOWN_ID, approved_by=ADMIN_ID)
+    SupplierService(config.db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=UNKNOWN_ID,
+            name='Dodavatel',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Bratislava',
+            iban='SK3112000000198742637541',
+            swift='TATRSKBX',
+            email='supplier@example.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    supplier = SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID)
+    assert supplier is not None and supplier.id is not None
+    ServiceAliasService(config.db_path).create_mapping(supplier.id, 'opravy', 'Opravy')
+    ContactService(config.db_path).create_or_replace(
+        ContactProfile(
+            supplier_telegram_id=UNKNOWN_ID,
+            name='Odberatel',
+            ico='87654321',
+            dic='0987654321',
+            ic_dph=None,
+            address='Kosice 1',
+            email='',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+    message = _DummyMessage('/start', UNKNOWN_ID)
+
+    asyncio.run(cmd_start(message, config))
+
+    assert message.answers == [ADVANCED_START_MESSAGE]
     assert '/invoice' in message.answers[-1]
-    assert 'dodaj novú službu' in message.answers[-1]
-    assert 'krátky názov' in message.answers[-1]
-    assert 'opravy' in message.answers[-1]
-    assert 'Opravy vyhradených zariadení elektrických' in message.answers[-1]
-    assert 'dodaj nový kontakt' in message.answers[-1]
+    assert '/add_blocek' in message.answers[-1]
+    assert '/blocek' in message.answers[-1]
+    assert '/upravit_profil' in message.answers[-1]
+    assert '/menu' in message.answers[-1]
 
 
 def test_approve_keeps_user_active_when_approval_notification_fails(tmp_path: Path) -> None:
@@ -321,7 +422,7 @@ def test_approve_keeps_user_active_when_approval_notification_fails(tmp_path: Pa
     user = AccessControlService(config.db_path).get_authorized_user(UNKNOWN_ID)
     assert user is not None and user.status == 'active'
     assert 'nepodarilo odoslat' in admin_message.answers[-1]
-    assert '/supplier' in admin_message.answers[-1]
+    assert '/start' in admin_message.answers[-1]
 
 
 def test_rejected_user_remains_unauthorized_on_future_start(tmp_path: Path) -> None:

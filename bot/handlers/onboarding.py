@@ -1,6 +1,9 @@
 ﻿from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
+import re
+import unicodedata
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -27,15 +30,8 @@ router = Router(name='onboarding')
 
 SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE = (
     'Profil dodávateľa bol uložený.\n\n'
-    'Teraz si môžete pripraviť fakturáciu:\n'
-    '1. Nastavte krátky názov služby cez /alias.\n'
-    '   Môžete začať aj hlasom alebo textom: „dodaj novú službu“.\n'
-    '   Potom napíšte krátky názov, napríklad „opravy“, a plný názov pre faktúru/PDF, napríklad '
-    '„Opravy vyhradených zariadení elektrických“.\n'
-    '2. Pridajte odberateľa cez /contact.\n'
-    '   Môžete to spustiť aj hlasom alebo textom: „dodaj nový kontakt“.\n'
-    '3. Potom vytvorte faktúru cez /invoice alebo ju jednoducho nadiktujte.\n\n'
-    'Ak už máte aliasy alebo odberateľov uložených, príslušný krok môžete preskočiť.'
+    'Ďalší krok: vytvorte si prvú službu cez /sluzbu.\n'
+    'Služba je krátky názov, ktorý bot neskôr použije pri faktúre a PDF.'
 )
 
 
@@ -53,6 +49,49 @@ class OnboardingStates(StatesGroup):
     confirm = State()
 
 
+class SupplierProfileEditStates(StatesGroup):
+    field = State()
+    value = State()
+    confirm = State()
+
+
+_SUPPLIER_EDIT_FIELD_LABELS = {
+    'name': 'názov',
+    'ico': 'ICO',
+    'dic': 'DIC',
+    'ic_dph': 'IC DPH',
+    'address': 'adresa',
+    'iban': 'IBAN',
+    'swift': 'SWIFT/BIC',
+    'email': 'email',
+    'days_due': 'splatnosť',
+}
+
+_SUPPLIER_EDIT_ALIASES = {
+    'nazov': 'name',
+    'meno': 'name',
+    'firma': 'name',
+    'obchodne meno': 'name',
+    'ico': 'ico',
+    'dic': 'dic',
+    'ic dph': 'ic_dph',
+    'icdph': 'ic_dph',
+    'dph': 'ic_dph',
+    'adresa': 'address',
+    'address': 'address',
+    'posta': 'address',
+    'postova adresa': 'address',
+    'iban': 'iban',
+    'swift': 'swift',
+    'bic': 'swift',
+    'swift bic': 'swift',
+    'email': 'email',
+    'mail': 'email',
+    'splatnost': 'days_due',
+    'dni splatnosti': 'days_due',
+}
+
+
 def _summary(data: dict[str, object]) -> str:
     return (
         '<b>Prehľad profilu dodávateľa</b>\n\n'
@@ -67,6 +106,207 @@ def _summary(data: dict[str, object]) -> str:
         f'• Prvé číslo faktúry od bota ({data["invoice_number_issue_year"]}): {data["first_invoice_number"]}\n'
         f'• Splatnosť: {data["days_due"]} dní\n\n'
         'Napíšte <b>ano</b> pre potvrdenie alebo <b>nie</b> pre zrušenie.'
+    )
+
+
+def _supplier_profile_summary(profile: SupplierProfile) -> str:
+    return (
+        '<b>Profil dodávateľa</b>\n\n'
+        f'• Názov: {profile.name}\n'
+        f'• ICO: {profile.ico}\n'
+        f'• DIC: {profile.dic}\n'
+        f'• IC DPH: {profile.ic_dph or "-"}\n'
+        f'• Adresa: {profile.address}\n'
+        f'• IBAN: {profile.iban}\n'
+        f'• SWIFT: {profile.swift}\n'
+        f'• Email: {profile.email}\n'
+        f'• Splatnosť: {profile.days_due} dní\n\n'
+        'Ak potrebujete zmeniť jeden údaj, použite /upravit_profil.\n'
+        'Ďalší krok pre fakturáciu: /sluzbu.'
+    )
+
+
+def _normalize_choice(value: str) -> str:
+    text = value.strip().lower().replace('_', ' ')
+    normalized = unicodedata.normalize('NFKD', text)
+    without_diacritics = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r'\s+', ' ', without_diacritics).strip()
+
+
+def _command_token(text: str) -> str:
+    if not text.strip().startswith('/'):
+        return ''
+    return text.strip().split(maxsplit=1)[0].split('@', 1)[0].lower()
+
+
+def _is_case_variant_command(text: str, command: str) -> bool:
+    stripped = text.strip()
+    if not stripped.startswith('/'):
+        return False
+    raw_token = stripped.split(maxsplit=1)[0].split('@', 1)[0]
+    return raw_token != command and raw_token.lower() == command
+
+
+def _edit_field_options_text() -> str:
+    options = ', '.join(_SUPPLIER_EDIT_FIELD_LABELS.values())
+    return f'Ktorý údaj chcete zmeniť? Možnosti: {options}.'
+
+
+def _validate_supplier_edit_value(field: str, raw_value: str) -> tuple[bool, object, str | None]:
+    value = raw_value.strip()
+    if field == 'name':
+        return (bool(value), value, 'Názov nemôže byť prázdny.')
+    if field == 'ico':
+        normalized = value.replace(' ', '')
+        return (validate_ico(normalized), normalized, 'Neplatné ICO. Formát: 8 číslic.')
+    if field == 'dic':
+        normalized = value.replace(' ', '')
+        return (validate_dic(normalized), normalized, 'Neplatné DIC. Formát: 10 číslic.')
+    if field == 'ic_dph':
+        if value == '-':
+            return True, None, None
+        normalized = value.upper().replace(' ', '')
+        return (validate_ic_dph(normalized), normalized, 'Neplatné IC DPH. Príklad: SK1234567890.')
+    if field == 'address':
+        return (bool(value), value, 'Adresa nemôže byť prázdna.')
+    if field == 'iban':
+        normalized = value.upper().replace(' ', '')
+        return (validate_iban(normalized), normalized, 'Neplatný IBAN.')
+    if field == 'swift':
+        return (bool(value), value.upper(), 'SWIFT/BIC nemôže byť prázdny.')
+    if field == 'email':
+        return (validate_email(value), value, 'Neplatný email.')
+    if field == 'days_due':
+        return (validate_days_due(value), int(value), 'Neplatná hodnota. Zadajte celé číslo > 0.')
+    return False, value, 'Neznámy údaj.'
+
+
+def _profile_value(profile: SupplierProfile, field: str) -> object:
+    return getattr(profile, field)
+
+
+def _with_profile_value(profile: SupplierProfile, field: str, value: object) -> SupplierProfile:
+    return replace(profile, **{field: value})
+
+
+async def _start_supplier_onboarding(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(OnboardingStates.name)
+    await message.answer('1/10 Zadajte názov firmy / obchodné meno:')
+
+
+@router.message(Command('moj_profil'))
+async def cmd_moj_profil(message: Message, state: FSMContext, config: Config) -> None:
+    if message.from_user is None:
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
+    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    if supplier is None:
+        await message.answer('Profil dodávateľa ešte nie je nastavený. Spúšťam vytvorenie profilu.')
+        await _start_supplier_onboarding(message, state)
+        return
+
+    await message.answer(_supplier_profile_summary(supplier))
+
+
+@router.message(lambda message: _is_case_variant_command(message.text or '', '/moj_profil'))
+async def cmd_moj_profil_case_alias(message: Message, state: FSMContext, config: Config) -> None:
+    await cmd_moj_profil(message, state, config)
+
+
+@router.message(Command('upravit_profil'))
+async def cmd_upravit_profil(message: Message, state: FSMContext, config: Config) -> None:
+    if message.from_user is None:
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
+    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    if supplier is None:
+        await message.answer('Profil dodávateľa ešte nie je nastavený. Najprv spustite /moj_profil.')
+        return
+
+    await state.clear()
+    await state.set_state(SupplierProfileEditStates.field)
+    await message.answer(_edit_field_options_text())
+
+
+@router.message(lambda message: _is_case_variant_command(message.text or '', '/upravit_profil'))
+async def cmd_upravit_profil_case_alias(message: Message, state: FSMContext, config: Config) -> None:
+    await cmd_upravit_profil(message, state, config)
+
+
+@router.message(SupplierProfileEditStates.field)
+async def supplier_profile_edit_field(message: Message, state: FSMContext) -> None:
+    field = _SUPPLIER_EDIT_ALIASES.get(_normalize_choice(message.text or ''))
+    if field is None:
+        await message.answer(_edit_field_options_text())
+        return
+
+    await state.update_data(supplier_edit_field=field)
+    await state.set_state(SupplierProfileEditStates.value)
+    await message.answer(f'Zadajte novú hodnotu pre {_SUPPLIER_EDIT_FIELD_LABELS[field]}:')
+
+
+@router.message(SupplierProfileEditStates.value)
+async def supplier_profile_edit_value(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    field = str(data.get('supplier_edit_field') or '')
+    ok, normalized_value, error = _validate_supplier_edit_value(field, message.text or '')
+    if not ok:
+        await message.answer(f'{error} Skúste znova:')
+        return
+
+    await state.update_data(supplier_edit_value=normalized_value)
+    await state.set_state(SupplierProfileEditStates.confirm)
+    label = _SUPPLIER_EDIT_FIELD_LABELS[field]
+    display_value = normalized_value if normalized_value is not None else '-'
+    await message.answer(
+        f'Zmeniť {label} na: {display_value}?\n'
+        'Napíšte ano pre potvrdenie alebo nie pre zrušenie.'
+    )
+
+
+@router.message(SupplierProfileEditStates.confirm)
+async def supplier_profile_edit_confirm(message: Message, state: FSMContext, config: Config) -> None:
+    answer = await resolve_yes_no(
+        context_name='supplier_profile_edit_confirm',
+        user_input_text=(message.text or ''),
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if answer == 'unknown':
+        await message.answer('Napíšte ano alebo nie.')
+        return
+
+    if answer == 'no':
+        await state.clear()
+        await message.answer('Úprava profilu bola zrušená.')
+        return
+
+    if message.from_user is None:
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return
+
+    data = await state.get_data()
+    field = str(data.get('supplier_edit_field') or '')
+    value = data.get('supplier_edit_value')
+    service = SupplierService(config.db_path)
+    supplier = service.get_by_telegram_id(message.from_user.id)
+    if supplier is None or field not in _SUPPLIER_EDIT_FIELD_LABELS:
+        await state.clear()
+        await message.answer('Profil dodávateľa sa nepodarilo nájsť. Spustite /moj_profil.')
+        return
+
+    previous = _profile_value(supplier, field)
+    service.update_profile(_with_profile_value(supplier, field, value))
+    await state.clear()
+    previous_display = previous if previous is not None else '-'
+    value_display = value if value is not None else '-'
+    await message.answer(
+        f'Profil bol aktualizovaný: {_SUPPLIER_EDIT_FIELD_LABELS[field]} '
+        f'{previous_display} → {value_display}.\n\n'
+        'Ďalší krok pre fakturáciu: /sluzbu.'
     )
 
 
@@ -88,9 +328,7 @@ async def cmd_onboarding(message: Message, state: FSMContext, config: Config) ->
     else:
         await message.answer('Spúšťam onboarding dodávateľa.')
 
-    await state.clear()
-    await state.set_state(OnboardingStates.name)
-    await message.answer('1/10 Zadajte názov firmy / obchodné meno:')
+    await _start_supplier_onboarding(message, state)
 
 
 @router.message(OnboardingStates.name)
@@ -237,7 +475,7 @@ async def onboarding_confirm(
 
     if answer == 'no':
         await state.clear()
-        await message.answer('Onboarding bol zrušený. Pre nový pokus spustite /supplier.')
+        await message.answer('Onboarding bol zrušený. Pre nový pokus spustite /moj_profil.')
         return
 
     if message.from_user is None:

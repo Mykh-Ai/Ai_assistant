@@ -171,11 +171,13 @@ Accounting Document Intake Phase 1 duplicate detection is metadata-based:
 - a duplicate warning is advisory, not blocking;
 - if the user chooses to continue, the normal Slovak preview and explicit approval step are still required before saving.
 
-Recent confirmed accounting documents can be viewed through the lightweight read-only `/blocky` command:
+Recent confirmed accounting documents can be viewed through the lightweight read-only `/blocek` command; legacy `/blocky` remains supported:
 - canonical action name: `show_recent_accounting_documents`;
 - the command lists the last 5 confirmed receipts/incoming invoices from metadata only;
 - it reads only `storage/workspaces/<workspace>/years/*/expenses/*/<receipts|incoming_invoices>/metadata/*.json`;
 - it is not a broad document browser and does not include contracts, outgoing invoice PDFs, temp uploads, delete/edit/search, or Google Drive sync.
+
+New receipt intake can be started through `/add_blocek` or `/dodat_blocek`, which reuse the current accounting Document Intake Phase 1 upload flow. `/doklad` remains a broader legacy/reserved document-intake command and should not be promoted as the primary user-facing blocek command.
 
 ---
 

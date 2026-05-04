@@ -18,6 +18,14 @@ class ServiceAliasStates(StatesGroup):
     waiting_display_name = State()
 
 
+def _is_case_variant_command(text: str, command: str) -> bool:
+    stripped = text.strip()
+    if not stripped.startswith('/'):
+        return False
+    raw_token = stripped.split(maxsplit=1)[0].split('@', 1)[0]
+    return raw_token != command and raw_token.lower() == command
+
+
 def _mappings_preview(mappings: list[tuple[str, str]]) -> str:
     if not mappings:
         return 'Zatiaľ nemáte žiadne názvy služieb.'
@@ -35,7 +43,7 @@ async def start_add_service_alias_intake(message: Message, state: FSMContext, co
 
     supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
     if supplier is None or supplier.id is None:
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         return
 
     alias_service = ServiceAliasService(config.db_path)
@@ -51,8 +59,13 @@ async def start_add_service_alias_intake(message: Message, state: FSMContext, co
     )
 
 
-@router.message(Command('service', 'alias'))
+@router.message(Command('service', 'alias', 'sluzbu'))
 async def cmd_service(message: Message, state: FSMContext, config: Config) -> None:
+    await start_add_service_alias_intake(message=message, state=state, config=config)
+
+
+@router.message(lambda message: _is_case_variant_command(message.text or '', '/sluzbu'))
+async def cmd_sluzbu_case_alias(message: Message, state: FSMContext, config: Config) -> None:
     await start_add_service_alias_intake(message=message, state=state, config=config)
 
 
@@ -86,13 +99,13 @@ async def service_display_name_input(message: Message, state: FSMContext, config
     data = await state.get_data()
     service_short_name = (data.get('service_short_name') or '').strip()
     if not service_short_name:
-        await message.answer('Krátky názov služby sa stratil zo stavu. Spustite /service znova.')
+        await message.answer('Krátky názov služby sa stratil zo stavu. Spustite /sluzbu znova.')
         await state.clear()
         return
 
     supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
     if supplier is None or supplier.id is None:
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /supplier.')
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         await state.clear()
         return
 
@@ -104,5 +117,5 @@ async def service_display_name_input(message: Message, state: FSMContext, config
     await message.answer(
         'Názov služby bol uložený.\n\n'
         + _mappings_preview([(entry.service_short_name, entry.service_display_name) for entry in mappings])
-        + '\n\nPre ďalší názov služby spustite /service.'
+        + '\n\nPre ďalší názov služby spustite /sluzbu.'
     )
