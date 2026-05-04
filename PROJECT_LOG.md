@@ -1,5 +1,20 @@
 # PROJECT_LOG
 
+## 2026-05-04 - Session 053.2 - Alias confirmation STT retry guard
+
+Summary:
+- Treated ambiguous STT yes/no noise such as `Ah non !` narrowly as `unknown` in `invoice_customer_alias_confirm`, before LLM fallback can misread it as a real `no`.
+- Kept real `nie` / `no` behavior unchanged for the alias confirmation flow.
+- Changed alias confirmation `unknown` handling to keep the same FSM state: first unclear reply asks the user to try again with `áno / nie` or `yes / no`; repeated unclear reply asks for a text answer.
+- Added structured `invoice_customer_alias_confirm_resolved` logging with decision and retry count.
+
+Contracts read:
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`
+
+Verification:
+- `python -m compileall bot\services bot\handlers` -> passed.
+- `python -m pytest -q tests\test_decision_resolver.py tests\test_invoice_phase2_ai_layer.py` -> `428 passed`.
 ## 2026-05-03 - Session 053 - Confirmed customer alias learning
 
 Summary:

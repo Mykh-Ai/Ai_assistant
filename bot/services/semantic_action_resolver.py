@@ -60,6 +60,22 @@ def _is_stt_ano_noise(normalized: str) -> bool:
     return normalized in {'ah nao', 'a nao'}
 
 
+def _is_ambiguous_stt_yes_no_noise(normalized: str) -> bool:
+    return normalized in {
+        'ah nao',
+        'a nao',
+        'ah non',
+        'a non',
+        'ah no',
+        'a no',
+        'ah nu',
+        'a nu',
+        'ах ну',
+        'ах ні',
+        'ах не',
+    }
+
+
 def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> str:
     tokens = _tokenize(text)
     if context_name == 'invoice_edit_item_target_selection':
@@ -323,6 +339,8 @@ def _resolve_local_decision_markers(
 
 
 def _fallback_yes_no_confirmation(*, context_name: str, normalized: str, allowed_outputs: set[str]) -> str:
+    if context_name == 'invoice_customer_alias_confirm' and _is_ambiguous_stt_yes_no_noise(normalized):
+        return _UNKNOWN
     positive = {'ano', 'tak', 'ok', 'da', 'yes', 'так', 'да'}
     negative = {'nie', 'net', 'no', 'ні', 'нет'}
     if context_name == 'delete_existing_invoice_confirm' and _is_stt_ano_noise(normalized) and 'ano' in allowed_outputs:
@@ -757,6 +775,13 @@ async def resolve_bounded_confirmation_reply(
         return _UNKNOWN
 
     local_output = _UNKNOWN
+    if context_name == 'invoice_customer_alias_confirm' and expected_reply_type == 'yes_no_confirmation':
+        local_output = _fallback_bounded_confirmation_reply(
+            context_name=context_name,
+            expected_reply_type=expected_reply_type,
+            text=cleaned,
+            allowed_outputs=allowed,
+        )
     if (
         context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview'}
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
@@ -767,6 +792,17 @@ async def resolve_bounded_confirmation_reply(
             text=cleaned,
             allowed_outputs=allowed,
         )
+
+    if (
+        context_name == 'invoice_customer_alias_confirm'
+        and expected_reply_type == 'yes_no_confirmation'
+        and _is_ambiguous_stt_yes_no_noise(_normalize_bounded_reply_text(cleaned))
+    ):
+        if diagnostics is not None:
+            diagnostics['fallback_used'] = True
+            diagnostics['fallback_output'] = _UNKNOWN
+            diagnostics['normalized_output'] = _UNKNOWN
+        return _UNKNOWN
 
     if local_output != _UNKNOWN:
         if diagnostics is not None:

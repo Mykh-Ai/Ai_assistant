@@ -835,6 +835,70 @@ def test_customer_alias_confirmation_no_does_not_save_alias(
     assert message.answers
 
 
+def test_customer_alias_confirmation_unknown_retries_before_text_fallback(
+    configured_db: tuple[Path, int, int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+    state.data['invoice_partial_draft'] = {
+        'request_id': 'alias-request-id',
+        'raw_text': 'vystav fakturu pre Real-Time Technologies',
+        'parsed_draft': {'customer_name': 'Real-Time Technologies'},
+        'unresolved_slot': 'customer_name',
+        'candidate_text': 'Real-Time Technologies',
+        'candidate_contact_id': 4,
+        'candidate_contact_name': 'REALTIME TECHNOLOGIES SK, s.r.o.',
+    }
+
+    async def _unknown(**kwargs):
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_yes_no', _unknown)
+
+    asyncio.run(
+        process_invoice_customer_alias_confirm(
+            message=message,
+            state=state,
+            config=config,
+            answer_text='Ah non !',
+        )
+    )
+
+    assert state.last_state is None
+    assert state.data['invoice_partial_draft']['alias_confirm_unknown_count'] == 1
+    assert message.answers[-1] == (
+        'Nepodarilo sa jednoznačne rozpoznať odpoveď. '
+        'Skúste ešte raz: áno / nie alebo yes / no.'
+    )
+
+    asyncio.run(
+        process_invoice_customer_alias_confirm(
+            message=message,
+            state=state,
+            config=config,
+            answer_text='Ah non !',
+        )
+    )
+
+    assert state.last_state is None
+    assert state.data['invoice_partial_draft']['alias_confirm_unknown_count'] == 2
+    assert message.answers[-1] == (
+        'Stále sa nepodarilo jednoznačne rozpoznať odpoveď. '
+        'Napíšte odpoveď textom: áno / nie alebo yes / no.'
+    )
+
+
 def test_preview_invalid_due_days_keeps_clarification_path(configured_db: tuple[Path, int, int]) -> None:
     db_path, telegram_id, _ = configured_db
     config = Config(

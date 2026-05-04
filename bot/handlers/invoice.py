@@ -1614,18 +1614,69 @@ async def process_invoice_customer_alias_confirm(
     config: Config,
     answer_text: str,
 ) -> None:
+    diagnostics: dict[str, object] = {}
     decision = await resolve_yes_no(
         context_name='invoice_customer_alias_confirm',
         user_input_text=answer_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
+        diagnostics=diagnostics,
     )
-    if decision == 'unknown':
-        await message.answer('Prosím, odpovedzte: áno / nie')
-        return
-
     state_data = await state.get_data()
     partial = state_data.get('invoice_partial_draft')
+    unknown_count = 0
+    if isinstance(partial, dict):
+        try:
+            unknown_count = int(partial.get('alias_confirm_unknown_count') or 0)
+        except (TypeError, ValueError):
+            unknown_count = 0
+
+    if decision == 'unknown':
+        unknown_count += 1
+        if isinstance(partial, dict):
+            partial = dict(partial)
+            partial['alias_confirm_unknown_count'] = unknown_count
+            await state.update_data(invoice_partial_draft=partial)
+        _emit_invoice_debug_log(
+            config=config,
+            event='invoice_customer_alias_confirm_resolved',
+            request_id=str(partial.get('request_id') or uuid4()) if isinstance(partial, dict) else str(uuid4()),
+            telegram_update_id=getattr(message, 'update_id', None),
+            telegram_message_id=getattr(message, 'message_id', None),
+            payload={
+                'answer_text': answer_text,
+                'decision': decision,
+                'unknown_count': unknown_count,
+                'fallback_used': bool(diagnostics.get('fallback_used', False)),
+                'fallback_output': diagnostics.get('fallback_output'),
+            },
+        )
+        if unknown_count <= 1:
+            await message.answer(
+                'Nepodarilo sa jednoznačne rozpoznať odpoveď. '
+                'Skúste ešte raz: áno / nie alebo yes / no.'
+            )
+        else:
+            await message.answer(
+                'Stále sa nepodarilo jednoznačne rozpoznať odpoveď. '
+                'Napíšte odpoveď textom: áno / nie alebo yes / no.'
+            )
+        return
+
+    _emit_invoice_debug_log(
+        config=config,
+        event='invoice_customer_alias_confirm_resolved',
+        request_id=str(partial.get('request_id') or uuid4()) if isinstance(partial, dict) else str(uuid4()),
+        telegram_update_id=getattr(message, 'update_id', None),
+        telegram_message_id=getattr(message, 'message_id', None),
+        payload={
+            'answer_text': answer_text,
+            'decision': decision,
+            'unknown_count': unknown_count,
+            'fallback_used': bool(diagnostics.get('fallback_used', False)),
+            'fallback_output': diagnostics.get('fallback_output'),
+        },
+    )
     if not isinstance(partial, dict):
         await state.clear()
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')

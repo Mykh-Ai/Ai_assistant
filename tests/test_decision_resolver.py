@@ -140,6 +140,34 @@ def test_delete_invoice_yes_no_stt_ano_noise_maps_to_yes() -> None:
     ) == 'yes'
 
 
+@pytest.mark.parametrize('user_input', ['Ah non !', 'Ah, no', 'A non', 'Ah nu', 'Ah, não.'])
+def test_customer_alias_yes_no_stt_noise_stays_unknown(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='invoice_customer_alias_confirm',
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'unknown'
+
+
+def test_customer_alias_yes_no_stt_noise_does_not_call_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail_openai(*args, **kwargs):
+        raise AssertionError('ambiguous STT yes/no noise must be handled before LLM fallback')
+
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _fail_openai)
+
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='invoice_customer_alias_confirm',
+            user_input_text='Ah non !',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    ) == 'unknown'
+
+
 @pytest.mark.parametrize('context_name', ['invoice_preview_confirmation', 'invoice_postpdf_decision'])
 def test_invoice_approve_edit_cancel_stt_ano_noise_maps_to_approve(context_name: str) -> None:
     assert asyncio.run(
