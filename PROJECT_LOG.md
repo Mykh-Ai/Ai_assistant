@@ -1,5 +1,36 @@
 # PROJECT_LOG
 
+## 2026-05-05 - Session 058 - Shared STT ano artifact fallback
+
+Summary:
+- Consolidated known spoken `áno` STT artifacts in the shared Canonical DecisionResolver/semantic lexicon layer.
+- Normalized `Ah, não`, `Ah no`, `Ah ňao`, and `Ахняо` to affirmative `yes` for the `yes_no` family before LLM fallback.
+- Kept invoice preview approve/edit/cancel behavior aligned so the same artifacts resolve to `approve` where `áno` is already an approve alias.
+- Preserved standalone `no`, `nó`, `noo`, and `nou` as non-affirmative inputs; no handler dictionaries or button callback changes were added.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/In_Action_Response_Registry.md`
+
+Constraints extracted:
+- confirmation-like text and voice replies must pass through `bot/services/decision_resolver.py`;
+- deterministic known STT artifacts must be handled in one shared resolver/lexicon layer;
+- handlers must branch only on canonical outputs and must not define local confirmation dictionaries;
+- LLM prompts must not change, and deterministic artifacts must not be routed to LLM.
+
+Touched scopes:
+- confirmation: yes;
+- routing/callback routing: no;
+- FSM: no;
+- LLM prompt behavior: no;
+- DB schema/storage model/server: no.
+
+Verification:
+- `python -m pytest -q tests\test_decision_resolver.py` -> `408 passed`.
+- `python -m pytest -q` -> `904 passed`.
+
 ## 2026-05-05 - Session 057 - Decision UI Layer Phase 1
 
 Summary:

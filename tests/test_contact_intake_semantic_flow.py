@@ -282,7 +282,7 @@ def test_manual_contact_confirm_accepts_shared_no_alias(tmp_path: Path) -> None:
     assert '/contact' in message.answers[-1]
 
 
-def test_contact_semantic_confirm_noisy_transcript_returns_unknown_retry(tmp_path: Path) -> None:
+def test_contact_semantic_confirm_stt_ano_artifact_saves_contact(tmp_path: Path) -> None:
     from bot.handlers.contacts import process_contact_intake_confirm
 
     config = _config(tmp_path)
@@ -309,9 +309,10 @@ def test_contact_semantic_confirm_noisy_transcript_returns_unknown_retry(tmp_pat
         )
     )
 
-    assert state.data.get('contact_intake_draft', {}).get('name') == 'ZS s.r.o.'
-    assert message.answers[-1] == 'Napíšte ano alebo nie.'
-    assert ContactService(config.db_path).get_by_name(111, 'ZS s.r.o.') is None
+    assert state.data.get('contact_intake_draft') is None
+    assert message.answers
+    assert state.current_state is None
+    assert ContactService(config.db_path).get_by_name(111, 'ZS s.r.o.') is not None
 
 
 def test_idle_document_without_add_contact_intent_is_rejected(monkeypatch, tmp_path: Path) -> None:

@@ -57,6 +57,13 @@ YES_NO_CASES = (
     ('random text', 'unknown'),
 )
 
+STT_ANO_ARTIFACT_CASES = (
+    'Ah, n\u00e3o',
+    'Ah no',
+    'Ah \u0148ao',
+    '\u0410\u0445\u043d\u044f\u043e',
+)
+
 APPROVE_EDIT_CANCEL_CASES = (
     ('schvalit', 'approve'),
     ('schváliť', 'approve'),
@@ -141,7 +148,36 @@ def test_delete_invoice_yes_no_stt_ano_noise_maps_to_yes() -> None:
     ) == 'yes'
 
 
-@pytest.mark.parametrize('user_input', ['Ah non !', 'Ah, no', 'A non', 'Ah nu', 'Ah, não.'])
+@pytest.mark.parametrize('context_name', YES_NO_CONTEXTS)
+@pytest.mark.parametrize('user_input', STT_ANO_ARTIFACT_CASES)
+def test_yes_no_stt_ano_artifacts_map_to_yes(context_name: str, user_input: str) -> None:
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name=context_name,
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'yes'
+
+
+def test_yes_no_stt_ano_artifacts_bypass_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail_openai(*args, **kwargs):
+        raise AssertionError('known STT ano artifacts must be handled before LLM fallback')
+
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _fail_openai)
+
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='contact_confirm',
+            user_input_text='Ah no',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    ) == 'yes'
+
+
+@pytest.mark.parametrize('user_input', ['Ah non !', 'A non', 'Ah nu'])
 def test_customer_alias_yes_no_stt_noise_stays_unknown(user_input: str) -> None:
     assert asyncio.run(
         resolve_yes_no(
@@ -181,8 +217,36 @@ def test_invoice_approve_edit_cancel_stt_ano_noise_maps_to_approve(context_name:
     ) == 'approve'
 
 
+@pytest.mark.parametrize('user_input', STT_ANO_ARTIFACT_CASES)
+def test_invoice_preview_stt_ano_artifacts_map_to_approve(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_approve_edit_cancel(
+            context_name='invoice_preview_confirmation',
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'approve'
+
+
+def test_invoice_preview_stt_ano_artifacts_bypass_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail_openai(*args, **kwargs):
+        raise AssertionError('known STT ano artifacts must be handled before LLM fallback')
+
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _fail_openai)
+
+    assert asyncio.run(
+        resolve_approve_edit_cancel(
+            context_name='invoice_preview_confirmation',
+            user_input_text='Ah no',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    ) == 'approve'
+
+
 @pytest.mark.parametrize('context_name', ['contact_confirm', 'idle_attachment_accounting_proposal'])
-def test_non_invoice_yes_no_stt_ano_noise_stays_unknown(context_name: str) -> None:
+def test_non_invoice_yes_no_stt_ano_noise_maps_to_yes(context_name: str) -> None:
     assert asyncio.run(
         resolve_yes_no(
             context_name=context_name,
@@ -190,7 +254,19 @@ def test_non_invoice_yes_no_stt_ano_noise_stays_unknown(context_name: str) -> No
             api_key=None,
             model='gpt-4o',
         )
-    ) == 'unknown'
+    ) == 'yes'
+
+
+@pytest.mark.parametrize('user_input', ['no', 'n\u00f3', 'noo', 'nou'])
+def test_standalone_no_variants_are_not_affirmative(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='contact_confirm',
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) != 'yes'
 
 
 def _string_literal_values(node: ast.AST) -> set[str]:
@@ -435,7 +511,7 @@ def test_idle_attachment_accounting_yes_variants_use_shared_resolver(user_input:
     ) == 'yes'
 
 
-def test_yes_no_stt_ano_noise_is_unknown_for_idle_attachment_accounting() -> None:
+def test_yes_no_stt_ano_noise_maps_to_yes_for_idle_attachment_accounting() -> None:
     assert asyncio.run(
         resolve_yes_no(
             context_name='idle_attachment_accounting_proposal',
@@ -443,7 +519,7 @@ def test_yes_no_stt_ano_noise_is_unknown_for_idle_attachment_accounting() -> Non
             api_key=None,
             model='gpt-4o',
         )
-    ) == 'unknown'
+    ) == 'yes'
 
 
 @pytest.mark.parametrize(

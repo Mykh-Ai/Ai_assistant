@@ -56,8 +56,17 @@ def _matches_top_level_delete_invoice(tokens: set[str]) -> bool:
     return bool(tokens.intersection(delete_verbs)) and bool(tokens.intersection(invoice_targets))
 
 
+_STT_ANO_ARTIFACTS = {
+    'ah nao',
+    'a nao',
+    'ah no',
+    'a no',
+    '\u0430\u0445\u043d\u044f\u043e',
+}
+
+
 def _is_stt_ano_noise(normalized: str) -> bool:
-    return normalized in {'ah nao', 'a nao'}
+    return normalized in _STT_ANO_ARTIFACTS
 
 
 def _is_ambiguous_stt_yes_no_noise(normalized: str) -> bool:
@@ -339,12 +348,12 @@ def _resolve_local_decision_markers(
 
 
 def _fallback_yes_no_confirmation(*, context_name: str, normalized: str, allowed_outputs: set[str]) -> str:
+    if _is_stt_ano_noise(normalized) and 'ano' in allowed_outputs:
+        return 'ano'
     if context_name == 'invoice_customer_alias_confirm' and _is_ambiguous_stt_yes_no_noise(normalized):
         return _UNKNOWN
     positive = {'ano', 'tak', 'ok', 'da', 'yes', 'так', 'да'}
     negative = {'nie', 'net', 'no', 'ні', 'нет'}
-    if context_name == 'delete_existing_invoice_confirm' and _is_stt_ano_noise(normalized) and 'ano' in allowed_outputs:
-        return 'ano'
     if normalized in positive and 'ano' in allowed_outputs:
         return 'ano'
     if normalized in negative and 'nie' in allowed_outputs:
@@ -775,7 +784,7 @@ async def resolve_bounded_confirmation_reply(
         return _UNKNOWN
 
     local_output = _UNKNOWN
-    if context_name == 'invoice_customer_alias_confirm' and expected_reply_type == 'yes_no_confirmation':
+    if expected_reply_type == 'yes_no_confirmation':
         local_output = _fallback_bounded_confirmation_reply(
             context_name=context_name,
             expected_reply_type=expected_reply_type,
@@ -793,10 +802,12 @@ async def resolve_bounded_confirmation_reply(
             allowed_outputs=allowed,
         )
 
+    normalized_cleaned = _normalize_bounded_reply_text(cleaned)
     if (
         context_name == 'invoice_customer_alias_confirm'
         and expected_reply_type == 'yes_no_confirmation'
-        and _is_ambiguous_stt_yes_no_noise(_normalize_bounded_reply_text(cleaned))
+        and _is_ambiguous_stt_yes_no_noise(normalized_cleaned)
+        and not _is_stt_ano_noise(normalized_cleaned)
     ):
         if diagnostics is not None:
             diagnostics['fallback_used'] = True

@@ -23,6 +23,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- Canonical DecisionResolver now handles known spoken `áno` STT artifacts (`Ah, não`, `Ah no`, `Ah ňao`, `Ахняо`) in the shared resolver layer before LLM fallback, without treating standalone `no` variants as affirmative.
 - text/voice confirmation replies continue through the Canonical DecisionResolver, while inline decision buttons now converge into the same state-aware execution paths by passing pre-canonicalized tokens without LLM/STT/LMM calls.
 - authorization now accepts either bootstrap `ALLOWED_TELEGRAM_USER_IDS` membership or an active `authorized_users` row; blocked users are denied before normal handlers run.
 - invoice numbering and uniqueness are now tenant-aware by `supplier_telegram_id`; invoice PDFs now use tenant-scoped paths under `storage/invoices/{supplier_telegram_id}/`.

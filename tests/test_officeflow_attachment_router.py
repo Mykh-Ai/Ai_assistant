@@ -461,11 +461,12 @@ def test_voice_accounting_proposal_no_cleans_staged_file(monkeypatch, tmp_path: 
     assert 'Spracovanie' in message.answers[-1]
 
 
-def test_voice_accounting_proposal_unknown_keeps_state_and_staging(monkeypatch, tmp_path: Path) -> None:
+def test_voice_accounting_proposal_stt_ano_artifact_continues_to_accounting(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
     invoice_fallback_calls: list[str] = []
 
     async def _process(**kwargs) -> None:
-        raise AssertionError('accounting continuation must not run for unknown')
+        captured.update(kwargs)
 
     monkeypatch.setattr(officeflow_router_module, 'process_staged_accounting_document', _process)
     _patch_voice_stt_and_invoice_fallback(monkeypatch, 'Ah, n\u00e3o.', invoice_fallback_calls)
@@ -474,11 +475,10 @@ def test_voice_accounting_proposal_unknown_keeps_state_and_staging(monkeypatch, 
 
     asyncio.run(voice_module.handle_voice(message, _DummyBot(), _voice_config(tmp_path), state))
 
-    assert state.current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state
+    assert captured['document_type_hint'] == 'receipt'
+    assert captured['staged_path'] == staged_path
     assert invoice_fallback_calls == []
-    assert staged_path.exists()
-    assert 'odpovedzte' in message.answers[-1]
-    assert 'nie' in message.answers[-1]
+    assert not staged_path.exists()
 
 
 def test_voice_expired_accounting_proposal_cleans_staging_and_does_not_fall_back_to_invoice(

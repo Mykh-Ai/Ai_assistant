@@ -493,8 +493,8 @@ def test_bounded_confirmation_resolver_positive_regressions() -> None:
         ('Да.', 'ano'),
         ('Ні.', 'nie'),
         ('Нет.', 'nie'),
-        ('Ah, não.', 'unknown'),
-        ('Ah, não!', 'unknown'),
+        ('Ah, não.', 'ano'),
+        ('Ah, não!', 'ano'),
     ],
 )
 def test_preview_bounded_confirmation_multilingual_and_noisy_inputs(user_input: str, expected: str) -> None:

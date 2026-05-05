@@ -128,6 +128,20 @@ Python/FSM responsibility:
 
 Business action execution must stay in the active FSM flow, not in the resolver.
 
+### 5.1 Shared STT `áno` artifact fallback
+
+Known deterministic STT artifacts of spoken Slovak `áno` are normalized only inside the shared resolver/lexicon layer before any LLM fallback:
+- `Ah, não`
+- `Ah no`
+- `Ah ňao`
+- `Ахняо`
+
+These artifacts mean:
+- `yes` in the `yes_no` family;
+- `approve` in `approve_edit_cancel` contexts where `áno` already means approve, such as invoice preview approval.
+
+This fallback does not add standalone Slovak-looking `no`, `nó`, `noo`, or `nou` as affirmative tokens. Handlers must not add local dictionaries for these artifacts, and callbacks are unaffected because they already emit canonical `decision:*` tokens.
+
 ---
 
 ## 6. Scope
