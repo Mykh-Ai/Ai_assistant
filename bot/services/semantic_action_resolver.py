@@ -97,6 +97,73 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         return _UNKNOWN
 
     if context_name == 'top_level_action':
+        normalized_text = _normalize_bounded_reply_text(text)
+        start_phrases = {
+            'zacat',
+            'spustit',
+            'start',
+            'start bot',
+            'spusti bot',
+            '\u043f\u043e\u0447\u0430\u0442\u0438',
+            '\u0437\u0430\u043f\u0443\u0441\u0442\u0438 \u0431\u043e\u0442\u0430',
+            '\u043d\u0430\u0447\u0430\u0442\u044c',
+        }
+        show_supplier_profile_phrases = {
+            'moj profil',
+            'ukaz moj profil',
+            'zobraz moj profil',
+            'nastavit dodavatela',
+            '\u043f\u043e\u043a\u0430\u0436\u0438 \u043c\u0456\u0439 \u043f\u0440\u043e\u0444\u0456\u043b\u044c',
+            '\u043f\u043e\u043a\u0430\u0436\u0438 \u043c\u0456\u0438 \u043f\u0440\u043e\u0444\u0456\u043b\u044c',
+            '\u043f\u043e\u043a\u0430\u0436\u0438 \u043c\u043e\u0439 \u043f\u0440\u043e\u0444\u0438\u043b\u044c',
+            '\u043f\u043e\u043a\u0430\u0436\u0438 \u043c\u043e\u0438 \u043f\u0440\u043e\u0444\u0438\u043b\u044c',
+        }
+        edit_supplier_phrases = {
+            'upravit moj profil',
+            'zmenit moj profil',
+            'upravit udaje firmy',
+            'upravit dodavatela',
+            'zmen moj profil',
+            '\u0437\u043c\u0456\u043d\u0438 \u043c\u0456\u0439 \u043f\u0440\u043e\u0444\u0456\u043b\u044c',
+            '\u0437\u043c\u0456\u043d\u0438 \u043c\u0456\u0438 \u043f\u0440\u043e\u0444\u0456\u043b\u044c',
+            '\u0437\u043c\u0456\u043d\u0438\u0442\u0438 \u043c\u0456\u0439 \u043f\u0440\u043e\u0444\u0456\u043b\u044c',
+            '\u0437\u043c\u0456\u043d\u0438\u0442\u0438 \u043c\u0456\u0438 \u043f\u0440\u043e\u0444\u0456\u043b\u044c',
+        }
+        show_recent_accounting_phrases = {
+            'posledne blocky',
+            'ukaz posledne blocky',
+            'ukaz posledne doklady',
+            'posledne doklady',
+            '\u043f\u043e\u043a\u0430\u0436\u0438 \u043e\u0441\u0442\u0430\u043d\u043d\u0456 \u0447\u0435\u043a\u0438',
+            '\u043e\u0441\u0442\u0430\u043d\u043d\u0456 \u0447\u0435\u043a\u0438',
+        }
+        add_receipt_verbs = {
+            'pridaj',
+            'dodaj',
+            'dodat',
+            'nahraj',
+            'nahrat',
+            'spracuj',
+            'spracovat',
+            '\u0434\u043e\u0434\u0430\u0439',
+            '\u0434\u043e\u0434\u0430\u0438',
+            '\u0434\u043e\u0434\u0430\u0442\u0438',
+            '\u0437\u0430\u0432\u0430\u043d\u0442\u0430\u0436',
+            '\u0437\u0430\u0432\u0430\u043d\u0442\u0430\u0436\u0438\u0442\u0438',
+            '\u0437\u0430\u0433\u0440\u0443\u0437\u0438',
+            '\u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c',
+        }
+        receipt_targets = {
+            'blocek',
+            'blocky',
+            'doklad',
+            'doklady',
+            'receipt',
+            '\u0447\u0435\u043a',
+            '\u0447\u0435\u043a\u0438',
+            '\u0447\u0435\u043a\u0430',
+        }
+        incoming_invoice_targets = {'prijatu', 'prijata', 'incoming'}
         create_invoice_triggers = {
             'fakturu',
             'faktura',
@@ -145,6 +212,19 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             'service',
         }
 
+        if 'start' in allowed and normalized_text in start_phrases:
+            return 'start'
+        if 'edit_supplier' in allowed and normalized_text in edit_supplier_phrases:
+            return 'edit_supplier'
+        if 'show_supplier_profile' in allowed and normalized_text in show_supplier_profile_phrases:
+            return 'show_supplier_profile'
+        if 'show_recent_accounting_documents' in allowed and normalized_text in show_recent_accounting_phrases:
+            return 'show_recent_accounting_documents'
+        if 'add_receipt' in allowed and tokens.intersection(add_receipt_verbs) and (
+            tokens.intersection(receipt_targets)
+            or (tokens.intersection(incoming_invoice_targets) and tokens.intersection({'fakturu', 'faktura', 'invoice'}))
+        ):
+            return 'add_receipt'
         if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'відправ', 'отправь'}):
             return 'send_invoice'
         if 'edit_existing_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить', 'управить'}):
@@ -618,7 +698,15 @@ async def resolve_semantic_action(
         return _UNKNOWN
 
     local_priority = _fallback_for_context(context_name, cleaned, allowed)
-    if context_name == 'top_level_action' and local_priority == 'delete_existing_invoice':
+    if context_name == 'top_level_action' and local_priority in {
+        'start',
+        'show_supplier_profile',
+        'edit_supplier',
+        'show_recent_accounting_documents',
+        'add_receipt',
+        'edit_existing_invoice',
+        'delete_existing_invoice',
+    }:
         return local_priority
 
     if api_key and api_key.startswith('sk-'):

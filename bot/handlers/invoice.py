@@ -14,7 +14,11 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile, Message
 
 from bot.config import Config
+from bot.handlers.accounting_document_intake import cmd_accounting_document_intake
+from bot.handlers.accounting_documents import cmd_blocky
 from bot.handlers.contacts import start_add_contact_intake
+from bot.handlers.onboarding import cmd_moj_profil, cmd_upravit_profil
+from bot.handlers.start import cmd_start
 from bot.handlers.supplier import start_add_service_alias_intake
 from bot.keyboards.decision import (
     answer_with_decision_keyboard,
@@ -53,6 +57,11 @@ _DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
 _SEND_INVOICE_INTENT = 'send_invoice'
 _ADD_CONTACT_INTENT = 'add_contact'
 _ADD_SERVICE_ALIAS_INTENT = 'add_service_alias'
+_START_INTENT = 'start'
+_SHOW_SUPPLIER_PROFILE_INTENT = 'show_supplier_profile'
+_EDIT_SUPPLIER_INTENT = 'edit_supplier'
+_SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT = 'show_recent_accounting_documents'
+_ADD_RECEIPT_INTENT = 'add_receipt'
 _UNKNOWN_INVOICE_INTENT = 'unknown'
 
 
@@ -2022,9 +2031,14 @@ async def process_invoice_text(
     top_level_intent = await resolve_semantic_action(
         context_name='top_level_action',
         allowed_actions=[
+            _START_INTENT,
             _CREATE_INVOICE_INTENT,
+            _SHOW_SUPPLIER_PROFILE_INTENT,
+            _EDIT_SUPPLIER_INTENT,
             _ADD_CONTACT_INTENT,
             _ADD_SERVICE_ALIAS_INTENT,
+            _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT,
+            _ADD_RECEIPT_INTENT,
             _SEND_INVOICE_INTENT,
             _EDIT_EXISTING_INVOICE_INTENT,
             _DELETE_EXISTING_INVOICE_INTENT,
@@ -2035,9 +2049,24 @@ async def process_invoice_text(
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
         action_hints={
+            _START_INTENT: {
+                'meaning': 'user wants to start or resume the bot through the same flow as /start',
+                'positive_examples': ['start', 'začať', 'spustiť', 'почати', 'запусти бота'],
+                'not_this': ['create a new invoice draft', 'upload a receipt'],
+            },
             _CREATE_INVOICE_INTENT: {
                 'meaning': 'user wants to create a new invoice draft',
-                'not_this': ['edit existing invoice', 'send existing invoice'],
+                'not_this': ['edit existing invoice', 'send existing invoice', 'upload receipt or incoming invoice'],
+            },
+            _SHOW_SUPPLIER_PROFILE_INTENT: {
+                'meaning': 'user wants to view the supplier profile or open the profile setup surface',
+                'positive_examples': ['môj profil', 'ukáž môj profil', 'покажи мій профіль'],
+                'not_this': ['edit one supplier profile field'],
+            },
+            _EDIT_SUPPLIER_INTENT: {
+                'meaning': 'user wants to edit one supplier profile field through the existing /upravit_profil flow',
+                'positive_examples': ['upraviť môj profil', 'zmeniť môj profil', 'upraviť údaje firmy'],
+                'not_this': ['view profile summary only', 'edit an invoice'],
             },
             _ADD_SERVICE_ALIAS_INTENT: {
                 'meaning': 'user wants to create a new reusable invoice item/service label',
@@ -2050,6 +2079,16 @@ async def process_invoice_text(
                     'предай новую живность',
                 ],
                 'not_this': ['create new invoice draft', 'edit existing invoice'],
+            },
+            _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT: {
+                'meaning': 'user wants to view recent confirmed receipts or incoming accounting documents',
+                'positive_examples': ['ukáž posledné bločky', 'posledné bločky', 'покажи останні чеки'],
+                'not_this': ['upload a new receipt', 'create invoice', 'view generated invoice PDF'],
+            },
+            _ADD_RECEIPT_INTENT: {
+                'meaning': 'user wants to start the existing receipt/incoming-invoice upload flow and send photo or PDF next',
+                'positive_examples': ['pridať bloček', 'nahrať bloček', 'додай чек', 'nahrať prijatú faktúru'],
+                'not_this': ['create outgoing invoice from voice content', 'manually edit a receipt'],
             },
             _EDIT_EXISTING_INVOICE_INTENT: {
                 'meaning': 'user wants to explicitly edit already created invoice by number',
@@ -2076,6 +2115,21 @@ async def process_invoice_text(
             ensure_ascii=False,
         )
     )
+    if top_level_intent == _START_INTENT:
+        await cmd_start(message=message, config=config)
+        return
+    if top_level_intent == _SHOW_SUPPLIER_PROFILE_INTENT:
+        await cmd_moj_profil(message=message, state=state, config=config)
+        return
+    if top_level_intent == _EDIT_SUPPLIER_INTENT:
+        await cmd_upravit_profil(message=message, state=state, config=config)
+        return
+    if top_level_intent == _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT:
+        await cmd_blocky(message=message, config=config)
+        return
+    if top_level_intent == _ADD_RECEIPT_INTENT:
+        await cmd_accounting_document_intake(message=message, state=state)
+        return
     if top_level_intent == _ADD_CONTACT_INTENT:
         await start_add_contact_intake(
             message=message,

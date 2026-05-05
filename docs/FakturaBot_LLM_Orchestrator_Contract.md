@@ -61,8 +61,13 @@ No free-form intent execution is allowed.
 The same resolver pattern applies to top-level actions.
 
 Example allowed actions (defined by Python per turn):
+- `start`
 - `create_invoice`
 - `add_contact`
+- `show_supplier_profile`
+- `edit_supplier`
+- `show_recent_accounting_documents`
+- `add_receipt`
 - `send_invoice`
 - `edit_invoice`
 - `edit_existing_invoice`
@@ -73,7 +78,7 @@ LLM must return one of allowed actions or `unknown`.
 Runtime editing is defined as bounded in-action/subflow operations under invoice flow (`upraviť`), not as a separate top-level executor.
 `edit_existing_invoice` is an explicit top-level action for editing an already created/persisted invoice by number reference; LLM only resolves intent + reference text, Python performs DB lookup with supplier scope and ambiguity handling.
 
-No OfficeFlow Document Intake action is part of the current top-level registry yet. Future actions for receipts, incoming invoices, contracts archive, bank statements, or categories must be introduced docs-first in the relevant registry and then implemented only after Python-side validation/storage contracts are defined.
+OfficeFlow/Document Intake actions may be top-level only when explicitly registered and backed by Python-owned runtime validation. Current bounded top-level accounting actions are limited to the existing recent-documents view and the existing upload-waiting intake starter. Voice/text `add_receipt` starts the upload FSM and asks for a photo/PDF; it must not create an invoice, extract a receipt, or save accounting metadata from voice content alone. Future actions for contracts archive, bank statements, categories, or manual accounting-document editing must be introduced docs-first in the relevant registry and then implemented only after Python-side validation/storage contracts are defined.
 
 ---
 

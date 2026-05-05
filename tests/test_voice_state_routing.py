@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from bot.config import Config
+from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
 from bot.handlers.contacts import ContactStates
 from bot.handlers.invoice import InvoiceStates
 from bot.handlers.onboarding import OnboardingStates
@@ -43,9 +44,23 @@ class _DummyBot:
 class _DummyState:
     def __init__(self, current_state: str | None) -> None:
         self.current_state = current_state
+        self.data: dict = {}
 
     async def get_state(self) -> str | None:
         return self.current_state
+
+    async def set_state(self, state) -> None:
+        self.current_state = state.state if hasattr(state, 'state') else state
+
+    async def update_data(self, **kwargs) -> None:
+        self.data.update(kwargs)
+
+    async def get_data(self) -> dict:
+        return dict(self.data)
+
+    async def clear(self) -> None:
+        self.current_state = None
+        self.data.clear()
 
 
 def _config(tmp_path: Path, *, debug_invoice_transparency: bool = False) -> Config:
@@ -666,6 +681,107 @@ def test_voice_top_level_add_service_alias_routes_to_existing_service_flow(monke
 
     asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
     assert calls == ['invoice_text']
+
+
+def test_voice_idle_start_routes_to_existing_start_flow(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'почати'
+
+    calls: list[str] = []
+
+    async def _start(**kwargs) -> None:
+        calls.append('start')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_start', _start)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+    assert calls == ['start']
+
+
+def test_voice_idle_profile_routes_to_profile_view(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'môj profil'
+
+    calls: list[str] = []
+
+    async def _profile(**kwargs) -> None:
+        calls.append('profile')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_moj_profil', _profile)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+    assert calls == ['profile']
+
+
+def test_voice_idle_profile_edit_routes_to_profile_edit(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'upraviť môj profil'
+
+    calls: list[str] = []
+
+    async def _edit_profile(**kwargs) -> None:
+        calls.append('edit_profile')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_upravit_profil', _edit_profile)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+    assert calls == ['edit_profile']
+
+
+def test_voice_idle_recent_accounting_documents_routes_to_existing_view(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'покажи останні чеки'
+
+    calls: list[str] = []
+
+    async def _recent(**kwargs) -> None:
+        calls.append('recent')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_blocky', _recent)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+    assert calls == ['recent']
+
+
+def test_voice_idle_add_receipt_starts_upload_flow_and_not_invoice(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'додай, будь ласка, чек'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    message = _DummyMessage()
+    message.from_user = type('_User', (), {'id': 111})()
+    state = _DummyState(None)
+    config = _config(tmp_path)
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+    assert 'fotku alebo PDF' in message.answers[-1]
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
+
+
+def test_voice_unhandled_active_state_requires_text_and_does_not_fall_back(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'vytvor fakturu'
+
+    calls: list[str] = []
+
+    async def _invoice_text(**kwargs) -> None:
+        calls.append('invoice_text')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _invoice_text)
+    message = _DummyMessage()
+
+    asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), _DummyState(OnboardingStates.name.state)))
+
+    assert calls == []
+    assert message.answers[-1] == 'V tomto kroku prosím zadajte hodnotu textom.'
 
 
 def test_voice_service_short_name_state_rejects_voice(monkeypatch, tmp_path: Path) -> None:

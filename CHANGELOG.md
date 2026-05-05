@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- voice/text reachability for existing canonical top-level/system actions `start`, `show_supplier_profile`, `edit_supplier`, `show_recent_accounting_documents`, and `add_receipt` through the shared Semantic Action Resolver and existing Python route handlers.
 - Decision UI Layer Phase 1 for stable confirmation flows: reusable Telegram inline decision keyboards, canonical `decision:*` callback tokens, and a shared callback dispatcher for invoice preview, invoice alias confirmation, invoice delete confirmation, contact confirmations, supplier onboarding, and supplier profile edit confirmation.
 - authorization middleware coverage for Telegram `CallbackQuery` updates so unknown or blocked users cannot trigger decision callback side effects.
 - deterministic admin text aliases for `/users` (`користувачі`) and `/access_requests` (`запит`, `запрос`) without LLM routing.
@@ -23,6 +24,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- voice handling now refuses unhandled active FSM states with a Slovak text-required prompt instead of falling through to top-level routing and potentially clearing or overriding state.
 - Canonical DecisionResolver now handles known spoken `áno` STT artifacts (`Ah, não`, `Ah no`, `Ah ňao`, `Ахняо`) in the shared resolver layer before LLM fallback, without treating standalone `no` variants as affirmative.
 - text/voice confirmation replies continue through the Canonical DecisionResolver, while inline decision buttons now converge into the same state-aware execution paths by passing pre-canonicalized tokens without LLM/STT/LMM calls.
 - authorization now accepts either bootstrap `ALLOWED_TELEGRAM_USER_IDS` membership or an active `authorized_users` row; blocked users are denied before normal handlers run.

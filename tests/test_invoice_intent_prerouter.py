@@ -172,6 +172,97 @@ def test_top_level_semantic_resolver_actions() -> None:
     ) == 'unknown'
 
 
+def test_top_level_semantic_resolver_system_profile_and_accounting_actions() -> None:
+    allowed = [
+        'start',
+        'create_invoice',
+        'show_supplier_profile',
+        'edit_supplier',
+        'show_recent_accounting_documents',
+        'add_receipt',
+        'unknown',
+    ]
+
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='почати',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'start'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='môj profil',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'show_supplier_profile'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='upraviť môj profil',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'edit_supplier'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='покажи останні чеки',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'show_recent_accounting_documents'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='додай, будь ласка, чек',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'add_receipt'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='nahrať prijatú faktúru',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'add_receipt'
+
+
+def test_top_level_semantic_resolver_does_not_expose_reserved_database_delete() -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'unknown'],
+            user_input_text='Chcem vymazať moju databázu',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'unknown'
+
+
+def test_receipt_alias_obeys_allowed_actions() -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'unknown'],
+            user_input_text='додай, будь ласка, чек',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'unknown'
+
+
 @pytest.mark.parametrize(
     'user_input',
     [
@@ -221,6 +312,27 @@ def test_top_level_delete_invoice_priority_runs_before_llm_when_key_is_configure
     ) == 'delete_existing_invoice'
 
 
+def test_top_level_add_receipt_priority_runs_before_llm_when_key_is_configured(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class _UnexpectedOpenAIFake:
+        def __init__(self, *, api_key: str) -> None:
+            calls.append(api_key)
+
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _UnexpectedOpenAIFake)
+
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'add_receipt', 'unknown'],
+            user_input_text='додай, будь ласка, чек',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    ) == 'add_receipt'
+    assert calls == []
+
+
 def test_invoice_create_not_misrouted_to_add_contact_when_company_mentioned() -> None:
     assert asyncio.run(
         resolve_semantic_action(
@@ -258,6 +370,57 @@ def test_process_invoice_text_routes_add_service_alias_to_existing_service_flow(
 
     assert calls == ['service_flow']
     assert message.answers == []
+
+
+def test_process_invoice_text_routes_system_and_profile_actions_to_existing_flows(tmp_path: Path, monkeypatch) -> None:
+    routed: list[str] = []
+
+    async def _start(**kwargs) -> None:
+        routed.append('start')
+
+    async def _profile(**kwargs) -> None:
+        routed.append('profile')
+
+    async def _edit_profile(**kwargs) -> None:
+        routed.append('edit_profile')
+
+    async def _recent(**kwargs) -> None:
+        routed.append('recent')
+
+    monkeypatch.setattr('bot.handlers.invoice.cmd_start', _start)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_moj_profil', _profile)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_upravit_profil', _edit_profile)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_blocky', _recent)
+
+    for text in ('start', 'môj profil', 'upraviť môj profil', 'posledné bločky'):
+        message = _DummyMessage(text)
+        state = _DummyState()
+        asyncio.run(process_invoice_text(message=message, state=state, config=_config(tmp_path), invoice_text=text))
+
+    assert routed == ['start', 'profile', 'edit_profile', 'recent']
+
+
+def test_process_invoice_text_routes_add_receipt_to_existing_upload_flow_without_invoice(tmp_path: Path) -> None:
+    from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
+
+    config = _config(tmp_path)
+    message = _DummyMessage('додай, будь ласка, чек')
+    message.from_user = type('_User', (), {'id': 111})()
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text='додай, будь ласка, чек',
+        )
+    )
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_upload
+    assert 'fotku alebo PDF' in message.answers[-1]
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
 
 
 def test_process_invoice_text_edit_existing_invoice_by_short_number(tmp_path: Path, monkeypatch) -> None:
@@ -666,6 +829,68 @@ class _BoundedResolverOpenAIFake:
             return _FakeResponse('{"canonical":"unknown"}')
 
         return _FakeResponse('{"canonical":"unknown"}')
+
+
+class _TopLevelActionOpenAIFake:
+    last_payload: dict | None = None
+
+    def __init__(self, *, api_key: str) -> None:
+        self.api_key = api_key
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        _TopLevelActionOpenAIFake.last_payload = json.loads(kwargs['messages'][1]['content'])
+        return _FakeResponse('{"canonical_action":"show_recent_accounting_documents"}')
+
+
+class _InventedTopLevelActionOpenAIFake:
+    def __init__(self, *, api_key: str) -> None:
+        self.api_key = api_key
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        return _FakeResponse('{"canonical_action":"delete_user_database"}')
+
+
+def test_top_level_natural_phrase_uses_bounded_resolver_payload(monkeypatch) -> None:
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
+
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['show_recent_accounting_documents', 'add_receipt', 'unknown'],
+            user_input_text='prosím zobraz mi posledné doklady z nákupov',
+            api_key='sk-test',
+            model='gpt-4o',
+            action_hints={
+                'show_recent_accounting_documents': {
+                    'meaning': 'view recent confirmed accounting documents',
+                    'not_this': ['upload a new receipt'],
+                },
+            },
+        )
+    )
+
+    assert result == 'show_recent_accounting_documents'
+    payload = _TopLevelActionOpenAIFake.last_payload
+    assert payload is not None
+    assert payload['allowed_actions'] == ['add_receipt', 'show_recent_accounting_documents', 'unknown']
+    assert payload['expected_output'] == {'canonical_action': 'one allowed token or unknown'}
+    assert 'show_recent_accounting_documents' in payload['action_hints']
+
+
+def test_top_level_bounded_resolver_rejects_invented_action(monkeypatch) -> None:
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _InventedTopLevelActionOpenAIFake)
+
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['show_recent_accounting_documents', 'add_receipt', 'unknown'],
+            user_input_text='prosím urob niečo nejasné',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    ) == 'unknown'
 
 
 @pytest.mark.parametrize(

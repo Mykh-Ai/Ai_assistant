@@ -1,5 +1,46 @@
 # PROJECT_LOG
 
+## 2026-05-05 - Session 059 - Top-level voice command reachability
+
+Summary:
+- Made existing canonical top-level/system actions voice-reachable through the shared Semantic Action Resolver and existing Python route handlers.
+- Added bounded top-level routing for `start`, `show_supplier_profile`, `edit_supplier`, `show_recent_accounting_documents`, and `add_receipt`.
+- Reused existing `/start`, `/moj_profil`, `/upravit_profil`, `/blocek`, and `/add_blocek`/`/dodat_blocek` flows instead of duplicating business logic.
+- Kept `voice.py` as transport/STT/state routing only; it now refuses unhandled active FSM voice input with a text-required message instead of falling through to top-level routing.
+- Kept `edit_invoice` as in-action/FSM invoice editing and preserved `edit_existing_invoice` for persisted invoice editing.
+- Kept `add_receipt` as upload-waiting flow only: voice text does not create invoices, extract receipts, or save accounting documents.
+- Did not expose or implement `delete_user_database`.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`
+
+Constraints extracted:
+- Python remains the execution and validation authority;
+- resolver output must be one Python-allowed canonical token or `unknown`;
+- `voice.py` must not contain business phrase dictionaries;
+- confirmation-like replies must continue through `bot/services/decision_resolver.py`;
+- exact/manual fields remain text-first;
+- destructive/manual confirmation gates must not be weakened.
+
+Touched scopes:
+- confirmation: no new decision family;
+- routing/voice routing: yes;
+- FSM: yes, route reuse and active-state safety fallback only;
+- LLM prompt behavior: no prompt file changes; bounded resolver payload remains strict;
+- DB schema/storage model/server: no.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py tests/test_accounting_documents_handler.py tests/test_accounting_document_intake_flow.py tests/test_onboarding_decisions.py tests/test_decision_resolver.py` -> `579 passed`.
+- `python -m pytest -q` -> `918 passed`.
+
 ## 2026-05-05 - Session 058 - Shared STT ano artifact fallback
 
 Summary:

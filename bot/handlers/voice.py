@@ -297,6 +297,8 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             await message.answer('Napíšte krátky názov položky textom.')
         elif current_state == ServiceAliasStates.waiting_display_name.state:
             await message.answer('Napíšte plný názov služby textom.')
+        elif current_state is not None:
+            await message.answer('V tomto kroku prosím zadajte hodnotu textom.')
         else:
             await process_invoice_text(
                 message=message,

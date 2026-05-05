@@ -8,6 +8,23 @@
 
 ---
 
+## 2026-05-05 Addendum: top-level voice command reachability
+
+Approved users may reach the existing top-level/system flows by voice or natural text through the bounded semantic resolver when the resolved canonical action is in Python-provided `allowed_actions`:
+- `start` routes to the existing `/start` setup/status flow;
+- `show_supplier_profile` routes to `/moj_profil`;
+- `edit_supplier` routes to `/upravit_profil`;
+- `show_recent_accounting_documents` routes to the existing read-only `/blocek` recent accounting documents view;
+- `add_receipt` routes to the existing `/add_blocek`/`/dodat_blocek` upload-waiting FSM.
+
+This does not make LLM/STT an executor. Python authorization still runs before STT/LLM/LMM, the resolver returns only an allowed canonical token or `unknown`, and Python/FSM executes existing routes.
+
+Receipt/blocek voice intent starts the upload flow and asks for a photo/PDF. It must not create an outgoing invoice, extract receipt metadata, or save an accounting document from voice text alone. If OCR/LMM recognition is wrong later, the correction path remains a better photo/PDF re-upload, not arbitrary manual editing as if the receipt were a generated invoice.
+
+`edit_invoice` remains reserved for in-action/FSM invoice draft editing. Persisted invoice editing remains the separate canonical runtime action `edit_existing_invoice`. `delete_user_database` remains reserved unless a runtime route with exact manual confirmation is implemented separately.
+
+---
+
 ## 2026-05-03 Addendum: supplier onboarding invoice-number baseline
 
 Controlled user onboarding must collect one additional invoice setting before the default due-days question:
