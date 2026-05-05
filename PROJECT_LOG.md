@@ -1,5 +1,46 @@
 # PROJECT_LOG
 
+## 2026-05-05 - Session 060 - Delete user database runtime flow
+
+Summary:
+- Implemented `delete_user_database` as a destructive leave/reset flow.
+- Added `/vymazat_databazu` and bounded top-level text/voice intent routing that only start a Slovak warning + exact-confirmation FSM.
+- Required exact typed confirmation phrase `vymazať databázu`; voice in the final confirmation state is rejected before STT and cannot delete.
+- Added scoped deletion service for current user's supplier profile, contacts, invoices/items, service aliases, invoice-number settings, confirmed semantic aliases, tenant invoice PDFs, tenant workspaces, tenant upload staging dirs, and only contract files referenced by that user's contacts.
+- Added `deleted_database` access/request status behavior: active access is revoked without removing the `authorized_users` row, future `/start` creates a new pending request, and `/approve` reactivates the user with old business data gone.
+- Preserved `blocked` as admin-blocked, kept existing invoice delete flow unchanged, and did not touch `docs/llm/TASK_invoice_customer_raw_mention_for_alias_learning.md`.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- Python owns authorization, tenant scope, deletion, and side effects;
+- resolver/LLM may only classify `delete_user_database` when Python includes it in `allowed_actions`;
+- final deletion confirmation is an exact typed destructive exception, not a yes/no DecisionResolver flow;
+- voice must not pass final confirmation;
+- deleted users are not authorized, including static allowlist users, until admin reapproval.
+
+Touched scopes:
+- confirmation: yes, exact typed destructive exception;
+- routing/voice routing: yes;
+- FSM: yes;
+- LLM prompt behavior: no prompt file changes; bounded resolver remains allowed-actions only;
+- DB/storage/access: yes;
+- server/Git history: no.
+
+Verification:
+- `python -m pytest -q tests/test_delete_user_database_flow.py tests/test_access_request_flow.py` -> `23 passed`.
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py tests/test_tenant_safety.py` -> `138 passed`.
+- `python -m pytest -q tests/test_decision_resolver.py` -> `408 passed`.
+- `python -m pytest -q` -> `926 passed`.
+
 ## 2026-05-05 - Session 059 - Top-level voice command reachability
 
 Summary:

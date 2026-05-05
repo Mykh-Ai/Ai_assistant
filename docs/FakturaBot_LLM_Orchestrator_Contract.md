@@ -71,6 +71,7 @@ Example allowed actions (defined by Python per turn):
 - `send_invoice`
 - `edit_invoice`
 - `edit_existing_invoice`
+- `delete_user_database`
 
 LLM must return one of allowed actions or `unknown`.
 
@@ -98,7 +99,7 @@ Reference ambiguous action:
 Profile and data-management actions:
 - `show_supplier_profile` is the user-facing `/moj_profil` profile surface; if no supplier profile exists it starts supplier profile creation.
 - `edit_supplier` is the targeted `/upravit_profil` flow for changing one supplier-profile field after Python validation and shared confirmation.
-- `delete_user_database` is reserved for full user database deletion. User-facing examples include `/vymazat_databazu` and voice/text phrases such as `Chcem vymazať moju databázu`. Runtime hard delete is a follow-up implementation and must require exact manual confirmation `vymazať databázu`.
+- `delete_user_database` is implemented for full user database deletion/leaving FakturaBot. User-facing examples include `/vymazat_databazu` and voice/text phrases such as `Chcem vymazať moju databázu`. Resolver/LLM may only classify the top-level entry intent when Python includes `delete_user_database` in `allowed_actions`; final deletion is Python/FSM-owned and requires the exact typed confirmation `vymazať databázu`. Voice must not pass the final confirmation.
 
 Hint fields:
 - `meaning`

@@ -21,7 +21,7 @@ This does not make LLM/STT an executor. Python authorization still runs before S
 
 Receipt/blocek voice intent starts the upload flow and asks for a photo/PDF. It must not create an outgoing invoice, extract receipt metadata, or save an accounting document from voice text alone. If OCR/LMM recognition is wrong later, the correction path remains a better photo/PDF re-upload, not arbitrary manual editing as if the receipt were a generated invoice.
 
-`edit_invoice` remains reserved for in-action/FSM invoice draft editing. Persisted invoice editing remains the separate canonical runtime action `edit_existing_invoice`. `delete_user_database` remains reserved unless a runtime route with exact manual confirmation is implemented separately.
+`edit_invoice` remains reserved for in-action/FSM invoice draft editing. Persisted invoice editing remains the separate canonical runtime action `edit_existing_invoice`. `delete_user_database` is implemented as a separate destructive leave/reset flow with exact typed final confirmation only.
 
 ---
 
@@ -75,7 +75,7 @@ After the supplier profile is saved, the bot must guide the user to one next ste
 
 `/upravit_profil` edits one supplier-profile field at a time and must validate the new value in Python before saving. The save confirmation uses the shared `yes_no` DecisionResolver context `supplier_profile_edit_confirm`.
 
-Future full user database deletion is the destructive top-level action `delete_user_database`. User-facing entry examples are `/vymazat_databazu`, `Chcem vymazať moju databázu`, and similar voice/text phrases. The manual destructive confirmation phrase is `vymazať databázu`. Runtime hard delete is a separate follow-up implementation and must delete the user's whole FakturaBot working database slice only after explicit confirmation.
+Full user database deletion is the destructive top-level action `delete_user_database`. User-facing entry examples are `/vymazat_databazu`, `Chcem vymazať moju databázu`, and similar voice/text phrases. These entries only start a warning/confirmation FSM. The manual destructive confirmation phrase is exactly `vymazať databázu`; it must be typed as text, and voice must be rejected in the final confirmation state. Successful confirmation deletes the user's scoped FakturaBot business data/files, marks `authorized_users.status = deleted_database`, marks `access_requests.status = deleted_database`, removes active access, and requires a fresh `/start` access request plus admin approval before the user can use the bot again. Old business data is not restored after reapproval.
 
 After the first staged setup, `/start` becomes a deterministic setup/status router for approved users:
 - approved without supplier profile: show only the next step `/moj_profil`;

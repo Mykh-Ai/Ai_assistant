@@ -33,6 +33,7 @@ No new confirmation-like response group should be added here unless explicitly a
 |---|---|---|---|---|---|---|
 | `contact_manual_confirm` | in-action response group | implemented | text | `ano`, `nie` | `contact_confirm()` parses lowercased text directly. | Manual contact wizard path. |
 | `supplier_onboarding_confirm` | in-action response group | implemented | text | `yes`, `no`, `unknown` | `onboarding_confirm()` resolves with shared `yes_no` DecisionResolver context `onboarding_confirm`. | Bootstrap/setup flow confirmation. |
+| `delete_user_database_exact_confirmation` | destructive exact confirmation | implemented | text only | exact phrase `vymazať databázu` | `DeleteUserDatabaseStates.waiting_exact_confirmation`; `confirm_delete_user_database()` calls `UserDataDeletionService` only after exact typed match. | Explicit exception: no yes/no resolver and no voice confirmation. Voice in this state is rejected before STT and top-level routing. |
 
 ## C) Slot clarification and bounded value groups
 

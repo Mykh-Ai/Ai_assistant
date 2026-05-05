@@ -164,6 +164,38 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             '\u0447\u0435\u043a\u0430',
         }
         incoming_invoice_targets = {'prijatu', 'prijata', 'incoming'}
+        delete_database_phrases = {
+            'vymazat databazu',
+            'chcem vymazat moju databazu',
+            'zmazat moje udaje',
+            'zrusit moj ucet',
+            '\u0432\u0438\u0434\u0430\u043b\u0438 \u043c\u043e\u044e \u0431\u0430\u0437\u0443',
+            '\u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438 \u043c\u043e\u044e \u0431\u0430\u0437\u0443',
+            '\u0443\u0434\u0430\u043b\u0438\u0442\u044c \u043c\u043e\u044e \u0431\u0430\u0437\u0443',
+            '\u0445\u043e\u0447\u0443 \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u043c\u043e\u044e \u0431\u0430\u0437\u0443',
+        }
+        delete_database_verbs = {
+            'vymazat',
+            'zmazat',
+            'zrusit',
+            'odstranit',
+            'delete',
+            'remove',
+            '\u0432\u0438\u0434\u0430\u043b\u0438',
+            '\u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438',
+            '\u0443\u0434\u0430\u043b\u0438',
+            '\u0443\u0434\u0430\u043b\u0438\u0442\u044c',
+        }
+        delete_database_targets = {
+            'databazu',
+            'database',
+            'udaje',
+            'ucet',
+            '\u0431\u0430\u0437\u0443',
+            '\u0434\u0430\u043d\u0456',
+            '\u0434\u0430\u043d\u043d\u044b\u0435',
+            '\u0430\u043a\u043a\u0430\u0443\u043d\u0442',
+        }
         create_invoice_triggers = {
             'fakturu',
             'faktura',
@@ -225,6 +257,11 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             or (tokens.intersection(incoming_invoice_targets) and tokens.intersection({'fakturu', 'faktura', 'invoice'}))
         ):
             return 'add_receipt'
+        if 'delete_user_database' in allowed and (
+            normalized_text in delete_database_phrases
+            or (tokens.intersection(delete_database_verbs) and tokens.intersection(delete_database_targets))
+        ):
+            return 'delete_user_database'
         if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'відправ', 'отправь'}):
             return 'send_invoice'
         if 'edit_existing_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить', 'управить'}):
@@ -704,6 +741,7 @@ async def resolve_semantic_action(
         'edit_supplier',
         'show_recent_accounting_documents',
         'add_receipt',
+        'delete_user_database',
         'edit_existing_invoice',
         'delete_existing_invoice',
     }:

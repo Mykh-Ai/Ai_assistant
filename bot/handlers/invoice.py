@@ -17,6 +17,7 @@ from bot.config import Config
 from bot.handlers.accounting_document_intake import cmd_accounting_document_intake
 from bot.handlers.accounting_documents import cmd_blocky
 from bot.handlers.contacts import start_add_contact_intake
+from bot.handlers.delete_user_database import DELETE_USER_DATABASE_INTENT, start_delete_user_database_flow
 from bot.handlers.onboarding import cmd_moj_profil, cmd_upravit_profil
 from bot.handlers.start import cmd_start
 from bot.handlers.supplier import start_add_service_alias_intake
@@ -62,6 +63,7 @@ _SHOW_SUPPLIER_PROFILE_INTENT = 'show_supplier_profile'
 _EDIT_SUPPLIER_INTENT = 'edit_supplier'
 _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT = 'show_recent_accounting_documents'
 _ADD_RECEIPT_INTENT = 'add_receipt'
+_DELETE_USER_DATABASE_INTENT = DELETE_USER_DATABASE_INTENT
 _UNKNOWN_INVOICE_INTENT = 'unknown'
 
 
@@ -2039,6 +2041,7 @@ async def process_invoice_text(
             _ADD_SERVICE_ALIAS_INTENT,
             _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT,
             _ADD_RECEIPT_INTENT,
+            _DELETE_USER_DATABASE_INTENT,
             _SEND_INVOICE_INTENT,
             _EDIT_EXISTING_INVOICE_INTENT,
             _DELETE_EXISTING_INVOICE_INTENT,
@@ -2090,6 +2093,18 @@ async def process_invoice_text(
                 'positive_examples': ['pridať bloček', 'nahrať bloček', 'додай чек', 'nahrať prijatú faktúru'],
                 'not_this': ['create outgoing invoice from voice content', 'manually edit a receipt'],
             },
+            _DELETE_USER_DATABASE_INTENT: {
+                'meaning': 'user wants to permanently delete their own FakturaBot business data and leave the bot',
+                'positive_examples': [
+                    'vymazať databázu',
+                    'chcem vymazať moju databázu',
+                    'zmazať moje údaje',
+                    'zrušiť môj účet',
+                    'видали мою базу',
+                    'удалить мою базу',
+                ],
+                'not_this': ['delete a single invoice', 'cancel current draft', 'clear one invoice item detail'],
+            },
             _EDIT_EXISTING_INVOICE_INTENT: {
                 'meaning': 'user wants to explicitly edit already created invoice by number',
                 'positive_examples': ['upraviť faktúru 15', 'редагувати фактуру 15', 'uprav faktúru číslo 20260015'],
@@ -2129,6 +2144,9 @@ async def process_invoice_text(
         return
     if top_level_intent == _ADD_RECEIPT_INTENT:
         await cmd_accounting_document_intake(message=message, state=state)
+        return
+    if top_level_intent == _DELETE_USER_DATABASE_INTENT:
+        await start_delete_user_database_flow(message=message, state=state, config=config)
         return
     if top_level_intent == _ADD_CONTACT_INTENT:
         await start_add_contact_intake(

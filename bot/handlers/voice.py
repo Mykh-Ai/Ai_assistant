@@ -13,6 +13,7 @@ from bot.handlers.accounting_document_intake import (
     handle_accounting_document_preview_decision_text,
 )
 from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm, process_contact_missing_fields
+from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
 from bot.handlers.invoice import (
     InvoiceStates,
     invoice_delete_existing_invoice_confirm,
@@ -62,6 +63,11 @@ def _inject_recognized_text(message: Message, recognized_text: str):
 
 @router.message(F.voice)
 async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMContext) -> None:
+    current_state = await state.get_state()
+    if current_state == DeleteUserDatabaseStates.waiting_exact_confirmation.state:
+        await message.answer(VOICE_EXACT_CONFIRMATION_MESSAGE)
+        return
+
     if not config.openai_api_key:
         await message.answer(
             'Bot nie je nakonfigurovaný: chýba OPENAI_API_KEY.\n'
@@ -106,7 +112,6 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             return
 
         text_message = _inject_recognized_text(message, recognized_text)
-        current_state = await state.get_state()
         if current_state == InvoiceStates.waiting_confirm.state:
             if config.debug_invoice_transparency:
                 logger.info(

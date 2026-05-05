@@ -100,6 +100,10 @@ New families must define:
 
 New families must be documented in `docs/llm/In_Action_Response_Registry.md` before or together with runtime implementation.
 
+### 3.4 Exact typed destructive exception
+
+`delete_user_database` final confirmation is an explicit exception to the yes/no confirmation pattern. The top-level entry intent may be resolved by the bounded Semantic Action Resolver, but final deletion must not use a yes/no DecisionResolver family and must not be accepted from voice. Runtime requires the exact typed phrase `vymazať databázu`; any other text keeps the confirmation state, and voice in that state is rejected before STT with a typed-text instruction.
+
 ---
 
 ## 4. Input Channels

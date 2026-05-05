@@ -10,8 +10,10 @@ from bot.services.db import managed_connection
 ACCESS_STATUS_PENDING = 'pending'
 ACCESS_STATUS_APPROVED = 'approved'
 ACCESS_STATUS_REJECTED = 'rejected'
+ACCESS_STATUS_DELETED_DATABASE = 'deleted_database'
 AUTHORIZED_STATUS_ACTIVE = 'active'
 AUTHORIZED_STATUS_BLOCKED = 'blocked'
+AUTHORIZED_STATUS_DELETED_DATABASE = 'deleted_database'
 ROLE_USER = 'user'
 ROLE_ADMIN = 'admin'
 ROLE_OWNER = 'owner'
@@ -52,7 +54,15 @@ class AccessControlService:
 
     def create_or_refresh_pending_request(self, request: AccessRequestInput) -> AccessRequestRecord:
         existing = self.get_access_request(request.telegram_id)
-        if existing is not None and existing.status in {ACCESS_STATUS_APPROVED, ACCESS_STATUS_REJECTED}:
+        existing_user = self.get_authorized_user(request.telegram_id)
+        is_deleted_database_user = (
+            existing_user is not None and existing_user.status == AUTHORIZED_STATUS_DELETED_DATABASE
+        )
+        if (
+            existing is not None
+            and existing.status in {ACCESS_STATUS_APPROVED, ACCESS_STATUS_REJECTED}
+            and not is_deleted_database_user
+        ):
             return existing
 
         with managed_connection(self._db_path) as connection:
@@ -184,6 +194,11 @@ class AccessControlService:
             )
             connection.commit()
 
+    def mark_deleted_database(self, *, telegram_id: int) -> None:
+        with managed_connection(self._db_path) as connection:
+            mark_deleted_database_in_connection(connection, telegram_id=telegram_id)
+            connection.commit()
+
     def get_authorized_user(self, telegram_id: int) -> AuthorizedUserRecord | None:
         try:
             with managed_connection(self._db_path) as connection:
@@ -226,6 +241,37 @@ class AccessControlService:
     def is_blocked_user(self, telegram_id: int) -> bool:
         user = self.get_authorized_user(telegram_id)
         return user is not None and user.status == AUTHORIZED_STATUS_BLOCKED
+
+    def is_deleted_database_user(self, telegram_id: int) -> bool:
+        user = self.get_authorized_user(telegram_id)
+        return user is not None and user.status == AUTHORIZED_STATUS_DELETED_DATABASE
+
+
+def mark_deleted_database_in_connection(connection: sqlite3.Connection, *, telegram_id: int) -> None:
+    connection.execute(
+        (
+            'INSERT INTO authorized_users (telegram_id, role, status, created_at, approved_by) '
+            'VALUES (?, ?, ?, CURRENT_TIMESTAMP, NULL) '
+            'ON CONFLICT(telegram_id) DO UPDATE SET status=?'
+        ),
+        (telegram_id, ROLE_USER, AUTHORIZED_STATUS_DELETED_DATABASE, AUTHORIZED_STATUS_DELETED_DATABASE),
+    )
+    connection.execute(
+        (
+            'INSERT INTO access_requests '
+            '(telegram_id, username, first_name, last_name, status, requested_at, decided_at, decided_by) '
+            'VALUES (?, NULL, NULL, NULL, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?) '
+            'ON CONFLICT(telegram_id) DO UPDATE SET '
+            'status=?, decided_at=CURRENT_TIMESTAMP, decided_by=?'
+        ),
+        (
+            telegram_id,
+            ACCESS_STATUS_DELETED_DATABASE,
+            telegram_id,
+            ACCESS_STATUS_DELETED_DATABASE,
+            telegram_id,
+        ),
+    )
 
 
 def _clean_optional(value: str | None) -> str | None:

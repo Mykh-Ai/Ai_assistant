@@ -53,6 +53,8 @@ def is_authorized_telegram_user(config: Config, telegram_user_id: int | None) ->
     access_service = AccessControlService(config.db_path)
     if access_service.is_blocked_user(telegram_user_id):
         return False
+    if access_service.is_deleted_database_user(telegram_user_id):
+        return False
     if telegram_user_id in config.allowed_telegram_user_ids:
         return True
     if access_service.is_active_user(telegram_user_id):
@@ -67,6 +69,8 @@ def is_admin_telegram_user(config: Config, telegram_user_id: int | None) -> bool
         return False
     access_service = AccessControlService(config.db_path)
     if access_service.is_blocked_user(telegram_user_id):
+        return False
+    if access_service.is_deleted_database_user(telegram_user_id):
         return False
     return telegram_user_id in config.admin_telegram_user_ids or access_service.is_admin_user(telegram_user_id)
 
