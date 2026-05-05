@@ -25,6 +25,7 @@ async def main() -> None:
     )
     dp = Dispatcher()
     dp.message.outer_middleware(TelegramUserAuthorizationMiddleware())
+    dp.callback_query.outer_middleware(TelegramUserAuthorizationMiddleware())
 
     for router in routers:
         dp.include_router(router)

@@ -5,6 +5,7 @@ from .accounting_documents import router as accounting_documents_router
 from .accounting_document_intake import router as accounting_document_intake_router
 from .contacts import router as contacts_router
 from .contracts import router as contracts_router
+from .decision_callbacks import router as decision_callbacks_router
 from .invoice import router as invoice_router
 from .officeflow_attachment_router import router as officeflow_attachment_router
 from .onboarding import router as onboarding_router
@@ -17,6 +18,7 @@ routers: list[Router] = [
     access_admin_router,
     start_router,
     voice_router,
+    decision_callbacks_router,
     onboarding_router,
     supplier_router,
     accounting_document_intake_router,

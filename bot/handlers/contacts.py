@@ -8,6 +8,7 @@ from aiogram.types import Message
 import re
 
 from bot.config import Config
+from bot.keyboards.decision import answer_with_decision_keyboard, save_cancel_keyboard
 from bot.services.document_intake import extract_message_document_text
 from bot.services.llm_contact_parser import extract_contact_draft
 from bot.services.contact_service import ContactProfile, ContactService
@@ -189,7 +190,7 @@ async def _start_add_contact_from_source(
         return
 
     await state.set_state(ContactStates.intake_confirm)
-    await message.answer(_contact_draft_summary(draft))
+    await answer_with_decision_keyboard(message, _contact_draft_summary(draft), save_cancel_keyboard())
 
 
 async def process_contact_missing_fields(
@@ -203,7 +204,7 @@ async def process_contact_missing_fields(
     draft = dict(data.get('contact_intake_draft') or {})
     if not missing:
         await state.set_state(ContactStates.intake_confirm)
-        await message.answer(_contact_draft_summary(draft))
+        await answer_with_decision_keyboard(message, _contact_draft_summary(draft), save_cancel_keyboard())
         return
 
     current = missing[0]
@@ -221,7 +222,7 @@ async def process_contact_missing_fields(
                 await message.answer(_missing_prompt(missing[0]))
                 return
             await state.set_state(ContactStates.intake_confirm)
-            await message.answer(_contact_draft_summary(draft))
+            await answer_with_decision_keyboard(message, _contact_draft_summary(draft), save_cancel_keyboard())
             return
         await message.answer('Neplatný email. Skúste znova:')
         return
@@ -243,7 +244,7 @@ async def process_contact_missing_fields(
         return
 
     await state.set_state(ContactStates.intake_confirm)
-    await message.answer(_contact_draft_summary(draft))
+    await answer_with_decision_keyboard(message, _contact_draft_summary(draft), save_cancel_keyboard())
 
 
 async def process_contact_intake_confirm(
@@ -252,13 +253,17 @@ async def process_contact_intake_confirm(
     state: FSMContext,
     config: Config,
     answer_text: str,
+    canonical_decision: str | None = None,
 ) -> None:
-    answer = await resolve_yes_no(
-        context_name='contact_intake_confirm',
-        user_input_text=answer_text,
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-    )
+    if canonical_decision is None:
+        answer = await resolve_yes_no(
+            context_name='contact_intake_confirm',
+            user_input_text=answer_text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    else:
+        answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
     if answer == 'unknown':
         await message.answer('Napíšte ano alebo nie.')
         return
@@ -468,17 +473,25 @@ async def contact_person(message: Message, state: FSMContext) -> None:
 
     data = await state.get_data()
     await state.set_state(ContactStates.confirm)
-    await message.answer(_summary(data))
+    await answer_with_decision_keyboard(message, _summary(data), save_cancel_keyboard())
 
 
 @router.message(ContactStates.confirm)
-async def contact_confirm(message: Message, state: FSMContext, config: Config) -> None:
-    answer = await resolve_yes_no(
-        context_name='contact_confirm',
-        user_input_text=(message.text or ''),
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-    )
+async def contact_confirm(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    if canonical_decision is None:
+        answer = await resolve_yes_no(
+            context_name='contact_confirm',
+            user_input_text=(message.text or ''),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    else:
+        answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
     if answer == 'unknown':
         await message.answer('Napíšte ano alebo nie.')
         return

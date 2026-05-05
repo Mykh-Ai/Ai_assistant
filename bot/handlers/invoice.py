@@ -16,6 +16,12 @@ from aiogram.types import FSInputFile, Message
 from bot.config import Config
 from bot.handlers.contacts import start_add_contact_intake
 from bot.handlers.supplier import start_add_service_alias_intake
+from bot.keyboards.decision import (
+    answer_with_decision_keyboard,
+    approve_edit_cancel_keyboard,
+    delete_cancel_keyboard,
+    yes_no_keyboard,
+)
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
@@ -530,7 +536,11 @@ async def _show_updated_draft_preview(
         edit_invoice_date_operation=None,
     )
     await state.set_state(InvoiceStates.waiting_confirm)
-    await message.answer(f'{success_text}\n\n{_format_preview(None, draft)}')
+    await answer_with_decision_keyboard(
+        message,
+        f'{success_text}\n\n{_format_preview(None, draft)}',
+        approve_edit_cancel_keyboard(),
+    )
 
 
 async def _resolve_invoice_edit_scope(*, config: Config, user_input_text: str) -> str:
@@ -1487,7 +1497,11 @@ async def _build_and_store_preview(
 
     await state.update_data(invoice_draft=normalized)
     await state.set_state(InvoiceStates.waiting_confirm)
-    await message.answer(_format_preview(raw_text if raw_text else None, normalized))
+    await answer_with_decision_keyboard(
+        message,
+        _format_preview(raw_text if raw_text else None, normalized),
+        approve_edit_cancel_keyboard(),
+    )
 
 
 async def _start_service_slot_clarification(
@@ -1621,8 +1635,10 @@ async def _start_invoice_customer_alias_confirm(
 
     await state.update_data(invoice_partial_draft=partial_payload)
     await state.set_state(InvoiceStates.waiting_customer_alias_confirm)
-    await message.answer(
-        f'Mysleli ste odberateľa {candidate_contact.name}? Odpovedzte: áno / nie'
+    await answer_with_decision_keyboard(
+        message,
+        f'Mysleli ste odberateľa {candidate_contact.name}? Odpovedzte: áno / nie',
+        yes_no_keyboard(),
     )
 
 
@@ -1632,15 +1648,20 @@ async def process_invoice_customer_alias_confirm(
     state: FSMContext,
     config: Config,
     answer_text: str,
+    canonical_decision: str | None = None,
 ) -> None:
     diagnostics: dict[str, object] = {}
-    decision = await resolve_yes_no(
-        context_name='invoice_customer_alias_confirm',
-        user_input_text=answer_text,
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-        diagnostics=diagnostics,
-    )
+    if canonical_decision is None:
+        decision = await resolve_yes_no(
+            context_name='invoice_customer_alias_confirm',
+            user_input_text=answer_text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            diagnostics=diagnostics,
+        )
+    else:
+        decision = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
+        diagnostics['normalized_output'] = decision
     state_data = await state.get_data()
     partial = state_data.get('invoice_partial_draft')
     unknown_count = 0
@@ -2187,8 +2208,10 @@ async def process_invoice_text(
             pending_delete_pdf_path=matched_invoice.pdf_path,
         )
         await state.set_state(InvoiceStates.waiting_delete_existing_invoice_confirm)
-        await message.answer(
-            f'Naozaj chcete vymazať faktúru {matched_invoice.invoice_number}? Odpovedzte: áno / nie'
+        await answer_with_decision_keyboard(
+            message,
+            f'Naozaj chcete vymazať faktúru {matched_invoice.invoice_number}? Odpovedzte: áno / nie',
+            delete_cancel_keyboard(),
         )
         return
     if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT, _UNKNOWN_INVOICE_INTENT}:
@@ -2545,6 +2568,7 @@ async def process_invoice_preview_confirmation(
     state: FSMContext,
     config: Config,
     confirmation_text: str,
+    canonical_decision: str | None = None,
 ) -> None:
     request_id = str(uuid4())
     state_before = await state.get_state()
@@ -2563,13 +2587,17 @@ async def process_invoice_preview_confirmation(
                 ensure_ascii=False,
             )
         )
-    answer = await resolve_approve_edit_cancel(
-        context_name='invoice_preview_confirmation',
-        user_input_text=confirmation_text,
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-        diagnostics=diagnostics,
-    )
+    if canonical_decision is None:
+        answer = await resolve_approve_edit_cancel(
+            context_name='invoice_preview_confirmation',
+            user_input_text=confirmation_text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            diagnostics=diagnostics,
+        )
+    else:
+        answer = canonical_decision if canonical_decision in {'approve', 'edit', 'cancel', 'unknown'} else 'unknown'
+        diagnostics['normalized_output'] = answer
     if config.debug_invoice_transparency:
         logger.info(
             json.dumps(
@@ -3081,13 +3109,21 @@ async def invoice_pdf_decision(message: Message, state: FSMContext, config: Conf
 
 
 @router.message(InvoiceStates.waiting_delete_existing_invoice_confirm)
-async def invoice_delete_existing_invoice_confirm(message: Message, state: FSMContext, config: Config) -> None:
-    answer = await resolve_yes_no(
-        context_name='delete_existing_invoice_confirm',
-        user_input_text=(message.text or ''),
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-    )
+async def invoice_delete_existing_invoice_confirm(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    if canonical_decision is None:
+        answer = await resolve_yes_no(
+            context_name='delete_existing_invoice_confirm',
+            user_input_text=(message.text or ''),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    else:
+        answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
     if answer == 'unknown':
         await message.answer('Prosím, odpovedzte: áno / nie')
         return

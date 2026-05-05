@@ -7,7 +7,7 @@ from typing import Any
 import unicodedata
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from bot.config import Config
 from bot.services.access_control import (
@@ -74,8 +74,8 @@ def is_admin_telegram_user(config: Config, telegram_user_id: int | None) -> bool
 class TelegramUserAuthorizationMiddleware(BaseMiddleware):
     async def __call__(
         self,
-        handler: Callable[[Message, dict[str, Any]], Awaitable[Any]],
-        event: Message,
+        handler: Callable[[Message | CallbackQuery, dict[str, Any]], Awaitable[Any]],
+        event: Message | CallbackQuery,
         data: dict[str, Any],
     ) -> Any:
         config = data.get('config')
@@ -86,17 +86,17 @@ class TelegramUserAuthorizationMiddleware(BaseMiddleware):
         if is_authorized_telegram_user(config, telegram_user_id):
             return await handler(event, data)
 
-        if _is_admin_command(event) and is_admin_telegram_user(config, telegram_user_id):
+        if not isinstance(event, CallbackQuery) and _is_admin_command(event) and is_admin_telegram_user(config, telegram_user_id):
             return await handler(event, data)
 
-        if _is_start_command(event):
+        if not isinstance(event, CallbackQuery) and _is_start_command(event):
             await self._handle_unauthorized_start(event=event, data=data, config=config)
             return None
 
         state = data.get('state')
         if state is not None and hasattr(state, 'clear'):
             await state.clear()
-        await event.answer(UNAUTHORIZED_MESSAGE)
+        await _answer_unauthorized(event)
         return None
 
     async def _handle_unauthorized_start(self, *, event: Message, data: dict[str, Any], config: Config) -> None:
@@ -155,6 +155,13 @@ def _normalize_admin_alias(value: str) -> str:
     normalized = unicodedata.normalize('NFKD', text)
     without_diacritics = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
     return re.sub(r'\s+', ' ', without_diacritics).strip()
+
+
+async def _answer_unauthorized(event: Message | CallbackQuery) -> None:
+    if isinstance(event, CallbackQuery):
+        await event.answer(UNAUTHORIZED_MESSAGE, show_alert=True)
+        return
+    await event.answer(UNAUTHORIZED_MESSAGE)
 
 
 async def _notify_admins_about_access_request(*, event: Message, data: dict[str, Any], config: Config) -> None:

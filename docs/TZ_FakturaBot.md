@@ -136,6 +136,8 @@ AI не є джерелом істини. У v2.0 контракт AI базує
 
 Phase 1 migration частково впроваджує цей принцип у runtime: поточні invoice preview/post-PDF, contact confirmation, onboarding confirmation і existing-invoice delete confirmation flows проходять через `bot/services/decision_resolver.py`. Це не додає OfficeFlow Document Intake runtime, Telegram button callbacks, DB schema changes, storage migration або зміну `pdf_path`.
 
+Decision UI Layer Phase 1 adds Telegram inline buttons only for stable confirmation flows. Buttons emit canonical `decision:*` tokens and must converge into the same state-aware execution path as text/voice decisions after DecisionResolver normalization. Callback queries must pass authorization before any side effect. Phase 1 does not add standalone contract archive/save buttons, OfficeFlow route/document-type buttons, accounting-document edit buttons, DB schema changes, storage model changes, server actions, or LLM prompt changes.
+
 ---
 
 ## 2. Архітектурна концепція

@@ -30,7 +30,7 @@ from bot.handlers.invoice import (
     process_invoice_slot_clarification,
     process_invoice_text,
 )
-from bot.handlers.onboarding import OnboardingStates, onboarding_confirm
+from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates, onboarding_confirm, supplier_profile_edit_confirm
 from bot.handlers.officeflow_attachment_router import (
     OfficeFlowAttachmentRouterStates,
     handle_officeflow_accounting_proposal_text,
@@ -242,6 +242,12 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             )
         elif current_state == OnboardingStates.confirm.state:
             await onboarding_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == SupplierProfileEditStates.confirm.state:
+            await supplier_profile_edit_confirm(
                 message=text_message,
                 state=state,
                 config=config,

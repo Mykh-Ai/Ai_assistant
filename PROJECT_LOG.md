@@ -1,5 +1,41 @@
 # PROJECT_LOG
 
+## 2026-05-05 - Session 057 - Decision UI Layer Phase 1
+
+Summary:
+- Added Telegram inline decision buttons for stable confirmation flows: invoice preview, invoice customer alias confirmation, invoice delete confirmation, contact confirmations, supplier onboarding confirmation, and supplier profile edit confirmation.
+- Added a shared decision callback dispatcher that accepts only canonical Phase 1 callback tokens: `decision:yes`, `decision:no`, `decision:approve`, `decision:edit`, and `decision:cancel`.
+- Kept text and voice confirmation replies on the Canonical DecisionResolver path; button callbacks skip LLM/STT/LMM and pass pre-canonicalized tokens into the same state-aware handler execution paths.
+- Added callback-query authorization middleware so unauthorized or blocked users cannot trigger decision callback side effects.
+- Left standalone contract save/archive buttons, OfficeFlow route/document-type buttons, `reupload`, and accounting-document edit buttons out of Phase 1.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/User_Access_Model_Roadmap.md`
+
+Constraints extracted:
+- callbacks must emit canonical decision tokens only;
+- callbacks must validate authorization and active FSM state before side effects;
+- text/voice fallback must keep using `bot/services/decision_resolver.py`;
+- LLM/STT/LMM must not run from button callbacks;
+- unknown users must not create business data, temp files, storage paths, invoices, contacts, or documents.
+
+Touched scopes:
+- confirmation: yes;
+- routing/callback routing: yes;
+- FSM: yes;
+- access: yes;
+- LLM/STT/LMM prompts: no;
+- DB schema/storage model/server: no.
+
+Verification:
+- `python -m pytest -q tests\test_decision_callbacks.py tests\test_access_request_flow.py tests\test_contact_intake_semantic_flow.py tests\test_onboarding_decisions.py tests\test_invoice_state_decisions.py -q` -> passed.
+- `python -m pytest -q` -> `864 passed`.
+
 ## 2026-05-04 - Session 056 - Preview-approved contact alias learning
 
 Summary:

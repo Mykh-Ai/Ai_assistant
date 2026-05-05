@@ -12,6 +12,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 
 from bot.config import Config
+from bot.keyboards.decision import answer_with_decision_keyboard, save_cancel_keyboard
 from bot.services.decision_resolver import resolve_yes_no
 from bot.services.invoice_service import InvoiceService
 from bot.services.supplier_service import SupplierProfile, SupplierService
@@ -261,20 +262,30 @@ async def supplier_profile_edit_value(message: Message, state: FSMContext) -> No
     await state.set_state(SupplierProfileEditStates.confirm)
     label = _SUPPLIER_EDIT_FIELD_LABELS[field]
     display_value = normalized_value if normalized_value is not None else '-'
-    await message.answer(
+    await answer_with_decision_keyboard(
+        message,
         f'Zmeniť {label} na: {display_value}?\n'
-        'Napíšte ano pre potvrdenie alebo nie pre zrušenie.'
+        'Napíšte ano pre potvrdenie alebo nie pre zrušenie.',
+        save_cancel_keyboard(save_label='Uložiť zmenu'),
     )
 
 
 @router.message(SupplierProfileEditStates.confirm)
-async def supplier_profile_edit_confirm(message: Message, state: FSMContext, config: Config) -> None:
-    answer = await resolve_yes_no(
-        context_name='supplier_profile_edit_confirm',
-        user_input_text=(message.text or ''),
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-    )
+async def supplier_profile_edit_confirm(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    if canonical_decision is None:
+        answer = await resolve_yes_no(
+            context_name='supplier_profile_edit_confirm',
+            user_input_text=(message.text or ''),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    else:
+        answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
     if answer == 'unknown':
         await message.answer('Napíšte ano alebo nie.')
         return
@@ -454,7 +465,11 @@ async def onboarding_days_due(message: Message, state: FSMContext) -> None:
     await state.update_data(days_due=value)
     data = await state.get_data()
     await state.set_state(OnboardingStates.confirm)
-    await message.answer(_summary(data))
+    await answer_with_decision_keyboard(
+        message,
+        _summary(data),
+        save_cancel_keyboard(save_label='Uložiť profil'),
+    )
 
 
 @router.message(OnboardingStates.confirm)
@@ -462,13 +477,17 @@ async def onboarding_confirm(
     message: Message,
     state: FSMContext,
     config: Config,
+    canonical_decision: str | None = None,
 ) -> None:
-    answer = await resolve_yes_no(
-        context_name='onboarding_confirm',
-        user_input_text=(message.text or ''),
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-    )
+    if canonical_decision is None:
+        answer = await resolve_yes_no(
+            context_name='onboarding_confirm',
+            user_input_text=(message.text or ''),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    else:
+        answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
     if answer == 'unknown':
         await message.answer('Napíšte ano alebo nie.')
         return

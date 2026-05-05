@@ -191,6 +191,39 @@ Not implemented by this migration:
 - storage path changes;
 - invoice PDF path behavior changes.
 
+### 7.2 Decision UI Layer Phase 1
+
+Phase 1 Telegram inline decision buttons are now implemented for stable confirmation surfaces only.
+
+Implemented button surfaces:
+- invoice draft preview confirmation;
+- invoice customer alias confirmation;
+- existing invoice delete confirmation;
+- contact semantic intake confirmation;
+- manual contact confirmation;
+- supplier onboarding confirmation;
+- targeted supplier profile edit confirmation.
+
+Callback authorization rule:
+- callback queries must pass the same Telegram user authorization boundary before any callback side effect;
+- unknown or blocked users must not trigger decision callback execution;
+- callbacks must not create access requests, tenants, supplier profiles, contacts, invoices, documents, temporary files, or storage paths for unauthorized users.
+
+Decision UI contract:
+- buttons emit only canonical callback tokens: `decision:yes`, `decision:no`, `decision:approve`, `decision:edit`, or `decision:cancel`;
+- callbacks do not call LLM, STT, LMM, or per-flow local parsers;
+- callbacks validate the active FSM state before executing;
+- stale or wrong-state callbacks are rejected without business side effects;
+- text and voice inputs continue through `bot/services/decision_resolver.py`;
+- text/voice resolver output and button callback tokens converge into the same state-aware handler execution path.
+
+Out of scope for Phase 1:
+- `decision:reupload`;
+- standalone contract save/archive buttons;
+- OfficeFlow route/document-type buttons such as `create_contact`, `save_contract`, `receipt`, `incoming_invoice`, `contract`, or `contact_source`;
+- accounting document preview edit button while runtime edit remains unavailable;
+- DB schema, storage model, server, or LLM prompt changes.
+
 ---
 
 ## 8. Non-Goals

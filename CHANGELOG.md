@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- Decision UI Layer Phase 1 for stable confirmation flows: reusable Telegram inline decision keyboards, canonical `decision:*` callback tokens, and a shared callback dispatcher for invoice preview, invoice alias confirmation, invoice delete confirmation, contact confirmations, supplier onboarding, and supplier profile edit confirmation.
+- authorization middleware coverage for Telegram `CallbackQuery` updates so unknown or blocked users cannot trigger decision callback side effects.
 - deterministic admin text aliases for `/users` (`користувачі`) and `/access_requests` (`запит`, `запрос`) without LLM routing.
 - controlled access-request onboarding for unknown Telegram users: `/start` records a pending request only, admins can review with `/access_requests`, and admins can approve/reject/block users with deterministic admin commands.
 - `ADMIN_TELEGRAM_USER_IDS` config for bootstrap administrators plus persistent `access_requests` and `authorized_users` tables.
@@ -21,6 +23,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- text/voice confirmation replies continue through the Canonical DecisionResolver, while inline decision buttons now converge into the same state-aware execution paths by passing pre-canonicalized tokens without LLM/STT/LMM calls.
 - authorization now accepts either bootstrap `ALLOWED_TELEGRAM_USER_IDS` membership or an active `authorized_users` row; blocked users are denied before normal handlers run.
 - invoice numbering and uniqueness are now tenant-aware by `supplier_telegram_id`; invoice PDFs now use tenant-scoped paths under `storage/invoices/{supplier_telegram_id}/`.
 - accounting document temp storage, confirmed storage, duplicate detection, and recent-document views are now scoped to the requesting Telegram user workspace.
