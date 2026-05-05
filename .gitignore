@@ -6,7 +6,11 @@
 venv/
 env/
 .env
+.env.*
+!.env.example
+!.env.server.example
 faktura.env
+!faktura.env.example
 
 # Legacy safety guard for the old misplaced private server context path.
 docs/FakturaBot_Server_Agent_Context.md
@@ -24,9 +28,12 @@ docs/local-only/*
 storage/uploads/*
 storage/invoices/*
 storage/contracts/*
+storage/workspaces/*
+storage/**/*.pdf
 
 !.gitkeep
 
+*.sqlite
 *.sqlite3
 *.db
 
