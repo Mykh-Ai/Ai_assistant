@@ -51,6 +51,7 @@
 - accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
 
 ### Notes
+- Tenant-scope rollout exposed a migration/repair gap for existing server data: confirmed accounting documents can exist under the legacy `mykhailo-szco` workspace while `/blocek` reads the requesting tenant workspace, and some historical invoice `pdf_path` values can point to local Windows paths. Data repair must use audit, backup, dry-run, and explicit apply approval rather than cross-tenant fallback reads.
 - Controlled multi-user dry run remains one backend, one bot token, and one SQLite DB; access is limited to bootstrap allowlisted or admin-approved Telegram users, and this is not full SaaS multi-tenancy.
 - Public automatic signup remains out of scope; unknown users can only request access and must be approved by an admin before onboarding, LLM/STT/LMM, invoices, contacts, or document intake.
 - Legacy supplier SMTP values should be purged after backup with `UPDATE supplier SET smtp_host = NULL, smtp_user = NULL, smtp_pass = NULL;`.

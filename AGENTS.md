@@ -134,6 +134,41 @@ The agent must not ask for permission before running read-only commands. If a co
 - destructive або risky дій;
 - runtime / DB / storage змін, якщо вони не були явно замовлені.
 
+## Data migration / persisted data safety
+
+Будь-яка зміна, яка може вплинути на вже збережені дані, повинна вважатись migration-sensitive change.
+
+Persisted data includes:
+- SQLite / майбутні PostgreSQL або інші DB rows;
+- invoice `pdf_path` values and generated PDF files;
+- storage folders, file names, and path conventions;
+- accounting document originals and metadata JSON sidecars;
+- tenant / workspace keys;
+- `telegram_id` / `supplier_telegram_id` scoping;
+- JSON metadata schemas;
+- backup, archive, cleanup, and deletion routines.
+
+Before implementing a migration-sensitive change, the agent must not proceed directly to code or server writes.
+
+Required pre-work:
+1. identify existing persisted data affected by the change;
+2. describe the current data shape and the proposed new shape;
+3. state whether a migration or repair is required;
+4. provide a read-only audit plan;
+5. provide a backup and rollback plan for server-side data;
+6. provide a dry-run migration / repair plan where practical;
+7. ask the user for explicit approval before any write, migration, cleanup, delete, or persisted path rewrite;
+8. record the decision in `PROJECT_LOG.md`;
+9. update `docs/TZ_FakturaBot.md` or a dedicated migration / runbook doc if runtime behavior, data ownership, or storage architecture changes.
+
+Forbidden:
+- silently changing DB / storage semantics without migration notes;
+- relying on cross-tenant fallback reads instead of migration;
+- rewriting persisted paths without backup;
+- deleting legacy data because new code no longer reads it;
+- treating local/dev machine absolute paths as canonical server paths;
+- changing DB engine, schema, tenant scoping, or storage layout just because it seems technically cleaner.
+
 ## Test commands
 
 For this repository, run tests with `python -m pytest -q` from `D:\AI_Model\Ai_assistant`.

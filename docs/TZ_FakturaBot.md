@@ -1192,6 +1192,13 @@ Tenant-sensitive runtime rules:
 - accounting document temporary upload staging is tenant-scoped before any LMM call or confirmed save;
 - contact and supplier profile operations are scoped to the current Telegram user.
 
+Persisted data migration rule:
+- changing DB engine, DB schema, tenant scoping, workspace keys, file paths, `pdf_path` semantics, accounting metadata JSON schema, or cleanup/archive behavior is migration-sensitive;
+- before implementation, the project must document current data shape, proposed data shape, affected existing data, audit plan, backup/rollback plan, dry-run plan, and explicit apply approval;
+- legacy data must be repaired or migrated explicitly, not hidden behind cross-tenant fallback reads;
+- server-side persisted data writes require backup and post-repair validation;
+- practical workflow is maintained in `docs/FakturaBot_Data_Migration_Runbook.md`.
+
 Legacy per-user SMTP credential collection is deprecated for the dry run. Supplier onboarding collects only the business email. Existing DB columns `smtp_host`, `smtp_user`, and `smtp_pass` remain for compatibility but are unused by the dry-run flow and should be cleared if legacy values exist:
 
 ```sql

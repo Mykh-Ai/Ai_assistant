@@ -32,6 +32,42 @@ Touched scopes:
 - routing/LLM/FSM/voice/confirmation docs: yes, documentation alignment only;
 - runtime code, DB, storage, access, server: no changes.
 
+## 2026-05-06 - Session 065 - Tenant storage migration gap and repair governance
+
+Summary:
+- Recorded the discovered tenant-scope data routing gap as a migration/repair issue, not as data loss.
+- Server read-only inventory found existing confirmed accounting document originals and metadata JSON under legacy workspace `mykhailo-szco`.
+- `/blocek` uses tenant-scoped recent-document routing, so it does not read legacy owner metadata from `mykhailo-szco`.
+- Invoice DB rows exist, but some historical `invoice.pdf_path` values point to local Windows paths and are invalid on the Linux server.
+- Server dry-run repair plan found 17 accounting metadata JSON files and 17 matching originals that can be copied from `mykhailo-szco` into the owner tenant workspace with metadata storage fields rewritten.
+- Server dry-run found 3 invoice rows with Windows-local `pdf_path` values, but no unambiguous matching PDF files on the server for those invoice numbers, so invoice repair requires a separate decision or PDF regeneration.
+- After explicit approval, the bloček repair was applied on the server: backup created under `/bot/repo/data/backups/tenant-storage-repair-20260506T111128Z`, 17 metadata JSON files and 17 originals copied into the owner tenant workspace, and 17 metadata storage blocks rewritten.
+- Post-repair runtime registry validation returned 5 recent accounting documents for the owner tenant workspace; bad JSON and missing original references were 0.
+- After explicit approval, invoice PDFs `20260003` and `20260004` were regenerated on the server from existing DB rows/items and their `invoice.pdf_path` values were updated to tenant-scoped server paths. Backup was created under `/bot/data/storage/backups/invoice-pdf-repair-20260506T134251Z`.
+- Post-repair invoice path validation showed PDFs exist for `20260001`, `20260003`, `20260004`, `20260005`, and `20260006`; `20260002` remains a draft row with a historical Windows-local `pdf_path` and no matching server PDF.
+- Added migration-sensitive data rules to `AGENTS.md`.
+- Added `docs/FakturaBot_Data_Migration_Runbook.md` for audit, backup, dry-run, apply, and post-repair validation workflow.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/Document_Intake_Module_Proposal.md`
+- `docs/local-only/FakturaBot_Server_Agent_Context.md`
+
+Constraints extracted:
+- supplier profile data is DB-backed and scoped by `telegram_id`;
+- outgoing invoices are DB-backed by `supplier_telegram_id`, while PDFs are resolved through persisted `invoice.pdf_path`;
+- accounting documents consist of confirmed originals plus metadata JSON sidecars;
+- recent accounting document view reads only confirmed metadata under the requesting tenant workspace;
+- legacy `mykhailo-szco` must not become a cross-tenant fallback source in multi-user dry run;
+- server-side data repair requires backup, dry-run, and explicit apply approval.
+
+Touched scopes:
+- confirmation/routing/LLM/FSM/access: no runtime behavior change;
+- storage/DB: documented migration-sensitive issue and governance only;
+- server: read-only inventory only, no data writes.
+
 ## 2026-05-06 - Session 064 - In-action voice control cleanup
 
 Summary:
