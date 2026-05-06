@@ -90,6 +90,15 @@ Remaining work:
 - decide whether to enforce the 10-alias cap for contact aliases too;
 - broaden rejection tests for raw mentions that contain variable business data such as amount, date, IBAN, email, phone, invoice number, price, or quantity.
 
+Follow-up audit subtask:
+
+- after the bot has processed real invoices for some time, run a read-only audit of `confirmed_semantic_alias`;
+- check whether the bot has learned new aliases with domains `invoice_customer` and `invoice_service`;
+- verify that learned service aliases point to existing `supplier_service_alias` targets and were not written into the manual alias table;
+- sample the learned aliases for quality: no full invoice commands, no prices/quantities/dates, no IBAN/email/phone/invoice numbers, no customer text inside service aliases;
+- record findings in `PROJECT_LOG.md`;
+- do not delete, rewrite, merge, or retarget aliases during the audit unless a separate cleanup/migration task is explicitly approved.
+
 ---
 
 ## Required bundle fields
