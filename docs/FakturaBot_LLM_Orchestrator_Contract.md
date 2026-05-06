@@ -108,7 +108,7 @@ Rules:
 - hints are contextual guidance for bounded resolution, not ontology and not keyword-parser replacement.
 
 Reference ambiguous action:
-- `add_service_alias` (manual `/service` flow exists now; top-level semantic/voice invoke is future runtime work).
+- `add_service_alias` is implemented as a user-facing top-level action through `/sluzbu` plus semantic text/voice invoke. The runtime starts the existing service-alias FSM. Its precision-sensitive alias/display-name values remain text-only.
 
 Profile and data-management actions:
 - `show_supplier_profile` is the user-facing `/moj_profil` profile surface for the user's own supplier/company/billing details in Slovak FakturaBot product semantics: `fakturačné údaje dodávateľa`, `firemné údaje`, invoice issuer details, identifiers, address, and payment details; if no supplier profile exists it starts supplier profile creation.
@@ -151,6 +151,12 @@ Decision families:
 - `attachment_document_type_choice` -> `receipt` / `incoming_invoice` / `contract` / `contact_source` / `cancel` / `unknown`
 
 Existing machine tokens such as `schvalit`, `upravit`, `zrusit`, `ano`, and `nie` remain current runtime compatibility vocabulary where already used. New confirmation-like flows should not add per-module local parsers and should converge text, voice transcript, and future Telegram button/callback input into the same canonical decision path.
+
+Current Phase 2 voice-control boundary:
+- top-level user-facing actions with runtime routes should be voice-reachable unless explicitly documented otherwise;
+- active FSM state wins over idle top-level routing;
+- voice may choose bounded actions, fields, items, routes, document types, and confirmation options;
+- precision-sensitive exact values remain text/file-only, including invoice numbers, item numeric values, IBAN, IČO, DIČ, IČ DPH, email, final item descriptions, service alias names, and exact destructive confirmations.
 
 Confirmed alias learning for noisy semantic values is governed by `docs/Confirmed_Semantic_Alias_Learning_Contract.md`. The same authority split applies: AI/STT may produce only a bounded candidate, Python must validate against scoped local targets, and only a confirmed cleaned candidate may be stored as an alias. Confirmation may be an explicit DecisionResolver confirmation or approval of a workflow preview where the resolved target is visibly shown.
 

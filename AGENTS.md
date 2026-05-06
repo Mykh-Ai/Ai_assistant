@@ -64,6 +64,26 @@ If the agent did not list contracts read and extracted constraints, the task is 
 
 Якщо зміна торкається кількох scopes, читати всі відповідні contracts. Не покладатися лише на назву файлу або стару пам’ять про архітектуру.
 
+## Canonical top-level action completion gate
+
+Новий canonical top-level action не вважається `implemented`, доки не виконано весь runtime + docs + tests контур:
+
+- action зареєстрований у `docs/llm/Canonical_Action_Registry.md`;
+- Python має власника виконання: handler/FSM/service route;
+- top-level resolver отримує action тільки через Python-provided `allowed_actions`;
+- `action_hints`, якщо потрібні, описують semantic meaning, а не literal alias whitelist;
+- text/command route працює або явно не застосовується;
+- voice reachability працює і має тести, або є явна documented причина, чому voice для цього action не застосовується;
+- active FSM states не падають назад у top-level routing;
+- in-FSM controls/confirmations документовані в `docs/llm/In_Action_Response_Registry.md`;
+- exact-value steps, де голос небезпечний, лишаються text/file-only;
+- README architecture tree оновлений для user-facing top-level/subflow карти;
+- `PROJECT_LOG.md` і `CHANGELOG.md` оновлені.
+
+Voice rule:
+- voice може запускати top-level actions і вибирати bounded actions/fields/options у FSM;
+- voice не повинен заповнювати precision-sensitive exact values: IBAN, IČO, DIČ, IČ DPH, email, invoice number, item numeric values, prices, quantities, final item descriptions, service alias names, or exact destructive confirmations.
+
 ## Server-side operational context
 
 Для будь-яких дій на сервері FakturaBot спочатку перевіряти приватний локальний файл:

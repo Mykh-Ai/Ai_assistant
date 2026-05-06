@@ -30,6 +30,16 @@ Supplier profile edit supports voice for choosing which profile field to edit. T
 
 ---
 
+## 2026-05-06 Addendum: top-level action implementation standard
+
+For the current Phase 2 voice-capable runtime, a new canonical top-level action is implemented only when the runtime route, canonical registry entry, bounded resolver integration, command/text entry path, tests, documentation, and voice reachability are aligned.
+
+If voice is inappropriate for the action, the exclusion must be explicit and tested. Valid exclusions include exact typed destructive confirmations, precision-sensitive identifiers and numbers, email/IBAN/tax IDs, exact service/contact/invoice values, and upload steps that require a photo or PDF.
+
+Reserved registry entries, documentation-only names, or resolver hints without a Python route are not runtime implementation.
+
+---
+
 ## 2026-05-05 Addendum: top-level voice command reachability
 
 Approved users may reach the existing top-level/system flows by voice or natural text through the bounded semantic resolver when the resolved canonical action is in Python-provided `allowed_actions`:

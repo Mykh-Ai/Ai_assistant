@@ -1,5 +1,37 @@
 # PROJECT_LOG
 
+## 2026-05-06 - Session 066 - Runtime documentation tree and new-action checklist alignment
+
+Summary:
+- Updated the agent-facing top-level action completion gate: a new canonical top-level action is not considered implemented until the registry, Python route, resolver integration, text/command path, tests, and voice reachability or an explicit voice exclusion are covered.
+- Reworked `docs/llm/New_Action_Design_Checklist.md` into a practical implementation guide for future top-level actions.
+- Mined recurring project failure patterns from `PROJECT_LOG.md` into the checklist, including literal prompt matching, dead phrase dictionaries, voice gaps, FSM fallthrough, premature action exposure, `edit_invoice` vs `edit_existing_invoice` confusion, exact-value voice mistakes, and docs/runtime/test drift.
+- Updated LLM/DecisionResolver contracts to reflect current Phase 2 runtime boundaries rather than treating Decision UI Phase 1 as the current endpoint.
+- Updated the README into an architecture tree of runtime top-level actions, subflows, in-FSM controls, voice boundaries, and not-implemented areas.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `PROJECT_LOG.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+
+Constraints extracted:
+- Python/FSM remains the execution authority; LLM may only canonicalize or draft within bounded allowed outputs;
+- top-level voice coverage is part of implementation completeness unless the action is intentionally text/button/file-only;
+- active FSM state wins over idle/top-level routing;
+- exact values and destructive confirmations remain text-first;
+- confirmation-like replies remain owned by the shared Canonical DecisionResolver;
+- docs must not describe reserved or planned behavior as implemented runtime.
+
+Touched scopes:
+- routing/LLM/FSM/voice/confirmation docs: yes, documentation alignment only;
+- runtime code, DB, storage, access, server: no changes.
+
 ## 2026-05-06 - Session 064 - In-action voice control cleanup
 
 Summary:

@@ -2,155 +2,374 @@
 
 Практичний репозиторій для розробки Telegram-ботів під задачі малого бізнесу.
 
-Перший основний кейс - **FakturaBot**: Telegram-бот для створення словацьких фактур з голосу, тексту та даних контрагента.
+Основний runtime-кейс зараз: **FakturaBot / OfficeFlow**.
 
-## Джерела істини
+FakturaBot створює словацькі outgoing invoices з голосу/тексту, веде локальні контакти, профіль постачальника, service aliases, базовий облік отриманих bločky/prijaté faktúry через Document Intake, і працює в контрольованому multi-user dry run з admin approval.
 
-Для рішень по продукту і коду використовувати такий порядок:
+## Sources Of Truth
+
+Для продуктових і runtime-рішень використовувати такий порядок:
 
 1. `docs/TZ_FakturaBot.md`
 2. `PROJECT_LOG.md`
-3. поточний код репозиторію
+3. поточний код
 4. `CHANGELOG.md`
 
-README є навігаційним оглядом. Якщо README конфліктує з ТЗ, журналом або кодом, пріоритет має ТЗ/журнал/код.
+README є навігаційним оглядом. Якщо README конфліктує з ТЗ, журналом або кодом, пріоритет мають ТЗ/журнал/код.
 
-## Поточний стан
+## Current Runtime Map
 
-Стан на 2026-05-02: FakturaBot має робочий інкрементальний MVP runtime для outgoing invoices і окремий перший runtime-slice для accounting Document Intake.
+Стан: 2026-05-06.
 
-Реально реалізовано:
+### Access And Start
 
-- `/start` - базова перевірка бота.
-- `/supplier`, `/onboarding` - ручний onboarding постачальника з SQLite persistence; per-user SMTP credential collection is deprecated and onboarding collects only business email.
-- `/service` - локальні alias-назви послуг для нормалізації позицій у фактурі.
-- `/contact`, `/contact_add` - ручне створення контрагента.
-- AI-assisted contact intake з текстового PDF/contract-like документа: Python зберігає/читає документ, AI пропонує draft, Python валідовує, користувач підтверджує перед save.
-- `/invoice` і вільний invoice-intent текст/voice - створення invoice draft з тексту або STT, preview, edit/confirm/cancel, persistence, PDF generation.
-- PDF generation з internal Pay by Square encoder і QR-кодом.
-- Sequential invoice numbering, `invoice`/`invoice_item` persistence, `pdf_path`, edit existing invoice by number reference, delete existing invoice with confirmation.
-- Canonical `DecisionResolver` для confirmation-like рішень у поточних invoice/contact/onboarding/delete/accounting flows.
-- `/doklad`, `/expense`, `/intake` - accounting Document Intake Phase 1 для receipt / incoming invoice photo або PDF: LMM classification/extraction, Python validation, preview, confirm/cancel, confirmed JSON-sidecar storage.
-- Idle attachment router для photo/PDF без активного FSM state: класифікує attachment як receipt, incoming invoice, contract, contact source або unknown і лише пропонує наступний bounded flow.
-- 5-minute timeout для temporary OfficeFlow/accounting intake staging.
+```text
+/start
+  unknown user
+    create/refresh pending access request
+    no STT / LLM / LMM / business data
+  approved user
+    setup/status router
+      missing supplier profile -> /moj_profil
+      profile exists, no service alias -> /sluzbu
+      profile + service, no contacts -> /contact
+      ready state -> main operational menu
 
-Не вважати реалізованим:
+Admin commands
+  /access_requests
+  /approve
+  /reject
+  /block
+  /users
+```
 
-- real SMTP/email send flow для фактури;
-- standalone `save_contract` archive flow;
-- full OfficeFlow workspace runtime;
-- Google Drive sync;
-- bank matching;
-- OCR pipeline для довільних scanned documents;
-- multi-tenant SaaS runtime;
-- setup page, billing, складна рольова система.
+Admin/access commands are deterministic Python commands. They are not LLM-routed.
+
+### Supplier Profile
+
+```text
+/moj_profil
+  show supplier/company/billing profile
+  if profile is missing -> starts supplier onboarding
+
+/upravit_profil
+  choose field
+    name
+    ICO
+    DIC
+    IC DPH
+    address
+    IBAN
+    SWIFT/BIC
+    email
+    default due days
+  enter new value
+  save/cancel confirmation
+```
+
+Voice support:
+- top-level profile view/edit intent: yes;
+- field choice inside `/upravit_profil`: yes;
+- exact new field value: text-only.
+
+### Services
+
+```text
+/sluzbu
+  short service/item alias
+  full invoice/PDF display title
+
+legacy aliases
+  /service
+  /alias
+```
+
+Voice support:
+- top-level add-service intent: yes;
+- exact alias/display-name values: text-only.
+
+### Contacts
+
+```text
+/contact
+/contact_add
+  manual contact flow
+    company name
+    ICO
+    DIC
+    IC DPH
+    address
+    email
+    contact person
+    save/cancel
+
+AI-assisted contact intake
+  text or document/contact-source input
+  AI drafts candidate
+  Python validates
+  missing fields
+  save/cancel
+```
+
+Voice support:
+- top-level add-contact intent: yes;
+- contact save/cancel decisions: yes;
+- missing business-data values: text-only.
+
+No automatic contact creation from receipts, incoming invoices, idle photos, or arbitrary attachments.
+
+### Invoices
+
+```text
+/invoice
+voice/text create_invoice
+  natural-language invoice request
+  bounded draft extraction
+  missing slot clarification
+    service/customer/date/quantity/price where recoverable
+  preview
+    approve
+      create invoice row
+      assign invoice number
+      generate PDF
+    edit
+      invoice-level edit
+        invoice number
+        dates
+          issue date
+          delivery date
+          due date
+        customer/contact
+          planned/partial, not a broad automatic contact rewrite
+      item-level edit
+        choose item
+        replace service
+        replace main description
+        add item details
+        clear item details
+        quantity
+        unit price
+        total amount
+    cancel
+      clear draft without DB invoice/PDF side effects
+
+post-PDF / post-edit decision
+  approve
+  edit
+  cancel
+
+existing invoice management
+  edit_existing_invoice by invoice number/reference
+    same bounded edit subflow
+  delete_existing_invoice by invoice number/reference
+    yes/no confirmation
+```
+
+Important distinction:
+- `edit_invoice` = in-action/FSM draft/current invoice editing semantics;
+- `edit_existing_invoice` = persisted invoice editing by number/reference.
+
+Voice support:
+- top-level create invoice: yes;
+- `/invoice` waiting input: yes;
+- preview/post-PDF decisions: yes;
+- edit action/scope/item/field choices: yes;
+- exact invoice number value: text-only;
+- exact item numeric values/prices/quantities: text-only;
+- final item description: text-only.
+
+### Accounting Documents / Bločky
+
+```text
+/add_blocek
+/dodat_blocek
+  upload photo/PDF
+  LMM classification/extraction
+  duplicate warning if matched
+  preview
+    save
+    edit unavailable in current runtime
+    cancel
+
+/blocek
+/blocky
+  show recent confirmed accounting documents
+```
+
+Supported document types:
+- receipt / bloček;
+- incoming invoice / prijatá faktúra.
+
+Accounting documents are external source documents. They are not edited like generated invoices. If recognition is wrong, the correction path is better photo/PDF re-upload; arbitrary manual accounting-document editing is not implemented.
+
+Voice support:
+- top-level show recent documents: yes;
+- top-level add/upload receipt intent: yes, starts upload waiting only;
+- upload itself: photo/PDF only;
+- duplicate/preview decisions: yes.
+
+### OfficeFlow Idle Attachment Router
+
+```text
+idle photo/PDF
+  authorization first
+  LMM document type classification
+    receipt
+    incoming_invoice
+    contract
+    contact_source
+    unknown
+  Python proposes bounded next step
+  user confirms route before save/create side effects
+```
+
+Active FSM state wins over idle attachment routing.
+
+Standalone contract save/archive is not implemented.
+
+### User Database Deletion
+
+```text
+/vymazat_databazu
+semantic text/voice delete_user_database intent
+  warning
+  exact typed confirmation only: vymazať databázu
+  scoped business DB/file deletion
+  authorized_users.status = deleted_database
+  access_requests.status = deleted_database
+  future /start requires new admin approval
+```
+
+Voice may start the warning flow. Voice must never pass final deletion confirmation.
+
+## Voice Boundary
+
+Voice is supported for:
+- top-level canonical actions with runtime routes;
+- bounded in-FSM action/field/item/route choices;
+- confirmation-like decisions through the shared DecisionResolver;
+- natural-language invoice request text.
+
+Voice is intentionally not used for precision-sensitive exact values:
+- IBAN;
+- ICO / DIC / IC DPH;
+- email;
+- invoice number values;
+- item quantities, unit prices, total amounts;
+- final item descriptions;
+- service alias names/display titles;
+- exact destructive confirmations;
+- upload steps that require photo/PDF.
+
+## AI Architecture Principle
+
+AI is not an autonomous executor.
+
+```text
+Python orchestrates
+AI extracts / drafts / canonicalizes inside bounded contracts
+Python validates
+User confirms
+Python saves or performs side effects
+```
+
+Authorization and tenant scoping happen before STT, LLM, LMM, temp files, DB writes, or storage writes.
 
 ## Run
 
-1. Створити `.env` на основі `.env.example`.
-2. Заповнити мінімум:
+1. Create `.env` from `.env.example`.
+2. Fill at least:
    - `BOT_TOKEN`
    - `OPENAI_API_KEY`
-   - `OPENAI_STT_MODEL` або залишити default
-   - `OPENAI_LLM_MODEL` або залишити default
-3. Встановити залежності:
-   - `pip install -r requirements.txt`
-4. Запустити локально:
-   - `python -m bot.main`
-5. Або через Docker:
-   - `docker compose up --build`
+   - `OPENAI_STT_MODEL` or leave default
+   - `OPENAI_LLM_MODEL` or leave default
+3. Install dependencies:
+
+```powershell
+pip install -r requirements.txt
+```
+
+4. Run locally:
+
+```powershell
+python -m bot.main
+```
+
+Or with Docker:
+
+```powershell
+docker compose up --build
+```
 
 Production-like owner-run baseline:
+- `.env.server.example`
+- `docker-compose.prod.yml`
+- `scripts/update_repo.sh`
+- `scripts/deploy_owner_run.sh`
 
-- `.env.server.example` - стартовий env template;
-- `docker-compose.prod.yml` - server/container baseline;
-- `scripts/update_repo.sh` - контрольоване оновлення repo на сервері;
-- `scripts/deploy_owner_run.sh` - rebuild/restart owner-run instance.
+Before server-side work, read the private local runbook if present:
 
-Перед server-side діями агент має перевірити приватний local-only context:
+```text
+docs/local-only/FakturaBot_Server_Agent_Context.md
+```
 
-- `docs/local-only/FakturaBot_Server_Agent_Context.md`
+## Tests
 
-## Test
-
-Основна команда тестів для цього repo:
+Use:
 
 ```powershell
 python -m pytest -q
 ```
 
-Не використовувати bare `pytest -q` як default, бо він може не додати project root у `sys.path`.
+Do not use bare `pytest -q` as default because it may not include the project root on `sys.path`.
 
-## Основні команди бота
+## Documentation
 
-- `/start` - health/intro.
-- `/supplier`, `/onboarding` - supplier profile.
-- `/service` - додати коротку назву послуги та її повний invoice/PDF display title.
-- `/contact`, `/contact_add` - ручний контакт або контакт із document source.
-- `/invoice` - invoice draft -> preview -> edit/confirm/cancel -> PDF.
-- `/doklad`, `/expense`, `/intake` - receipt/incoming invoice intake.
-- Voice message - STT і routing у поточний active flow або top-level invoice/contact/service intent.
+Active source-of-truth / contract docs:
 
-## Документація
+- `docs/TZ_FakturaBot.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `docs/FakturaBot_Data_Migration_Runbook.md`
 
-Активні source-of-truth / contract docs:
+Planning / proposal docs:
 
-- `docs/TZ_FakturaBot.md` - головне ТЗ.
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md` - AI/orchestrator contract для FakturaBot.
-- `docs/Canonical_Decision_Resolver_Contract.md` - shared confirmation/decision contract.
-- `docs/llm/Canonical_Action_Registry.md` - registry top-level actions/flows.
-- `docs/llm/In_Action_Response_Registry.md` - registry in-flow responses and slot decisions.
-- `docs/llm/Bounded_Resolver_Prompt_Template.md` - bounded resolver payload template.
-- `docs/llm/New_Action_Design_Checklist.md` - checklist для нових canonical actions.
-
-Поточні design / planning / proposal docs:
-
-- `docs/OfficeFlow_Architecture_Framing.md` - OfficeFlow framing; явно відділяє current runtime від future modules.
-- `docs/OfficeFlow_Storage_Model_Proposal.md` - future storage/workspace proposal; не мігрує invoice PDFs.
-- `docs/Document_Intake_Module_Proposal.md` - broader Document Intake proposal і current layer boundaries.
-- `docs/Document_Intake_MVP_Implementation_Plan.md` - Phase 1 accounting intake plan; runtime вже частково реалізований і журнал оновлено пізнішими сесіями.
-- `docs/Invoice_Draft_Review_Lifecycle_Design.md` - audit/design для preview-stage invoice lifecycle; містить implementation status.
-- `docs/Info_Help_Guidance_Layer.md` - planned info/help guidance layer, docs-first.
-- `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md` - rollout/planning document; детальний актуальний AI contract дивитись у LLM orchestrator contract.
-- `docs/FakturaBot_Server_Rollout_Roadmap.md` - server rollout/onboarding roadmap.
-- `docs/FakturaBot_PDF_Layout_Spec.md` - PDF layout requirements/history.
-
-Pay by Square / QR verification references:
-
-- runtime source: `bot/services/pay_by_square.py` and PDF integration in `bot/services/pdf_generator.py`;
-- archived rationale: `docs/archive/PayBySquare_Research_Spike.md`;
-- archived manual scan checklist: `docs/archive/PayBySquare_Manual_Verification_Checklist.md`.
+- `docs/OfficeFlow_Architecture_Framing.md`
+- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/Document_Intake_Module_Proposal.md`
+- `docs/Document_Intake_MVP_Implementation_Plan.md`
+- `docs/Invoice_Draft_Review_Lifecycle_Design.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md`
+- `docs/FakturaBot_Server_Rollout_Roadmap.md`
+- `docs/FakturaBot_PDF_Layout_Spec.md`
 
 Archive:
 
-- `docs/archive/` - історичні документи, які більше не є поточними джерелами істини.
+- `docs/archive/`
 
 Local-only ops:
 
 - `docs/local-only/README.md`
-- `docs/local-only/FakturaBot_Server_Agent_Context.example.md` - safe public template.
-- `docs/local-only/FakturaBot_Server_Agent_Context.md` - private ignored live server context, якщо існує локально.
+- `docs/local-only/FakturaBot_Server_Agent_Context.example.md`
+- `docs/local-only/FakturaBot_Server_Agent_Context.md`
 
-## AI принцип
+## Not Implemented
 
-AI не є автономним виконавцем.
+Do not treat these as current runtime:
 
-Правильна модель:
-
-- Python orchestrates.
-- AI extracts / drafts / canonicalizes only inside bounded contracts.
-- Python validates.
-- User confirms.
-- Python saves or performs side effects.
-
-Це обов'язково для invoice draft, contact extraction, accounting document intake, email/PDF сценаріїв і будь-яких реквізитів контрагентів.
-## 2026-05-02 FakturaBot Controlled Dry-Run Note
-
-FakturaBot currently supports a controlled multi-user dry run, not full SaaS multi-tenancy:
-- one backend/codebase, one Telegram bot token, one SQLite DB;
-- `ALLOWED_TELEGRAM_USER_IDS` remains a bootstrap/static allowlist;
-- `ADMIN_TELEGRAM_USER_IDS` bootstraps admin approval for controlled access requests;
-- unknown `/start` creates only a pending access request until an admin approves it;
-- invoice/contact/supplier/accounting-document runtime data is scoped by `telegram_id` / `supplier_telegram_id`;
-- invoice PDFs use tenant-scoped paths under `storage/invoices/{supplier_telegram_id}/`;
-- per-user SMTP host/user/password onboarding is deprecated; only business email is collected.
+- public automatic signup;
+- full SaaS multi-tenancy;
+- per-client bot/VPS/container/DB provisioning;
+- standalone contract archive/save runtime;
+- Google Drive sync;
+- bank matching;
+- broad OCR pipeline for arbitrary scanned documents;
+- full OfficeFlow workspace runtime;
+- real SMTP/email sending flow for invoices;
+- complex role system;
+- setup/billing UI.

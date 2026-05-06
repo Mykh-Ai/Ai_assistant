@@ -176,11 +176,13 @@ Until migration is complete, docs and code must not claim the shared resolver is
 
 For new flows, migration status is not an excuse to add new local parsers. Legacy local parsers may exist only as documented technical debt. New work must use the Canonical DecisionResolver from the first implementation slice.
 
-### 7.1 Phase 1 Runtime Status
+### 7.1 Current Runtime Status
 
 Implemented in `bot/services/decision_resolver.py`:
 - `resolve_approve_edit_cancel(...)` returns `approve`, `edit`, `cancel`, or `unknown`.
 - `resolve_yes_no(...)` returns `yes`, `no`, or `unknown`.
+- `resolve_attachment_route_choice(...)` returns `create_contact`, `save_contract`, `cancel`, or `unknown`.
+- `resolve_attachment_document_type_choice(...)` returns `receipt`, `incoming_invoice`, `contract`, `contact_source`, `cancel`, or `unknown`.
 
 Migrated runtime paths:
 - invoice preview confirmation;
@@ -191,6 +193,11 @@ Migrated runtime paths:
 - targeted supplier profile edit confirmation;
 - existing invoice delete confirmation.
 - invoice customer alias confirmation.
+- idle attachment accounting proposal confirmation;
+- idle attachment route choice;
+- idle attachment document-type clarification;
+- accounting document duplicate save decision;
+- accounting document preview decision.
 
 Voice routing now sends confirm-state transcripts to the active confirmation handler for:
 - invoice preview confirmation;
@@ -201,17 +208,17 @@ Voice routing now sends confirm-state transcripts to the active confirmation han
 - manual contact confirmation;
 - supplier onboarding confirmation.
 - targeted supplier profile edit confirmation.
+- OfficeFlow idle attachment proposal/route/document-type decisions;
+- accounting document duplicate and preview decisions.
 
-Not implemented by this migration:
-- OfficeFlow Document Intake runtime;
-- Telegram button/callback handling;
-- DB schema changes;
-- storage path changes;
-- invoice PDF path behavior changes.
+Current Phase 2 boundary:
+- voice can control bounded state actions/field choices when Python supplies allowed outputs;
+- exact value entry remains text/file-only where STT guessing is unsafe;
+- `delete_user_database` final confirmation remains exact typed text only and rejects voice before STT.
 
 ### 7.2 Decision UI Layer Phase 1
 
-Phase 1 Telegram inline decision buttons are now implemented for stable confirmation surfaces only.
+Decision UI Layer Phase 1 is the historical increment that introduced Telegram inline decision buttons for stable confirmation surfaces.
 
 Implemented button surfaces:
 - invoice draft preview confirmation;
