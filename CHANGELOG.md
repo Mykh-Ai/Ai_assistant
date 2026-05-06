@@ -25,6 +25,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- STT transcription now sends a compact multilingual FakturaBot / OfficeFlow context prompt so voice input is biased toward Slovak/Ukrainian/Russian/English mixed business speech without turning STT into a command router.
 - top-level Semantic Action Resolver prompt/context now requires SK/UK/RU/mixed user input to be interpreted into Slovak FakturaBot product semantics before choosing an allowed action; supplier profile hints describe company/billing profile semantics rather than command aliases.
 - users who complete `delete_user_database` now lose active access and remain visible to admins as `authorized_users.status=deleted_database`; future `/start` creates a fresh pending access request, and `/approve` reactivates the user with a clean business database.
 - voice handling now refuses unhandled active FSM states with a Slovak text-required prompt instead of falling through to top-level routing and potentially clearing or overriding state.

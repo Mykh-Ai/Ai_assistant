@@ -265,7 +265,7 @@ async def supplier_profile_edit_value(message: Message, state: FSMContext) -> No
     await answer_with_decision_keyboard(
         message,
         f'Zmeniť {label} na: {display_value}?\n'
-        'Napíšte ano pre potvrdenie alebo nie pre zrušenie.',
+        'Zmenu treba potvrdiť.',
         save_cancel_keyboard(save_label='Uložiť zmenu'),
     )
 

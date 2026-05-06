@@ -41,6 +41,20 @@ Rules for the controlled multi-user dry run:
 - LLM must not receive another tenant's stored data.
 - DB filtering, invoice-number generation, file-path generation, duplicate checks, and persistence decisions remain deterministic Python logic scoped by `telegram_id` / `supplier_telegram_id`.
 
+### STT transcription context
+
+The STT layer may receive a compact transcription prompt that describes the expected language and product domain for raw Telegram voice messages.
+
+This prompt is only transcription context. It may say that speech can be Slovak, Ukrainian, Russian, English, mixed-language, colloquial, or STT-noisy, and that the domain is Slovak invoicing/accounting for FakturaBot / OfficeFlow.
+
+The STT prompt must not:
+- list canonical action tokens as an execution contract;
+- decide routing or confirmation outcomes;
+- translate, summarize, or rewrite the user request into a command;
+- bypass Python authorization, FSM state, bounded resolver validation, or confirmation rules.
+
+After STT, the transcript still flows through the same Python-owned state routing, Canonical DecisionResolver, or bounded Semantic Action Resolver as normal text input.
+
 ---
 
 ## 2) Bounded Semantic Canonicalization

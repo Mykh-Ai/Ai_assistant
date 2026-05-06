@@ -1,5 +1,50 @@
 # PROJECT_LOG
 
+## 2026-05-06 - Session 063 - Supplier profile edit confirmation wording
+
+Summary:
+- Updated the targeted supplier profile edit confirmation message.
+- Removed the inline `ano` / `nie` instruction from the message because the confirmation buttons already provide the available actions.
+- Kept the shared `yes_no` DecisionResolver flow, FSM behavior, callbacks, DB writes, and access checks unchanged.
+
+Contracts read:
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+
+Constraints extracted:
+- confirmation-like replies must continue through `bot/services/decision_resolver.py`;
+- button callbacks must converge into the same state-aware confirmation handler;
+- UI wording can change without adding local confirmation parsing or changing canonical decision outputs.
+
+Touched scopes:
+- confirmation: yes, UI wording only;
+- routing/LLM/FSM/storage/DB/access/server: no behavior change.
+
+## 2026-05-06 - Session 062 - STT transcription context prompt
+
+Summary:
+- Added a compact multilingual FakturaBot / OfficeFlow context prompt to the STT transcription call.
+- The prompt tells the transcription model to expect Slovak, Ukrainian, Russian, English, and mixed Surzhyk / mixed Slovak-Ukrainian-Russian-English speech.
+- The prompt explicitly keeps STT as transcription only: no translation, no summary, no conversion into commands, and no canonical action routing.
+- Kept `voice.py`, semantic action routing, confirmation logic, FSM execution, DB, and storage unchanged.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+
+Constraints extracted:
+- Python authorization and tenant scoping must happen before STT/LLM/LMM;
+- STT may produce only a raw transcript candidate;
+- Python/FSM/DecisionResolver/Semantic Action Resolver remain responsible for state, routing, validation, and side effects;
+- voice transport code must not become a business-command router.
+
+Touched scopes:
+- confirmation: no;
+- routing/voice routing: no `voice.py` change;
+- LLM/STT prompt behavior: yes, STT transcription prompt only;
+- FSM/DB/storage/access/server: no.
+
 ## 2026-05-06 - Session 061 - Top-level LLM action context repair
 
 Summary:

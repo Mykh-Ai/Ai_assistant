@@ -8,6 +8,16 @@
 
 ---
 
+## 2026-05-06 Addendum: STT transcription context prompt
+
+Voice transcription may pass a compact STT context prompt to the transcription model. The prompt describes the expected FakturaBot / OfficeFlow domain and possible spoken languages: Slovak, Ukrainian, Russian, English, and mixed Surzhyk / mixed Slovak-Ukrainian-Russian-English speech.
+
+The STT prompt is not a command router. It must not decide canonical actions, confirmations, or business side effects. It only helps the transcription layer avoid unrelated-language guesses such as Portuguese or Vietnamese artifacts and preserve mixed-language business wording, company names, invoice numbers, amounts, dates, and common invoice/accounting terms.
+
+After transcription, Python authorization, FSM state, Canonical DecisionResolver, bounded Semantic Action Resolver, and Python-side validation remain the execution authority.
+
+---
+
 ## 2026-05-05 Addendum: top-level voice command reachability
 
 Approved users may reach the existing top-level/system flows by voice or natural text through the bounded semantic resolver when the resolved canonical action is in Python-provided `allowed_actions`:
