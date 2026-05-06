@@ -8,7 +8,7 @@ from bot.config import Config
 from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
 from bot.handlers.contacts import ContactStates
 from bot.handlers.invoice import InvoiceStates
-from bot.handlers.onboarding import OnboardingStates
+from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates
 from bot.handlers.supplier import ServiceAliasStates
 from bot.handlers.voice import handle_voice
 
@@ -246,7 +246,30 @@ def test_voice_non_decision_state_routes_to_generic_create_flow(monkeypatch, tmp
     assert calls == ['generic']
 
 
-def test_voice_contact_missing_state_routes_to_contact_missing_handler(monkeypatch, tmp_path: Path) -> None:
+def test_voice_waiting_invoice_input_routes_to_invoice_text(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'urob faktúru pre Tech Company za opravu'
+
+    async def _invoice_text(**kwargs) -> None:
+        calls.append(kwargs['invoice_text'])
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _invoice_text)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_input.state),
+        )
+    )
+    assert calls == ['urob faktúru pre Tech Company za opravu']
+
+
+def test_voice_contact_missing_state_requires_text_input(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
 
     async def _stt(*args, **kwargs) -> str:
@@ -262,11 +285,12 @@ def test_voice_contact_missing_state_routes_to_contact_missing_handler(monkeypat
     async def _contact_missing(**kwargs) -> None:
         calls.append('contact_missing')
 
-    monkeypatch.setattr('bot.handlers.voice.process_contact_missing_fields', _contact_missing)
     monkeypatch.setattr('bot.handlers.voice.process_contact_intake_confirm', lambda **kwargs: None)
 
-    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(ContactStates.intake_missing.state)))
-    assert calls == ['contact_missing']
+    message = _DummyMessage()
+    asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), _DummyState(ContactStates.intake_missing.state)))
+    assert calls == []
+    assert message.answers[-1] == 'V tomto kroku prosím doplňte chýbajúci údaj textom.'
 
 
 def test_voice_delete_invoice_confirm_routes_to_delete_confirmation_handler(monkeypatch, tmp_path: Path) -> None:
@@ -623,26 +647,21 @@ def test_voice_waiting_edit_service_value_routes_to_service_value_handler(monkey
     assert calls == ['montaz']
 
 
-def test_voice_waiting_edit_invoice_number_value_routes_to_number_handler(monkeypatch, tmp_path: Path) -> None:
-    calls: list[str] = []
-
+def test_voice_waiting_edit_invoice_number_value_requires_text_input(monkeypatch, tmp_path: Path) -> None:
     async def _stt(*args, **kwargs) -> str:
         return 'zmeň číslo na dvadsať dva'
 
-    async def _number_value(**kwargs) -> None:
-        calls.append(kwargs['message'].text)
-
     monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
-    monkeypatch.setattr('bot.handlers.voice.invoice_edit_invoice_number_value', _number_value)
+    message = _DummyMessage()
     asyncio.run(
         handle_voice(
-            _DummyMessage(),
+            message,
             _DummyBot(),
             _config(tmp_path),
             _DummyState(InvoiceStates.waiting_edit_invoice_number_value.state),
         )
     )
-    assert calls == ['zmeň číslo na dvadsať dva']
+    assert message.answers[-1] == 'Číslo faktúry prosím zadajte textom vo formáte RRRRNNNN.'
 
 
 def test_voice_waiting_edit_invoice_date_value_routes_to_date_handler(monkeypatch, tmp_path: Path) -> None:
@@ -665,6 +684,46 @@ def test_voice_waiting_edit_invoice_date_value_routes_to_date_handler(monkeypatc
         )
     )
     assert calls == ['zmeň dátum na pätnásteho marca']
+
+
+def test_voice_supplier_profile_field_routes_to_field_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'chcem zmeniť IBAN'
+
+    async def _field(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.supplier_profile_edit_field', _field)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(SupplierProfileEditStates.field.state),
+        )
+    )
+    assert calls == ['chcem zmeniť IBAN']
+
+
+def test_voice_supplier_profile_value_requires_text_input(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'novy iban je es ka...'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    message = _DummyMessage()
+    asyncio.run(
+        handle_voice(
+            message,
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(SupplierProfileEditStates.value.state),
+        )
+    )
+    assert message.answers[-1] == 'V tomto kroku prosím zadajte hodnotu textom.'
 
 
 def test_voice_top_level_add_service_alias_routes_to_existing_service_flow(monkeypatch, tmp_path: Path) -> None:

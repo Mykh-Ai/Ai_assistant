@@ -12,14 +12,13 @@ from bot.handlers.accounting_document_intake import (
     handle_accounting_document_duplicate_decision_text,
     handle_accounting_document_preview_decision_text,
 )
-from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm, process_contact_missing_fields
+from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm
 from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
 from bot.handlers.invoice import (
     InvoiceStates,
     invoice_delete_existing_invoice_confirm,
     invoice_edit_invoice_action,
     invoice_edit_invoice_date_value,
-    invoice_edit_invoice_number_value,
     invoice_edit_item_action,
     invoice_edit_item_target,
     invoice_edit_scope,
@@ -31,7 +30,13 @@ from bot.handlers.invoice import (
     process_invoice_slot_clarification,
     process_invoice_text,
 )
-from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates, onboarding_confirm, supplier_profile_edit_confirm
+from bot.handlers.onboarding import (
+    OnboardingStates,
+    SupplierProfileEditStates,
+    onboarding_confirm,
+    supplier_profile_edit_confirm,
+    supplier_profile_edit_field,
+)
 from bot.handlers.officeflow_attachment_router import (
     OfficeFlowAttachmentRouterStates,
     handle_officeflow_accounting_proposal_text,
@@ -112,7 +117,15 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             return
 
         text_message = _inject_recognized_text(message, recognized_text)
-        if current_state == InvoiceStates.waiting_confirm.state:
+        if current_state == InvoiceStates.waiting_input.state:
+            await process_invoice_text(
+                message=message,
+                state=state,
+                config=config,
+                invoice_text=recognized_text,
+                request_id=request_id,
+            )
+        elif current_state == InvoiceStates.waiting_confirm.state:
             if config.debug_invoice_transparency:
                 logger.info(
                     json.dumps(
@@ -210,11 +223,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 config=config,
             )
         elif current_state == InvoiceStates.waiting_edit_invoice_number_value.state:
-            await invoice_edit_invoice_number_value(
-                message=text_message,
-                state=state,
-                config=config,
-            )
+            await message.answer('Číslo faktúry prosím zadajte textom vo formáte RRRRNNNN.')
         elif current_state == InvoiceStates.waiting_edit_invoice_date_value.state:
             await invoice_edit_invoice_date_value(
                 message=text_message,
@@ -227,11 +236,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 'Napíšte opis textom alebo `vymaž opis`.'
             )
         elif current_state == ContactStates.intake_missing.state:
-            await process_contact_missing_fields(
-                message=message,
-                state=state,
-                user_text=recognized_text,
-            )
+            await message.answer('V tomto kroku prosím doplňte chýbajúci údaj textom.')
         elif current_state == ContactStates.intake_confirm.state:
             await process_contact_intake_confirm(
                 message=message,
@@ -247,6 +252,12 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             )
         elif current_state == OnboardingStates.confirm.state:
             await onboarding_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == SupplierProfileEditStates.field.state:
+            await supplier_profile_edit_field(
                 message=text_message,
                 state=state,
                 config=config,

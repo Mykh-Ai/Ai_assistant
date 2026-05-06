@@ -144,7 +144,7 @@ def test_upravit_profil_updates_one_field_with_shared_confirmation(tmp_path: Pat
     asyncio.run(cmd_upravit_profil(_DummyMessage('/upravit_profil'), state, config))
     assert state.current_state == SupplierProfileEditStates.field
 
-    asyncio.run(supplier_profile_edit_field(_DummyMessage('adresa'), state))
+    asyncio.run(supplier_profile_edit_field(_DummyMessage('adresa'), state, config))
     assert state.current_state == SupplierProfileEditStates.value
 
     asyncio.run(supplier_profile_edit_value(_DummyMessage('Nova adresa 22'), state))
@@ -159,3 +159,33 @@ def test_upravit_profil_updates_one_field_with_shared_confirmation(tmp_path: Pat
     assert saved.ico == '12345678'
     assert state.current_state is None
     assert '/sluzbu' in confirm_message.answers[-1]
+
+
+def test_supplier_profile_edit_field_accepts_voice_like_phrase_fast_path(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    state = _DummyState()
+
+    asyncio.run(supplier_profile_edit_field(_DummyMessage('chcem zmeniť IBAN'), state, config))
+
+    assert state.current_state == SupplierProfileEditStates.value
+    assert state.data['supplier_edit_field'] == 'iban'
+
+
+def test_supplier_profile_edit_field_uses_bounded_resolver_fallback(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    state = _DummyState()
+    captured: dict[str, object] = {}
+
+    async def _resolve(**kwargs) -> str:
+        captured.update(kwargs)
+        return 'email'
+
+    monkeypatch.setattr('bot.handlers.onboarding.resolve_semantic_action', _resolve)
+
+    asyncio.run(supplier_profile_edit_field(_DummyMessage('kontaktné údaje'), state, config))
+
+    assert state.current_state == SupplierProfileEditStates.value
+    assert state.data['supplier_edit_field'] == 'email'
+    assert captured['context_name'] == 'supplier_profile_edit_field'
+    assert 'email' in captured['allowed_actions']
+    assert 'unknown' in captured['allowed_actions']

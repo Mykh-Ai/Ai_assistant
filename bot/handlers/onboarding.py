@@ -15,6 +15,7 @@ from bot.config import Config
 from bot.keyboards.decision import answer_with_decision_keyboard, save_cancel_keyboard
 from bot.services.decision_resolver import resolve_yes_no
 from bot.services.invoice_service import InvoiceService
+from bot.services.semantic_action_resolver import resolve_semantic_action
 from bot.services.supplier_service import SupplierProfile, SupplierService
 from bot.services.validation import (
     validate_days_due,
@@ -153,6 +154,50 @@ def _edit_field_options_text() -> str:
     return f'Ktorý údaj chcete zmeniť? Možnosti: {options}.'
 
 
+def _resolve_supplier_edit_field_fast_path(user_text: str) -> str | None:
+    normalized = _normalize_choice(user_text)
+    exact = _SUPPLIER_EDIT_ALIASES.get(normalized)
+    if exact is not None:
+        return exact
+
+    matched_fields: set[str] = set()
+    for alias, field in _SUPPLIER_EDIT_ALIASES.items():
+        if re.search(rf'\b{re.escape(alias)}\b', normalized):
+            matched_fields.add(field)
+
+    if len(matched_fields) == 1:
+        return next(iter(matched_fields))
+    return None
+
+
+async def _resolve_supplier_edit_field(user_text: str, config: Config) -> str | None:
+    fast_path = _resolve_supplier_edit_field_fast_path(user_text)
+    if fast_path is not None:
+        return fast_path
+
+    canonical = await resolve_semantic_action(
+        context_name='supplier_profile_edit_field',
+        allowed_actions=[*_SUPPLIER_EDIT_FIELD_LABELS.keys(), 'unknown'],
+        user_input_text=user_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        action_hints={
+            'name': {'meaning': 'supplier company or business name'},
+            'ico': {'meaning': 'Slovak company ICO identifier'},
+            'dic': {'meaning': 'Slovak tax DIC identifier'},
+            'ic_dph': {'meaning': 'VAT ID / IC DPH field'},
+            'address': {'meaning': 'supplier company address'},
+            'iban': {'meaning': 'bank account IBAN for invoice payments'},
+            'swift': {'meaning': 'bank SWIFT or BIC code'},
+            'email': {'meaning': 'supplier email address'},
+            'days_due': {'meaning': 'default invoice due-days / splatnost'},
+        },
+    )
+    if canonical in _SUPPLIER_EDIT_FIELD_LABELS:
+        return canonical
+    return None
+
+
 def _validate_supplier_edit_value(field: str, raw_value: str) -> tuple[bool, object, str | None]:
     value = raw_value.strip()
     if field == 'name':
@@ -238,8 +283,8 @@ async def cmd_upravit_profil_case_alias(message: Message, state: FSMContext, con
 
 
 @router.message(SupplierProfileEditStates.field)
-async def supplier_profile_edit_field(message: Message, state: FSMContext) -> None:
-    field = _SUPPLIER_EDIT_ALIASES.get(_normalize_choice(message.text or ''))
+async def supplier_profile_edit_field(message: Message, state: FSMContext, config: Config) -> None:
+    field = await _resolve_supplier_edit_field(message.text or '', config)
     if field is None:
         await message.answer(_edit_field_options_text())
         return

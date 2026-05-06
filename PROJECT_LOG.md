@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-05-06 - Session 064 - In-action voice control cleanup
+
+Summary:
+- Added voice routing for supplier profile field selection inside `SupplierProfileEditStates.field`.
+- Added voice routing from `InvoiceStates.waiting_input` into the same invoice text processing path used by `/invoice` text input.
+- Kept supplier profile value entry text-first; voice in `SupplierProfileEditStates.value` still asks for typed text.
+- Changed contact missing-field intake voice handling to ask for typed text because that state captures business data values, not command choices.
+- Changed invoice-number edit value voice handling to ask for typed text; voice can still choose the edit-number action in the previous bounded action-selection state.
+- Added supplier profile field selection fallback through the shared Semantic Action Resolver after Python fast-path aliases fail.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+
+Constraints extracted:
+- Active FSM state wins over top-level routing;
+- voice can control bounded state actions/field choices when Python supplies allowed outputs;
+- exact value capture remains text-first for invoice numbers, identifiers, bank/email fields, numeric values, descriptions, and destructive confirmations;
+- `voice.py` must not contain business phrase dictionaries.
+
+Touched scopes:
+- confirmation: no new confirmation family;
+- routing/voice routing: yes, in-FSM voice routing only;
+- LLM prompt behavior: no;
+- FSM/DB/storage/access/server: no.
+
 ## 2026-05-06 - Session 063 - Supplier profile edit confirmation wording
 
 Summary:

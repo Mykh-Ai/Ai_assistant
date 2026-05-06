@@ -18,6 +18,18 @@ After transcription, Python authorization, FSM state, Canonical DecisionResolver
 
 ---
 
+## 2026-05-06 Addendum: in-action voice control vs exact value entry
+
+Voice may be used inside an active FSM flow to choose a bounded action, field, item, route, or confirmation option when Python provides the allowed outputs and validates the active state.
+
+Voice may also provide the natural-language invoice request while the user is in `InvoiceStates.waiting_input` after `/invoice`; it follows the same bounded invoice draft extraction path as idle voice invoice creation.
+
+Voice must not fill precision-sensitive exact values. Exact invoice numbers, invoice item numeric values, supplier/contact identifiers, IBAN, IČO, DIČ, IČ DPH, email, final item descriptions, service alias names, and destructive exact confirmations remain text-first.
+
+Supplier profile edit supports voice for choosing which profile field to edit. The new field value itself remains text-only. Contact missing-field intake is also text-first because it captures business data, not a control command.
+
+---
+
 ## 2026-05-05 Addendum: top-level voice command reachability
 
 Approved users may reach the existing top-level/system flows by voice or natural text through the bounded semantic resolver when the resolved canonical action is in Python-provided `allowed_actions`:
