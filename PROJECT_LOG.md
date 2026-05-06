@@ -1,5 +1,85 @@
 # PROJECT_LOG
 
+## 2026-05-06 - Session 068 - Invoice service raw mention self-learning
+
+Summary:
+- Implemented confirmed semantic service alias learning for invoice service raw mentions extracted from text/STT.
+- Added `ServiceAliasService` support for `confirmed_semantic_alias` domain `invoice_service`, target type `supplier_service_alias`, and a default cap of 10 aliases per service target per supplier/domain.
+- Integrated confirmed service alias lookup into invoice service resolution after exact manual `/sluzbu` alias lookup and before bounded LLM fallback.
+- Wired approved invoice previews to store safe `service_raw_mention` variants only when the service resolved to one existing manual service mapping.
+- Kept `supplier_service_alias` as the manual `/sluzbu` table only; learned practical variants are not written there and do not rewrite service titles or invoice item descriptions.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `PROJECT_LOG.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`
+- `docs/llm/TASK_invoice_customer_raw_mention_for_alias_learning.md`
+
+Constraints extracted:
+- Python remains the only lookup, validation, persistence, and execution authority;
+- LLM/STT may provide raw service mention candidates only;
+- learned service aliases must target existing supplier-scoped manual service mappings;
+- `supplier_service_alias` remains user-owned manual `/sluzbu` storage and must not receive learned variants;
+- alias persistence requires approved invoice preview where the resolved service is visible;
+- exact-value service alias creation remains text-only through `/sluzbu`;
+- no DB schema, storage layout, access, server, or confirmation behavior change is required.
+
+Touched scopes:
+- invoice runtime/service lookup: yes;
+- persisted DB rows: yes, existing `confirmed_semantic_alias` table only;
+- LLM prompt/parser: no new prompt shape beyond existing `service_raw_mention`;
+- confirmation: no behavior change, uses existing preview approval;
+- FSM: no new states;
+- DB schema/storage/access/server: no schema, storage, authorization, or server writes.
+
+Verification:
+- `python -m pytest -q tests/test_service_alias_service.py tests/test_invoice_phase2_ai_layer.py::test_preview_uses_service_raw_mention_as_alias_candidate tests/test_invoice_phase2_ai_layer.py::test_preview_rejects_full_command_as_service_alias_candidate tests/test_invoice_phase2_ai_layer.py::test_resolve_service_alias_bounded_uses_confirmed_semantic_alias tests/test_invoice_state_decisions.py::test_preview_approval_stores_confirmed_service_alias_from_raw_mention tests/test_invoice_state_decisions.py::test_preview_cancel_does_not_store_service_alias` -> `14 passed`.
+- `python -m pytest -q` -> `948 passed`.
+
+## 2026-05-06 - Session 067 - Invoice raw customer mention extraction
+
+Summary:
+- Added optional `biznis_sk.odberatel_raw_mention` to the invoice draft prompt as the source/STT phrase for the customer/company mention.
+- Added optional `biznis_sk.service_raw_mention` and per-item `service_raw_mention` prompt/parser support as future-ready extraction fields only.
+- Preserved normalized Python-facing fields: `odberatel_kandidat`, `polozka_povodna`, and `termin_sluzby_sk` remain the lookup/validation inputs.
+- Allowed the invoice parser to keep the new optional raw mention fields without breaking older payloads.
+- Wired only `odberatel_raw_mention` into existing contact alias learning as a safe candidate; alias persistence still happens only after preview approval or explicit alias confirmation.
+- Added safety filtering so a full invoice command, amount/date/payment-like data, or command phrase is not stored as a contact alias candidate.
+- Did not implement service confirmed-alias persistence; `/sluzbu` manual aliases and service runtime behavior remain unchanged.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `PROJECT_LOG.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/TASK_invoice_customer_raw_mention_for_alias_learning.md`
+
+Constraints extracted:
+- Python remains the execution, lookup, validation, and persistence authority;
+- LLM may extract raw/source mention candidates but must not create aliases or claim contact/service matches;
+- raw aliases must come from isolated customer/service phrases, not full invoice commands;
+- contact aliases may be stored only after preview approval or explicit confirmation;
+- service semantic alias persistence is future work and must not write to `supplier_service_alias` in this slice;
+- no DB schema, storage layout, access, or confirmation behavior change is required.
+
+Touched scopes:
+- LLM prompt: yes, invoice draft prompt shape;
+- invoice parser/runtime: yes, optional fields and contact alias candidate selection;
+- confirmation: no behavior change;
+- FSM: no new states;
+- DB/storage/access/server: no schema, storage, authorization, or server writes.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_phase2_ai_layer.py tests/test_invoice_state_decisions.py::test_preview_approval_stores_confirmed_customer_alias tests/test_invoice_state_decisions.py::test_preview_approval_stores_confirmed_customer_alias_from_raw_mention tests/test_invoice_state_decisions.py::test_preview_cancel_does_not_store_customer_alias` -> `66 passed`.
+- `python -m pytest -q` -> `940 passed`.
+
 ## 2026-05-06 - Session 066 - Runtime documentation tree and new-action checklist alignment
 
 Summary:

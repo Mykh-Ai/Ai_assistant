@@ -296,6 +296,12 @@ Scope contract (Phase 1 for future multi-item intake):
 - LLM may return bounded candidate segmentation into item candidates (`items[]`).
 - LLM does not decide final acceptance/persistence and does not own side effects.
 - For multilingual / mixed / noisy STT input, LLM first normalizes business meaning into Slovak draft semantics before filling the bounded invoice payload shape.
+- LLM may also preserve optional raw/source mention fields from the original user/STT wording for later Python-validated alias learning:
+  - `biznis_sk.odberatel_raw_mention`;
+  - `biznis_sk.service_raw_mention`;
+  - `biznis_sk.items[].service_raw_mention`.
+- Raw/source mention fields are candidate trace fields only. They must not include the full invoice command, amount, date, invoice number, IBAN, email, phone, payment terms, or unrelated invoice data.
+- LLM must not create aliases. Python may use a safe raw mention only after scoped lookup, preview display, and user approval/confirmation.
 - LLM output must stay aligned to the exact Python intake structure expected by current invoice flow (`vstup`, `zamer`, `biznis_sk`, `stopa` and bounded `biznis_sk.items[]`).
 - Python remains final validator/workflow owner:
   - validates item boundaries,
@@ -316,6 +322,7 @@ Scope contract (Phase 1 for future multi-item intake):
 ### D) Candidate item shape (`biznis_sk.items[]`)
 
 Each candidate item is machine-safe and bounded, with fields aligned to existing invoice terminology:
+- optional `service_raw_mention` (source phrase from original/STT wording; not normalized and not persisted by this contract alone),
 - `polozka_povodna` (service/raw item text candidate),
 - `termin_sluzby_sk` (internal Slovak service term candidate),
 - `mnozstvo`,

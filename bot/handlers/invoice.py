@@ -243,13 +243,125 @@ def _resolve_contact_lookup(contact_service: ContactService, telegram_id: int, n
     return contact_service.resolve_contact_lookup(telegram_id, name)
 
 
-_ALIAS_LEARNING_RESOLUTION_SOURCES = {'fuzzy_match', 'bounded_llm'}
+_ALIAS_LEARNING_RESOLUTION_SOURCES = {'fuzzy_match', 'bounded_llm', 'raw_mention'}
 
 
 def _normalize_semantic_lookup_key(value: str) -> str:
     lowered = value.casefold().strip()
     separators_normalized = re.sub(r'[^\w\sÀ-žЀ-ӿ]+', ' ', lowered, flags=re.UNICODE)
     return re.sub(r'\s+', ' ', separators_normalized).strip()
+
+
+def _safe_customer_alias_candidate(value: object, *, original_text: str) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = re.sub(r'\s+', ' ', value.strip())
+    if not candidate or len(candidate) > 120:
+        return None
+    original_normalized = re.sub(r'\s+', ' ', original_text.strip())
+    if original_normalized and candidate.casefold() == original_normalized.casefold():
+        return None
+    if re.search(r'@|\b[A-Z]{2}\d{2}[A-Z0-9]{8,30}\b', candidate, flags=re.IGNORECASE):
+        return None
+    if re.search(r'\b\d+(?:[.,]\d+)?\s*(?:eur|€|usd|czk|kč)\b', candidate, flags=re.IGNORECASE):
+        return None
+    if re.search(r'\b(?:19|20)\d{2}\b|\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b', candidate):
+        return None
+    forbidden_tokens = {
+        'faktura',
+        'fakturu',
+        'faktúra',
+        'faktúru',
+        'invoice',
+        'vystav',
+        'vytvor',
+        'sprav',
+        'urob',
+        'suma',
+        'cena',
+        'eur',
+        'datum',
+        'dátum',
+        'splatnost',
+        'splatnosť',
+        'фактура',
+        'фактуру',
+        'рахунок',
+        'счет',
+        'счёт',
+        'выстав',
+        'створи',
+        'вистав',
+    }
+    candidate_tokens = {
+        token.casefold()
+        for token in re.findall(r'[0-9A-Za-zÀ-žА-ӿ]+', candidate, flags=re.UNICODE)
+    }
+    if candidate_tokens.intersection(forbidden_tokens):
+        return None
+    return candidate
+
+
+def _safe_service_alias_candidate(value: object, *, original_text: str) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = re.sub(r'\s+', ' ', value.strip())
+    if not candidate or len(candidate) > 120:
+        return None
+    original_normalized = re.sub(r'\s+', ' ', original_text.strip())
+    if original_normalized and candidate.casefold() == original_normalized.casefold():
+        return None
+    if re.search(r'@|\b[A-Z]{2}\d{2}[A-Z0-9]{8,30}\b', candidate, flags=re.IGNORECASE):
+        return None
+    if re.search(r'\b\d+(?:[.,]\d+)?\s*(?:eur|€|usd|czk|kč)\b', candidate, flags=re.IGNORECASE):
+        return None
+    if re.search(r'\b\d+\s*(?:x|ks|kus|kusy|hod|hodin|m2|m3)\b', candidate, flags=re.IGNORECASE):
+        return None
+    if re.search(r'\b(?:19|20)\d{2}\b|\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b', candidate):
+        return None
+    forbidden_tokens = {
+        'faktura',
+        'fakturu',
+        'faktúra',
+        'faktúru',
+        'invoice',
+        'vystav',
+        'vytvor',
+        'sprav',
+        'urob',
+        'odberatel',
+        'odberateľ',
+        'firma',
+        'firmu',
+        'spolocnost',
+        'spoločnosť',
+        'suma',
+        'cena',
+        'eur',
+        'datum',
+        'dátum',
+        'splatnost',
+        'splatnosť',
+        'фактура',
+        'фактуру',
+        'рахунок',
+        'счет',
+        'счёт',
+        'вистав',
+        'выстав',
+        'створи',
+        'фірма',
+        'фірму',
+        'компанія',
+        'компанію',
+    }
+    candidate_tokens = {
+        token.casefold()
+        for token in re.findall(r'[0-9A-Za-zÀ-žА-я]+', candidate, flags=re.UNICODE)
+    }
+    if candidate_tokens.intersection(forbidden_tokens):
+        return None
+    return candidate
 
 
 async def _resolve_customer_candidate_bounded(
@@ -329,6 +441,7 @@ async def _resolve_customer_candidate_bounded(
 async def _resolve_service_alias_bounded(
     *,
     alias_service: ServiceAliasService,
+    supplier_telegram_id: int | None = None,
     supplier_id: int,
     candidate_text: str,
     config: Config,
@@ -353,6 +466,19 @@ async def _resolve_service_alias_bounded(
     direct_match = normalized_alias_to_canonical.get(normalized_candidate)
     if direct_match is not None:
         return direct_match, alias_to_display[direct_match], allowed_aliases
+
+    if supplier_telegram_id is not None:
+        confirmed_match = alias_service.resolve_confirmed_service_alias(
+            supplier_telegram_id=supplier_telegram_id,
+            supplier_id=supplier_id,
+            alias_text=candidate_text,
+        )
+        if confirmed_match is not None:
+            return (
+                confirmed_match.service_short_name,
+                confirmed_match.service_display_name,
+                allowed_aliases,
+            )
 
     canonical = await resolve_semantic_action(
         context_name=context_name,
@@ -688,6 +814,7 @@ def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict
 
     raw_text = str((vstup or {}).get('povodny_text') or '').strip()
     singleton_item = {
+        'service_raw_mention': (biznis_sk or {}).get('service_raw_mention'),
         'item_name_raw': (biznis_sk or {}).get('polozka_povodna'),
         'service_term_sk': (biznis_sk or {}).get('termin_sluzby_sk'),
         'quantity': (biznis_sk or {}).get('mnozstvo'),
@@ -706,6 +833,7 @@ def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict
             normalized_items.append(
                 {
                     'item_name_raw': raw_item.get('polozka_povodna'),
+                    'service_raw_mention': raw_item.get('service_raw_mention'),
                     'service_term_sk': raw_item.get('termin_sluzby_sk'),
                     'quantity': raw_item.get('mnozstvo'),
                     'unit': raw_item.get('jednotka'),
@@ -718,7 +846,9 @@ def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict
         normalized_items = [singleton_item]
 
     parsed_draft = {
+        'customer_raw_mention': (biznis_sk or {}).get('odberatel_raw_mention'),
         'customer_name': (biznis_sk or {}).get('odberatel_kandidat'),
+        'service_raw_mention': singleton_item['service_raw_mention'],
         'item_name_raw': singleton_item['item_name_raw'],
         'service_term_sk': singleton_item['service_term_sk'],
         'quantity': singleton_item['quantity'],
@@ -1070,6 +1200,7 @@ def _normalize_items_input(parsed_draft: dict[str, object]) -> list[dict[str, ob
             return normalized
     return [
         {
+            'service_raw_mention': parsed_draft.get('service_raw_mention'),
             'item_name_raw': parsed_draft.get('item_name_raw'),
             'service_term_sk': parsed_draft.get('service_term_sk'),
             'quantity': parsed_draft.get('quantity'),
@@ -1159,7 +1290,11 @@ async def _build_and_store_preview(
         return
 
     contact_service = ContactService(config.db_path)
-    alias_learning_candidate = str(parsed_draft.get('customer_alias_candidate') or '').strip()
+    raw_customer_alias_candidate = _safe_customer_alias_candidate(
+        parsed_draft.get('customer_raw_mention'),
+        original_text=raw_text,
+    )
+    alias_learning_candidate = raw_customer_alias_candidate or str(parsed_draft.get('customer_alias_candidate') or '').strip()
     contact_resolution_source = str(parsed_draft.get('customer_resolution_source') or '').strip()
     normalized_lookup, _compressed_lookup = contact_service.normalize_lookup_forms(customer_name)
     _emit_invoice_debug_log(
@@ -1197,7 +1332,10 @@ async def _build_and_store_preview(
     )
     if lookup_result.state in {'exact_match', 'normalized_match', 'alias_match', 'fuzzy_match'} and lookup_result.matched_contact is not None:
         contact = lookup_result.matched_contact
-        if lookup_result.state == 'fuzzy_match':
+        if raw_customer_alias_candidate:
+            contact_resolution_source = 'raw_mention'
+            alias_learning_candidate = raw_customer_alias_candidate
+        elif lookup_result.state == 'fuzzy_match':
             contact_resolution_source = 'fuzzy_match'
             alias_learning_candidate = alias_learning_candidate or customer_name
     elif lookup_result.state == 'single_candidate_confirm_required' and len(lookup_result.candidates) == 1:
@@ -1245,8 +1383,8 @@ async def _build_and_store_preview(
             )
             return
         contact = resolved_contact
-        contact_resolution_source = 'bounded_llm'
-        alias_learning_candidate = alias_learning_candidate or customer_name
+        contact_resolution_source = 'raw_mention' if raw_customer_alias_candidate else 'bounded_llm'
+        alias_learning_candidate = raw_customer_alias_candidate or alias_learning_candidate or customer_name
 
     if contact is None:
         await _start_invoice_slot_clarification(
@@ -1287,6 +1425,7 @@ async def _build_and_store_preview(
 
     normalized_items: list[dict[str, object]] = []
     total_amount = 0.0
+    service_alias_service = ServiceAliasService(config.db_path)
     for item_index, item_input in enumerate(item_inputs, start=1):
         service_short_name_input = ((item_input.get('service_term_sk') or item_input.get('item_name_raw') or '').strip())
         if not service_short_name_input:
@@ -1307,7 +1446,8 @@ async def _build_and_store_preview(
             return
 
         service_short_name, service_display_name, allowed_aliases = await _resolve_service_alias_bounded(
-            alias_service=ServiceAliasService(config.db_path),
+            alias_service=service_alias_service,
+            supplier_telegram_id=message.from_user.id,
             supplier_id=int(supplier.id),
             candidate_text=service_short_name_input,
             config=config,
@@ -1326,6 +1466,14 @@ async def _build_and_store_preview(
             )
             return
 
+        service_mapping = service_alias_service.get_mapping_by_alias(
+            supplier_id=int(supplier.id),
+            service_short_name=service_short_name,
+        )
+        raw_service_alias_candidate = _safe_service_alias_candidate(
+            item_input.get('service_raw_mention'),
+            original_text=raw_text,
+        )
         quantity_value = item_input.get('quantity')
         quantity_raw = _parse_positive_float(quantity_value)
         if quantity_value is not None and quantity_raw is None:
@@ -1393,6 +1541,10 @@ async def _build_and_store_preview(
                 'item_description_raw': item_input.get('item_description_raw'),
             }
         )
+        if raw_service_alias_candidate and service_mapping is not None:
+            normalized_items[-1]['service_alias_id'] = service_mapping.id
+            normalized_items[-1]['service_alias_candidate'] = raw_service_alias_candidate
+            normalized_items[-1]['service_resolution_source'] = 'raw_mention'
 
     if not normalized_items:
         await message.answer('AI návrh je neúplný (chýba položka alebo suma). Doplňte údaje a skúste to znova.')
@@ -2518,6 +2670,58 @@ def _store_preview_confirmed_customer_alias(
         logger.exception('Failed to store preview-approved customer alias')
 
 
+def _store_preview_confirmed_service_aliases(
+    *,
+    config: Config,
+    supplier_telegram_id: int,
+    supplier_id: int,
+    draft: dict[str, object],
+) -> None:
+    alias_service = ServiceAliasService(config.db_path)
+    for item in _draft_items(draft):
+        source = str(item.get('service_resolution_source') or '').strip()
+        if source != 'raw_mention':
+            continue
+
+        alias_candidate = str(item.get('service_alias_candidate') or '').strip()
+        if not alias_candidate:
+            continue
+
+        try:
+            service_alias_id = int(item.get('service_alias_id') or 0)
+        except (TypeError, ValueError):
+            continue
+        if service_alias_id <= 0:
+            continue
+
+        mapping = alias_service.get_mapping_by_id(
+            supplier_id=supplier_id,
+            mapping_id=service_alias_id,
+        )
+        if mapping is None:
+            continue
+
+        alias_normalized, alias_compressed = alias_service.normalize_lookup_forms(alias_candidate)
+        short_normalized, short_compressed = alias_service.normalize_lookup_forms(mapping.service_short_name)
+        display_normalized, display_compressed = alias_service.normalize_lookup_forms(mapping.service_display_name)
+        if (
+            (alias_normalized and alias_normalized in {short_normalized, display_normalized})
+            or (alias_compressed and alias_compressed in {short_compressed, display_compressed})
+        ):
+            continue
+
+        try:
+            alias_service.create_confirmed_service_alias(
+                supplier_telegram_id=supplier_telegram_id,
+                supplier_id=supplier_id,
+                alias_text=alias_candidate,
+                service_alias_id=service_alias_id,
+                source=f'invoice_preview_approved_{source}',
+            )
+        except Exception:
+            logger.exception('Failed to store preview-approved service alias')
+
+
 async def _finalize_invoice_draft(
     *,
     message: Message,
@@ -2649,6 +2853,13 @@ async def _finalize_invoice_draft(
             draft=draft,
             contact_id=int(contact_id),
         )
+        if supplier.id is not None:
+            _store_preview_confirmed_service_aliases(
+                config=config,
+                supplier_telegram_id=message.from_user.id,
+                supplier_id=int(supplier.id),
+                draft=draft,
+            )
         await state.clear()
         await message.answer(f'Faktúra {invoice.invoice_number} bola vytvorená.')
     except Exception:

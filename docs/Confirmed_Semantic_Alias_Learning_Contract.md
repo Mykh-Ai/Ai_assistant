@@ -4,7 +4,11 @@
 
 This contract applies first to FakturaBot invoice customer lookup, where an extracted customer candidate such as `Real-Time Technologies` may be confirmed as an alias for an existing local contact such as `REALTIME TECHNOLOGIES SK, s.r.o.`.
 
-The same pattern may later be reused for other bounded domain levels, such as service terms, vendor/category labels, or document-intake labels, only after the target domain has an explicit Python owner, bounded resolver contract, storage scope, and tests.
+Current implemented domains:
+- invoice customer lookup: domain `invoice_customer`, target type `contact`, owner `ContactService`;
+- invoice service lookup: domain `invoice_service`, target type `supplier_service_alias`, owner `ServiceAliasService`.
+
+The same pattern may later be reused for other bounded domain levels, such as vendor/category labels or document-intake labels, only after the target domain has an explicit Python owner, bounded resolver contract, storage scope, and tests.
 
 ---
 
@@ -31,7 +35,9 @@ A stored semantic alias must be:
 - linked to an existing local target row;
 - derived from a bounded extracted candidate field, not from the entire raw user message or full STT transcript.
 
-For invoice customer lookup, the stored alias source is the parsed/extracted customer candidate, for example `biznis_sk.odberatel_kandidat` / internal `customer_name`.
+For invoice customer lookup, the stored alias source is the parsed/extracted customer candidate, for example `biznis_sk.odberatel_kandidat` / internal `customer_name`, or a safe source mention from `biznis_sk.odberatel_raw_mention`.
+
+For invoice service lookup, the stored alias source is a safe source mention from `biznis_sk.service_raw_mention` or `biznis_sk.items[].service_raw_mention`, linked to an existing manual service mapping in `supplier_service_alias`. Runtime must not write learned service aliases into `supplier_service_alias`; that table remains the user-owned manual `/sluzbu` service mapping table.
 
 The full raw STT transcript, full invoice request text, or unrelated message text must not be stored as an alias.
 
@@ -62,6 +68,16 @@ High-confidence deterministic fuzzy lookup may auto-select a single safe target 
 
 Bounded LLM resolution must receive only Python-scoped targets for the active supplier/domain and may return only one target from that set or `unknown`. Python must reject any target id or value outside the provided bounds.
 
+For services, `ServiceAliasService` remains the owner. Manual service mappings in `supplier_service_alias` define the canonical local service targets. Confirmed semantic service aliases are an additional lookup stage inside invoice service resolution, not a replacement for `/sluzbu`.
+
+Expected service lookup order:
+1. exact/manual service alias in `supplier_service_alias`;
+2. confirmed semantic alias in `confirmed_semantic_alias` with domain `invoice_service`;
+3. bounded LLM resolver over Python-provided manual service aliases;
+4. clarification / no match.
+
+Service alias learning may target only an active service mapping owned by the current supplier. It must not create new manual service mappings, rewrite `canonical_title`, or mutate invoice item descriptions.
+
 ---
 
 ## 4. Confirmation Rule
@@ -87,6 +103,12 @@ For invoice customer lookup:
 - only after the user approves the invoice preview may Python store the cleaned customer candidate as an alias for that contact;
 - if the preview is edited, cancelled, rejected, or unresolved, no alias is stored from that candidate.
 
+For invoice service lookup:
+- Python may resolve a service candidate to one existing manual service mapping through exact/manual alias, confirmed semantic alias, or bounded LLM lookup;
+- the invoice preview must show the canonical service display name from the manual service mapping;
+- only after the user approves the invoice preview may Python store a safe `service_raw_mention` as a confirmed semantic alias for that service mapping;
+- if the preview is edited, cancelled, rejected, or unresolved, no service alias is stored from that candidate.
+
 This avoids unnecessary `ano` / `nie` prompts when the target is already safely resolved and the user will approve the whole invoice preview.
 
 ---
@@ -104,6 +126,8 @@ Alias learning must pass a quality gate before storage:
 - `unknown`, ambiguity, or cancelled flow: must not create an alias.
 
 Cyrillic, transliterated, or heavily STT-distorted candidates should normally go through bounded LLM resolution before they become eligible for alias storage.
+
+Default cap for confirmed semantic aliases is 10 aliases per target per supplier/domain. If the cap is reached, runtime must not auto-add a new alias and must not silently replace existing aliases.
 
 ---
 
@@ -127,6 +151,9 @@ Alias learning must not:
 - create contacts;
 - edit contact display names;
 - change ICO/DIC/address/email;
+- create or edit manual service mappings in `supplier_service_alias`;
+- rewrite service canonical titles;
+- rewrite invoice item descriptions;
 - create invoices;
 - change invoice numbering;
 - save accounting documents;
@@ -149,7 +176,7 @@ Before applying this learning pattern to another domain, the implementation must
 
 Examples:
 - invoice customer lookup: domain `invoice_customer`, target type `contact`, owner `ContactService`;
-- future service-term learning: must remain under the service alias/service dictionary owner and must not rewrite invoice item descriptions silently;
+- invoice service lookup: domain `invoice_service`, target type `supplier_service_alias`, owner `ServiceAliasService`;
 - future document-intake labels/categories: must define a separate intake/category owner and must not save accounting metadata without user approval.
 
 ---
@@ -163,6 +190,8 @@ Runtime patches using this contract must add tests proving:
 - `unknown` keeps the confirmation state and repeats the bounded prompt;
 - raw full STT/request text is not stored as alias;
 - future lookup uses the stored alias through the existing domain lookup owner;
+- learned service aliases do not create or update rows in `supplier_service_alias`;
+- alias cap is enforced per target per supplier/domain;
 - explicit country-token mismatch does not match;
 - missing country-token with multiple country variants is ambiguous.
 - high-confidence fuzzy with one plausible candidate can resolve without an extra yes/no prompt;

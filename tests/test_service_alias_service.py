@@ -122,6 +122,121 @@ class ServiceAliasServiceTests(unittest.TestCase):
         self.assertEqual(all_entries[0].service_short_name, 'opravy')
         self.assertEqual(all_entries[0].is_active, 0)
 
+    def test_confirmed_service_alias_resolves_existing_manual_mapping(self) -> None:
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
+        service_name_service.create_mapping(
+            supplier_id=supplier_id,
+            service_short_name='opravy',
+            service_display_name='Opravy elektroinštalácie',
+        )
+        mapping = service_name_service.get_mapping_by_alias(
+            supplier_id=supplier_id,
+            service_short_name='opravy',
+        )
+        assert mapping is not None
+
+        stored = service_name_service.create_confirmed_service_alias(
+            supplier_telegram_id=1001,
+            supplier_id=supplier_id,
+            alias_text='електро оправи',
+            service_alias_id=mapping.id,
+            source='invoice_preview_approved_raw_mention',
+        )
+
+        self.assertTrue(stored)
+        resolved = service_name_service.resolve_confirmed_service_alias(
+            supplier_telegram_id=1001,
+            supplier_id=supplier_id,
+            alias_text='  ЕЛЕКТРО   ОПРАВИ ',
+        )
+        assert resolved is not None
+        self.assertEqual(resolved.id, mapping.id)
+        self.assertEqual(resolved.service_short_name, 'opravy')
+        self.assertEqual(resolved.service_display_name, 'Opravy elektroinštalácie')
+
+    def test_confirmed_service_alias_limit_is_per_target(self) -> None:
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
+        service_name_service.create_mapping(
+            supplier_id=supplier_id,
+            service_short_name='opravy',
+            service_display_name='Opravy elektroinštalácie',
+        )
+        mapping = service_name_service.get_mapping_by_alias(
+            supplier_id=supplier_id,
+            service_short_name='opravy',
+        )
+        assert mapping is not None
+
+        for index in range(10):
+            self.assertTrue(
+                service_name_service.create_confirmed_service_alias(
+                    supplier_telegram_id=1001,
+                    supplier_id=supplier_id,
+                    alias_text=f'prakticky alias {index}',
+                    service_alias_id=mapping.id,
+                    source='invoice_preview_approved_raw_mention',
+                )
+            )
+
+        self.assertFalse(
+            service_name_service.create_confirmed_service_alias(
+                supplier_telegram_id=1001,
+                supplier_id=supplier_id,
+                alias_text='jedenasty alias',
+                service_alias_id=mapping.id,
+                source='invoice_preview_approved_raw_mention',
+            )
+        )
+
+    def test_confirmed_service_alias_does_not_silently_retarget_existing_alias(self) -> None:
+        _, _, service_name_service, supplier_id = self._bootstrap_services()
+        service_name_service.create_mapping(
+            supplier_id=supplier_id,
+            service_short_name='opravy',
+            service_display_name='Opravy elektroinštalácie',
+        )
+        service_name_service.create_mapping(
+            supplier_id=supplier_id,
+            service_short_name='montaz',
+            service_display_name='Montáž zariadenia',
+        )
+        first_mapping = service_name_service.get_mapping_by_alias(
+            supplier_id=supplier_id,
+            service_short_name='opravy',
+        )
+        second_mapping = service_name_service.get_mapping_by_alias(
+            supplier_id=supplier_id,
+            service_short_name='montaz',
+        )
+        assert first_mapping is not None
+        assert second_mapping is not None
+        self.assertTrue(
+            service_name_service.create_confirmed_service_alias(
+                supplier_telegram_id=1001,
+                supplier_id=supplier_id,
+                alias_text='prakticka fraza',
+                service_alias_id=first_mapping.id,
+                source='invoice_preview_approved_raw_mention',
+            )
+        )
+
+        self.assertFalse(
+            service_name_service.create_confirmed_service_alias(
+                supplier_telegram_id=1001,
+                supplier_id=supplier_id,
+                alias_text='prakticka fraza',
+                service_alias_id=second_mapping.id,
+                source='invoice_preview_approved_raw_mention',
+            )
+        )
+        resolved = service_name_service.resolve_confirmed_service_alias(
+            supplier_telegram_id=1001,
+            supplier_id=supplier_id,
+            alias_text='prakticka fraza',
+        )
+        assert resolved is not None
+        self.assertEqual(resolved.id, first_mapping.id)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -18,6 +18,20 @@ After transcription, Python authorization, FSM state, Canonical DecisionResolver
 
 ---
 
+## 2026-05-06 Addendum: invoice raw customer mention for confirmed aliases
+
+Invoice draft extraction may return an optional `biznis_sk.odberatel_raw_mention` field. This field preserves the exact or near-exact phrase from the original text/STT transcript that names the customer/company, while `biznis_sk.odberatel_kandidat` remains the normalized lookup-ready customer candidate.
+
+The raw mention is candidate trace data only. It must not include the full invoice command, service description, amount, date, invoice number, IBAN, email, phone number, payment terms, or unrelated invoice details. If the customer phrase cannot be isolated safely, it remains empty/null.
+
+Python remains the authority for contact lookup, ambiguity handling, preview display, and alias persistence. A raw customer mention may become a confirmed contact alias only after the matched contact is validated in the current supplier scope and the invoice preview is approved or the user explicitly confirms the alias.
+
+The extraction prompt may also preserve optional service raw mention fields: `biznis_sk.service_raw_mention` and `biznis_sk.items[].service_raw_mention`. Python may use these fields as candidates for confirmed semantic service aliases after the invoice preview is approved, but only when the service has already resolved to one existing manual `/sluzbu` mapping for the current supplier.
+
+Service self-learning stores practical STT/text variants in `confirmed_semantic_alias` under the `invoice_service` domain and points them to the existing `supplier_service_alias` row. It does not create or edit `/sluzbu` manual mappings, does not rewrite service display titles, and does not mutate invoice item descriptions. The default cap is 10 confirmed semantic aliases per service target per supplier/domain.
+
+---
+
 ## 2026-05-06 Addendum: in-action voice control vs exact value entry
 
 Voice may be used inside an active FSM flow to choose a bounded action, field, item, route, or confirmation option when Python provides the allowed outputs and validates the active state.

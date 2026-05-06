@@ -139,11 +139,15 @@ def _valid_payload(original_text: str) -> dict:
 
 def test_extract_payload_preserves_original_text_and_sk_fields() -> None:
     payload = _valid_payload('сделай фактуру для Tech Company, ремонт 150 EUR')
+    payload['biznis_sk']['odberatel_raw_mention'] = 'Tech Company'
+    payload['biznis_sk']['service_raw_mention'] = 'ремонт'
 
     raw_text, parsed = _extract_invoice_draft_from_phase2_payload(payload)
 
     assert raw_text == 'сделай фактуру для Tech Company, ремонт 150 EUR'
+    assert parsed['customer_raw_mention'] == 'Tech Company'
     assert parsed['customer_name'] == 'Tech Company'
+    assert parsed['service_raw_mention'] == 'ремонт'
     assert parsed['item_name_raw'] == 'oprava'
     assert parsed['service_term_sk'] == 'oprava'
     assert parsed['amount'] == 150
@@ -156,6 +160,7 @@ def test_extract_payload_uses_items_list_when_present() -> None:
     payload = _valid_payload('oprava 3000 a montáž 1000')
     payload['biznis_sk']['items'] = [
         {
+            'service_raw_mention': 'oprava',
             'polozka_povodna': 'oprava',
             'termin_sluzby_sk': 'oprava',
             'mnozstvo': 1,
@@ -165,6 +170,7 @@ def test_extract_payload_uses_items_list_when_present() -> None:
             'item_description_raw': None,
         },
         {
+            'service_raw_mention': 'montáž',
             'polozka_povodna': 'montáž',
             'termin_sluzby_sk': 'montáž',
             'mnozstvo': 1,
@@ -179,7 +185,34 @@ def test_extract_payload_uses_items_list_when_present() -> None:
 
     assert raw_text == 'oprava 3000 a montáž 1000'
     assert len(parsed['items']) == 2
+    assert parsed['items'][1]['service_raw_mention'] == 'montáž'
     assert parsed['items'][1]['service_term_sk'] == 'montáž'
+
+
+def test_validate_payload_preserves_customer_and_service_raw_mentions() -> None:
+    payload = _valid_payload('vystav fakturu na tek kompani za opravy elektro 1000 eur')
+    payload['biznis_sk']['odberatel_raw_mention'] = 'tek kompani'
+    payload['biznis_sk']['odberatel_kandidat'] = 'Tech Company'
+    payload['biznis_sk']['service_raw_mention'] = 'opravy elektro'
+    payload['biznis_sk']['items'] = [
+        {
+            'service_raw_mention': 'opravy elektro',
+            'polozka_povodna': 'oprava',
+            'termin_sluzby_sk': 'oprava',
+            'mnozstvo': 1,
+            'jednotka': 'ks',
+            'cena_za_jednotku': 1000,
+            'suma': 1000,
+            'item_description_raw': None,
+        }
+    ]
+
+    validated = validate_invoice_phase2_payload(payload)
+
+    assert validated['biznis_sk']['odberatel_raw_mention'] == 'tek kompani'
+    assert validated['biznis_sk']['odberatel_kandidat'] == 'Tech Company'
+    assert validated['biznis_sk']['service_raw_mention'] == 'opravy elektro'
+    assert validated['biznis_sk']['items'][0]['service_raw_mention'] == 'opravy elektro'
 
 
 @pytest.mark.parametrize(
@@ -348,6 +381,158 @@ def test_preview_flow_uses_python_truth_for_contact_and_display_name(configured_
     assert draft['item_term_canonical_internal'] == 'oprava'
     assert draft['service_short_name'] == 'oprava'
     assert draft['service_display_name'] == 'Servis a oprava zariadenia'
+
+
+def test_preview_uses_customer_raw_mention_as_alias_candidate_for_exact_match(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, contact_id = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('vystav fakturu na tek kompani za opravu 150 eur')
+    payload['biznis_sk']['odberatel_raw_mention'] = 'tek kompani'
+    payload['biznis_sk']['odberatel_kandidat'] = 'Tech Company s.r.o.'
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(
+        _build_and_store_preview(
+            message=message,
+            state=state,
+            config=config,
+            request_id='test-request-id',
+            raw_text=payload['vstup']['povodny_text'],
+            parsed_draft=parsed,
+        )
+    )
+
+    draft = state.data['invoice_draft']
+    assert draft['contact_id'] == contact_id
+    assert draft['customer_alias_candidate'] == 'tek kompani'
+    assert draft['customer_resolution_source'] == 'raw_mention'
+
+
+def test_preview_rejects_full_command_as_customer_alias_candidate(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    full_command = 'vystav fakturu na tek kompani za opravu 150 eur'
+    payload = _valid_payload(full_command)
+    payload['biznis_sk']['odberatel_raw_mention'] = full_command
+    payload['biznis_sk']['odberatel_kandidat'] = 'Tech Company s.r.o.'
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(
+        _build_and_store_preview(
+            message=message,
+            state=state,
+            config=config,
+            request_id='test-request-id',
+            raw_text=payload['vstup']['povodny_text'],
+            parsed_draft=parsed,
+        )
+    )
+
+    draft = state.data['invoice_draft']
+    assert 'customer_alias_candidate' not in draft
+    assert 'customer_resolution_source' not in draft
+
+
+def test_preview_uses_service_raw_mention_as_alias_candidate(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    service_mapping = ServiceAliasService(db_path).get_mapping_by_alias(
+        supplier_id=int(supplier.id),
+        service_short_name='oprava',
+    )
+    assert service_mapping is not None
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    payload = _valid_payload('vystav fakturu na Tech Company s.r.o. za електро оправи 150 eur')
+    payload['biznis_sk']['odberatel_kandidat'] = 'Tech Company s.r.o.'
+    payload['biznis_sk']['service_raw_mention'] = 'електро оправи'
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(
+        _build_and_store_preview(
+            message=message,
+            state=state,
+            config=config,
+            request_id='test-request-id',
+            raw_text=payload['vstup']['povodny_text'],
+            parsed_draft=parsed,
+        )
+    )
+
+    [item] = state.data['invoice_draft']['items']
+    assert item['service_alias_id'] == service_mapping.id
+    assert item['service_alias_candidate'] == 'електро оправи'
+    assert item['service_resolution_source'] == 'raw_mention'
+
+
+def test_preview_rejects_full_command_as_service_alias_candidate(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+
+    full_command = 'vystav fakturu na Tech Company s.r.o. za opravu 150 eur'
+    payload = _valid_payload(full_command)
+    payload['biznis_sk']['odberatel_kandidat'] = 'Tech Company s.r.o.'
+    payload['biznis_sk']['service_raw_mention'] = full_command
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(
+        _build_and_store_preview(
+            message=message,
+            state=state,
+            config=config,
+            request_id='test-request-id',
+            raw_text=payload['vstup']['povodny_text'],
+            parsed_draft=parsed,
+        )
+    )
+
+    [item] = state.data['invoice_draft']['items']
+    assert 'service_alias_id' not in item
+    assert 'service_alias_candidate' not in item
+    assert 'service_resolution_source' not in item
 
 
 def test_customer_resolution_uses_bounded_candidates_when_lookup_is_noisy(configured_db: tuple[Path, int, int], monkeypatch) -> None:
@@ -1497,6 +1682,47 @@ def test_resolve_service_alias_bounded_prefers_deterministic_direct_match(config
         alias_service=alias_service,
         supplier_id=int(supplier.id),
         candidate_text='  OPRAVA ',
+        config=config,
+        context_name='invoice_service_term_resolution',
+    ))
+
+    assert alias == 'oprava'
+    assert display == 'Servis a oprava zariadenia'
+    assert 'oprava' in allowed
+
+
+def test_resolve_service_alias_bounded_uses_confirmed_semantic_alias(configured_db: tuple[Path, int, int]) -> None:
+    db_path, telegram_id, _contact_id = configured_db
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    alias_service = ServiceAliasService(db_path)
+    mapping = alias_service.get_mapping_by_alias(
+        supplier_id=int(supplier.id),
+        service_short_name='oprava',
+    )
+    assert mapping is not None
+    alias_service.create_confirmed_service_alias(
+        supplier_telegram_id=telegram_id,
+        supplier_id=int(supplier.id),
+        alias_text='електро оправи',
+        service_alias_id=mapping.id,
+        source='invoice_preview_approved_raw_mention',
+    )
+    config = Config(
+        bot_token='token',
+        openai_api_key=None,
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+
+    alias, display, allowed = asyncio.run(_resolve_service_alias_bounded(
+        alias_service=alias_service,
+        supplier_telegram_id=telegram_id,
+        supplier_id=int(supplier.id),
+        candidate_text='електро оправи',
         config=config,
         context_name='invoice_service_term_resolution',
     ))

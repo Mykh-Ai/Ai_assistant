@@ -25,6 +25,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- invoice draft extraction now preserves optional raw/source customer and service mention fields from original text/STT; safe customer raw mentions can become confirmed contact aliases after approved preview, and safe service raw mentions can become confirmed semantic service aliases pointing to existing manual `/sluzbu` mappings after approved preview.
 - documentation now treats FakturaBot / OfficeFlow as the current Phase 2 voice-capable runtime: `README.md` exposes the top-level/action tree, and `AGENTS.md` plus `docs/llm/New_Action_Design_Checklist.md` define that a new top-level action is implemented only after text/command, resolver, Python route, tests, and voice reachability or an explicit voice exclusion are covered.
 - in-FSM voice handling now distinguishes control selection from exact value entry: `/invoice` waiting input and supplier profile field selection are voice-reachable, while contact missing-field values and invoice-number edit values ask for typed text.
 - STT transcription now sends a compact multilingual FakturaBot / OfficeFlow context prompt so voice input is biased toward Slovak/Ukrainian/Russian/English mixed business speech without turning STT into a command router.

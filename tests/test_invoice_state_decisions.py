@@ -327,6 +327,170 @@ def test_preview_approval_stores_confirmed_customer_alias(tmp_path: Path, monkey
     assert row[2] == 'invoice_preview_approved_fuzzy_match'
 
 
+def test_preview_approval_stores_confirmed_customer_alias_from_raw_mention(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 9103
+    db_path = tmp_path / 'preview-raw-alias.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF-1.4 fake')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+
+    draft = _draft_for_tests(contact_id, invoice_number='20260016')
+    draft['customer_alias_candidate'] = 'tek kompani'
+    draft['customer_resolution_source'] = 'raw_mention'
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'invoice_draft': draft})
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='schvalit',
+        )
+    )
+
+    with managed_connection(db_path) as connection:
+        row = connection.execute(
+            (
+                'SELECT alias_text, target_id, source '
+                'FROM confirmed_semantic_alias '
+                'WHERE supplier_telegram_id = ? AND alias_text = ?'
+            ),
+            (telegram_id, 'tek kompani'),
+        ).fetchone()
+
+    assert row is not None
+    assert row[1] == contact_id
+    assert row[2] == 'invoice_preview_approved_raw_mention'
+
+
+def test_preview_approval_stores_confirmed_service_alias_from_raw_mention(tmp_path: Path, monkeypatch) -> None:
+    telegram_id = 9104
+    db_path = tmp_path / 'preview-service-raw-alias.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    alias_service = ServiceAliasService(db_path)
+    alias_service.create_mapping(int(supplier.id), 'servis', 'Servis zariadenia')
+    service_mapping = alias_service.get_mapping_by_alias(
+        supplier_id=int(supplier.id),
+        service_short_name='servis',
+    )
+    assert service_mapping is not None
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+
+    def _fake_generate_invoice_pdf(*, target_path, **kwargs) -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b'%PDF-1.4 fake')
+
+    monkeypatch.setattr('bot.handlers.invoice.generate_invoice_pdf', _fake_generate_invoice_pdf)
+
+    draft = _draft_for_tests(contact_id, invoice_number='20260017')
+    draft['items'][0]['service_alias_id'] = service_mapping.id
+    draft['items'][0]['service_alias_candidate'] = 'електро сервіс'
+    draft['items'][0]['service_resolution_source'] = 'raw_mention'
+    manual_alias_count_before = len(alias_service.list_mappings(int(supplier.id)))
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'invoice_draft': draft})
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='schvalit',
+        )
+    )
+
+    with managed_connection(db_path) as connection:
+        row = connection.execute(
+            (
+                'SELECT alias_text, target_type, target_id, source '
+                'FROM confirmed_semantic_alias '
+                'WHERE supplier_telegram_id = ? AND domain = ? AND alias_text = ?'
+            ),
+            (telegram_id, 'invoice_service', 'електро сервіс'),
+        ).fetchone()
+
+    assert row is not None
+    assert row[1] == 'supplier_service_alias'
+    assert row[2] == service_mapping.id
+    assert row[3] == 'invoice_preview_approved_raw_mention'
+    assert len(alias_service.list_mappings(int(supplier.id))) == manual_alias_count_before
+
+
+def test_preview_cancel_does_not_store_service_alias(tmp_path: Path) -> None:
+    telegram_id = 9105
+    db_path = tmp_path / 'preview-service-alias-cancel.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    supplier = SupplierService(db_path).get_by_telegram_id(telegram_id)
+    assert supplier is not None and supplier.id is not None
+    alias_service = ServiceAliasService(db_path)
+    alias_service.create_mapping(int(supplier.id), 'servis', 'Servis zariadenia')
+    service_mapping = alias_service.get_mapping_by_alias(
+        supplier_id=int(supplier.id),
+        service_short_name='servis',
+    )
+    assert service_mapping is not None
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    draft = _draft_for_tests(contact_id, invoice_number='20260018')
+    draft['items'][0]['service_alias_id'] = service_mapping.id
+    draft['items'][0]['service_alias_candidate'] = 'електро сервіс'
+    draft['items'][0]['service_resolution_source'] = 'raw_mention'
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'invoice_draft': draft})
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='zrusit',
+        )
+    )
+
+    with managed_connection(db_path) as connection:
+        count = connection.execute(
+            (
+                'SELECT COUNT(*) '
+                'FROM confirmed_semantic_alias '
+                'WHERE supplier_telegram_id = ? AND domain = ?'
+            ),
+            (telegram_id, 'invoice_service'),
+        ).fetchone()[0]
+
+    assert count == 0
+
+
 def test_preview_cancel_does_not_store_customer_alias(tmp_path: Path) -> None:
     telegram_id = 9102
     db_path = tmp_path / 'preview-alias-cancel.db'

@@ -21,8 +21,13 @@ _REQUIRED_BIZNIS_FIELDS = {
     'splatnost_dni',
     'datum_splatnosti',
 }
-_OPTIONAL_BIZNIS_FIELDS = {'cena_za_jednotku'}
+_OPTIONAL_BIZNIS_FIELDS = {
+    'cena_za_jednotku',
+    'odberatel_raw_mention',
+    'service_raw_mention',
+}
 _MAX_MULTI_ITEMS = 3
+_MAX_RAW_MENTION_LENGTH = 120
 
 
 class LlmInvoicePayloadError(ValueError):
@@ -91,6 +96,19 @@ def _validate_lookup_ready_customer_candidate(candidate: Any, *, payload_snapsho
             payload_snapshot=payload_snapshot,
         )
 
+    return normalized_spaces
+
+
+def _normalize_optional_raw_mention(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    normalized_spaces = re.sub(r'\s+', ' ', value.strip())
+    if not normalized_spaces:
+        return None
+    if len(normalized_spaces) > _MAX_RAW_MENTION_LENGTH:
+        return None
     return normalized_spaces
 
 
@@ -185,6 +203,7 @@ def _validate_optional_items_or_raise(*, biznis_sk: dict[str, Any], payload_snap
                 partial_payload=payload_snapshot,
             )
         candidate = {
+            'service_raw_mention': _normalize_optional_raw_mention(raw_item.get('service_raw_mention')),
             'polozka_povodna': raw_item.get('polozka_povodna'),
             'termin_sluzby_sk': raw_item.get('termin_sluzby_sk'),
             'mnozstvo': raw_item.get('mnozstvo'),
@@ -241,6 +260,12 @@ def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
     biznis_sk['odberatel_kandidat'] = _validate_lookup_ready_customer_candidate(
         biznis_sk['odberatel_kandidat'],
         payload_snapshot=payload_snapshot,
+    )
+    biznis_sk['odberatel_raw_mention'] = _normalize_optional_raw_mention(
+        biznis_sk.get('odberatel_raw_mention')
+    )
+    biznis_sk['service_raw_mention'] = _normalize_optional_raw_mention(
+        biznis_sk.get('service_raw_mention')
     )
     _resolve_service_slots_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
     _validate_optional_items_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
