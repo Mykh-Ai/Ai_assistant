@@ -2053,67 +2053,106 @@ async def process_invoice_text(
         model=config.openai_llm_model,
         action_hints={
             _START_INTENT: {
-                'meaning': 'user wants to start or resume the bot through the same flow as /start',
-                'positive_examples': ['start', 'začať', 'spustiť', 'почати', 'запусти бота'],
+                'meaning': (
+                    'user wants to open, start, restart, or resume the main FakturaBot entry flow; '
+                    'Python routes this to the same deterministic /start handler after authorization'
+                ),
                 'not_this': ['create a new invoice draft', 'upload a receipt'],
             },
             _CREATE_INVOICE_INTENT: {
-                'meaning': 'user wants to create a new invoice draft',
-                'not_this': ['edit existing invoice', 'send existing invoice', 'upload receipt or incoming invoice'],
+                'meaning': (
+                    'user wants to create a new outgoing invoice draft from supplied work/service/customer/amount content; '
+                    'this is FakturaBot invoice creation, not accounting document intake'
+                ),
+                'not_this': [
+                    'edit an already created invoice',
+                    'send an existing invoice',
+                    'upload an external receipt or incoming invoice',
+                    'add a reusable service naming alias',
+                ],
             },
             _SHOW_SUPPLIER_PROFILE_INTENT: {
-                'meaning': 'user wants to view the supplier profile or open the profile setup surface',
-                'positive_examples': ['môj profil', 'ukáž môj profil', 'покажи мій профіль'],
-                'not_this': ['edit one supplier profile field'],
+                'meaning': (
+                    'user wants to view their own supplier/company/business profile data used on invoices: '
+                    'Slovak FakturaBot context: fakturačné údaje dodávateľa, firemné údaje, identifikátory, adresa, '
+                    'bankové alebo platobné údaje, invoice issuer details, business/billing details; '
+                    'if no supplier profile exists, open the existing profile setup surface'
+                ),
+                'not_this': ['edit or change supplier/company/profile/billing details'],
             },
             _EDIT_SUPPLIER_INTENT: {
-                'meaning': 'user wants to edit one supplier profile field through the existing /upravit_profil flow',
-                'positive_examples': ['upraviť môj profil', 'zmeniť môj profil', 'upraviť údaje firmy'],
-                'not_this': ['view profile summary only', 'edit an invoice'],
+                'meaning': (
+                    'user wants to change, update, correct, or set their own supplier/company/business profile data used on invoices: '
+                    'Slovak FakturaBot context: fakturačné údaje dodávateľa, firemné údaje, identifiers, address, '
+                    'bank/payment details, invoice issuer details, business/billing details; '
+                    'Python will later ask for the exact field/value through the existing /upravit_profil flow'
+                ),
+                'not_this': ['view profile summary only', 'edit an invoice or contact'],
+            },
+            _ADD_CONTACT_INTENT: {
+                'meaning': (
+                    'user wants to create or save a customer/contact/counterparty record in the contacts database; '
+                    'the contact may be described in text or come from a supported document/contact-source flow, '
+                    'and Python validates required fields before saving'
+                ),
+                'not_this': ['create an invoice for that customer now', 'edit supplier profile data', 'add a reusable service alias'],
             },
             _ADD_SERVICE_ALIAS_INTENT: {
-                'meaning': 'user wants to create a new reusable invoice item/service label',
-                'positive_examples': [
-                    'pridaj novú položku',
-                    'pridaj novú službu',
-                    'додай нову положку',
-                    'додай нову службу',
-                    'додай нову живність',
-                    'предай новую живность',
-                ],
+                'meaning': (
+                    'user wants to create a reusable supplier-owned service/item naming mapping for future invoice line items '
+                    'and PDF labels; this stores service wording/alias metadata, not a concrete invoice'
+                ),
                 'not_this': ['create new invoice draft', 'edit existing invoice'],
             },
             _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT: {
-                'meaning': 'user wants to view recent confirmed receipts or incoming accounting documents',
-                'positive_examples': ['ukáž posledné bločky', 'posledné bločky', 'покажи останні чеки'],
+                'meaning': (
+                    'user wants to view the recent confirmed external accounting source documents stored by Document Intake: '
+                    'bločky, receipts, doklady, incoming invoices; this is a read-only recent document list'
+                ),
                 'not_this': ['upload a new receipt', 'create invoice', 'view generated invoice PDF'],
             },
             _ADD_RECEIPT_INTENT: {
-                'meaning': 'user wants to start the existing receipt/incoming-invoice upload flow and send photo or PDF next',
-                'positive_examples': ['pridať bloček', 'nahrať bloček', 'додай чек', 'nahrať prijatú faktúru'],
+                'meaning': (
+                    'user wants to add/upload a new external accounting source document, such as a bloček, receipt, doklad, '
+                    'or incoming invoice; Python starts the existing upload-waiting FSM and asks for a photo or PDF next'
+                ),
                 'not_this': ['create outgoing invoice from voice content', 'manually edit a receipt'],
             },
             _DELETE_USER_DATABASE_INTENT: {
-                'meaning': 'user wants to permanently delete their own FakturaBot business data and leave the bot',
-                'positive_examples': [
-                    'vymazať databázu',
-                    'chcem vymazať moju databázu',
-                    'zmazať moje údaje',
-                    'zrušiť môj účet',
-                    'видали мою базу',
-                    'удалить мою базу',
-                ],
+                'meaning': (
+                    'user wants to permanently delete their own FakturaBot business data, close/leave their bot access, '
+                    'or remove their account/data from FakturaBot; Python only starts the warning FSM and final deletion '
+                    'requires exact typed confirmation'
+                ),
                 'not_this': ['delete a single invoice', 'cancel current draft', 'clear one invoice item detail'],
             },
+            _SEND_INVOICE_INTENT: {
+                'meaning': (
+                    'user wants to send or deliver an already created invoice, usually by email or another delivery channel; '
+                    'standalone runtime is currently reserved/fallback unless an existing Python route supports it'
+                ),
+                'not_this': ['create a new invoice draft', 'approve current preview', 'upload a receipt'],
+            },
             _EDIT_EXISTING_INVOICE_INTENT: {
-                'meaning': 'user wants to explicitly edit already created invoice by number',
-                'positive_examples': ['upraviť faktúru 15', 'редагувати фактуру 15', 'uprav faktúru číslo 20260015'],
+                'meaning': (
+                    'user wants to edit an already created/persisted outgoing invoice by invoice number, suffix, or reference; '
+                    'Python resolves the invoice under the current supplier scope before any edit flow starts'
+                ),
                 'not_this': ['edit current draft preview'],
             },
             _DELETE_EXISTING_INVOICE_INTENT: {
-                'meaning': 'user wants to explicitly delete already created invoice by number',
-                'positive_examples': ['vymazať faktúru 15', 'delete invoice 15', 'видалити фактуру 15'],
-                'not_this': ['cancel current draft preview'],
+                'meaning': (
+                    'user wants to delete one already created/persisted outgoing invoice by invoice number, suffix, or reference; '
+                    'this is invoice-scoped deletion and Python keeps the existing manual confirmation gate'
+                ),
+                'not_this': ['cancel current draft preview', 'delete the whole user database/account'],
+            },
+            _EDIT_INVOICE_INTENT: {
+                'meaning': (
+                    'reserved top-level token for current invoice draft/in-action editing semantics; runtime editing happens '
+                    'inside active invoice FSM review/edit states, not as persisted invoice editing'
+                ),
+                'not_this': ['edit an already created/persisted invoice by number'],
             },
         },
     )

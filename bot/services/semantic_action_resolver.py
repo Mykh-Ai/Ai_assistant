@@ -740,7 +740,6 @@ async def resolve_semantic_action(
         'show_supplier_profile',
         'edit_supplier',
         'show_recent_accounting_documents',
-        'add_receipt',
         'delete_user_database',
         'edit_existing_invoice',
         'delete_existing_invoice',
@@ -760,7 +759,13 @@ async def resolve_semantic_action(
                         'content': (
                             'You are a bounded semantic canonicalizer. '
                             'Return JSON only: {"canonical_action":"..."} where value is one allowed action or "unknown". '
-                            'Never return explanations.'
+                            'Never return explanations. '
+                            'User input may be Slovak, Ukrainian, Russian, mixed-language, colloquial, or STT-noisy. '
+                            'First infer the user meaning and internally normalize it to Slovak FakturaBot product semantics. '
+                            'Then choose exactly one allowed canonical action or "unknown". '
+                            'Do not require literal command, alias, or example matching. '
+                            'Action hints describe product meaning; any examples are illustrative only and never a whitelist. '
+                            'Return "unknown" only when the normalized meaning is genuinely unclear or no allowed action fits.'
                         ),
                     },
                     {

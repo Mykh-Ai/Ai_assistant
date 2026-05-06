@@ -18,6 +18,8 @@ Purpose: compact spec for Python -> LLM bounded semantic resolution payloads.
 
 Rules:
 - Python defines the bounded set (`allowed_actions` or `allowed_responses`).
+- User input may be Slovak, Ukrainian, Russian, mixed-language, colloquial, or STT-noisy.
+- For top-level actions, the resolver should first infer the user meaning and internally normalize it to Slovak product semantics for the current FakturaBot context, then choose one allowed canonical token.
 - LLM returns exactly one allowed canonical token or `unknown`.
 - No side-effect text, no free-form plans.
 
@@ -34,6 +36,7 @@ Hints are optional guidance, not mandatory overhead.
 Guidelines:
 - keep hints compact and practical;
 - do not turn hints into ontology or keyword parser;
+- examples are illustrative only, never a whitelist or exact-match requirement;
 - use mainly to separate nearby actions (e.g. `create_invoice` vs `add_service_alias` vs `edit_invoice`).
 
 ## 3) Compact example

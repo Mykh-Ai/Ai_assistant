@@ -715,6 +715,29 @@ def test_voice_idle_profile_routes_to_profile_view(monkeypatch, tmp_path: Path) 
     assert calls == ['profile']
 
 
+def test_voice_idle_profile_rekvizity_uses_top_level_resolver_path(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'Мої реквізити'
+
+    resolver_inputs: list[str] = []
+    calls: list[str] = []
+
+    async def _resolver(**kwargs) -> str:
+        resolver_inputs.append(kwargs['user_input_text'])
+        return 'show_supplier_profile'
+
+    async def _profile(**kwargs) -> None:
+        calls.append('profile')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_moj_profil', _profile)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+    assert resolver_inputs == ['Мої реквізити']
+    assert calls == ['profile']
+
+
 def test_voice_idle_profile_edit_routes_to_profile_edit(monkeypatch, tmp_path: Path) -> None:
     async def _stt(*args, **kwargs) -> str:
         return 'upraviť môj profil'

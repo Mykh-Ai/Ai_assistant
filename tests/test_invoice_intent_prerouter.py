@@ -312,14 +312,10 @@ def test_top_level_delete_invoice_priority_runs_before_llm_when_key_is_configure
     ) == 'delete_existing_invoice'
 
 
-def test_top_level_add_receipt_priority_runs_before_llm_when_key_is_configured(monkeypatch) -> None:
-    calls: list[str] = []
-
-    class _UnexpectedOpenAIFake:
-        def __init__(self, *, api_key: str) -> None:
-            calls.append(api_key)
-
-    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _UnexpectedOpenAIFake)
+def test_top_level_polite_add_receipt_uses_bounded_resolver_when_key_is_configured(monkeypatch) -> None:
+    _TopLevelActionOpenAIFake.canonical_action = 'add_receipt'
+    _TopLevelActionOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
 
     assert asyncio.run(
         resolve_semantic_action(
@@ -330,7 +326,9 @@ def test_top_level_add_receipt_priority_runs_before_llm_when_key_is_configured(m
             model='gpt-4o',
         )
     ) == 'add_receipt'
-    assert calls == []
+    payload = _TopLevelActionOpenAIFake.last_payload
+    assert payload is not None
+    assert payload['allowed_actions'] == ['add_receipt', 'create_invoice', 'unknown']
 
 
 def test_invoice_create_not_misrouted_to_add_contact_when_company_mentioned() -> None:
@@ -398,6 +396,39 @@ def test_process_invoice_text_routes_system_and_profile_actions_to_existing_flow
         asyncio.run(process_invoice_text(message=message, state=state, config=_config(tmp_path), invoice_text=text))
 
     assert routed == ['start', 'profile', 'edit_profile', 'recent']
+
+
+def test_process_invoice_text_passes_domain_context_for_profile_rekvizity(tmp_path: Path, monkeypatch) -> None:
+    captured: dict = {}
+    routed: list[str] = []
+
+    async def _resolver(**kwargs):
+        captured.update(kwargs)
+        return 'show_supplier_profile'
+
+    async def _profile(**kwargs) -> None:
+        routed.append('profile')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_moj_profil', _profile)
+
+    asyncio.run(
+        process_invoice_text(
+            message=_DummyMessage('Мої реквізити'),
+            state=_DummyState(),
+            config=_config(tmp_path),
+            invoice_text='Мої реквізити',
+        )
+    )
+
+    assert routed == ['profile']
+    assert captured['user_input_text'] == 'Мої реквізити'
+    profile_hint = captured['action_hints']['show_supplier_profile']['meaning']
+    assert 'billing details' in profile_hint
+    assert 'fakturačné údaje dodávateľa' in profile_hint
+    assert 'firemné údaje' in profile_hint
+    assert 'positive_examples' not in captured['action_hints']['show_supplier_profile']
+    assert 'edit or change supplier/company/profile/billing details' in captured['action_hints']['show_supplier_profile']['not_this']
 
 
 def test_process_invoice_text_routes_add_receipt_to_existing_upload_flow_without_invoice(tmp_path: Path) -> None:
@@ -833,14 +864,17 @@ class _BoundedResolverOpenAIFake:
 
 class _TopLevelActionOpenAIFake:
     last_payload: dict | None = None
+    last_system_prompt: str | None = None
+    canonical_action = 'show_recent_accounting_documents'
 
     def __init__(self, *, api_key: str) -> None:
         self.api_key = api_key
         self.chat = type('_Chat', (), {'completions': self})()
 
     async def create(self, **kwargs):
+        _TopLevelActionOpenAIFake.last_system_prompt = kwargs['messages'][0]['content']
         _TopLevelActionOpenAIFake.last_payload = json.loads(kwargs['messages'][1]['content'])
-        return _FakeResponse('{"canonical_action":"show_recent_accounting_documents"}')
+        return _FakeResponse(json.dumps({'canonical_action': _TopLevelActionOpenAIFake.canonical_action}))
 
 
 class _InventedTopLevelActionOpenAIFake:
@@ -853,6 +887,9 @@ class _InventedTopLevelActionOpenAIFake:
 
 
 def test_top_level_natural_phrase_uses_bounded_resolver_payload(monkeypatch) -> None:
+    _TopLevelActionOpenAIFake.canonical_action = 'show_recent_accounting_documents'
+    _TopLevelActionOpenAIFake.last_payload = None
+    _TopLevelActionOpenAIFake.last_system_prompt = None
     monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
 
     result = asyncio.run(
@@ -877,6 +914,48 @@ def test_top_level_natural_phrase_uses_bounded_resolver_payload(monkeypatch) -> 
     assert payload['allowed_actions'] == ['add_receipt', 'show_recent_accounting_documents', 'unknown']
     assert payload['expected_output'] == {'canonical_action': 'one allowed token or unknown'}
     assert 'show_recent_accounting_documents' in payload['action_hints']
+    assert 'internally normalize it to Slovak FakturaBot product semantics' in (
+        _TopLevelActionOpenAIFake.last_system_prompt or ''
+    )
+
+
+def test_top_level_profile_rekvizity_uses_llm_slovak_domain_normalization(monkeypatch) -> None:
+    _TopLevelActionOpenAIFake.canonical_action = 'show_supplier_profile'
+    _TopLevelActionOpenAIFake.last_payload = None
+    _TopLevelActionOpenAIFake.last_system_prompt = None
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
+
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['show_supplier_profile', 'edit_supplier', 'unknown'],
+            user_input_text='Мої реквізити',
+            api_key='sk-test',
+            model='gpt-4o',
+            action_hints={
+                'show_supplier_profile': {
+                    'meaning': (
+                        'view supplier/company profile data used on invoices in Slovak FakturaBot context: '
+                        'fakturačné údaje dodávateľa, firemné údaje, business identifiers, bank/payment details'
+                    ),
+                    'not_this': ['edit or change those details'],
+                },
+                'edit_supplier': {
+                    'meaning': 'change supplier/company profile data or billing details',
+                    'not_this': ['view profile summary only'],
+                },
+            },
+        )
+    )
+
+    assert result == 'show_supplier_profile'
+    payload = _TopLevelActionOpenAIFake.last_payload
+    assert payload is not None
+    assert payload['user_input_text'] == 'Мої реквізити'
+    assert 'fakturačné údaje dodávateľa' in payload['action_hints']['show_supplier_profile']['meaning']
+    assert 'internally normalize it to Slovak FakturaBot product semantics' in (
+        _TopLevelActionOpenAIFake.last_system_prompt or ''
+    )
 
 
 def test_top_level_bounded_resolver_rejects_invented_action(monkeypatch) -> None:

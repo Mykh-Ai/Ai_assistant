@@ -97,8 +97,8 @@ Reference ambiguous action:
 - `add_service_alias` (manual `/service` flow exists now; top-level semantic/voice invoke is future runtime work).
 
 Profile and data-management actions:
-- `show_supplier_profile` is the user-facing `/moj_profil` profile surface; if no supplier profile exists it starts supplier profile creation.
-- `edit_supplier` is the targeted `/upravit_profil` flow for changing one supplier-profile field after Python validation and shared confirmation.
+- `show_supplier_profile` is the user-facing `/moj_profil` profile surface for the user's own supplier/company/billing details in Slovak FakturaBot product semantics: `fakturačné údaje dodávateľa`, `firemné údaje`, invoice issuer details, identifiers, address, and payment details; if no supplier profile exists it starts supplier profile creation.
+- `edit_supplier` is the targeted `/upravit_profil` flow for changing supplier/company/billing details after Python validation and shared confirmation.
 - `delete_user_database` is implemented for full user database deletion/leaving FakturaBot. User-facing examples include `/vymazat_databazu` and voice/text phrases such as `Chcem vymazať moju databázu`. Resolver/LLM may only classify the top-level entry intent when Python includes `delete_user_database` in `allowed_actions`; final deletion is Python/FSM-owned and requires the exact typed confirmation `vymazať databázu`. Voice must not pass the final confirmation.
 
 Hint fields:

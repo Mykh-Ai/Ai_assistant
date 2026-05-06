@@ -1,5 +1,32 @@
 # PROJECT_LOG
 
+## 2026-05-06 - Session 061 - Top-level LLM action context repair
+
+Summary:
+- Repaired top-level Semantic Action Resolver guidance so SK/UK/RU/mixed user input is interpreted into Slovak FakturaBot product semantics before choosing one allowed canonical action.
+- Expanded `show_supplier_profile` and `edit_supplier` action context as supplier/company/business/billing profile semantics instead of narrow "profile" wording or command aliases.
+- Kept `voice.py` unchanged; voice remains STT/state routing only.
+- Adjusted tests so natural/polite top-level phrases with an API key exercise the bounded resolver path instead of requiring Python alias coverage.
+
+Contracts read:
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- Python defines `allowed_actions`, validates output, and executes existing routes;
+- LLM canonicalizes multilingual/noisy input by internally normalizing the user meaning into Slovak FakturaBot product semantics within those bounds;
+- `action_hints` are compact domain context, not keyword-parser replacement;
+- deterministic aliases must remain a narrow fast path, not the primary voice reachability mechanism.
+
+Touched scopes:
+- confirmation: no;
+- routing/voice routing: no `voice.py` change, but top-level semantic routing behavior is affected;
+- LLM prompt behavior: yes;
+- FSM/DB/storage/access/server: no.
+
 ## 2026-05-05 - Session 060 - Delete user database runtime flow
 
 Summary:
