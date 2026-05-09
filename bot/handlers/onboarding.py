@@ -253,6 +253,7 @@ async def cmd_moj_profil(message: Message, state: FSMContext, config: Config) ->
         await _start_supplier_onboarding(message, state)
         return
 
+    await state.clear()
     await message.answer(_supplier_profile_summary(supplier))
 
 

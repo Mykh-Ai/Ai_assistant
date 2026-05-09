@@ -183,6 +183,7 @@ Implemented in `bot/services/decision_resolver.py`:
 - `resolve_yes_no(...)` returns `yes`, `no`, or `unknown`.
 - `resolve_attachment_route_choice(...)` returns `create_contact`, `save_contract`, `cancel`, or `unknown`.
 - `resolve_attachment_document_type_choice(...)` returns `receipt`, `incoming_invoice`, `contract`, `contact_source`, `cancel`, or `unknown`.
+- `resolve_global_cancel(...)` returns `cancel` or `unknown` for global state-control escape wording.
 
 Migrated runtime paths:
 - invoice preview confirmation;
@@ -198,6 +199,7 @@ Migrated runtime paths:
 - idle attachment document-type clarification;
 - accounting document duplicate save decision;
 - accounting document preview decision.
+- global state cancellation through `/cancel` and shared cancel wording such as `zrušiť`, `скасувати`, `відмінити`, `отменить`, and “почни з початку”.
 
 Voice routing now sends confirm-state transcripts to the active confirmation handler for:
 - invoice preview confirmation;

@@ -537,6 +537,33 @@ def test_voice_waiting_edit_scope_routes_to_edit_scope_handler(monkeypatch, tmp_
     assert calls == ['položka']
 
 
+def test_voice_global_cancel_in_active_state_runs_shared_cancel(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return '\u0432\u0456\u0434\u043c\u0456\u043d\u0438\u0442\u0438'
+
+    async def _cancel(**kwargs) -> None:
+        calls.append('cancel')
+
+    async def _scope(**kwargs) -> None:
+        calls.append('edit_scope')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.cancel_current_state', _cancel)
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_scope', _scope)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_scope.state),
+        )
+    )
+    assert calls == ['cancel']
+
+
 def test_voice_waiting_edit_item_target_routes_to_item_target_handler(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
 
@@ -756,6 +783,22 @@ def test_voice_idle_start_routes_to_existing_start_flow(monkeypatch, tmp_path: P
 
     asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
     assert calls == ['start']
+
+
+def test_voice_idle_show_existing_invoice_reaches_top_level_router(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'покажи фактуру 04'
+
+    calls: list[str] = []
+
+    async def _invoice_text(**kwargs) -> None:
+        calls.append(kwargs['invoice_text'])
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _invoice_text)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+    assert calls == ['покажи фактуру 04']
 
 
 def test_voice_idle_profile_routes_to_profile_view(monkeypatch, tmp_path: Path) -> None:

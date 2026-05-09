@@ -4,7 +4,8 @@ import re
 import unicodedata
 
 from aiogram import Router
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.config import Config
@@ -30,16 +31,19 @@ _RECENT_ACCOUNTING_DOCUMENT_ALIASES = {
 }
 
 
-@router.message(StateFilter(None), Command('blocky', 'blocek'))
-async def cmd_blocky(message: Message, config: Config) -> None:
+@router.message(Command('blocky', 'blocek'))
+async def cmd_blocky(message: Message, config: Config, state: FSMContext | None = None) -> None:
+    if state is not None:
+        await state.clear()
     await _send_recent_accounting_documents(message=message, config=config)
 
 
 @router.message(
-    StateFilter(None),
     lambda message: _normalize_alias(message.text or '') in _RECENT_ACCOUNTING_DOCUMENT_ALIASES,
 )
-async def recent_accounting_documents_alias(message: Message, config: Config) -> None:
+async def recent_accounting_documents_alias(message: Message, config: Config, state: FSMContext | None = None) -> None:
+    if state is not None:
+        await state.clear()
     await _send_recent_accounting_documents(message=message, config=config)
 
 

@@ -29,6 +29,7 @@ README є навігаційним оглядом. Якщо README конфлі�
     create/refresh pending access request
     no STT / LLM / LMM / business data
   approved user
+    clears active FSM state
     setup/status router
       missing supplier profile -> /moj_profil
       profile exists, no service alias -> /sluzbu
@@ -44,6 +45,22 @@ Admin commands
 ```
 
 Admin/access commands are deterministic Python commands. They are not LLM-routed.
+
+Global state control:
+
+```text
+/cancel
+  clear active FSM state
+  clean temporary intake staging when applicable
+  exit persisted invoice edit mode without deleting the stored invoice
+
+Text/voice cancel aliases
+  zrušiť
+  скасувати
+  відмінити / відминити
+  отменить
+  почни з початку
+```
 
 ### Supplier Profile
 
@@ -159,6 +176,10 @@ post-PDF / post-edit decision
   cancel
 
 existing invoice management
+  show_existing_invoice by invoice number/reference
+    show summary/PDF
+    clear state
+    no edit mode
   edit_existing_invoice by invoice number/reference
     same bounded edit subflow
   delete_existing_invoice by invoice number/reference
@@ -166,6 +187,7 @@ existing invoice management
 ```
 
 Important distinction:
+- `show_existing_invoice` = read-only view of an already created invoice;
 - `edit_invoice` = in-action/FSM draft/current invoice editing semantics;
 - `edit_existing_invoice` = persisted invoice editing by number/reference.
 

@@ -1,5 +1,6 @@
 from aiogram import Router
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.config import Config
@@ -57,7 +58,9 @@ MENU_MESSAGE = (
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, config: Config) -> None:
+async def cmd_start(message: Message, config: Config, state: FSMContext | None = None) -> None:
+    if state is not None:
+        await state.clear()
     if message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
@@ -79,14 +82,16 @@ async def cmd_start(message: Message, config: Config) -> None:
 
 
 @router.message(lambda message: _command_token(message.text or '') == '/menu')
-async def cmd_menu(message: Message, config: Config) -> None:
+async def cmd_menu(message: Message, config: Config, state: FSMContext | None = None) -> None:
     _ = config
+    if state is not None:
+        await state.clear()
     await message.answer(MENU_MESSAGE)
 
 
 @router.message(lambda message: _is_case_variant_command(message.text or '', '/start'))
-async def cmd_start_case_alias(message: Message, config: Config) -> None:
-    await cmd_start(message, config)
+async def cmd_start_case_alias(message: Message, config: Config, state: FSMContext | None = None) -> None:
+    await cmd_start(message, config, state)
 
 
 def _command_token(text: str) -> str:

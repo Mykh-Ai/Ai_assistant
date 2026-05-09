@@ -280,6 +280,19 @@ def test_approved_user_start_without_supplier_profile_gets_supplier_next_step(tm
     assert SupplierService(config.db_path).get_by_telegram_id(UNKNOWN_ID) is None
 
 
+def test_start_clears_active_state_for_approved_user(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=UNKNOWN_ID, approved_by=ADMIN_ID)
+    message = _DummyMessage('/start', UNKNOWN_ID)
+    state = _DummyState()
+
+    asyncio.run(cmd_start(message, config, state))
+
+    assert state.cleared is True
+    assert message.answers == [APPROVED_WITHOUT_SUPPLIER_MESSAGE]
+
+
 def test_moj_profil_without_supplier_starts_supplier_profile_onboarding(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)

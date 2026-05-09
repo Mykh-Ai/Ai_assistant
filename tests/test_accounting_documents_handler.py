@@ -4,8 +4,6 @@ import asyncio
 import json
 from pathlib import Path
 
-from aiogram.filters import StateFilter
-
 from bot.config import Config
 from bot.handlers import routers
 from bot.handlers.accounting_documents import cmd_blocky, recent_accounting_documents_alias, router as accounting_documents_router
@@ -19,6 +17,14 @@ class _DummyMessage:
 
     async def answer(self, text: str) -> None:
         self.answers.append(text)
+
+
+class _DummyState:
+    def __init__(self) -> None:
+        self.cleared = False
+
+    async def clear(self) -> None:
+        self.cleared = True
 
 
 def _config(tmp_path: Path) -> Config:
@@ -157,13 +163,18 @@ def test_blocky_router_is_registered_before_invoice_router() -> None:
     assert routers.index(accounting_documents_router) < routers.index(invoice_router)
 
 
-def test_blocky_handlers_are_idle_only() -> None:
-    for handler in accounting_documents_router.message.handlers:
-        assert any(isinstance(item.callback, StateFilter) for item in handler.filters)
+def test_blocky_command_clears_active_state(tmp_path: Path) -> None:
+    message = _DummyMessage('/blocek')
+    state = _DummyState()
+
+    asyncio.run(cmd_blocky(message, _config(tmp_path), state))
+
+    assert state.cleared is True
+    assert message.answers[-1] == 'Zatiaľ nemáte uložené žiadne bločky ani prijaté doklady.'
 
 
 def test_blocky_alias_filter_does_not_match_generic_invoice_text() -> None:
     alias_handler = accounting_documents_router.message.handlers[1]
     generic_message = _DummyMessage('vystav fakturu pre ACME za servis 100 eur')
 
-    assert alias_handler.filters[1].callback(generic_message) is False
+    assert alias_handler.filters[0].callback(generic_message) is False

@@ -128,12 +128,36 @@ def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'add_contact', 'add_service_alias', 'send_invoice', 'edit_existing_invoice', 'edit_invoice', 'unknown'],
+            allowed_actions=[
+                'create_invoice',
+                'show_existing_invoice',
+                'add_contact',
+                'add_service_alias',
+                'send_invoice',
+                'edit_existing_invoice',
+                'edit_invoice',
+                'unknown',
+            ],
             user_input_text='upraviť fakturu 20260001',
             api_key=None,
             model='gpt-4o',
         )
     ) == 'edit_existing_invoice'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=[
+                'create_invoice',
+                'show_existing_invoice',
+                'edit_existing_invoice',
+                'delete_existing_invoice',
+                'unknown',
+            ],
+            user_input_text='покажи фактуру номер 04',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'show_existing_invoice'
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
@@ -510,6 +534,74 @@ def test_process_invoice_text_edit_existing_invoice_by_short_number(tmp_path: Pa
     assert 'x' in preview
     assert 'Množstvo: 1 ks × 10.00 EUR = 10.00 EUR' in preview
     assert 'Celkom: 10.00 EUR' in preview
+
+
+def test_process_invoice_text_show_existing_invoice_is_read_only_and_clears_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    SupplierService(config.db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=111,
+            name='S',
+            ico='1',
+            dic='1',
+            ic_dph='',
+            address='A',
+            iban='SK1',
+            swift='ABCD',
+            email='a@a.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    invoice_id = InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        issue_date='2026-04-30',
+        delivery_date='2026-04-30',
+        due_date='2026-05-14',
+        due_days=14,
+        total_amount=10,
+        currency='EUR',
+        status='draft',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='x',
+                description_normalized='x',
+                item_description_raw='',
+                quantity=1,
+                unit='ks',
+                unit_price=10,
+                total_price=10,
+            )
+        ],
+        invoice_number='20260004',
+    )
+    message = _DummyMessage('покажи фактуру 04')
+    message.from_user = type('U', (), {'id': 111})()
+    state = _DummyState()
+    calls: list[int] = []
+
+    async def _resolver(**kwargs):
+        return 'show_existing_invoice'
+
+    async def _start_edit(**kwargs):
+        calls.append(kwargs['invoice_id'])
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.start_invoice_edit_flow', _start_edit)
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert calls == []
+    assert state.cleared is True
+    assert InvoiceService(config.db_path).get_invoice_by_id(invoice_id) is not None
+    assert 'Číslo faktúry: 20260004' in message.answers[0]
+    assert 'Celkom: 10.00 EUR' in message.answers[0]
 
 
 def test_process_invoice_text_delete_existing_invoice_ambiguous_suffix(tmp_path: Path, monkeypatch) -> None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from typing import Any
+import unicodedata
 
 from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply
 
@@ -9,6 +11,7 @@ ApproveEditCancelDecision = str
 YesNoDecision = str
 AttachmentRouteChoiceDecision = str
 AttachmentDocumentTypeChoiceDecision = str
+GlobalCancelDecision = str
 
 _UNKNOWN = 'unknown'
 _APPROVE_EDIT_CANCEL_OUTPUTS = ['schvalit', 'upravit', 'zrusit', 'unknown']
@@ -22,6 +25,21 @@ _ATTACHMENT_DOCUMENT_TYPE_CHOICE_OUTPUTS = [
     'cancel',
     'unknown',
 ]
+_GLOBAL_CANCEL_OUTPUTS = ['cancel', 'unknown']
+_GLOBAL_CANCEL_SHORTCUTS = {
+    'cancel',
+    'zrusit',
+    'skoncit',
+    'spat',
+    'naspat',
+    'скасувати',
+    'відмінити',
+    'відминити',
+    'отменить',
+    'почни з початку',
+    'почати з початку',
+    'начать сначала',
+}
 
 _APPROVE_EDIT_CANCEL_MAP = {
     'schvalit': 'approve',
@@ -120,3 +138,33 @@ async def resolve_attachment_document_type_choice(
         diagnostics=diagnostics,
     )
     return decision if decision in _ATTACHMENT_DOCUMENT_TYPE_CHOICE_OUTPUTS else _UNKNOWN
+
+
+async def resolve_global_cancel(
+    *,
+    context_name: str,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> GlobalCancelDecision:
+    decision = await resolve_bounded_confirmation_reply(
+        context_name=context_name,
+        expected_reply_type='global_cancel',
+        allowed_outputs=_GLOBAL_CANCEL_OUTPUTS,
+        user_input_text=user_input_text,
+        api_key=api_key,
+        model=model,
+        diagnostics=diagnostics,
+    )
+    return decision if decision in _GLOBAL_CANCEL_OUTPUTS else _UNKNOWN
+
+
+def is_global_cancel_text(user_input_text: str) -> bool:
+    return _normalize_text(user_input_text) in {_normalize_text(value) for value in _GLOBAL_CANCEL_SHORTCUTS}
+
+
+def _normalize_text(value: str) -> str:
+    normalized = unicodedata.normalize('NFKD', value.strip().casefold())
+    without_diacritics = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r'\s+', ' ', without_diacritics).strip()

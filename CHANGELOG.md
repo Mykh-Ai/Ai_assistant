@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- `show_existing_invoice` top-level read-only action: natural text/voice such as “show/open invoice/faktura 04” now shows the existing outgoing invoice summary/PDF and returns to idle instead of entering edit mode.
+- global state cancellation through `/cancel` and shared DecisionResolver-backed text/voice cancel wording (`zrušiť`, `скасувати`, `відмінити`, `отменить`, “почни з початку”), with state-aware cleanup for temporary intake and safe persisted-invoice-edit exit.
 - `delete_user_database` runtime flow: `/vymazat_databazu` and bounded top-level text/voice intent now start a destructive warning FSM, with exact typed final confirmation required before scoped deletion.
 - voice/text reachability for existing canonical top-level/system actions `start`, `show_supplier_profile`, `edit_supplier`, `show_recent_accounting_documents`, and `add_receipt` through the shared Semantic Action Resolver and existing Python route handlers.
 - Decision UI Layer Phase 1 for stable confirmation flows: reusable Telegram inline decision keyboards, canonical `decision:*` callback tokens, and a shared callback dispatcher for invoice preview, invoice alias confirmation, invoice delete confirmation, contact confirmations, supplier onboarding, and supplier profile edit confirmation.
@@ -25,6 +27,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- `/start`, `/menu`, `/moj_profil` profile display, and `/blocek` now behave as stateless interruptions by clearing active FSM state where applicable.
 - invoice draft extraction now preserves optional raw/source customer and service mention fields from original text/STT; safe customer raw mentions can become confirmed contact aliases after approved preview, and safe service raw mentions can become confirmed semantic service aliases pointing to existing manual `/sluzbu` mappings after approved preview.
 - documentation now treats FakturaBot / OfficeFlow as the current Phase 2 voice-capable runtime: `README.md` exposes the top-level/action tree, and `AGENTS.md` plus `docs/llm/New_Action_Design_Checklist.md` define that a new top-level action is implemented only after text/command, resolver, Python route, tests, and voice reachability or an explicit voice exclusion are covered.
 - in-FSM voice handling now distinguishes control selection from exact value entry: `/invoice` waiting input and supplier profile field selection are voice-reachable, while contact missing-field values and invoice-number edit values ask for typed text.

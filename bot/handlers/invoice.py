@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 
 _CREATE_INVOICE_INTENT = 'create_invoice'
+_SHOW_EXISTING_INVOICE_INTENT = 'show_existing_invoice'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
 _DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
@@ -131,6 +132,47 @@ def _format_existing_invoice_summary(
     lines.append('')
     lines.append(f'Celkom: {float(total_amount):.2f} {currency}')
     return '\n'.join(lines)
+
+
+async def _send_existing_invoice_view(
+    *,
+    message: Message,
+    config: Config,
+    invoice,
+) -> None:
+    contact_name = 'Neznámy odberateľ'
+    supplier_telegram_id = _message_supplier_telegram_id(message)
+    if supplier_telegram_id is not None and invoice.contact_id is not None:
+        contact = ContactService(config.db_path).get_by_id_for_supplier(
+            telegram_id=supplier_telegram_id,
+            contact_id=invoice.contact_id,
+        )
+        if contact is not None:
+            contact_name = contact.name
+
+    matched_items = InvoiceService(config.db_path).get_items_by_invoice_id(invoice.id)
+    await message.answer(
+        _format_existing_invoice_summary(
+            invoice_number=invoice.invoice_number,
+            customer_name=contact_name,
+            issue_date=invoice.issue_date,
+            delivery_date=invoice.delivery_date,
+            due_date=invoice.due_date,
+            items=matched_items,
+            total_amount=float(invoice.total_amount),
+            currency=invoice.currency,
+        )
+    )
+    if invoice.pdf_path:
+        pdf_path = Path(invoice.pdf_path)
+        if pdf_path.exists():
+            try:
+                await message.answer_document(
+                    FSInputFile(pdf_path),
+                    caption=f'Aktuálne PDF faktúry {invoice.invoice_number}.',
+                )
+            except Exception:
+                logger.exception('Failed to send existing invoice PDF preview')
 
 
 class InvoiceStates(StatesGroup):
@@ -2187,6 +2229,7 @@ async def process_invoice_text(
         allowed_actions=[
             _START_INTENT,
             _CREATE_INVOICE_INTENT,
+            _SHOW_EXISTING_INVOICE_INTENT,
             _SHOW_SUPPLIER_PROFILE_INTENT,
             _EDIT_SUPPLIER_INTENT,
             _ADD_CONTACT_INTENT,
@@ -2221,6 +2264,19 @@ async def process_invoice_text(
                     'send an existing invoice',
                     'upload an external receipt or incoming invoice',
                     'add a reusable service naming alias',
+                ],
+            },
+            _SHOW_EXISTING_INVOICE_INTENT: {
+                'meaning': (
+                    'user wants only to view/show/open an already created outgoing invoice by invoice number, suffix, '
+                    'or reference; Python resolves the invoice under the current supplier scope, sends summary/PDF, '
+                    'and leaves the bot idle without entering edit mode'
+                ),
+                'not_this': [
+                    'edit or change an invoice',
+                    'delete an invoice',
+                    'create a new invoice draft',
+                    'view recent accounting receipts',
                 ],
             },
             _SHOW_SUPPLIER_PROFILE_INTENT: {
@@ -2322,7 +2378,7 @@ async def process_invoice_text(
         )
     )
     if top_level_intent == _START_INTENT:
-        await cmd_start(message=message, config=config)
+        await cmd_start(message=message, config=config, state=state)
         return
     if top_level_intent == _SHOW_SUPPLIER_PROFILE_INTENT:
         await cmd_moj_profil(message=message, state=state, config=config)
@@ -2331,7 +2387,7 @@ async def process_invoice_text(
         await cmd_upravit_profil(message=message, state=state, config=config)
         return
     if top_level_intent == _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT:
-        await cmd_blocky(message=message, config=config)
+        await cmd_blocky(message=message, config=config, state=state)
         return
     if top_level_intent == _ADD_RECEIPT_INTENT:
         await cmd_accounting_document_intake(message=message, state=state)
@@ -2353,6 +2409,28 @@ async def process_invoice_text(
             config=config,
         )
         return
+    if top_level_intent == _SHOW_EXISTING_INVOICE_INTENT:
+        if hasattr(message, 'from_user') and message.from_user is None:
+            await message.answer('Nepodarilo sa identifikovať používateľa.')
+            return
+        invoice_reference = _extract_invoice_reference(invoice_text)
+        if not invoice_reference:
+            await message.answer('Napíšte číslo faktúry, ktorú chcete zobraziť.')
+            return
+        invoice_matches = InvoiceService(config.db_path).find_invoices_for_supplier_by_number_reference(
+            supplier_telegram_id=message.from_user.id,
+            invoice_reference=invoice_reference,
+        )
+        if not invoice_matches:
+            await message.answer('Faktúru s týmto číslom som nenašiel.')
+            await state.clear()
+            return
+        if len(invoice_matches) > 1:
+            await message.answer('Našiel som viac faktúr. Napíšte viac posledných číslic alebo celé číslo faktúry.')
+            return
+        await _send_existing_invoice_view(message=message, config=config, invoice=invoice_matches[0])
+        await state.clear()
+        return
     if top_level_intent == _EDIT_EXISTING_INVOICE_INTENT:
         if hasattr(message, 'from_user') and message.from_user is None:
             await message.answer('Nepodarilo sa identifikovať používateľa.')
@@ -2372,37 +2450,7 @@ async def process_invoice_text(
             await message.answer('Našiel som viac faktúr. Napíšte celé číslo faktúry.')
             return
         matched_invoice = invoice_matches[0]
-        contact_name = 'Neznámy odberateľ'
-        if matched_invoice.contact_id is not None:
-            contact = ContactService(config.db_path).get_by_id_for_supplier(
-                telegram_id=message.from_user.id,
-                contact_id=matched_invoice.contact_id,
-            )
-            if contact is not None:
-                contact_name = contact.name
-        matched_items = InvoiceService(config.db_path).get_items_by_invoice_id(matched_invoice.id)
-        await message.answer(
-            _format_existing_invoice_summary(
-                invoice_number=matched_invoice.invoice_number,
-                customer_name=contact_name,
-                issue_date=matched_invoice.issue_date,
-                delivery_date=matched_invoice.delivery_date,
-                due_date=matched_invoice.due_date,
-                items=matched_items,
-                total_amount=float(matched_invoice.total_amount),
-                currency=matched_invoice.currency,
-            )
-        )
-        if matched_invoice.pdf_path:
-            pdf_path = Path(matched_invoice.pdf_path)
-            if pdf_path.exists():
-                try:
-                    await message.answer_document(
-                        FSInputFile(pdf_path),
-                        caption=f'Aktuálne PDF faktúry {matched_invoice.invoice_number}.',
-                    )
-                except Exception:
-                    logger.exception('Failed to send existing invoice PDF preview before edit flow')
+        await _send_existing_invoice_view(message=message, config=config, invoice=matched_invoice)
         await state.update_data(
             last_invoice_id=matched_invoice.id,
             last_invoice_number=matched_invoice.invoice_number,

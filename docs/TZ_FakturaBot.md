@@ -8,6 +8,18 @@
 
 ---
 
+## 2026-05-09 Addendum: state reset and read-only invoice view
+
+Approved users may view an already created outgoing invoice through the canonical top-level action `show_existing_invoice`. User wording such as “show/open invoice/faktura 04” must resolve to read-only invoice display, not to persisted invoice editing. Python resolves the invoice only inside the current supplier scope, sends the invoice summary and available PDF, and then clears FSM state / returns the bot to idle.
+
+Persisted invoice editing remains the separate canonical action `edit_existing_invoice`. User wording that means edit/change/correct an invoice by number may enter the bounded invoice edit FSM after Python supplier-scoped lookup.
+
+System/read-only surfaces are stateless interruptions: `/start`, `/menu`, `/moj_profil` when the profile exists, `/blocek`, and `show_existing_invoice` may clear the current FSM state and show their result without leaving the user in a workflow.
+
+Global state cancellation is supported through `/cancel` and shared DecisionResolver-backed cancel wording in text or voice transcripts, such as `zrušiť`, `скасувати`, `відмінити`, `відминити`, `отменить`, and “почни з початку”. Cancellation must be state-aware: temporary Document Intake/OfficeFlow staging is cleaned; draft invoice states are cleared; newly generated unconfirmed post-PDF invoices keep the existing cancel cleanup behavior; persisted invoice edit cancellation only exits edit mode and must not delete the already stored invoice. Voice cancellation must not bypass exact typed destructive confirmations.
+
+---
+
 ## 2026-05-06 Addendum: STT transcription context prompt
 
 Voice transcription may pass a compact STT context prompt to the transcription model. The prompt describes the expected FakturaBot / OfficeFlow domain and possible spoken languages: Slovak, Ukrainian, Russian, English, and mixed Surzhyk / mixed Slovak-Ukrainian-Russian-English speech.

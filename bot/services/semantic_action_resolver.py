@@ -56,6 +56,33 @@ def _matches_top_level_delete_invoice(tokens: set[str]) -> bool:
     return bool(tokens.intersection(delete_verbs)) and bool(tokens.intersection(invoice_targets))
 
 
+def _matches_top_level_show_invoice(tokens: set[str]) -> bool:
+    show_verbs = {
+        'ukaz',
+        'zobraz',
+        'otvor',
+        'otvorit',
+        'show',
+        'open',
+        '\u043f\u043e\u043a\u0430\u0436\u0438',
+        '\u043f\u043e\u043a\u0430\u0437\u0430\u0442\u0438',
+        '\u043e\u0442\u043a\u0440\u043e\u0439',
+        '\u043e\u0442\u043a\u0440\u044b\u0442\u044c',
+        '\u0432\u0456\u0434\u043a\u0440\u0438\u0439',
+        '\u0432\u0456\u0434\u043a\u0440\u0438\u0442\u0438',
+    }
+    invoice_targets = {
+        'fakturu',
+        'faktura',
+        'faktury',
+        'invoice',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0443',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0430',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u044b',
+    }
+    return bool(tokens.intersection(show_verbs)) and bool(tokens.intersection(invoice_targets))
+
+
 _STT_ANO_ARTIFACTS = {
     'ah nao',
     'a nao',
@@ -268,6 +295,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'edit_existing_invoice'
         if 'delete_existing_invoice' in allowed and _matches_top_level_delete_invoice(tokens):
             return 'delete_existing_invoice'
+        if 'show_existing_invoice' in allowed and _matches_top_level_show_invoice(tokens):
+            return 'show_existing_invoice'
         if 'edit_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить'}):
             return 'edit_invoice'
         if 'create_invoice' in allowed and tokens.intersection(create_invoice_triggers):
@@ -495,6 +524,26 @@ def _fallback_bounded_confirmation_reply(
             normalized=normalized,
             allowed_outputs=allowed_outputs,
         )
+
+    if expected_reply_type == 'global_cancel':
+        cancel_values = {
+            'cancel',
+            'zrusit',
+            'zrusit',
+            'skoncit',
+            'spat',
+            'naspat',
+            '\u0441\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
+            '\u0432\u0456\u0434\u043c\u0456\u043d\u0438\u0442\u0438',
+            '\u0432\u0456\u0434\u043c\u0438\u043d\u0438\u0442\u0438',
+            '\u043e\u0442\u043c\u0435\u043d\u0438\u0442\u044c',
+            '\u043f\u043e\u0447\u043d\u0438 \u0437 \u043f\u043e\u0447\u0430\u0442\u043a\u0443',
+            '\u043f\u043e\u0447\u0430\u0442\u0438 \u0437 \u043f\u043e\u0447\u0430\u0442\u043a\u0443',
+            '\u043d\u0430\u0447\u0430\u0442\u044c \u0441\u043d\u0430\u0447\u0430\u043b\u0430',
+        }
+        if 'cancel' in allowed_outputs and normalized in cancel_values:
+            return 'cancel'
+        return _UNKNOWN
 
     if (
         context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision'}
@@ -738,6 +787,7 @@ async def resolve_semantic_action(
     if context_name == 'top_level_action' and local_priority in {
         'start',
         'show_supplier_profile',
+        'show_existing_invoice',
         'edit_supplier',
         'show_recent_accounting_documents',
         'delete_user_database',

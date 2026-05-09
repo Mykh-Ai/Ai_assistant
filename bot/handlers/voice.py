@@ -43,7 +43,9 @@ from bot.handlers.officeflow_attachment_router import (
     handle_officeflow_route_choice_text,
     handle_officeflow_unknown_clarification_text,
 )
+from bot.handlers.state_control import cancel_current_state
 from bot.handlers.supplier import ServiceAliasStates
+from bot.services.decision_resolver import resolve_global_cancel
 from bot.services.speech_to_text import transcribe_audio
 
 router = Router(name='voice')
@@ -115,6 +117,17 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
         if not recognized_text.strip():
             await message.answer('Nepodarilo sa rozpoznať obsah hlasovej správy. Skúste znova.')
             return
+
+        if current_state is not None:
+            cancel_decision = await resolve_global_cancel(
+                context_name='global_state_cancel',
+                user_input_text=recognized_text,
+                api_key=config.openai_api_key,
+                model=config.openai_llm_model,
+            )
+            if cancel_decision == 'cancel':
+                await cancel_current_state(message=message, state=state, config=config)
+                return
 
         text_message = _inject_recognized_text(message, recognized_text)
         if current_state == InvoiceStates.waiting_input.state:

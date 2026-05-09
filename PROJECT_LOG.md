@@ -1,5 +1,54 @@
 # PROJECT_LOG
 
+## 2026-05-09 - Session 069 - State reset and read-only invoice view
+
+Summary:
+- Added canonical top-level action `show_existing_invoice` for read-only viewing of an existing outgoing invoice by number/reference.
+- Split “show/open invoice” from `edit_existing_invoice`: viewing sends the invoice summary/PDF and clears FSM state; editing still enters the bounded persisted invoice edit FSM.
+- Added global state cancellation through `/cancel` and shared DecisionResolver-backed text/voice cancel wording (`zrušiť`, `скасувати`, `відмінити`, `відминити`, `отменить`, “почни з початку”).
+- Made `/start`, `/menu`, existing `/moj_profil` display, and `/blocek` behave as stateless interruptions by clearing active FSM state where applicable.
+- Kept persisted invoice edit cancellation safe: leaving `waiting_pdf_decision` after a persisted edit exits edit mode without deleting the stored invoice; newly generated unconfirmed invoice cancellation still uses existing cleanup.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `PROJECT_LOG.md`
+- `CHANGELOG.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/User_Access_Model_Roadmap.md`
+- `docs/OfficeFlow_Architecture_Framing.md`
+- `docs/Document_Intake_Module_Proposal.md`
+- `docs/Document_Intake_MVP_Implementation_Plan.md`
+- `docs/local-only/FakturaBot_Server_Agent_Context.md`
+
+Constraints extracted:
+- new top-level actions require registry/docs/runtime/tests/voice reachability;
+- active FSM state normally wins over idle routing, but explicit system/read-only commands may be state-clearing interruptions;
+- confirmation/cancel-like wording must go through `bot/services/decision_resolver.py`;
+- Python owns supplier-scoped invoice lookup, validation, FSM changes, DB/file side effects, and cleanup;
+- voice may launch top-level actions but must not fill exact invoice numbers or destructive exact confirmations;
+- temp Document Intake/OfficeFlow cleanup must remain restricted to approved temporary staging paths;
+- no DB schema or storage layout migration is allowed in this slice.
+
+Touched scopes:
+- FSM: yes, global cancel and stateless read-only interruption behavior;
+- routing: yes, new `show_existing_invoice` top-level route and `/start`/`/blocek` state reset behavior;
+- LLM/STT: yes, bounded top-level action resolver, active-state voice cancellation, and voice reachability tests;
+- confirmation/decision: yes, new `global_state_cancel` DecisionResolver family;
+- storage: temporary intake cleanup only;
+- DB: no schema changes, no migration; existing invoice read/delete behavior unchanged except safe persisted-edit cancel;
+- access/server: no runtime server writes or access model changes; server logs were read-only inspected.
+
+Verification:
+- `python -m pytest -q tests\test_decision_resolver.py tests\test_invoice_intent_prerouter.py tests\test_voice_state_routing.py tests\test_access_request_flow.py tests\test_state_control.py` -> `579 passed`.
+- `python -m pytest -q tests\test_voice_state_routing.py tests\test_state_control.py tests\test_decision_resolver.py` -> `463 passed`.
+- `python -m pytest -q` -> `968 passed`.
+
 ## 2026-05-06 - Session 068 - Invoice service raw mention self-learning
 
 Summary:
