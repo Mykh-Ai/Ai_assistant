@@ -1,5 +1,37 @@
 # PROJECT_LOG
 
+## 2026-05-15 - Session 073 - Business FSM recovery hints
+
+Summary:
+- Added Slovak cancel recovery hints to invalid contact intake/manual contact fallbacks.
+- Added Slovak cancel recovery hints to service alias empty-value fallbacks.
+- Added Slovak cancel recovery hints to invoice exact-value edit fallbacks for service, invoice number, date, numeric, and item description values.
+- Kept successful paths, state transitions, DB writes, PDF generation, storage paths, delete database flow, top-level `info_help`, and FSM action switching unchanged.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/Canonical_Action_Registry.md`
+
+Constraints extracted:
+- active FSM state remains owned by its handler and must not execute top-level actions from invalid input;
+- LLM may only do bounded canonicalization where already designed and must not become a free-form fallback;
+- confirmation-like decisions stay routed through the shared DecisionResolver;
+- exact business values remain text-first and Python-validated;
+- user-facing fallback text must stay Slovak;
+- no DB schema, storage path, invoice PDF path, delete database final gate, top-level `info_help`, FSM action switching, buttons/callbacks, Google Drive, accounting intake, or OfficeFlow router changes belong in this patch.
+
+Touched scopes:
+- FSM: yes, invalid-value/wrong-input fallback copy only in contact, service alias, and invoice exact-value edit states;
+- confirmation: no new decision family, existing confirmation paths unchanged except unknown fallback copy;
+- routing/LLM/STT/storage/DB/access/server: no behavior changes.
+
+Verification:
+- `python -m pytest -q tests/test_contact_intake_semantic_flow.py tests/test_service_alias_flow.py tests/test_invoice_state_decisions.py tests/test_state_control.py` -> `99 passed`.
+- `python -m pytest -q` -> `985 passed`.
+
 ## 2026-05-15 - Session 072 - Destructive and onboarding recovery hints
 
 Summary:

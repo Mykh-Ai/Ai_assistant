@@ -27,6 +27,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- business/contact/service/invoice exact-value FSM invalid-input fallbacks now include Slovak cancel recovery hints without changing successful paths or side effects.
 - destructive delete fallbacks now include Slovak safe-exit recovery hints without mentioning `/start`, and onboarding invalid-value fallbacks now explain `zrušiť` plus `/start` restart recovery.
 - exact global cancel text shortcuts now bypass the LLM resolver and run shared Python state cancellation directly; voice transcripts that exactly match global cancel shortcuts do the same after STT.
 - invoice edit FSM menu fallbacks now include Slovak recovery hints for `zrušiť` and `/start`, while still keeping active FSM state from falling through to top-level action routing.

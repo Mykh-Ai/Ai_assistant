@@ -5,6 +5,7 @@ from pathlib import Path
 
 from bot.config import Config
 from bot.handlers.contacts import (
+    CONTACT_RECOVERY_HINT,
     ContactStates,
     _process_source_after_name_step,
     _start_add_contact_from_source,
@@ -497,9 +498,40 @@ def test_source_after_name_manual_ico_valid_and_invalid(tmp_path: Path) -> None:
     message.text = 'bad'
 
     asyncio.run(_process_source_after_name_step(message, state, config))
-    assert message.answers[-1] == 'Neplatné ICO. Formát: 8 číslic. Skúste znova:'
+    assert 'Neplatné ICO. Formát: 8 číslic. Skúste znova:' in message.answers[-1]
+    assert CONTACT_RECOVERY_HINT in message.answers[-1]
 
     message.text = '12345678'
     asyncio.run(_process_source_after_name_step(message, state, config))
     assert state.current_state == ContactStates.dic
     assert message.answers[-1] == '3/7 Zadajte DIC (10 číslic):'
+
+
+def test_contact_missing_field_invalid_keeps_state_and_includes_cancel_hint(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    state.current_state = ContactStates.intake_missing
+    state.data = {
+        'contact_missing_fields': ['email'],
+        'contact_intake_draft': {
+            'name': 'ZS',
+            'ico': '12345678',
+            'dic': '1234567890',
+            'address': 'Hlavná 1, Košice',
+        },
+    }
+    message = _DummyMessage()
+
+    asyncio.run(
+        process_contact_missing_fields(
+            message=type('M', (), {'text': 'not-email', 'answer': message.answer})(),
+            state=state,
+            user_text='not-email',
+        )
+    )
+
+    assert state.current_state == ContactStates.intake_missing
+    assert state.data['contact_missing_fields'] == ['email']
+    assert 'Neplatný email. Skúste znova:' in message.answers[-1]
+    assert CONTACT_RECOVERY_HINT in message.answers[-1]

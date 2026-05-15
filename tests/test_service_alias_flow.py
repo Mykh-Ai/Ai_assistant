@@ -5,6 +5,7 @@ from pathlib import Path
 
 from bot.config import Config
 from bot.handlers.supplier import (
+    SERVICE_ALIAS_RECOVERY_HINT,
     ServiceAliasStates,
     cmd_service,
     service_display_name_input,
@@ -132,3 +133,25 @@ def test_sluzbu_command_starts_same_service_alias_flow(tmp_path: Path) -> None:
 
     assert state.current_state == ServiceAliasStates.waiting_short_name
     assert start_msg.answers
+
+
+def test_invalid_service_alias_values_keep_state_and_include_cancel_hint(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    state.current_state = ServiceAliasStates.waiting_short_name
+
+    short_msg = _DummyMessage(text='')
+    asyncio.run(service_short_name_input(short_msg, state))
+
+    assert state.current_state == ServiceAliasStates.waiting_short_name
+    assert SERVICE_ALIAS_RECOVERY_HINT in short_msg.answers[-1]
+
+    state.current_state = ServiceAliasStates.waiting_display_name
+    state.data = {'service_short_name': 'opravy'}
+    display_msg = _DummyMessage(text='')
+    asyncio.run(service_display_name_input(display_msg, state, config))
+
+    assert state.current_state == ServiceAliasStates.waiting_display_name
+    assert state.data['service_short_name'] == 'opravy'
+    assert SERVICE_ALIAS_RECOVERY_HINT in display_msg.answers[-1]

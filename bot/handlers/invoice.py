@@ -851,6 +851,14 @@ def _with_fsm_recovery_hint(message: str) -> str:
     return f'{message}\n\n{_fsm_recovery_hint()}'
 
 
+def _invoice_exact_value_recovery_hint() -> str:
+    return 'Ak nechcete pokračovať v úprave, napíšte „zrušiť“.'
+
+
+def _with_invoice_exact_value_recovery_hint(message: str) -> str:
+    return f'{message}\n\n{_invoice_exact_value_recovery_hint()}'
+
+
 def _parse_strict_numeric_input(value: str) -> float | None:
     candidate = value.strip().replace(' ', '').replace(',', '.')
     if not candidate or not re.fullmatch(r'\d+(?:\.\d+)?', candidate):
@@ -3980,7 +3988,7 @@ async def invoice_edit_item_action(message: Message, state: FSMContext, config: 
 async def invoice_edit_service_value(message: Message, state: FSMContext, config: Config) -> None:
     new_service_candidate = (message.text or '').strip()
     if not new_service_candidate:
-        await message.answer('Napíšte nový názov služby textom.')
+        await message.answer(_with_invoice_exact_value_recovery_hint('Napíšte nový názov služby textom.'))
         return
 
     state_data = await state.get_data()
@@ -4015,7 +4023,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
             )
             if allowed_aliases:
                 prompt += f'\nMožnosti: {", ".join(allowed_aliases[:5])}.'
-            await message.answer(prompt)
+            await message.answer(_with_invoice_exact_value_recovery_hint(prompt))
             return
 
         target_item = _draft_item_at_index(draft, target_index)
@@ -4060,7 +4068,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         )
         if allowed_aliases:
             prompt += f'\nMožnosti: {", ".join(allowed_aliases[:5])}.'
-        await message.answer(prompt)
+        await message.answer(_with_invoice_exact_value_recovery_hint(prompt))
         return
 
     invoice_service = InvoiceService(config.db_path)
@@ -4107,8 +4115,10 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
     candidate_number = (message.text or '').strip()
     if not candidate_number:
         await message.answer(
-            'Napíšte číslo faktúry vo formáte RRRRNNNN. '
-            'Ak hlas nebol jednoznačný, pošlite číslo presne textom.'
+            _with_invoice_exact_value_recovery_hint(
+                'Napíšte číslo faktúry vo formáte RRRRNNNN. '
+                'Ak hlas nebol jednoznačný, pošlite číslo presne textom.'
+            )
         )
         return
 
@@ -4130,15 +4140,19 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
             invoice_number_candidate=candidate_number,
         ):
             await message.answer(
-                'Neplatné číslo faktúry. Zadajte číslo vo formáte RRRRNNNN '
-                '(pri nejasnom hlase pošlite presný text).'
+                _with_invoice_exact_value_recovery_hint(
+                    'Neplatné číslo faktúry. Zadajte číslo vo formáte RRRRNNNN '
+                    '(pri nejasnom hlase pošlite presný text).'
+                )
             )
             return
         if not InvoiceService(config.db_path).is_invoice_number_available(
             invoice_number=candidate_number,
             supplier_telegram_id=message.from_user.id,
         ):
-            await message.answer('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
+            await message.answer(
+                _with_invoice_exact_value_recovery_hint('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
+            )
             return
         draft['invoice_number'] = candidate_number
         draft['invoice_number_manual_override'] = True
@@ -4170,8 +4184,10 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
         invoice_number_candidate=candidate_number,
     ):
         await message.answer(
-            'Neplatné číslo faktúry. Zadajte číslo vo formáte RRRRNNNN '
-            '(pri nejasnom hlase pošlite presný text).'
+            _with_invoice_exact_value_recovery_hint(
+                'Neplatné číslo faktúry. Zadajte číslo vo formáte RRRRNNNN '
+                '(pri nejasnom hlase pošlite presný text).'
+            )
         )
         return
 
@@ -4180,7 +4196,9 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
         supplier_telegram_id=message.from_user.id,
         exclude_invoice_id=invoice_id,
     ):
-        await message.answer('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
+        await message.answer(
+            _with_invoice_exact_value_recovery_hint('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
+        )
         return
 
     previous_pdf_path_value = state_data.get('last_pdf_path')
@@ -4191,7 +4209,9 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
         invoice_number=candidate_number,
     )
     if not updated:
-        await message.answer('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
+        await message.answer(
+            _with_invoice_exact_value_recovery_hint('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
+        )
         return
 
     rebuilt = await _rebuild_pdf_for_existing_invoice(
@@ -4224,7 +4244,9 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
     candidate_date_raw = (message.text or '').strip()
     if not candidate_date_raw:
         await message.answer(
-            'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.'
+            _with_invoice_exact_value_recovery_hint(
+                'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.'
+            )
         )
         return
 
@@ -4267,21 +4289,29 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         )
         candidate_date_iso = _parse_strict_issue_date_candidate(normalized_date_value)
         if candidate_date_iso is None:
-            await message.answer('Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.')
+            await message.answer(
+                _with_invoice_exact_value_recovery_hint(
+                    'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.'
+                )
+            )
             return
 
         candidate_date_obj = date.fromisoformat(candidate_date_iso)
         issue_date_obj = date.fromisoformat(str(draft['issue_date']))
         if date_operation == _EDIT_INVOICE_OPERATION_DUE_DATE and candidate_date_obj < issue_date_obj:
             await message.answer(
-                'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+                _with_invoice_exact_value_recovery_hint(
+                    'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+                )
             )
             return
         if date_operation == _EDIT_INVOICE_OPERATION_ISSUE_DATE:
             due_date_obj = date.fromisoformat(str(draft['due_date']))
             if due_date_obj < candidate_date_obj:
                 await message.answer(
-                    'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+                    _with_invoice_exact_value_recovery_hint(
+                        'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+                    )
                 )
                 return
 
@@ -4343,14 +4373,18 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
     )
     candidate_date_iso = _parse_strict_issue_date_candidate(normalized_date_value)
     if candidate_date_iso is None:
-        await message.answer('Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.')
+        await message.answer(
+            _with_invoice_exact_value_recovery_hint('Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.')
+        )
         return
 
     candidate_date_obj = date.fromisoformat(candidate_date_iso)
     issue_date_obj = date.fromisoformat(invoice.issue_date)
     if date_operation == _EDIT_INVOICE_OPERATION_DUE_DATE and candidate_date_obj < issue_date_obj:
         await message.answer(
-            'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+            _with_invoice_exact_value_recovery_hint(
+                'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+            )
         )
         return
 
@@ -4358,7 +4392,9 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         due_date_obj = date.fromisoformat(invoice.due_date)
         if due_date_obj < candidate_date_obj:
             await message.answer(
-                'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+                _with_invoice_exact_value_recovery_hint(
+                    'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+                )
             )
             return
 
@@ -4418,7 +4454,9 @@ async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, c
     raw_value = (message.text or '').strip()
     parsed_value = _parse_strict_numeric_input(raw_value)
     if parsed_value is None:
-        await message.answer('Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.')
+        await message.answer(
+            _with_invoice_exact_value_recovery_hint('Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.')
+        )
         return
 
     state_data = await state.get_data()
@@ -4462,11 +4500,15 @@ async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, c
             success_text = 'Cena za m.j. bola upravená.'
         else:
             if quantity <= 0:
-                await message.answer('Množstvo položky musí byť väčšie ako 0.')
+                await message.answer(
+                    _with_invoice_exact_value_recovery_hint('Množstvo položky musí byť väčšie ako 0.')
+                )
                 return
             applied = _apply_values(quantity, parsed_value / quantity, parsed_value)
         if applied is None:
-            await message.answer('Hodnota musí byť nezáporná a množstvo väčšie ako 0.')
+            await message.answer(
+                _with_invoice_exact_value_recovery_hint('Hodnota musí byť nezáporná a množstvo väčšie ako 0.')
+            )
             return
         item['quantity'], item['unit_price'], item['amount'] = applied
         await _show_updated_draft_preview(message=message, state=state, draft=draft, success_text=success_text)
@@ -4506,11 +4548,13 @@ async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, c
         success_text = 'Cena za m.j. bola upravená.'
     else:
         if quantity <= 0:
-            await message.answer('Množstvo položky musí byť väčšie ako 0.')
+            await message.answer(_with_invoice_exact_value_recovery_hint('Množstvo položky musí byť väčšie ako 0.'))
             return
         applied = _apply_values(quantity, parsed_value / quantity, parsed_value)
     if applied is None:
-        await message.answer('Hodnota musí byť nezáporná a množstvo väčšie ako 0.')
+        await message.answer(
+            _with_invoice_exact_value_recovery_hint('Hodnota musí byť nezáporná a množstvo väčšie ako 0.')
+        )
         return
     new_quantity, new_unit_price, new_total = applied
     invoice_service.update_item_financials(
@@ -4532,9 +4576,9 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
     action_mode = state_data.get('edit_item_action_mode')
     if not new_description_value:
         if action_mode == 'replace_main_description':
-            await message.answer('Napíšte nový opis položky.')
+            await message.answer(_with_invoice_exact_value_recovery_hint('Napíšte nový opis položky.'))
             return
-        await message.answer('Napíšte detaily k položke.')
+        await message.answer(_with_invoice_exact_value_recovery_hint('Napíšte detaily k položke.'))
         return
 
     invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
@@ -4567,8 +4611,10 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
             )
             if not validate_item_detail_render_fit(details_to_save, max_lines=2):
                 await message.answer(
-                    'Text detailov položky je príliš dlhý. '
-                    'Skráťte ho prosím tak, aby sa zmestil najviac do 2 riadkov.'
+                    _with_invoice_exact_value_recovery_hint(
+                        'Text detailov položky je príliš dlhý. '
+                        'Skráťte ho prosím tak, aby sa zmestil najviac do 2 riadkov.'
+                    )
                 )
                 return
             target_item['item_description_raw'] = details_to_save
@@ -4626,8 +4672,10 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
         )
         if not validate_item_detail_render_fit(details_to_save, max_lines=2):
             await message.answer(
-                'Text detailov položky je príliš dlhý. '
-                'Skráťte ho prosím tak, aby sa zmestil najviac do 2 riadkov.'
+                _with_invoice_exact_value_recovery_hint(
+                    'Text detailov položky je príliš dlhý. '
+                    'Skráťte ho prosím tak, aby sa zmestil najviac do 2 riadkov.'
+                )
             )
             return
         invoice_service.update_item_description(

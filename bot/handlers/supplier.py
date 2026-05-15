@@ -12,6 +12,8 @@ from bot.services.supplier_service import SupplierService
 
 router = Router(name='supplier_service_alias')
 
+SERVICE_ALIAS_RECOVERY_HINT = 'Ak nechcete pridať službu, napíšte „zrušiť“.'
+
 
 class ServiceAliasStates(StatesGroup):
     waiting_short_name = State()
@@ -73,7 +75,10 @@ async def cmd_sluzbu_case_alias(message: Message, state: FSMContext, config: Con
 async def service_short_name_input(message: Message, state: FSMContext) -> None:
     service_short_name = (message.text or '').strip()
     if not service_short_name:
-        await message.answer('Krátky názov služby nemôže byť prázdny. Skúste znova:')
+        await message.answer(
+            'Krátky názov služby nemôže byť prázdny. Skúste znova:\n\n'
+            f'{SERVICE_ALIAS_RECOVERY_HINT}'
+        )
         return
 
     await state.update_data(service_short_name=service_short_name)
@@ -88,7 +93,10 @@ async def service_short_name_input(message: Message, state: FSMContext) -> None:
 async def service_display_name_input(message: Message, state: FSMContext, config: Config) -> None:
     service_display_name = (message.text or '').strip()
     if not service_display_name:
-        await message.answer('Plný názov služby nemôže byť prázdny. Skúste znova:')
+        await message.answer(
+            'Plný názov služby nemôže byť prázdny. Skúste znova:\n\n'
+            f'{SERVICE_ALIAS_RECOVERY_HINT}'
+        )
         return
 
     if message.from_user is None:

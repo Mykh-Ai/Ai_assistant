@@ -9,6 +9,7 @@ from bot.config import Config
 from bot.handlers.invoice import (
     InvoiceStates,
     _format_preview,
+    _invoice_exact_value_recovery_hint,
     invoice_edit_invoice_action,
     invoice_edit_invoice_date_value,
     invoice_edit_description_value,
@@ -712,7 +713,11 @@ def test_draft_date_edit_updates_fsm_and_rejects_due_date_before_issue(tmp_path:
 
     assert due_state.current_state is None
     assert due_state.data['invoice_draft']['due_date'] == '2026-04-26'
-    assert due_message.answers[-1] == 'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+    assert (
+        'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+        in due_message.answers[-1]
+    )
+    assert _invoice_exact_value_recovery_hint() in due_message.answers[-1]
 
 
 def test_draft_item_edits_mutate_fsm_without_pdf_rebuild(tmp_path: Path) -> None:
@@ -1678,13 +1683,15 @@ def test_draft_numeric_invalid_and_negative_values_are_rejected(tmp_path: Path) 
     invalid_message = _DummyMessage(1)
     invalid_state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_quantity'})
     asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': invalid_message.from_user, 'text': 'dve a pol', 'answer': invalid_message.answer})(), state=invalid_state, config=config))
-    assert invalid_message.answers[-1] == 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.'
+    assert 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.' in invalid_message.answers[-1]
+    assert _invoice_exact_value_recovery_hint() in invalid_message.answers[-1]
 
     for mode, value in [('edit_item_quantity', '-1'), ('edit_item_unit_price', '-0.5'), ('edit_item_total_amount', '-10')]:
         message = _DummyMessage(1)
         state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': mode})
         asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': value, 'answer': message.answer})(), state=state, config=config))
-        assert message.answers[-1] == 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.'
+        assert 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.' in message.answers[-1]
+        assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
 def test_persisted_numeric_edit_total_rebuilds_pdf_and_updates_invoice_total(tmp_path: Path, monkeypatch) -> None:
@@ -1757,7 +1764,8 @@ def test_persisted_numeric_invalid_and_negative_are_rejected_without_db_mutation
         after_item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
         after_invoice_total = InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount
         assert (after_item.quantity, after_item.unit_price, after_item.total_price, after_invoice_total) == before
-        assert message.answers[-1] == 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.'
+        assert 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.' in message.answers[-1]
+        assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
 def test_persisted_total_edit_rejects_quantity_not_positive(tmp_path: Path, monkeypatch) -> None:
@@ -1773,7 +1781,8 @@ def test_persisted_total_edit_rejects_quantity_not_positive(tmp_path: Path, monk
     message = _DummyMessage(telegram_id)
     state = _DummyState(data={'edit_invoice_id': invoice_id, 'edit_target_item_id': item.id, 'edit_item_action_mode': 'edit_item_total_amount'})
     asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': '50', 'answer': message.answer, 'from_user': message.from_user})(), state=state, config=config))
-    assert message.answers[-1] == 'Množstvo položky musí byť väčšie ako 0.'
+    assert 'Množstvo položky musí byť väčšie ako 0.' in message.answers[-1]
+    assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
 def test_single_item_default_targeting_is_applied_on_edit_entry(tmp_path: Path) -> None:
@@ -2296,7 +2305,8 @@ def test_edit_invoice_number_duplicate_rejected_and_state_kept(tmp_path: Path, m
     assert reloaded is not None
     assert reloaded.invoice_number == old_number
     assert state.current_state == InvoiceStates.waiting_edit_invoice_number_value
-    assert message.answers[-1] == 'Číslo faktúry už existuje. Zadajte prosím iné číslo.'
+    assert 'Číslo faktúry už existuje. Zadajte prosím iné číslo.' in message.answers[-1]
+    assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
 def test_edit_invoice_number_invalid_value_rejected_and_kept_in_state(tmp_path: Path, monkeypatch) -> None:
@@ -2341,6 +2351,7 @@ def test_edit_invoice_number_invalid_value_rejected_and_kept_in_state(tmp_path: 
     assert reloaded.invoice_number == old_invoice.invoice_number
     assert state.current_state == InvoiceStates.waiting_edit_invoice_number_value
     assert message.answers[-1].startswith('Neplatné číslo faktúry.')
+    assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
 def test_edit_invoice_date_valid_value_updates_issue_date_and_rebuilds_pdf(tmp_path: Path, monkeypatch) -> None:
@@ -2452,6 +2463,7 @@ def test_edit_invoice_date_invalid_format_rejected_and_kept_in_state(tmp_path: P
     assert reloaded.issue_date == old_invoice.issue_date
     assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
     assert message.answers[-1].startswith('Neplatný dátum.')
+    assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
 def test_edit_invoice_date_impossible_date_rejected_and_kept_in_state(tmp_path: Path, monkeypatch) -> None:
@@ -2635,8 +2647,10 @@ def test_edit_invoice_due_date_rejects_before_issue_date(tmp_path: Path, monkeyp
     assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
     assert (
         message.answers[-1]
-        == 'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+        and 'Dátum splatnosti nemôže byť skôr ako dátum vystavenia. Zadajte prosím správny dátum.'
+        in message.answers[-1]
     )
+    assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
 def test_edit_invoice_date_voice_input_is_normalized_via_bounded_contract(tmp_path: Path, monkeypatch) -> None:

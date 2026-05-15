@@ -19,6 +19,12 @@ from bot.services.validation import validate_contact_address, validate_dic, vali
 
 router = Router(name='contacts')
 
+CONTACT_RECOVERY_HINT = 'Ak chcete vytváranie kontaktu zrušiť, napíšte „zrušiť“.'
+
+
+def _with_contact_recovery_hint(message: str) -> str:
+    return f'{message}\n\n{CONTACT_RECOVERY_HINT}'
+
 
 class ContactStates(StatesGroup):
     name_hint = State()
@@ -210,7 +216,7 @@ async def process_contact_missing_fields(
     current = missing[0]
     value = user_text.strip()
     if not value:
-        await message.answer(_missing_prompt(current))
+        await message.answer(_with_contact_recovery_hint(_missing_prompt(current)))
         return
 
     if current == 'email' and not validate_email(value):
@@ -224,16 +230,18 @@ async def process_contact_missing_fields(
             await state.set_state(ContactStates.intake_confirm)
             await answer_with_decision_keyboard(message, _contact_draft_summary(draft), save_cancel_keyboard())
             return
-        await message.answer('Neplatný email. Skúste znova:')
+        await message.answer(_with_contact_recovery_hint('Neplatný email. Skúste znova:'))
         return
     if current == 'address' and not validate_contact_address(value):
-        await message.answer('Adresa musí obsahovať aj číslo domu. Príklad: Hlavná 1, Košice.')
+        await message.answer(
+            _with_contact_recovery_hint('Adresa musí obsahovať aj číslo domu. Príklad: Hlavná 1, Košice.')
+        )
         return
     if current == 'ico' and not validate_ico(value):
-        await message.answer('Neplatné ICO. Formát: 8 číslic. Skúste znova:')
+        await message.answer(_with_contact_recovery_hint('Neplatné ICO. Formát: 8 číslic. Skúste znova:'))
         return
     if current == 'dic' and not validate_dic(value):
-        await message.answer('Neplatné DIC. Formát: 10 číslic. Skúste znova:')
+        await message.answer(_with_contact_recovery_hint('Neplatné DIC. Formát: 10 číslic. Skúste znova:'))
         return
 
     draft[current] = value
@@ -265,7 +273,7 @@ async def process_contact_intake_confirm(
     else:
         answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
     if answer == 'unknown':
-        await message.answer('Napíšte ano alebo nie.')
+        await message.answer(_with_contact_recovery_hint('Napíšte ano alebo nie.'))
         return
     if answer == 'no':
         await state.clear()
@@ -353,11 +361,11 @@ async def _process_source_after_name_step(message: Message, state: FSMContext, c
 
     value = (message.text or '').strip()
     if not value:
-        await message.answer('Pošlite zmluvu/PDF alebo zadajte IČO.')
+        await message.answer(_with_contact_recovery_hint('Pošlite zmluvu/PDF alebo zadajte IČO.'))
         return
 
     if not validate_ico(value):
-        await message.answer('Neplatné ICO. Formát: 8 číslic. Skúste znova:')
+        await message.answer(_with_contact_recovery_hint('Neplatné ICO. Formát: 8 číslic. Skúste znova:'))
         return
 
     await state.update_data(ico=value)
@@ -372,12 +380,12 @@ async def contact_name_hint(message: Message, state: FSMContext, config: Config)
         return
 
     if message.document is not None:
-        await message.answer('V tomto kroku najprv zadajte názov firmy textom.')
+        await message.answer(_with_contact_recovery_hint('V tomto kroku najprv zadajte názov firmy textom.'))
         return
 
     value = (message.text or '').strip()
     if not value:
-        await message.answer('Zadajte názov firmy.')
+        await message.answer(_with_contact_recovery_hint('Zadajte názov firmy.'))
         return
 
     service = ContactService(config.db_path)
@@ -406,7 +414,7 @@ async def contact_source_after_name(message: Message, state: FSMContext, config:
 async def contact_ico(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_ico(value):
-        await message.answer('Neplatné ICO. Formát: 8 číslic. Skúste znova:')
+        await message.answer(_with_contact_recovery_hint('Neplatné ICO. Formát: 8 číslic. Skúste znova:'))
         return
     await state.update_data(ico=value)
     await state.set_state(ContactStates.dic)
@@ -417,7 +425,7 @@ async def contact_ico(message: Message, state: FSMContext) -> None:
 async def contact_dic(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_dic(value):
-        await message.answer('Neplatné DIC. Formát: 10 číslic. Skúste znova:')
+        await message.answer(_with_contact_recovery_hint('Neplatné DIC. Formát: 10 číslic. Skúste znova:'))
         return
     await state.update_data(dic=value)
     await state.set_state(ContactStates.ic_dph)
@@ -431,7 +439,9 @@ async def contact_ic_dph(message: Message, state: FSMContext) -> None:
         await state.update_data(ic_dph='')
     else:
         if not validate_ic_dph(value):
-            await message.answer('Neplatné IC DPH. Príklad: SK1234567890. Skúste znova:')
+            await message.answer(
+                _with_contact_recovery_hint('Neplatné IC DPH. Príklad: SK1234567890. Skúste znova:')
+            )
             return
         await state.update_data(ic_dph=value.upper().replace(' ', ''))
 
@@ -443,7 +453,9 @@ async def contact_ic_dph(message: Message, state: FSMContext) -> None:
 async def contact_address(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_contact_address(value):
-        await message.answer('Adresa musí obsahovať aj číslo domu. Príklad: Hlavná 1, Košice.')
+        await message.answer(
+            _with_contact_recovery_hint('Adresa musí obsahovať aj číslo domu. Príklad: Hlavná 1, Košice.')
+        )
         return
     await state.update_data(address=value)
     await state.set_state(ContactStates.email)
@@ -459,7 +471,7 @@ async def contact_email(message: Message, state: FSMContext) -> None:
         await message.answer('7/7 Zadajte kontaktnú osobu (voliteľné, pošlite "-"):')
         return
     if not validate_email(value):
-        await message.answer('Neplatný email. Skúste znova:')
+        await message.answer(_with_contact_recovery_hint('Neplatný email. Skúste znova:'))
         return
     await state.update_data(email=value)
     await state.set_state(ContactStates.contact_person)
@@ -493,7 +505,7 @@ async def contact_confirm(
     else:
         answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
     if answer == 'unknown':
-        await message.answer('Napíšte ano alebo nie.')
+        await message.answer(_with_contact_recovery_hint('Napíšte ano alebo nie.'))
         return
 
     if answer == 'no':
