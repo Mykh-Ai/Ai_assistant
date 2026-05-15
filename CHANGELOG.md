@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- deterministic Phase 1 top-level `info_help` fallback guidance for idle text/voice inputs when the semantic action resolver returns `unknown`.
 - `show_existing_invoice` top-level read-only action: natural text/voice such as “show/open invoice/faktura 04” now shows the existing outgoing invoice summary/PDF and returns to idle instead of entering edit mode.
 - global state cancellation through `/cancel` and shared DecisionResolver-backed text/voice cancel wording (`zrušiť`, `скасувати`, `відмінити`, `отменить`, “почни з початку”), with state-aware cleanup for temporary intake and safe persisted-invoice-edit exit.
 - `delete_user_database` runtime flow: `/vymazat_databazu` and bounded top-level text/voice intent now start a destructive warning FSM, with exact typed final confirmation required before scoped deletion.

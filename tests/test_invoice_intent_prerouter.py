@@ -14,6 +14,7 @@ from bot.handlers.invoice import (
     process_invoice_text,
     semantic_top_level_input,
 )
+from bot.services.info_help import build_top_level_unknown_guidance
 from bot.services.db import init_db
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.service_alias_service import ServiceAliasService
@@ -1173,12 +1174,68 @@ def test_postpdf_confirmation_llm_contract_normalizes_delete_intent(monkeypatch,
     ] == 'zrusit_if_allowed'
 
 
-def test_unknown_top_level_stops_flow(tmp_path: Path) -> None:
+def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
     message = _DummyMessage('blabla')
     state = _DummyState()
     asyncio.run(process_invoice_text(message=message, state=state, config=_config(tmp_path), invoice_text='blabla'))
     assert state.cleared is True
+    assert 'Nerozumiem, čo chcete spraviť.' in message.answers[-1]
+    assert 'vytvoriť faktúru' in message.answers[-1]
+    assert 'pridaj bloček' in message.answers[-1]
+
+
+def test_known_reserved_top_level_action_does_not_call_info_help(tmp_path: Path, monkeypatch) -> None:
+    message = _DummyMessage('pošli faktúru 20260001')
+    state = _DummyState()
+    calls: list[str | None] = []
+
+    async def _resolver(**kwargs):
+        return 'send_invoice'
+
+    def _info_help(**kwargs) -> str:
+        calls.append(kwargs.get('user_input_text'))
+        return 'unexpected'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.build_top_level_unknown_guidance', _info_help)
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            invoice_text='pošli faktúru 20260001',
+        )
+    )
+
+    assert calls == []
+    assert state.cleared is True
     assert 'Nerozumiem požadovanej akcii' in message.answers[-1]
+
+
+def test_active_fsm_top_level_text_does_not_route_to_info_help(tmp_path: Path, monkeypatch) -> None:
+    calls: list[str | None] = []
+
+    def _info_help(**kwargs) -> str:
+        calls.append(kwargs.get('user_input_text'))
+        return 'unexpected'
+
+    monkeypatch.setattr('bot.handlers.invoice.build_top_level_unknown_guidance', _info_help)
+    state = _DummyState()
+    state.current_state = InvoiceStates.waiting_edit_scope
+
+    asyncio.run(semantic_top_level_input(_DummyMessage('blabla'), state, _config(tmp_path)))
+
+    assert calls == []
+
+
+def test_info_help_guidance_builder_has_no_side_effects() -> None:
+    first = build_top_level_unknown_guidance(user_input_text='blabla')
+    second = build_top_level_unknown_guidance(user_input_text='niečo iné')
+
+    assert first == second
+    assert 'Nerozumiem, čo chcete spraviť.' in first
+    assert 'vytvoriť faktúru' in first
 
 
 def test_process_invoice_text_keeps_partial_draft_when_only_service_slot_is_unknown(tmp_path: Path, monkeypatch) -> None:

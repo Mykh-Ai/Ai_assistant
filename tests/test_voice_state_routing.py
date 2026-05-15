@@ -848,6 +848,23 @@ def test_voice_idle_profile_routes_to_profile_view(monkeypatch, tmp_path: Path) 
     assert calls == ['profile']
 
 
+def test_voice_idle_unknown_gets_info_help_guidance(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'blabla'
+
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+
+    message = _DummyMessage()
+    asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), _DummyState(None)))
+
+    assert 'Nerozumiem, čo chcete spraviť.' in message.answers[-1]
+    assert 'vytvoriť faktúru' in message.answers[-1]
+
+
 def test_voice_idle_profile_rekvizity_uses_top_level_resolver_path(monkeypatch, tmp_path: Path) -> None:
     async def _stt(*args, **kwargs) -> str:
         return 'Мої реквізити'

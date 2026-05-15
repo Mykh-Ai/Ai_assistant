@@ -1,5 +1,36 @@
 # PROJECT_LOG
 
+## 2026-05-15 - Session 075 - Phase 1 top-level info help fallback
+
+Summary:
+- Added deterministic Phase 1 top-level `info_help` guidance for idle unknown text input.
+- Routed idle voice unknown transcripts through the same `process_invoice_text(...)` unknown fallback guidance.
+- Kept active FSM handlers, FSM recovery hints, global cancel, `/start`, `/menu`, delete database flow, DB schema, storage paths, invoice PDF paths, Google Drive, LMM/accounting extraction, action switching, and buttons/callbacks unchanged.
+- Did not implement Phase 2/3 runtime explainability or LLM-backed help-topic resolution.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/Info_Help_Guidance_Layer.md`
+
+Constraints extracted:
+- top-level action resolution runs first and `info_help` may run only after a top-level miss;
+- Phase 1 guidance must be deterministic/template-based and must not add a new LLM call;
+- known top-level actions must continue through existing Python-owned routes;
+- active FSM state must not fall through to top-level action routing or `info_help`;
+- user-facing guidance must stay Slovak and must not claim planned Phase 2/3 explainability runtime exists.
+
+Touched scopes:
+- top-level routing: yes, unknown-only fallback copy through `process_invoice_text(...)`;
+- voice: yes, idle voice benefits through the existing `process_invoice_text(...)` path only;
+- FSM/confirmation/LLM/STT/storage/DB/access/server: no behavior changes.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py tests/test_state_control.py` -> `152 passed`.
+- `python -m pytest -q` -> `993 passed`.
+
 ## 2026-05-15 - Session 074 - Accounting and OfficeFlow recovery hints
 
 Summary:

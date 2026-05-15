@@ -29,6 +29,7 @@ from bot.keyboards.decision import (
 )
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
+from bot.services.info_help import build_top_level_unknown_guidance
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
@@ -2544,7 +2545,11 @@ async def process_invoice_text(
             delete_cancel_keyboard(),
         )
         return
-    if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT, _UNKNOWN_INVOICE_INTENT}:
+    if top_level_intent == _UNKNOWN_INVOICE_INTENT:
+        await message.answer(build_top_level_unknown_guidance(user_input_text=invoice_text))
+        await state.clear()
+        return
+    if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT}:
         await message.answer(
             'Nerozumiem požadovanej akcii. Skúste to, prosím, povedať inak.'
         )
