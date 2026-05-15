@@ -36,6 +36,11 @@ README є навігаційним оглядом. Якщо README конфлі�
       profile + service, no contacts -> /contact
       ready state -> main operational menu
 
+/menu
+  full user-facing capabilities list
+  includes create/show/edit/delete invoice wording
+  does not expose internal canonical tokens as slash commands
+
 Admin commands
   /access_requests
   /approve
@@ -82,6 +87,7 @@ Text/voice cancel aliases
     default due days
   enter new value
   save/cancel confirmation
+  after save, return the same staged/main navigation as /start
 ```
 
 Voice support:

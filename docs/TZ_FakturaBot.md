@@ -139,7 +139,11 @@ After the first staged setup, `/start` becomes a deterministic setup/status rout
 - approved without supplier profile: show only the next step `/moj_profil`;
 - supplier profile exists but no service alias exists: show only the next step `/sluzbu`;
 - supplier profile and service alias exist but no contact exists: show only the next step `/contact`;
-- supplier profile, service alias, and contacts exist: show the main operational menu with `/invoice`, `/add_blocek`, `/blocek`, `/upravit_profil`, `/moj_profil`, and `/menu`.
+- supplier profile, service alias, and contacts exist: show the main operational menu with `/invoice`, read-only invoice view wording, existing-invoice edit wording, `/add_blocek`, `/blocek`, `/upravit_profil`, and `/moj_profil`.
+
+`/menu` should show the broader user-facing capability list, including create/show/edit/delete existing invoice flows, setup/profile/contact/service actions, accounting document actions, and the user database deletion entry. The database deletion entry must make clear that it deletes the user's scoped data and removes bot access; it is not a simple restart command. It must not expose internal Python canonical tokens as slash commands when no such Telegram command exists.
+
+After a targeted `/upravit_profil` save, the bot must return the same staged/status navigation as `/start`: novice users continue to the next missing setup step, while ready users see the main operational menu rather than the first-service onboarding prompt.
 
 For accounting receipts, `/blocek` is the user-facing read-only recent receipts/accounting-documents view. `/add_blocek` and `/dodat_blocek` start adding a new receipt/blocek through the existing accounting Document Intake flow. `/doklad` remains a broader legacy/reserved document-intake entry and must not be promoted as the main receipt command in `/start`.
 

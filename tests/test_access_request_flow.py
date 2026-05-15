@@ -18,8 +18,10 @@ from bot.handlers.start import (
     ADVANCED_START_MESSAGE,
     APPROVED_ACCESS_NEXT_STEP_MESSAGE,
     APPROVED_WITHOUT_SUPPLIER_MESSAGE,
+    MENU_MESSAGE,
     READY_WITH_SUPPLIER_MESSAGE,
     READY_WITH_SERVICE_MESSAGE,
+    cmd_menu,
     cmd_start,
 )
 from bot.services.access_control import ACCESS_STATUS_APPROVED, ACCESS_STATUS_PENDING, ACCESS_STATUS_REJECTED
@@ -416,10 +418,62 @@ def test_start_ready_user_gets_advanced_menu(tmp_path: Path) -> None:
 
     assert message.answers == [ADVANCED_START_MESSAGE]
     assert '/invoice' in message.answers[-1]
+    assert 'zobraz faktúru 04' in message.answers[-1]
+    assert 'uprav faktúru 04' in message.answers[-1]
+    assert 'vymaž faktúru 04' not in message.answers[-1]
     assert '/add_blocek' in message.answers[-1]
     assert '/blocek' in message.answers[-1]
     assert '/upravit_profil' in message.answers[-1]
-    assert '/menu' in message.answers[-1]
+
+
+def test_menu_shows_all_user_facing_options_and_clears_state(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    message = _DummyMessage('/menu', UNKNOWN_ID)
+    state = _DummyState()
+
+    asyncio.run(cmd_menu(message, config, state))
+
+    assert state.cleared is True
+    assert message.answers == [MENU_MESSAGE]
+    assert '/invoice' in message.answers[-1]
+    assert 'zobraz faktúru 04' in message.answers[-1]
+    assert 'uprav faktúru 04' in message.answers[-1]
+    assert 'vymaž faktúru 04' in message.answers[-1]
+    assert '/sluzbu' in message.answers[-1]
+    assert '/contact' in message.answers[-1]
+    assert '/add_blocek' in message.answers[-1]
+    assert '/blocek' in message.answers[-1]
+    assert '/moj_profil' in message.answers[-1]
+    assert '/upravit_profil' in message.answers[-1]
+    assert '/vymazat_databazu' in message.answers[-1]
+    assert 'odobrať prístup k botu' in message.answers[-1]
+
+
+def test_menu_does_not_bypass_access_control_for_unauthorized_users(tmp_path: Path) -> None:
+    for setup in ('unknown', 'pending', 'deleted_database'):
+        config = _config(tmp_path / setup)
+        config.db_path.parent.mkdir(parents=True, exist_ok=True)
+        init_db(config.db_path)
+        service = AccessControlService(config.db_path)
+        if setup == 'pending':
+            service.create_or_refresh_pending_request(request=_request(UNKNOWN_ID))
+        if setup == 'deleted_database':
+            service.approve_user(telegram_id=UNKNOWN_ID, approved_by=ADMIN_ID)
+            service.mark_deleted_database(telegram_id=UNKNOWN_ID)
+
+        message = _DummyMessage('/menu', UNKNOWN_ID)
+        state = _DummyState()
+        calls: list[str] = []
+
+        async def _handler(event, data):
+            calls.append('handler-called')
+            await cmd_menu(event, data['config'], data['state'])
+
+        asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config, 'state': state}))
+
+        assert calls == []
+        assert state.cleared is True
+        assert message.answers == [UNAUTHORIZED_MESSAGE]
 
 
 def test_approve_keeps_user_active_when_approval_notification_fails(tmp_path: Path) -> None:

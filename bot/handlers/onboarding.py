@@ -13,6 +13,7 @@ from aiogram.types import Message
 
 from bot.config import Config
 from bot.keyboards.decision import answer_with_decision_keyboard, save_cancel_keyboard
+from bot.handlers.start import build_start_status_message
 from bot.services.decision_resolver import resolve_yes_no
 from bot.services.invoice_service import InvoiceService
 from bot.services.semantic_action_resolver import resolve_semantic_action
@@ -370,7 +371,7 @@ async def supplier_profile_edit_confirm(
     await message.answer(
         f'Profil bol aktualizovaný: {_SUPPLIER_EDIT_FIELD_LABELS[field]} '
         f'{previous_display} → {value_display}.\n\n'
-        'Ďalší krok pre fakturáciu: /sluzbu.'
+        f'{build_start_status_message(config, message.from_user.id)}'
     )
 
 

@@ -70,6 +70,40 @@ Verification:
 - `python -m pytest -q tests/test_decision_resolver.py tests/test_state_control.py tests/test_voice_state_routing.py tests/test_invoice_intent_prerouter.py tests/test_invoice_state_decisions.py` -> `643 passed`.
 - `python -m pytest -q` -> `982 passed`.
 
+## 2026-05-09 - Session 070 - Profile edit return menu alignment
+
+Summary:
+- Reused the `/start` staged setup/status navigation after successful `/upravit_profil` saves.
+- Ready users now see the main operational menu after profile edits, including create/view invoice options, instead of always being pointed back to `/sluzbu`.
+- Added show/edit invoice wording to the advanced `/start` navigation.
+- Expanded `/menu` into the broader user-facing capability list, including create/show/edit/delete existing invoice flows without exposing internal canonical tokens as slash commands.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/TZ_FakturaBot.md`
+- `PROJECT_LOG.md`
+- `CHANGELOG.md`
+- `docs/User_Access_Model_Roadmap.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- `/start` is the source of the staged setup/status menu for approved users;
+- ready users should get the main operational menu, while incomplete users should see only the next missing setup step;
+- `/menu` may list broader user-facing capabilities, but internal canonical tokens such as `edit_existing_invoice` must not be presented as Telegram slash commands;
+- `/vymazat_databazu` menu wording must not imply a simple restart; the flow deletes scoped data and removes bot access until reapproval;
+- profile edit exact values remain text-only and Python-validated;
+- no new top-level action, DB schema, storage layout, access rule, or LLM prompt change is required.
+
+Touched scopes:
+- routing/FSM: yes, post-profile-edit response navigation only;
+- access: no policy change, reused approved-user `/start` status logic;
+- LLM/STT/confirmation/storage/DB/server: no.
+
+Verification:
+- `python -m pytest -q tests/test_access_request_flow.py tests/test_onboarding_decisions.py tests/test_delete_user_database_flow.py` -> `34 passed`.
+- `python -m pytest -q` -> `983 passed`.
+
 ## 2026-05-09 - Session 069 - State reset and read-only invoice view
 
 Summary:

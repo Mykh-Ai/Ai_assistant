@@ -25,8 +25,11 @@ from bot.handlers.onboarding import (
     supplier_profile_edit_field,
     supplier_profile_edit_value,
 )
+from bot.handlers.start import ADVANCED_START_MESSAGE
+from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db
 from bot.services.invoice_service import InvoiceService
+from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierProfile, SupplierService
 
 
@@ -89,6 +92,30 @@ def _config(tmp_path: Path) -> Config:
         db_path=tmp_path / 'onboarding.db',
         storage_dir=tmp_path,
     )
+
+
+def _create_supplier(config: Config, telegram_id: int = 111) -> SupplierProfile:
+    service = SupplierService(config.db_path)
+    service.create_or_replace(
+        SupplierProfile(
+            telegram_id=telegram_id,
+            name='Dodavatel',
+            ico='12345678',
+            dic='1234567890',
+            ic_dph=None,
+            address='Stara adresa 1',
+            iban='SK3112000000198742637541',
+            swift='TATRSKBX',
+            email='supplier@example.com',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    supplier = service.get_by_telegram_id(telegram_id)
+    assert supplier is not None
+    return supplier
 
 
 def test_onboarding_confirm_accepts_shared_yes_alias(tmp_path: Path) -> None:
@@ -157,23 +184,7 @@ def test_onboarding_invalid_values_keep_state_and_include_recovery_hint() -> Non
 def test_upravit_profil_updates_one_field_with_shared_confirmation(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
-    SupplierService(config.db_path).create_or_replace(
-        SupplierProfile(
-            telegram_id=111,
-            name='Dodavatel',
-            ico='12345678',
-            dic='1234567890',
-            ic_dph=None,
-            address='Stara adresa 1',
-            iban='SK3112000000198742637541',
-            swift='TATRSKBX',
-            email='supplier@example.com',
-            smtp_host=None,
-            smtp_user=None,
-            smtp_pass=None,
-            days_due=14,
-        )
-    )
+    _create_supplier(config)
     state = _DummyState()
 
     asyncio.run(cmd_upravit_profil(_DummyMessage('/upravit_profil'), state, config))
@@ -194,6 +205,41 @@ def test_upravit_profil_updates_one_field_with_shared_confirmation(tmp_path: Pat
     assert saved.ico == '12345678'
     assert state.current_state is None
     assert '/sluzbu' in confirm_message.answers[-1]
+
+
+def test_upravit_profil_returns_advanced_menu_for_ready_user(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    supplier = _create_supplier(config)
+    assert supplier.id is not None
+    ServiceAliasService(config.db_path).create_mapping(supplier.id, 'opravy', 'Opravy')
+    ContactService(config.db_path).create_or_replace(
+        ContactProfile(
+            supplier_telegram_id=111,
+            name='Odberatel',
+            ico='87654321',
+            dic='0987654321',
+            ic_dph=None,
+            address='Kosice 1',
+            email='odberatel@example.com',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+    state = _DummyState()
+    state.current_state = SupplierProfileEditStates.confirm
+    state.data = {'supplier_edit_field': 'address', 'supplier_edit_value': 'Nova adresa 22'}
+
+    confirm_message = _DummyMessage('ano')
+    asyncio.run(supplier_profile_edit_confirm(confirm_message, state, config))
+
+    assert state.current_state is None
+    assert ADVANCED_START_MESSAGE in confirm_message.answers[-1]
+    assert '/invoice' in confirm_message.answers[-1]
+    assert 'zobraz faktúru 04' in confirm_message.answers[-1]
+    assert '/sluzbu' not in confirm_message.answers[-1]
 
 
 def test_supplier_profile_edit_field_accepts_voice_like_phrase_fast_path(tmp_path: Path) -> None:

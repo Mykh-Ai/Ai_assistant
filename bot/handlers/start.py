@@ -37,24 +37,47 @@ READY_WITH_SERVICE_MESSAGE = (
 ADVANCED_START_MESSAGE = (
     'FakturaBot je pripravený.\n\n'
     'Čo chcete urobiť?\n\n'
-    '• Vytvoriť faktúru: /invoice\n'
-    '• Dodať bloček: /add_blocek\n'
-    '• Posledné bločky: /blocek\n'
-    '• Upraviť profil: /upravit_profil\n'
-    '• Zobraziť profil: /moj_profil\n\n'
-    'Všetky možnosti: /menu'
+    '• /invoice — vytvoriť faktúru\n'
+    '• Zobraziť faktúru — napíšte alebo povedzte: "zobraz faktúru 04"\n'
+    '• Upraviť faktúru — napíšte alebo povedzte: "uprav faktúru 04"\n'
+    '• /add_blocek — dodať bloček\n'
+    '• /blocek — posledné bločky\n'
+    '• /upravit_profil — upraviť profil\n'
+    '• /moj_profil — zobraziť profil'
 )
 
 MENU_MESSAGE = (
-    'Hlavné možnosti:\n\n'
+    'Všetky používateľské možnosti:\n\n'
+    'Faktúry:\n'
     '• /invoice — vytvoriť faktúru\n'
+    '• Zobraziť faktúru — napíšte alebo povedzte: "zobraz faktúru 04"\n'
+    '• Upraviť faktúru — napíšte alebo povedzte: "uprav faktúru 04"\n'
+    '• Vymazať faktúru — napíšte alebo povedzte: "vymaž faktúru 04"\n\n'
+    'Nastavenia:\n'
     '• /sluzbu — pridať službu\n'
     '• /contact — pridať odberateľa\n'
-    '• /add_blocek — dodať bloček\n'
-    '• /blocek — posledné bločky\n'
     '• /moj_profil — zobraziť profil\n'
-    '• /upravit_profil — upraviť profil'
+    '• /upravit_profil — upraviť profil\n\n'
+    'Bločky a doklady:\n'
+    '• /add_blocek — dodať bloček\n'
+    '• /blocek — posledné bločky\n\n'
+    'Dáta a prístup:\n'
+    '• /vymazat_databazu — vymazať moje dáta a odobrať prístup k botu'
 )
+
+
+def build_start_status_message(config: Config, telegram_id: int) -> str:
+    supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+    if supplier is None:
+        return APPROVED_WITHOUT_SUPPLIER_MESSAGE
+
+    if supplier.id is None or not ServiceAliasService(config.db_path).list_mappings(supplier.id):
+        return READY_WITH_SUPPLIER_MESSAGE
+
+    if not ContactService(config.db_path).get_all_by_supplier(telegram_id):
+        return READY_WITH_SERVICE_MESSAGE
+
+    return ADVANCED_START_MESSAGE
 
 
 @router.message(CommandStart())
@@ -65,20 +88,7 @@ async def cmd_start(message: Message, config: Config, state: FSMContext | None =
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
-    if supplier is None:
-        await message.answer(APPROVED_WITHOUT_SUPPLIER_MESSAGE)
-        return
-
-    if supplier.id is None or not ServiceAliasService(config.db_path).list_mappings(supplier.id):
-        await message.answer(READY_WITH_SUPPLIER_MESSAGE)
-        return
-
-    if not ContactService(config.db_path).get_all_by_supplier(message.from_user.id):
-        await message.answer(READY_WITH_SERVICE_MESSAGE)
-        return
-
-    await message.answer(ADVANCED_START_MESSAGE)
+    await message.answer(build_start_status_message(config, message.from_user.id))
 
 
 @router.message(lambda message: _command_token(message.text or '') == '/menu')
