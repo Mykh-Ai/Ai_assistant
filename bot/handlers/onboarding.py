@@ -35,6 +35,13 @@ SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE = (
     'Ďalší krok: vytvorte si prvú službu cez /sluzbu.\n'
     'Služba je krátky názov, ktorý bot neskôr použije pri faktúre a PDF.'
 )
+ONBOARDING_RECOVERY_HINT = (
+    'Ak chcete onboarding ukončiť, napíšte „zrušiť“. Ak chcete začať odznova, použite /start.'
+)
+
+
+def _with_onboarding_recovery_hint(message: str) -> str:
+    return f'{message}\n\n{ONBOARDING_RECOVERY_HINT}'
 
 
 class OnboardingStates(StatesGroup):
@@ -392,7 +399,7 @@ async def cmd_onboarding(message: Message, state: FSMContext, config: Config) ->
 async def onboarding_name(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('Názov nemôže byť prázdny. Skúste znova:')
+        await message.answer(_with_onboarding_recovery_hint('Názov nemôže byť prázdny. Skúste znova:'))
         return
     await state.update_data(name=value)
     await state.set_state(OnboardingStates.ico)
@@ -403,7 +410,7 @@ async def onboarding_name(message: Message, state: FSMContext) -> None:
 async def onboarding_ico(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_ico(value):
-        await message.answer('Neplatné ICO. Formát: 8 číslic. Skúste znova:')
+        await message.answer(_with_onboarding_recovery_hint('Neplatné ICO. Formát: 8 číslic. Skúste znova:'))
         return
     await state.update_data(ico=value)
     await state.set_state(OnboardingStates.dic)
@@ -414,7 +421,7 @@ async def onboarding_ico(message: Message, state: FSMContext) -> None:
 async def onboarding_dic(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_dic(value):
-        await message.answer('Neplatné DIC. Formát: 10 číslic. Skúste znova:')
+        await message.answer(_with_onboarding_recovery_hint('Neplatné DIC. Formát: 10 číslic. Skúste znova:'))
         return
     await state.update_data(dic=value)
     await state.set_state(OnboardingStates.ic_dph)
@@ -428,7 +435,9 @@ async def onboarding_ic_dph(message: Message, state: FSMContext) -> None:
         await state.update_data(ic_dph='')
     else:
         if not validate_ic_dph(value):
-            await message.answer('Neplatné IC DPH. Príklad: SK1234567890. Skúste znova:')
+            await message.answer(
+                _with_onboarding_recovery_hint('Neplatné IC DPH. Príklad: SK1234567890. Skúste znova:')
+            )
             return
         await state.update_data(ic_dph=value.upper().replace(' ', ''))
 
@@ -440,7 +449,7 @@ async def onboarding_ic_dph(message: Message, state: FSMContext) -> None:
 async def onboarding_address(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('Adresa nemôže byť prázdna. Skúste znova:')
+        await message.answer(_with_onboarding_recovery_hint('Adresa nemôže byť prázdna. Skúste znova:'))
         return
     await state.update_data(address=value)
     await state.set_state(OnboardingStates.iban)
@@ -451,7 +460,7 @@ async def onboarding_address(message: Message, state: FSMContext) -> None:
 async def onboarding_iban(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_iban(value):
-        await message.answer('Neplatný IBAN. Skúste znova:')
+        await message.answer(_with_onboarding_recovery_hint('Neplatný IBAN. Skúste znova:'))
         return
     await state.update_data(iban=value.upper().replace(' ', ''))
     await state.set_state(OnboardingStates.swift)
@@ -462,7 +471,7 @@ async def onboarding_iban(message: Message, state: FSMContext) -> None:
 async def onboarding_swift(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not value:
-        await message.answer('SWIFT/BIC nemôže byť prázdny. Skúste znova:')
+        await message.answer(_with_onboarding_recovery_hint('SWIFT/BIC nemôže byť prázdny. Skúste znova:'))
         return
     await state.update_data(swift=value.upper())
     await state.set_state(OnboardingStates.email)
@@ -473,7 +482,7 @@ async def onboarding_swift(message: Message, state: FSMContext) -> None:
 async def onboarding_email(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_email(value):
-        await message.answer('Neplatný email. Skúste znova:')
+        await message.answer(_with_onboarding_recovery_hint('Neplatný email. Skúste znova:'))
         return
     issue_year = date.today().year
     await state.update_data(email=value, invoice_number_issue_year=issue_year)
@@ -493,8 +502,10 @@ async def onboarding_first_invoice_number(message: Message, state: FSMContext) -
     issue_year = int(data.get('invoice_number_issue_year') or date.today().year)
     if not validate_invoice_number_for_year(value, issue_year):
         await message.answer(
-            f'Neplatné číslo faktúry. Zadajte číslo vo formáte {issue_year}NNNN, '
-            f'napríklad {issue_year}0001:'
+            _with_onboarding_recovery_hint(
+                f'Neplatné číslo faktúry. Zadajte číslo vo formáte {issue_year}NNNN, '
+                f'napríklad {issue_year}0001:'
+            )
         )
         return
     await state.update_data(first_invoice_number=value)
@@ -506,7 +517,7 @@ async def onboarding_first_invoice_number(message: Message, state: FSMContext) -
 async def onboarding_days_due(message: Message, state: FSMContext) -> None:
     value = (message.text or '').strip()
     if not validate_days_due(value):
-        await message.answer('Neplatná hodnota. Zadajte celé číslo > 0:')
+        await message.answer(_with_onboarding_recovery_hint('Neplatná hodnota. Zadajte celé číslo > 0:'))
         return
     await state.update_data(days_due=value)
     data = await state.get_data()

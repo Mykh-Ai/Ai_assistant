@@ -6,6 +6,7 @@ from pathlib import Path
 from bot.config import Config
 from bot.handlers.access_admin import cmd_approve, cmd_users
 from bot.handlers.delete_user_database import (
+    DELETE_USER_DATABASE_SAFE_EXIT_HINT,
     DELETE_USER_DATABASE_WARNING,
     EXACT_DELETE_DATABASE_CONFIRMATION,
     VOICE_EXACT_CONFIRMATION_MESSAGE,
@@ -14,6 +15,7 @@ from bot.handlers.delete_user_database import (
     confirm_delete_user_database,
 )
 from bot.handlers.invoice import process_invoice_text
+from bot.handlers.state_control import STATE_CANCELLED_MESSAGE, cancel_alias
 from bot.handlers.voice import handle_voice
 from bot.services.access_control import (
     ACCESS_STATUS_DELETED_DATABASE,
@@ -344,6 +346,25 @@ def test_wrong_typed_confirmation_does_not_delete_or_revoke(tmp_path: Path) -> N
     assert SupplierService(config.db_path).get_by_telegram_id(USER_A) is not None
     assert AccessControlService(config.db_path).get_authorized_user(USER_A).status == AUTHORIZED_STATUS_ACTIVE
     assert 'napíšte presne' in message.answers[-1]
+    assert DELETE_USER_DATABASE_SAFE_EXIT_HINT in message.answers[-1]
+
+
+def test_delete_database_global_cancel_aliases_clear_state_without_deletion(tmp_path: Path) -> None:
+    for index, alias in enumerate(('zrušiť', 'назад')):
+        config = _config(tmp_path / f'alias-{index}')
+        config.db_path.parent.mkdir(parents=True, exist_ok=True)
+        init_db(config.db_path)
+        _setup_authorized_user(config, USER_A)
+        SupplierService(config.db_path).create_or_replace(_supplier(USER_A))
+        message = _DummyMessage(alias, USER_A)
+        state = _DummyState(DeleteUserDatabaseStates.waiting_exact_confirmation.state)
+
+        asyncio.run(cancel_alias(message, state, config))
+
+        assert state.current_state is None
+        assert message.answers == [STATE_CANCELLED_MESSAGE]
+        assert SupplierService(config.db_path).get_by_telegram_id(USER_A) is not None
+        assert AccessControlService(config.db_path).get_authorized_user(USER_A).status == AUTHORIZED_STATUS_ACTIVE
 
 
 def test_voice_in_final_confirmation_state_never_deletes_or_calls_stt(monkeypatch, tmp_path: Path) -> None:

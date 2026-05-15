@@ -18,6 +18,9 @@ EXACT_DELETE_DATABASE_CONFIRMATION = 'vymazať databázu'
 VOICE_EXACT_CONFIRMATION_MESSAGE = (
     'Pre bezpečnosť napíšte potvrdenie presne textom: vymazať databázu.'
 )
+DELETE_USER_DATABASE_SAFE_EXIT_HINT = (
+    'Ak chcete túto akciu bezpečne ukončiť bez vymazania databázy, napíšte „zrušiť“.'
+)
 DELETE_USER_DATABASE_WARNING = (
     'Ak vymažete databázu, natrvalo odstránite svoje pracovné údaje vo FakturaBot '
     'a stratíte prístup k botu.\n\n'
@@ -68,7 +71,8 @@ async def confirm_delete_user_database(message: Message, state: FSMContext, conf
     if (message.text or '').strip() != EXACT_DELETE_DATABASE_CONFIRMATION:
         await message.answer(
             'Potvrdenie nesúhlasí. Pre vymazanie databázy napíšte presne:\n'
-            f'{EXACT_DELETE_DATABASE_CONFIRMATION}'
+            f'{EXACT_DELETE_DATABASE_CONFIRMATION}\n\n'
+            f'{DELETE_USER_DATABASE_SAFE_EXIT_HINT}'
         )
         return
 

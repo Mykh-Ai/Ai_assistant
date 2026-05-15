@@ -5,12 +5,22 @@ from pathlib import Path
 
 from bot.config import Config
 from bot.handlers.onboarding import (
+    ONBOARDING_RECOVERY_HINT,
     SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE,
     SupplierProfileEditStates,
     OnboardingStates,
     cmd_upravit_profil,
+    onboarding_address,
     onboarding_confirm,
+    onboarding_days_due,
+    onboarding_dic,
     onboarding_email,
+    onboarding_first_invoice_number,
+    onboarding_iban,
+    onboarding_ic_dph,
+    onboarding_ico,
+    onboarding_name,
+    onboarding_swift,
     supplier_profile_edit_confirm,
     supplier_profile_edit_field,
     supplier_profile_edit_value,
@@ -117,6 +127,31 @@ def test_onboarding_confirm_accepts_shared_no_alias(tmp_path: Path) -> None:
     assert SupplierService(config.db_path).get_by_telegram_id(111) is None
     assert state.current_state is None
     assert '/moj_profil' in message.answers[-1]
+
+
+def test_onboarding_invalid_values_keep_state_and_include_recovery_hint() -> None:
+    cases = [
+        (onboarding_name, '', OnboardingStates.name),
+        (onboarding_ico, '123', OnboardingStates.ico),
+        (onboarding_dic, '123', OnboardingStates.dic),
+        (onboarding_ic_dph, 'SK123', OnboardingStates.ic_dph),
+        (onboarding_address, '', OnboardingStates.address),
+        (onboarding_iban, 'SK_BAD', OnboardingStates.iban),
+        (onboarding_swift, '', OnboardingStates.swift),
+        (onboarding_email, 'not-email', OnboardingStates.email),
+        (onboarding_first_invoice_number, '42', OnboardingStates.first_invoice_number),
+        (onboarding_days_due, '0', OnboardingStates.days_due),
+    ]
+
+    for handler, invalid_value, expected_state in cases:
+        state = _DummyState()
+        state.current_state = expected_state
+        message = _DummyMessage(invalid_value)
+
+        asyncio.run(handler(message, state))
+
+        assert state.current_state == expected_state
+        assert ONBOARDING_RECOVERY_HINT in message.answers[-1]
 
 
 def test_upravit_profil_updates_one_field_with_shared_confirmation(tmp_path: Path) -> None:

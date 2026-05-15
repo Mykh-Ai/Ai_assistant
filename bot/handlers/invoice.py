@@ -3495,7 +3495,10 @@ async def invoice_delete_existing_invoice_confirm(
     else:
         answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
     if answer == 'unknown':
-        await message.answer('Prosím, odpovedzte: áno / nie')
+        await message.answer(
+            'Prosím, odpovedzte: áno / nie.\n\n'
+            'Ak nechcete faktúru vymazať, napíšte „nie“ alebo „zrušiť“.'
+        )
         return
     if answer == 'no':
         await state.clear()

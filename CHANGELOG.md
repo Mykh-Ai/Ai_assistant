@@ -27,6 +27,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- destructive delete fallbacks now include Slovak safe-exit recovery hints without mentioning `/start`, and onboarding invalid-value fallbacks now explain `zrušiť` plus `/start` restart recovery.
 - `/start`, `/menu`, `/moj_profil` profile display, and `/blocek` now behave as stateless interruptions by clearing active FSM state where applicable.
 - invoice draft extraction now preserves optional raw/source customer and service mention fields from original text/STT; safe customer raw mentions can become confirmed contact aliases after approved preview, and safe service raw mentions can become confirmed semantic service aliases pointing to existing manual `/sluzbu` mappings after approved preview.
 - documentation now treats FakturaBot / OfficeFlow as the current Phase 2 voice-capable runtime: `README.md` exposes the top-level/action tree, and `AGENTS.md` plus `docs/llm/New_Action_Design_Checklist.md` define that a new top-level action is implemented only after text/command, resolver, Python route, tests, and voice reachability or an explicit voice exclusion are covered.

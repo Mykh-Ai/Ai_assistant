@@ -1,5 +1,37 @@
 # PROJECT_LOG
 
+## 2026-05-15 - Session 072 - Destructive and onboarding recovery hints
+
+Summary:
+- Added Slovak safe-exit hints to wrong-input destructive confirmation fallbacks for scoped database deletion and existing invoice deletion.
+- Added Slovak cancel/restart hints to invalid-value onboarding steps without changing successful onboarding paths.
+- Kept the exact database deletion confirmation phrase unchanged and preserved global `zrušiť` / `назад` cancellation behavior.
+- Did not add top-level `info_help`, FSM action switching, buttons/callbacks, DB schema changes, storage path changes, or invoice PDF path changes.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/Info_Help_Guidance_Layer.md`
+
+Constraints extracted:
+- active FSM state remains owned by its current handler and must not execute top-level actions from invalid input;
+- destructive delete confirmations must not mention `/start` and must preserve the final exact typed confirmation gate;
+- non-destructive onboarding recovery may mention `/start` because active `/start` clears FSM state and restarts setup/status guidance;
+- user-facing recovery text must stay Slovak;
+- no DB schema, storage path, invoice PDF path, Google Drive, accounting intake, contacts, service alias, or general voice routing changes belong in this patch.
+
+Touched scopes:
+- FSM: yes, invalid-value/wrong-input fallback copy only;
+- confirmation: yes, existing shared decision flows keep their current yes/no/exact gates;
+- routing/LLM/STT/storage/DB/access/server: no behavior changes.
+
+Verification:
+- `python -m pytest -q tests/test_state_control.py tests/test_delete_user_database_flow.py tests/test_invoice_state_decisions.py tests/test_onboarding_decisions.py` -> `93 passed`.
+- `python -m pytest -q` -> `982 passed`.
+
 ## 2026-05-09 - Session 069 - State reset and read-only invoice view
 
 Summary:

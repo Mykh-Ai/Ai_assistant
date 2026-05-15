@@ -191,6 +191,7 @@ def test_delete_existing_invoice_confirmation_uses_delete_context_for_unknown(tm
     assert captured['context_name'] == 'delete_existing_invoice_confirm'
     assert state.cleared is False
     assert 'odpovedzte' in message.answers[-1]
+    assert 'Ak nechcete faktúru vymazať, napíšte „nie“ alebo „zrušiť“.' in message.answers[-1]
 
 
 def test_preview_contains_proposed_invoice_number() -> None:
