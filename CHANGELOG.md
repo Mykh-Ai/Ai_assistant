@@ -27,6 +27,7 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- accounting Document Intake and OfficeFlow attachment-routing invalid-input fallbacks now include Slovak cancel recovery hints for temp-staged flows without changing storage, cleanup, or classification behavior.
 - business/contact/service/invoice exact-value FSM invalid-input fallbacks now include Slovak cancel recovery hints without changing successful paths or side effects.
 - destructive delete fallbacks now include Slovak safe-exit recovery hints without mentioning `/start`, and onboarding invalid-value fallbacks now explain `zrušiť` plus `/start` restart recovery.
 - exact global cancel text shortcuts now bypass the LLM resolver and run shared Python state cancellation directly; voice transcripts that exactly match global cancel shortcuts do the same after STT.

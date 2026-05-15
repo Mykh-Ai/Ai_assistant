@@ -13,6 +13,7 @@ from bot.handlers.accounting_document_intake import (
     accounting_document_duplicate_decision,
     accounting_document_preview_decision,
     accounting_document_upload,
+    accounting_document_waiting_upload,
     cmd_accounting_document_intake,
 )
 from bot.handlers.voice import handle_voice
@@ -244,6 +245,30 @@ def test_blocek_add_commands_start_same_accounting_intake_fsm() -> None:
         assert 'fotku alebo PDF' in message.answers[-1]
 
 
+def test_waiting_upload_invalid_text_keeps_state_and_includes_cancel_hint() -> None:
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(text='neviem')
+
+    asyncio.run(accounting_document_waiting_upload(message))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+    assert 'fotku alebo PDF' in message.answers[-1]
+    assert 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.' in message.answers[-1]
+
+
+def test_waiting_upload_unsupported_document_keeps_state_and_includes_cancel_hint(tmp_path: Path) -> None:
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(document=_DummyDocument(file_name='note.txt', mime_type='text/plain'))
+    bot = _DummyBot()
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), bot))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+    assert bot.downloads == []
+    assert 'fotku alebo PDF' in message.answers[-1]
+    assert 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.' in message.answers[-1]
+
+
 def test_upload_receipt_photo_active_state_saves_temp_and_shows_preview(monkeypatch, tmp_path: Path) -> None:
     captured_bytes: list[bytes | None] = []
 
@@ -354,6 +379,7 @@ def test_duplicate_unknown_keeps_state_and_temp(monkeypatch, tmp_path: Path) -> 
     assert state.current_state == AccountingDocumentIntakeStates.waiting_duplicate_decision.state
     assert _staged_original_path(tmp_path).exists()
     assert 'áno alebo nie' in message.answers[-1]
+    assert 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.' in message.answers[-1]
 
 
 def test_duplicate_decision_uses_shared_yes_no_resolver(monkeypatch, tmp_path: Path) -> None:
@@ -449,6 +475,7 @@ def test_unknown_decision_asks_for_clarification(monkeypatch, tmp_path: Path) ->
 
     assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
     assert 'schváliť, upraviť alebo zrušiť' in message.answers[-1]
+    assert 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.' in message.answers[-1]
 
 
 def test_upravit_keeps_accounting_preview_state_without_save(monkeypatch, tmp_path: Path) -> None:
@@ -574,6 +601,7 @@ def test_voice_accounting_preview_unknown_keeps_state_and_staging(monkeypatch, t
     assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
     assert staged_path.exists()
     assert 'schváliť, upraviť alebo zrušiť' in message.answers[-1]
+    assert 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.' in message.answers[-1]
 
 
 def test_voice_expired_accounting_preview_cleans_temp_and_does_not_fall_back_to_invoice(

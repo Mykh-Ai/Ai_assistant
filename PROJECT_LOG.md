@@ -1,5 +1,37 @@
 # PROJECT_LOG
 
+## 2026-05-15 - Session 074 - Accounting and OfficeFlow recovery hints
+
+Summary:
+- Added Slovak cancel recovery hints to invalid/wrong-input accounting document intake fallbacks for upload waiting, duplicate decision, and preview decision states.
+- Added Slovak cancel recovery hints to OfficeFlow idle attachment accounting proposal, route choice, and document-type clarification fallbacks.
+- Kept successful paths, state transitions, temp staging lifecycle, cleanup behavior, LMM classification/extraction, confirmed accounting storage, Google Drive, DB schema, storage paths, invoice PDF paths, top-level `info_help`, and FSM action switching unchanged.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/OfficeFlow_Architecture_Framing.md`
+- `docs/Document_Intake_Module_Proposal.md`
+- `docs/Document_Intake_MVP_Implementation_Plan.md`
+- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+
+Constraints extracted:
+- active OfficeFlow/accounting FSM state remains owned by its state handlers and must not fall through to top-level action routing;
+- Python keeps ownership of validation, confirmation, cleanup, and save side effects;
+- temporary attachment/accounting staging paths remain temporary only and confirmed accounting storage is not touched by fallback copy changes;
+- LMM classification/extraction, accounting categorization, Google Drive sync, DB schema, storage paths, and invoice PDF paths are out of scope;
+- confirmation-like replies continue through the shared DecisionResolver families;
+- user-facing fallback text must stay Slovak and should use `zrušiť` instead of `/start` for temp-staged flows.
+
+Touched scopes:
+- FSM: yes, invalid/wrong-input fallback copy only in accounting intake and OfficeFlow attachment routing states;
+- confirmation: no new decision family, existing DecisionResolver calls unchanged;
+- routing/LLM/STT/storage/DB/access/server: no behavior changes.
+
+Verification:
+- `python -m pytest -q tests/test_accounting_document_intake_flow.py tests/test_officeflow_attachment_router.py tests/test_state_control.py` -> `65 passed`.
+- `python -m pytest -q` -> `989 passed`.
+
 ## 2026-05-15 - Session 073 - Business FSM recovery hints
 
 Summary:

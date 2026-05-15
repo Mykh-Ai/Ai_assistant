@@ -41,6 +41,11 @@ _STATE_ATTACHMENT_PATH = 'officeflow_attachment_staged_path'
 _STATE_ATTACHMENT_METADATA = 'officeflow_attachment_metadata'
 _STATE_CLASSIFICATION = 'officeflow_attachment_classification'
 _STATE_EXTRACTED_PDF_TEXT = 'officeflow_attachment_extracted_pdf_text'
+_OFFICEFLOW_ATTACHMENT_RECOVERY_HINT = 'Ak nechcete pokračovať, napíšte „zrušiť“.'
+
+
+def _with_officeflow_attachment_recovery_hint(text: str) -> str:
+    return f'{text}\n\n{_OFFICEFLOW_ATTACHMENT_RECOVERY_HINT}'
 
 
 class OfficeFlowAttachmentRouterStates(StatesGroup):
@@ -108,7 +113,7 @@ async def handle_officeflow_accounting_proposal_text(
         model=config.openai_llm_model,
     )
     if decision == 'unknown':
-        await message.answer('Prosím, odpovedzte áno alebo nie.')
+        await message.answer(_with_officeflow_attachment_recovery_hint('Prosím, odpovedzte áno alebo nie.'))
         return
 
     if decision == 'no':
@@ -165,7 +170,11 @@ async def handle_officeflow_route_choice_text(
         model=config.openai_llm_model,
     )
     if decision == 'unknown':
-        await message.answer('Prosím, vyberte: vytvoriť kontakt, uložiť zmluvu alebo zrušiť.')
+        await message.answer(
+            _with_officeflow_attachment_recovery_hint(
+                'Prosím, vyberte: vytvoriť kontakt, uložiť zmluvu alebo zrušiť.'
+            )
+        )
         return
 
     if decision == 'cancel':
@@ -211,7 +220,11 @@ async def handle_officeflow_unknown_clarification_text(
         model=config.openai_llm_model,
     )
     if decision == 'unknown':
-        await message.answer('Prosím, napíšte: bloček, prijatá faktúra, zmluva alebo zrušiť.')
+        await message.answer(
+            _with_officeflow_attachment_recovery_hint(
+                'Prosím, napíšte: bloček, prijatá faktúra, zmluva alebo zrušiť.'
+            )
+        )
         return
     if decision == 'cancel':
         await _cleanup_state_attachment(config=config, state=state)

@@ -47,6 +47,11 @@ _STATE_TEMP_ORIGINAL_KEY = 'accounting_document_temp_original_path'
 _STATE_FILE_UNIQUE_ID_KEY = 'accounting_document_file_unique_id'
 _STATE_EXTENSION_KEY = 'accounting_document_extension'
 _STATE_DUPLICATE_MATCH_KEY = 'accounting_document_duplicate_match'
+_ACCOUNTING_INTAKE_RECOVERY_HINT = 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.'
+
+
+def _with_accounting_intake_recovery_hint(text: str) -> str:
+    return f'{text}\n\n{_ACCOUNTING_INTAKE_RECOVERY_HINT}'
 
 
 def _message_supplier_telegram_id(message: Message) -> int | None:
@@ -79,7 +84,11 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
 
     attachment = _extract_supported_attachment(message)
     if attachment is None:
-        await message.answer('Pošlite, prosím, fotku alebo PDF bločka / prijatej faktúry.')
+        await message.answer(
+            _with_accounting_intake_recovery_hint(
+                'Pošlite, prosím, fotku alebo PDF bločka / prijatej faktúry.'
+            )
+        )
         return
 
     if hasattr(message, 'from_user') and message.from_user is None:
@@ -188,7 +197,9 @@ async def process_staged_accounting_document(
 
 @router.message(AccountingDocumentIntakeStates.waiting_upload)
 async def accounting_document_waiting_upload(message: Message) -> None:
-    await message.answer('Pošlite, prosím, fotku alebo PDF bločka / prijatej faktúry.')
+    await message.answer(
+        _with_accounting_intake_recovery_hint('Pošlite, prosím, fotku alebo PDF bločka / prijatej faktúry.')
+    )
 
 
 @router.message(AccountingDocumentIntakeStates.waiting_preview_decision)
@@ -228,7 +239,7 @@ async def handle_accounting_document_duplicate_decision_text(
         model=config.openai_llm_model,
     )
     if decision == 'unknown':
-        await message.answer('Prosím, odpovedzte áno alebo nie.')
+        await message.answer(_with_accounting_intake_recovery_hint('Prosím, odpovedzte áno alebo nie.'))
         return
 
     data = await state.get_data()
@@ -274,7 +285,9 @@ async def handle_accounting_document_preview_decision_text(
     )
 
     if decision == 'unknown':
-        await message.answer('Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.')
+        await message.answer(
+            _with_accounting_intake_recovery_hint('Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.')
+        )
         return
 
     if decision == 'edit':

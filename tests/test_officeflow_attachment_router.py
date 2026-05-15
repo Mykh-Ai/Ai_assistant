@@ -350,6 +350,33 @@ def test_accounting_proposal_unknown_keeps_staged_file_and_asks_clarification(tm
     assert state.current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state
     assert staged_path.exists()
     assert 'áno alebo nie' in message.answers[-1]
+    assert 'Ak nechcete pokračovať, napíšte „zrušiť“.' in message.answers[-1]
+
+
+def test_route_choice_unknown_keeps_staged_file_and_includes_cancel_hint(tmp_path: Path) -> None:
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    state.current_state = OfficeFlowAttachmentRouterStates.route_choice.state
+    message = _DummyMessage(text='asi')
+
+    asyncio.run(officeflow_route_choice(message, state, _config(tmp_path)))
+
+    assert state.current_state == OfficeFlowAttachmentRouterStates.route_choice.state
+    assert staged_path.exists()
+    assert 'vytvoriť kontakt, uložiť zmluvu alebo zrušiť' in message.answers[-1]
+    assert 'Ak nechcete pokračovať, napíšte „zrušiť“.' in message.answers[-1]
+
+
+def test_unknown_clarification_unknown_keeps_staged_file_and_includes_cancel_hint(tmp_path: Path) -> None:
+    state, staged_path = _stage_accounting_proposal_state(tmp_path)
+    state.current_state = OfficeFlowAttachmentRouterStates.unknown_clarification.state
+    message = _DummyMessage(text='neviem')
+
+    asyncio.run(officeflow_unknown_clarification(message, state, _config(tmp_path)))
+
+    assert state.current_state == OfficeFlowAttachmentRouterStates.unknown_clarification.state
+    assert staged_path.exists()
+    assert 'bloček, prijatá faktúra, zmluva alebo zrušiť' in message.answers[-1]
+    assert 'Ak nechcete pokračovať, napíšte „zrušiť“.' in message.answers[-1]
 
 
 def test_accounting_proposal_no_cleans_staged_file(tmp_path: Path) -> None:
