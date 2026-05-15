@@ -148,6 +148,7 @@ def test_approve_edit_cancel_context_matrix_exact_mappings(
     ('user_input', 'expected'),
     [
         ('/cancel', 'cancel'),
+        ('назад', 'cancel'),
         ('cancel', 'cancel'),
         ('zrušiť', 'cancel'),
         ('скасувати', 'cancel'),
@@ -171,9 +172,13 @@ def test_global_cancel_context_matrix_exact_mappings(
     ) == expected
 
 
-@pytest.mark.parametrize('user_input', ['zrušiť', 'скасувати', 'відмінити', 'почни з початку'])
+@pytest.mark.parametrize('user_input', ['zrušiť', 'скасувати', 'відмінити', 'назад', 'почни з початку'])
 def test_global_cancel_shortcut_filter_comes_from_shared_resolver_layer(user_input: str) -> None:
     assert is_global_cancel_text(user_input) is True
+
+
+def test_noisy_zrushyty_is_not_deterministic_global_cancel() -> None:
+    assert is_global_cancel_text('зрушити') is False
 
 
 def test_delete_invoice_yes_no_stt_ano_noise_maps_to_yes() -> None:

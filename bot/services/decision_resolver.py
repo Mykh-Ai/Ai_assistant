@@ -32,6 +32,7 @@ _GLOBAL_CANCEL_SHORTCUTS = {
     'skoncit',
     'spat',
     'naspat',
+    'назад',
     'скасувати',
     'відмінити',
     'відминити',

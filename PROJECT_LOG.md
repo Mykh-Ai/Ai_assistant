@@ -32,6 +32,44 @@ Verification:
 - `python -m pytest -q tests/test_state_control.py tests/test_delete_user_database_flow.py tests/test_invoice_state_decisions.py tests/test_onboarding_decisions.py` -> `93 passed`.
 - `python -m pytest -q` -> `982 passed`.
 
+## 2026-05-15 - Session 071 - FSM recovery hints and deterministic exact cancel
+
+Summary:
+- Changed exact global cancel text shortcuts to run `cancel_current_state(...)` directly without entering the LLM-backed global cancel resolver.
+- Kept `/cancel` and `/start` behavior unchanged: `/cancel` cancels active state, while `/start` clears active FSM state and shows the current start/status guidance.
+- Added `назад` as a deterministic cancel/back-style shortcut because there is no separate back action in the current FSM architecture.
+- Added Slovak recovery hints to invoice edit FSM menu/choice fallbacks so noisy input repeats the state-specific menu and explains `zrušiť` and `/start`.
+- Did not add top-level `info_help`, FSM action switching, new buttons/callbacks, DB schema changes, storage path changes, or invoice PDF path changes.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/Info_Help_Guidance_Layer.md`
+
+Constraints extracted:
+- active FSM state remains owned by its state handlers and must not fall through to top-level routing;
+- exact global cancel shortcuts are deterministic Python state control, not LLM interpretation;
+- non-exact/bounded semantic interpretation may still use the existing resolver path where already designed;
+- `info_help` remains planned/docs-only and is not implemented in this slice;
+- user-facing recovery text must stay Slovak;
+- `/start` is safe to mention as a restart because the active `/start` handler clears FSM state;
+- final `delete_user_database` confirmation remains an exact typed-text gate and is unchanged;
+- no DB schema, storage path, invoice PDF path, or persisted-data migration is involved.
+
+Touched scopes:
+- FSM: yes, invoice edit menu/choice fallback copy only;
+- routing: yes, exact global cancel shortcut path and active-FSM top-level guard tests;
+- LLM/STT: yes, exact text and exact STT transcript global cancel now bypass the LLM resolver;
+- confirmation/state-control: yes, global state cancel behavior;
+- storage/DB/access/server: no runtime behavior changes.
+
+Verification:
+- `python -m pytest -q tests/test_decision_resolver.py tests/test_state_control.py tests/test_voice_state_routing.py tests/test_invoice_intent_prerouter.py tests/test_invoice_state_decisions.py` -> `643 passed`.
+- `python -m pytest -q` -> `982 passed`.
+
 ## 2026-05-09 - Session 069 - State reset and read-only invoice view
 
 Summary:

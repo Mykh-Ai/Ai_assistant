@@ -2166,6 +2166,84 @@ def test_invoice_action_contact_text_is_unknown_and_state_is_preserved(tmp_path:
     assert 'upraviť kontakt' not in message.answers[-1]
 
 
+def test_unknown_edit_scope_input_repeats_menu_with_recovery_hint(tmp_path: Path) -> None:
+    telegram_id = 614
+    db_path = tmp_path / 'edit-scope-recovery.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_invoice_id': invoice_id})
+    state.current_state = InvoiceStates.waiting_edit_scope
+
+    asyncio.run(
+        invoice_edit_scope(
+            message=type('M', (), {'from_user': message.from_user, 'text': 'niečo iné', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+
+    assert state.current_state == InvoiceStates.waiting_edit_scope
+    assert 'Prosím, vyberte rozsah úpravy' in message.answers[-1]
+    assert 'Ak chcete ukončiť túto akciu, napíšte „zrušiť“.' in message.answers[-1]
+    assert 'Ak chcete začať odznova, použite /start.' in message.answers[-1]
+
+
+def test_known_top_level_action_inside_edit_scope_gets_fsm_recovery_not_top_level_execution(tmp_path: Path) -> None:
+    telegram_id = 615
+    db_path = tmp_path / 'edit-scope-top-level-ignored.db'
+    init_db(db_path)
+    invoice_id = _create_editable_invoice(
+        db_path=db_path,
+        storage_dir=tmp_path,
+        telegram_id=telegram_id,
+        service_short_name='servis',
+        service_display_name='Servis zariadenia',
+        item_description_raw=None,
+    )
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_invoice_id': invoice_id})
+    state.current_state = InvoiceStates.waiting_edit_scope
+
+    asyncio.run(
+        invoice_edit_scope(
+            message=type('M', (), {'from_user': message.from_user, 'text': 'vytvor faktúru', 'answer': message.answer})(),
+            state=state,
+            config=config,
+        )
+    )
+
+    assert state.current_state == InvoiceStates.waiting_edit_scope
+    assert 'Prosím, vyberte rozsah úpravy' in message.answers[-1]
+    assert 'Pošlite text faktúry' not in message.answers[-1]
+    assert 'Ak chcete ukončiť túto akciu, napíšte „zrušiť“.' in message.answers[-1]
+
+
 def test_edit_invoice_number_duplicate_rejected_and_state_kept(tmp_path: Path, monkeypatch) -> None:
     telegram_id = 602
     db_path = tmp_path / 'edit-number-duplicate.db'

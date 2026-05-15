@@ -12,6 +12,7 @@ from bot.handlers.invoice import (
     process_invoice_service_clarification,
     process_invoice_slot_clarification,
     process_invoice_text,
+    semantic_top_level_input,
 )
 from bot.services.db import init_db
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
@@ -453,6 +454,21 @@ def test_process_invoice_text_passes_domain_context_for_profile_rekvizity(tmp_pa
     assert 'firemné údaje' in profile_hint
     assert 'positive_examples' not in captured['action_hints']['show_supplier_profile']
     assert 'edit or change supplier/company/profile/billing details' in captured['action_hints']['show_supplier_profile']['not_this']
+
+
+def test_active_fsm_top_level_text_is_not_executed_from_generic_router(tmp_path: Path, monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def _unexpected_process_invoice_text(**kwargs) -> None:
+        calls.append(str(kwargs.get('invoice_text')))
+
+    monkeypatch.setattr('bot.handlers.invoice.process_invoice_text', _unexpected_process_invoice_text)
+    state = _DummyState()
+    state.current_state = InvoiceStates.waiting_edit_scope
+
+    asyncio.run(semantic_top_level_input(_DummyMessage('vytvor faktúru'), state, _config(tmp_path)))
+
+    assert calls == []
 
 
 def test_process_invoice_text_routes_add_receipt_to_existing_upload_flow_without_invoice(tmp_path: Path) -> None:

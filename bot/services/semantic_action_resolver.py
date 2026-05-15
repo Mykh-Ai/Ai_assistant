@@ -533,6 +533,7 @@ def _fallback_bounded_confirmation_reply(
             'skoncit',
             'spat',
             'naspat',
+            '\u043d\u0430\u0437\u0430\u0434',
             '\u0441\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
             '\u0432\u0456\u0434\u043c\u0456\u043d\u0438\u0442\u0438',
             '\u0432\u0456\u0434\u043c\u0438\u043d\u0438\u0442\u0438',

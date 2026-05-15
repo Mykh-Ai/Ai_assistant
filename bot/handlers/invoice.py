@@ -840,6 +840,17 @@ def _item_edit_actions_prompt() -> str:
     )
 
 
+def _fsm_recovery_hint() -> str:
+    return (
+        'Ak chcete ukončiť túto akciu, napíšte „zrušiť“. '
+        'Ak chcete začať odznova, použite /start.'
+    )
+
+
+def _with_fsm_recovery_hint(message: str) -> str:
+    return f'{message}\n\n{_fsm_recovery_hint()}'
+
+
 def _parse_strict_numeric_input(value: str) -> float | None:
     candidate = value.strip().replace(' ', '').replace(',', '.')
     if not candidate or not re.fullmatch(r'\d+(?:\.\d+)?', candidate):
@@ -3568,10 +3579,18 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
             item_options=option_descriptions,
         )
         if target_index is None:
-            await message.answer('Prosím, spresnite číslo položky, ktorú chcete upraviť (napr. 1 alebo 2).')
+            await message.answer(
+                _with_fsm_recovery_hint(
+                    'Prosím, spresnite číslo položky, ktorú chcete upraviť (napr. 1 alebo 2).'
+                )
+            )
             return
         if _draft_item_at_index(draft, target_index) is None:
-            await message.answer('Taká položka neexistuje. Zadajte prosím platné číslo položky (napr. 1 alebo 2).')
+            await message.answer(
+                _with_fsm_recovery_hint(
+                    'Taká položka neexistuje. Zadajte prosím platné číslo položky (napr. 1 alebo 2).'
+                )
+            )
             return
         await state.update_data(edit_target_item_index=target_index, edit_target_item_id=target_index)
         await state.set_state(InvoiceStates.waiting_edit_item_action)
@@ -3608,12 +3627,20 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
         item_options=option_descriptions,
     )
     if target_index is None:
-        await message.answer('Prosím, spresnite číslo položky, ktorú chcete upraviť (napr. 1 alebo 2).')
+        await message.answer(
+            _with_fsm_recovery_hint(
+                'Prosím, spresnite číslo položky, ktorú chcete upraviť (napr. 1 alebo 2).'
+            )
+        )
         return
 
     target_item = _resolve_target_item_from_index(invoice_items=items, target_item_index=target_index)
     if target_item is None:
-        await message.answer('Taká položka neexistuje. Zadajte prosím platné číslo položky (napr. 1 alebo 2).')
+        await message.answer(
+            _with_fsm_recovery_hint(
+                'Taká položka neexistuje. Zadajte prosím platné číslo položky (napr. 1 alebo 2).'
+            )
+        )
         return
 
     invoice = invoice_service.get_invoice_for_supplier_by_id(
@@ -3638,7 +3665,9 @@ async def invoice_edit_scope(message: Message, state: FSMContext, config: Config
     scope = await _resolve_invoice_edit_scope(config=config, user_input_text=(message.text or ''))
     if scope == _EDIT_ITEM_OPERATION_UNKNOWN:
         await message.answer(
-            'Prosím, vyberte rozsah úpravy: `faktúra` alebo `položka`.'
+            _with_fsm_recovery_hint(
+                'Prosím, vyberte rozsah úpravy: `faktúra` alebo `položka`.'
+            )
         )
         return
 
@@ -3733,8 +3762,10 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
     operation = await _resolve_invoice_edit_action(config=config, user_input_text=(message.text or ''))
     if operation == _EDIT_ITEM_OPERATION_UNKNOWN:
         await message.answer(
-            'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
-            '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+            _with_fsm_recovery_hint(
+                'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
+                '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+            )
         )
         return
 
@@ -3761,8 +3792,10 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
             _EDIT_INVOICE_OPERATION_DUE_DATE,
         }:
             await message.answer(
-                'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
-                '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+                _with_fsm_recovery_hint(
+                    'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
+                    '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+                )
             )
             return
         await state.update_data(edit_invoice_date_operation=operation)
@@ -3806,8 +3839,10 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
         _EDIT_INVOICE_OPERATION_DUE_DATE,
     }:
         await message.answer(
-            'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
-            '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+            _with_fsm_recovery_hint(
+                'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
+                '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+            )
         )
         return
 
@@ -3820,7 +3855,7 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
 async def invoice_edit_item_action(message: Message, state: FSMContext, config: Config) -> None:
     operation = await _resolve_item_edit_action(config=config, user_input_text=(message.text or ''))
     if operation == _EDIT_ITEM_OPERATION_UNKNOWN:
-        await message.answer(f'Prosím, {_item_edit_actions_prompt().lower()}')
+        await message.answer(_with_fsm_recovery_hint(f'Prosím, {_item_edit_actions_prompt().lower()}'))
         return
 
     state_data = await state.get_data()

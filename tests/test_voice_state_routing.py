@@ -564,6 +564,37 @@ def test_voice_global_cancel_in_active_state_runs_shared_cancel(monkeypatch, tmp
     assert calls == ['cancel']
 
 
+def test_voice_exact_global_cancel_bypasses_llm_resolver(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'скасувати'
+
+    async def _cancel(**kwargs) -> None:
+        calls.append('cancel')
+
+    async def _unexpected_resolver(**kwargs) -> str:
+        raise AssertionError('exact global cancel transcript must not call LLM resolver')
+
+    async def _scope(**kwargs) -> None:
+        calls.append('edit_scope')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.cancel_current_state', _cancel)
+    monkeypatch.setattr('bot.handlers.voice.resolve_global_cancel', _unexpected_resolver)
+    monkeypatch.setattr('bot.handlers.voice.invoice_edit_scope', _scope)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_edit_scope.state),
+        )
+    )
+    assert calls == ['cancel']
+
+
 def test_voice_waiting_edit_item_target_routes_to_item_target_handler(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
 

@@ -57,6 +57,18 @@ def _config(tmp_path: Path) -> Config:
     )
 
 
+def _config_with_api_key(tmp_path: Path) -> Config:
+    return Config(
+        bot_token='token',
+        openai_api_key='sk-test',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'state-control.db',
+        storage_dir=tmp_path,
+    )
+
+
 def test_cancel_idle_state_reports_idle(tmp_path: Path) -> None:
     message = _DummyMessage('/cancel')
     state = _DummyState(None)
@@ -69,6 +81,44 @@ def test_cancel_idle_state_reports_idle(tmp_path: Path) -> None:
 
 def test_cancel_alias_clears_edit_scope_without_touching_data(tmp_path: Path) -> None:
     message = _DummyMessage('відмінити')
+    state = _DummyState(InvoiceStates.waiting_edit_scope.state, {'edit_invoice_id': 10})
+
+    asyncio.run(cancel_alias(message, state, _config(tmp_path)))
+
+    assert state.cleared is True
+    assert message.answers == [STATE_CANCELLED_MESSAGE]
+
+
+def test_exact_cancel_alias_bypasses_llm_resolver(tmp_path: Path, monkeypatch) -> None:
+    async def _unexpected_resolver(**kwargs):
+        raise AssertionError('exact global cancel must not call LLM resolver')
+
+    monkeypatch.setattr('bot.services.decision_resolver.resolve_global_cancel', _unexpected_resolver)
+    message = _DummyMessage('zrušiť')
+    state = _DummyState(InvoiceStates.waiting_edit_scope.state, {'edit_invoice_id': 10})
+
+    asyncio.run(cancel_alias(message, state, _config_with_api_key(tmp_path)))
+
+    assert state.cleared is True
+    assert message.answers == [STATE_CANCELLED_MESSAGE]
+
+
+def test_exact_cyrillic_cancel_alias_bypasses_llm_resolver(tmp_path: Path, monkeypatch) -> None:
+    async def _unexpected_resolver(**kwargs):
+        raise AssertionError('exact global cancel must not call LLM resolver')
+
+    monkeypatch.setattr('bot.services.decision_resolver.resolve_global_cancel', _unexpected_resolver)
+    message = _DummyMessage('скасувати')
+    state = _DummyState(InvoiceStates.waiting_edit_scope.state, {'edit_invoice_id': 10})
+
+    asyncio.run(cancel_alias(message, state, _config_with_api_key(tmp_path)))
+
+    assert state.cleared is True
+    assert message.answers == [STATE_CANCELLED_MESSAGE]
+
+
+def test_nazad_cancel_alias_clears_active_state(tmp_path: Path) -> None:
+    message = _DummyMessage('назад')
     state = _DummyState(InvoiceStates.waiting_edit_scope.state, {'edit_invoice_id': 10})
 
     asyncio.run(cancel_alias(message, state, _config(tmp_path)))

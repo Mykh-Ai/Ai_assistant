@@ -19,7 +19,7 @@ from bot.services.accounting_document_storage import (
     AccountingDocumentStorageError,
     cleanup_temp_staging_path,
 )
-from bot.services.decision_resolver import is_global_cancel_text, resolve_global_cancel
+from bot.services.decision_resolver import is_global_cancel_text
 from bot.services.officeflow_attachment_storage import (
     OfficeFlowAttachmentStorageError,
     cleanup_staged_attachment,
@@ -40,14 +40,7 @@ async def cmd_cancel(message: Message, state: FSMContext, config: Config) -> Non
 
 @router.message(lambda message: is_global_cancel_text(message.text or ''))
 async def cancel_alias(message: Message, state: FSMContext, config: Config) -> None:
-    decision = await resolve_global_cancel(
-        context_name='global_state_cancel',
-        user_input_text=message.text or '',
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-    )
-    if decision != 'cancel':
-        return
+    _ = config
     await cancel_current_state(message=message, state=state, config=config)
 
 
