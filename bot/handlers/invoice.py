@@ -860,6 +860,12 @@ def _with_invoice_exact_value_recovery_hint(message: str) -> str:
     return f'{message}\n\n{_invoice_exact_value_recovery_hint()}'
 
 
+def _invalid_item_numeric_value_message(action_mode: str) -> str:
+    if action_mode == _EDIT_ITEM_OPERATION_QUANTITY:
+        return 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím množstvo, napr. 2 alebo 2,5.'
+    return 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím cenu, napr. 1500 alebo 1500,50.'
+
+
 def _parse_strict_numeric_input(value: str) -> float | None:
     candidate = value.strip().replace(' ', '').replace(',', '.')
     if not candidate or not re.fullmatch(r'\d+(?:\.\d+)?', candidate):
@@ -4250,7 +4256,7 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
     if not candidate_date_raw:
         await message.answer(
             _with_invoice_exact_value_recovery_hint(
-                'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.'
+                'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR, napr. 15.03.2026.'
             )
         )
         return
@@ -4296,7 +4302,7 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         if candidate_date_iso is None:
             await message.answer(
                 _with_invoice_exact_value_recovery_hint(
-                    'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.'
+                    'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR, napr. 15.03.2026.'
                 )
             )
             return
@@ -4379,7 +4385,9 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
     candidate_date_iso = _parse_strict_issue_date_candidate(normalized_date_value)
     if candidate_date_iso is None:
         await message.answer(
-            _with_invoice_exact_value_recovery_hint('Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR.')
+            _with_invoice_exact_value_recovery_hint(
+                'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR, napr. 15.03.2026.'
+            )
         )
         return
 
@@ -4456,14 +4464,6 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
 
 @router.message(InvoiceStates.waiting_edit_item_numeric_value)
 async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, config: Config) -> None:
-    raw_value = (message.text or '').strip()
-    parsed_value = _parse_strict_numeric_input(raw_value)
-    if parsed_value is None:
-        await message.answer(
-            _with_invoice_exact_value_recovery_hint('Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.')
-        )
-        return
-
     state_data = await state.get_data()
     action_mode = state_data.get('edit_item_action_mode')
     if action_mode not in {
@@ -4473,6 +4473,14 @@ async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, c
     }:
         await state.set_state(InvoiceStates.waiting_edit_item_action)
         await message.answer(f'Prosím, {_item_edit_actions_prompt().lower()}')
+        return
+
+    raw_value = (message.text or '').strip()
+    parsed_value = _parse_strict_numeric_input(raw_value)
+    if parsed_value is None:
+        await message.answer(
+            _with_invoice_exact_value_recovery_hint(_invalid_item_numeric_value_message(action_mode))
+        )
         return
 
     def _apply_values(quantity: float, unit_price: float, total_price: float) -> tuple[float, float, float] | None:

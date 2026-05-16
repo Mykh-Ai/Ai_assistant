@@ -1,5 +1,34 @@
 # PROJECT_LOG
 
+## 2026-05-16 - Session 076 - Invoice edit fallback examples
+
+Summary:
+- Added an example date to invoice edit invalid-date recovery copy: `DD.MM.RRRR, napr. 15.03.2026`.
+- Made invoice item numeric edit invalid-value recovery copy field-specific: quantity examples for `edit_item_quantity`, price examples for `edit_item_unit_price` and `edit_item_total_amount`.
+- Kept the existing cancel hint unchanged: `Ak nechcete pokračovať v úprave, napíšte „zrušiť“.`
+- Did not change InfoHelp, routing, DB/storage/PDF paths, LLM behavior, delete flows, `/start`, `/menu`, accounting/contact/service flows, or action switching.
+
+Contracts read:
+- `docs/TZ_FakturaBot.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+
+Constraints extracted:
+- active FSM state owns invoice edit recovery and must not fall through to top-level routing;
+- invoice item quantity, unit price, and total amount edits are precision-sensitive exact-value steps;
+- Python validates exact values and state data, while LLM/routing behavior remains out of scope;
+- fallback copy must stay Slovak and preserve the existing state-cancel hint.
+
+Touched scopes:
+- FSM: yes, invoice edit fallback copy only;
+- confirmation/routing/LLM/STT/storage/DB/access/server: no behavior changes.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_state_decisions.py` -> `71 passed`.
+- `python -m pytest -q` -> `993 passed`.
+
 ## 2026-05-15 - Session 075 - Phase 1 top-level info help fallback
 
 Summary:

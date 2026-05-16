@@ -1683,14 +1683,23 @@ def test_draft_numeric_invalid_and_negative_values_are_rejected(tmp_path: Path) 
     invalid_message = _DummyMessage(1)
     invalid_state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': 'edit_item_quantity'})
     asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': invalid_message.from_user, 'text': 'dve a pol', 'answer': invalid_message.answer})(), state=invalid_state, config=config))
-    assert 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.' in invalid_message.answers[-1]
+    assert (
+        'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím množstvo, napr. 2 alebo 2,5.'
+        in invalid_message.answers[-1]
+    )
+    assert '1500' not in invalid_message.answers[-1]
     assert _invoice_exact_value_recovery_hint() in invalid_message.answers[-1]
 
     for mode, value in [('edit_item_quantity', '-1'), ('edit_item_unit_price', '-0.5'), ('edit_item_total_amount', '-10')]:
         message = _DummyMessage(1)
         state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft, 'edit_target_item_index': 1, 'edit_item_action_mode': mode})
         asyncio.run(invoice_edit_item_numeric_value(message=type('M', (), {'from_user': message.from_user, 'text': value, 'answer': message.answer})(), state=state, config=config))
-        assert 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.' in message.answers[-1]
+        if mode == 'edit_item_quantity':
+            assert 'Zadajte prosím množstvo, napr. 2 alebo 2,5.' in message.answers[-1]
+            assert '1500' not in message.answers[-1]
+        else:
+            assert 'Zadajte prosím cenu, napr. 1500 alebo 1500,50.' in message.answers[-1]
+            assert 'množstvo, napr. 2 alebo 2,5' not in message.answers[-1]
         assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
@@ -1764,7 +1773,8 @@ def test_persisted_numeric_invalid_and_negative_are_rejected_without_db_mutation
         after_item = InvoiceService(db_path).get_items_by_invoice_id(invoice_id)[0]
         after_invoice_total = InvoiceService(db_path).get_invoice_by_id(invoice_id).total_amount
         assert (after_item.quantity, after_item.unit_price, after_item.total_price, after_invoice_total) == before
-        assert 'Hodnotu sa nepodarilo rozpoznať. Zadajte prosím číslo.' in message.answers[-1]
+        assert 'Zadajte prosím cenu, napr. 1500 alebo 1500,50.' in message.answers[-1]
+        assert 'množstvo, napr. 2 alebo 2,5' not in message.answers[-1]
         assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
@@ -2462,7 +2472,10 @@ def test_edit_invoice_date_invalid_format_rejected_and_kept_in_state(tmp_path: P
     assert reloaded is not None
     assert reloaded.issue_date == old_invoice.issue_date
     assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
-    assert message.answers[-1].startswith('Neplatný dátum.')
+    assert (
+        'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR, napr. 15.03.2026.'
+        in message.answers[-1]
+    )
     assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
@@ -2512,7 +2525,11 @@ def test_edit_invoice_date_impossible_date_rejected_and_kept_in_state(tmp_path: 
     assert reloaded is not None
     assert reloaded.issue_date == old_invoice.issue_date
     assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
-    assert message.answers[-1].startswith('Neplatný dátum.')
+    assert (
+        'Neplatný dátum. Zadajte prosím dátum vo formáte DD.MM.RRRR, napr. 15.03.2026.'
+        in message.answers[-1]
+    )
+    assert _invoice_exact_value_recovery_hint() in message.answers[-1]
 
 
 def test_edit_invoice_date_generic_action_requires_clarification(tmp_path: Path) -> None:
