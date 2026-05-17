@@ -1,5 +1,102 @@
 # PROJECT_LOG
 
+## 2026-05-17 - Session 086 - Product Truth Registry MVP foundation
+
+Summary:
+- Added `bot/services/product_truth.py` as the first Python-owned runtime
+  Product Truth registry foundation.
+- Added the required MVP capability ids with primary product statuses limited
+  to `supported`, `partial`, `planned`, `unsupported`, and `unknown`.
+- Represented dangerous/setup/admin/external-credential facts as boolean
+  flags, not as primary product statuses.
+- Added structured query payloads for future InfoHelp consumption:
+  `get_capability(...)`, `search_capabilities(...)`, and
+  `get_safe_answer_payload(...)`.
+- Added in-memory account-context merging so `create_invoice` can remain
+  product-supported while returning account-level `requires_setup` when setup
+  facts such as supplier profile, service alias, or contact are missing.
+- Added `tests/test_product_truth.py` for registry validation, required ids,
+  status constraints, forbidden claims, dangerous/external flags, account setup
+  overlay, unknown lookup behavior, and side-effect import guards.
+- Added `docs/evals/product_truth_infohelp_smoke.md` as scenarios only. It is
+  explicitly marked not wired to runtime InfoHelp and not a completed Level 2
+  InfoHelp eval result.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Product_Truth_Registry_MVP_Design.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Evaluation_and_Smoke_Test_Standards.md`
+- `docs/Product_UX_Eval_Artifacts.md`
+- `docs/evals/README.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/TZ_FakturaBot.md`
+
+Constraints extracted:
+- Python remains the Product Truth source of truth.
+- LLM output is not Product Truth and no LLM/STT/LMM call belongs in this
+  foundation patch.
+- Primary product status must describe availability only; dangerous,
+  requires-setup, requires-admin, and requires-external-credentials are flags.
+- InfoHelp must consume Product Truth later, but Level 2 InfoHelp is not
+  implemented in this patch.
+- Unsupported integrations such as email, SMS, Google Drive, accounting
+  export, custom PDF templates, customization request storage, and code-agent
+  handoff must not be claimed supported.
+- Product Truth must not change invoice/contact/accounting/supplier runtime
+  behavior or tenant/access boundaries.
+
+Touched scopes:
+- Product Truth registry foundation: yes;
+- product UX eval scenarios: scenario artifact only;
+- project log: yes;
+- InfoHelp runtime, Telegram handlers, routing, semantic resolver, prompts,
+  LLM/STT/LMM integration, FSM, DB, storage, config, invoice/contact/accounting
+  behavior, supplier behavior, access, server, PDF/layout: no behavior changes.
+
+Current implementation status:
+- Product Truth Registry MVP foundation: partial runtime foundation
+  implemented.
+- InfoHelp: still Level 1 static fallback only; Level 2 capability-aware
+  InfoHelp is not implemented.
+- Customization requests and code-agent handoff: unsupported runtime.
+
+AI maturity:
+- This patch is below Level 2. It creates the controlled Product Truth source
+  needed by future Level 2 InfoHelp but does not answer arbitrary capability
+  questions in Telegram.
+
+Out of scope:
+- InfoHelp Level 2 routing/answers.
+- Any LLM/STT/LMM calls or prompt changes.
+- Any DB/storage/config/server changes.
+- Any invoice/contact/accounting/supplier/runtime behavior changes.
+- Any customization request storage or code-agent handoff.
+- Any self-learning expansion. Existing confirmed alias learning remains
+  partial and cannot change Product Truth.
+
+Product/user journey proof:
+- Unit tests prove registry load, schema/status rules, required capability ids,
+  unsupported-feature honesty, dangerous/external flags, account setup overlay,
+  unknown lookup, and no side-effect imports.
+- Human-readable eval scenarios were recorded for future Product Truth +
+  InfoHelp smoke checks, but they are not marked as run because InfoHelp is not
+  wired to the registry yet.
+
+Source-of-truth basis:
+- Runtime-supported claims reference current code owners, active docs, and
+  focused test files.
+- Unsupported/partial/planned claims are backed by `docs/Product_Truth_Layer.md`,
+  `docs/Product_Truth_Registry_MVP_Design.md`, `docs/TZ_FakturaBot.md`,
+  `docs/llm/Canonical_Action_Registry.md`, and `PROJECT_LOG.md`.
+
+Verification:
+- `python -m pytest -q tests/test_product_truth.py` -> 12 passed.
+- `python -m pytest -q` -> 1005 passed.
+
 ## 2026-05-17 - Session 085 - Documentation cleanup after architecture review
 
 Summary:
