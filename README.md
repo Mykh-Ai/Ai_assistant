@@ -19,7 +19,7 @@ README є навігаційним оглядом. Якщо README конфлі�
 
 ## Current Runtime Map
 
-Стан: 2026-05-06.
+Стан: runtime baseline 2026-05-06, with product/doctrine documentation updates through `PROJECT_LOG.md` sessions 077-085 on 2026-05-16/17.
 
 ### Access And Start
 
@@ -355,14 +355,27 @@ Do not use bare `pytest -q` as default because it may not include the project ro
 
 Active source-of-truth / contract docs:
 
+- `docs/Product_Doctrine_2030.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Product_Truth_Registry_MVP_Design.md`
+- `docs/Customization_Request_Layer.md`
+- `docs/Self_Learning_Layer.md`
+- `docs/Code_Agent_Handoff_Contract.md`
+- `docs/Implementation_Agent_Checklist.md`
+- `docs/Evaluation_and_Smoke_Test_Standards.md`
+- `docs/Product_UX_Eval_Artifacts.md`
 - `docs/TZ_FakturaBot.md`
 - `docs/FakturaBot_LLM_Orchestrator_Contract.md`
 - `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`
 - `docs/llm/Canonical_Action_Registry.md`
 - `docs/llm/In_Action_Response_Registry.md`
 - `docs/llm/Bounded_Resolver_Prompt_Template.md`
 - `docs/llm/New_Action_Design_Checklist.md`
 - `docs/FakturaBot_Data_Migration_Runbook.md`
+- `docs/evals/README.md`
 
 Planning / proposal docs:
 
@@ -370,15 +383,19 @@ Planning / proposal docs:
 - `docs/OfficeFlow_Storage_Model_Proposal.md`
 - `docs/Document_Intake_Module_Proposal.md`
 - `docs/Document_Intake_MVP_Implementation_Plan.md`
-- `docs/Invoice_Draft_Review_Lifecycle_Design.md`
-- `docs/Info_Help_Guidance_Layer.md`
-- `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md`
 - `docs/FakturaBot_Server_Rollout_Roadmap.md`
 - `docs/FakturaBot_PDF_Layout_Spec.md`
 
 Archive:
 
 - `docs/archive/`
+- `docs/archive/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md`
+- `docs/archive/Invoice_Draft_Review_Lifecycle_Design.md`
+- `docs/archive/llm/Confirmation_Decision_Audit_2026-04-14.md`
+- `docs/archive/llm/TASK_invoice_customer_raw_mention_for_alias_learning.md`
+
+Archive documents are historical context only. They are not active source of
+truth and do not prove current runtime capability.
 
 Local-only ops:
 

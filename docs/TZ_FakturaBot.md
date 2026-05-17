@@ -202,10 +202,10 @@ FakturaBot є першим демонстраційним продуктом у 
 - отримати структуровану чернетку,
 - підтвердити,
 - згенерувати PDF з QR-кодом Pay by Square,
-- відправити контрагенту на email,
+- зберегти/показати PDF; real outbound email sending is not current runtime support,
 - зберегти історію та контрагентів.
 
-Ключовий wow-ефект MVP — **голосовий сценарій + PDF з QR + відправка одним натиском**.
+Ключовий wow-ефект MVP — **голосовий сценарій + PDF з QR**. Real outbound email/send-by-one-click is a planned/unsupported integration until current runtime Product Truth proves otherwise.
 
 ### 1.4 Ключовий принцип продукту
 
@@ -312,7 +312,7 @@ OfficeFlow framing додає майбутні поняття `workspace` і `su
 - збереження оригіналу договору в локальне сховище,
 - генерація PDF з QR-кодом Pay by Square,
 - прев’ю перед підтвердженням,
-- відправка PDF на email контрагента,
+- PDF generation and local/Telegram access; real outbound email sending is not current runtime support,
 - історія фактур,
 - статуси фактур,
 - автонумерація фактур (RRRRNNNN, послідовна číselná rada).
@@ -667,10 +667,12 @@ LLM не має права:
 `info_help` у плані продукту — це bounded guidance/navigation/recovery шар, а не free-form chat mode і не дубль direct top-level actions.
 
 Routing precedence (обов’язково):
-- top-level action resolution виконується першим;
-- форма питання не блокує прямий action-routing (`"How do I create..."` може резолвитись у direct action);
-- `info_help` використовується тільки коли top-level resolver повернув `unknown`;
-- direct actions лишаються direct, без штучного перенесення в info-layer.
+- authorization and exact deterministic controls run first;
+- active FSM state owns the conversation before idle top-level routing;
+- direct action execution wins only when the user clearly asks to perform a supported action;
+- capability/how-to/support questions are eligible for InfoHelp/Product Truth and must not be forced into action execution;
+- `info_help` handles capability/support/recovery/customization questions and bounded fallback only after safer direct routes are not applicable;
+- direct actions stay direct, but informational questions must not create side effects.
 
 Поведінка planned `info_help` на рівні TZ:
 - відповіді на informational usage/capability питання;
@@ -683,9 +685,15 @@ Contract precedence:
 - цей шар не послаблює і не обходить існуючі contract rules.
 
 Capability status для guidance topics:
-- `implemented`
+- `supported`
+- `partial`
 - `planned`
 - `unsupported`
+- `unknown`
+- `dangerous`
+- `requires_setup`
+- `requires_admin`
+- `requires_external_credentials`
 
 Вимога truthfulness:
 - user-facing відповідь повинна відповідати фактичному status;
@@ -866,6 +874,11 @@ QR-код генерується автоматично з полів:
 
 ## 6.4 Відправка на email
 
+Active status correction 2026-05-17:
+- Real outbound invoice email sending is not implemented in the current runtime unless later code, tests, setup, and Product Truth prove otherwise.
+- The flow below is legacy/planned behavior only and must not be used as proof that email sending is supported.
+- Current user-facing answers about email must classify it as `unsupported`, `planned`, or `requires_external_credentials` according to Product Truth.
+
 Після підтвердження чернетки бот показує:
 
 ```
@@ -877,12 +890,12 @@ Splatnosť: 29.04.2026
 [✅ Odoslať na email] [💾 Len uložiť] [❌ Zrušiť]
 ```
 
-При натисканні "Odoslať na email":
-1. Бот відправляє email на адресу контрагента з БД.
+Legacy planned flow if real outbound email is implemented later:
+1. Future sender would send email to the contact address from DB only after provider/setup/Product Truth gates exist.
 2. Тема: `Faktúra č. 20260015 — [Názov dodávateľa]`
 3. Тіло (словацькою): привітання + сума + splatnosť + подяка.
 4. Вкладення: PDF фактура.
-5. Бот підтверджує: "✅ Faktúra odoslaná na novak@firma.sk"
+5. Future sender would confirm delivery only after the provider reports success.
 
 Per-user SMTP host/user/password collection is deprecated. Supplier onboarding collects only the business email; future sending should use a centralized transactional provider such as Postmark or equivalent.
 
@@ -1053,7 +1066,7 @@ Python повинен перевіряти:
 - supplier profile,
 - invoices,
 - PDF generator з QR-кодом Pay by Square,
-- email sender,
+- real outbound email sender: not current runtime MVP; unsupported/planned unless later code, setup, tests, and Product Truth prove otherwise,
 - validation layer,
 - SQLite storage.
 
@@ -1067,13 +1080,15 @@ Python повинен перевіряти:
 - Google Drive,
 - external company lookup,
 - OCR pipeline,
-- Document Intake / expenses,
+- broad Document Intake beyond current receipt/incoming-invoice Phase 1,
 - bank statement intake,
 - document categories,
 - e-faktura 2027,
 - extended reports.
 
-Document Intake описується окремо як docs-first future module для bločkov, prijatých faktúr, zmlúv і bankových výpisov. Він не реалізований у поточному runtime.
+Active status correction 2026-05-17:
+- Accounting Document Intake Phase 1 is implemented/partial for confirmed receipt (`blocek`) and incoming-invoice (`prijata faktura`) intake, duplicate preview, user approval, confirmed metadata storage, idle attachment routing, and recent document view where current code/tests prove it.
+- Broader Document Intake remains planned/not implemented for standalone contract archive, bank statements, broad OCR for arbitrary scanned documents, broad categories, accounting software export, Google Drive sync, and full OfficeFlow workspace runtime unless later code/docs prove otherwise.
 
 ---
 
@@ -1094,7 +1109,7 @@ faktura-bot/
 │   │   ├── llm_invoice_parser.py
 │   │   ├── llm_contract_extractor.py
 │   │   ├── pdf_generator.py        # PDF + Pay by Square QR
-│   │   ├── email_sender.py         # SMTP відправка з PDF-вкладенням
+│   │   ├── email_sender.py         # legacy/planned SMTP sender; not current supported runtime capability
 │   │   └── validation.py
 │   ├── models/
 │   │   ├── database.py
@@ -1154,7 +1169,7 @@ FakturaBot v1.0 — це не спроба побудувати великий S
 - показує wow-ефект через голос,
 - витягує контрагентів з договорів і зберігає оригінали,
 - створює PDF-фактури з QR-кодом Pay by Square,
-- відправляє фактуру на email одним натиском,
+- does not currently send invoices by real outbound email unless later runtime integration, credentials/setup, tests, and Product Truth prove otherwise,
 - демонструє підхід до кастомних Telegram-ботів для малого бізнесу.
 
 Після цієї версії продукт може розвиватися двома напрямками:
@@ -1188,7 +1203,7 @@ FakturaBot v1.0 — це не спроба побудувати великий S
 6. Дані контрагентів надалі беруться з локальної БД.  
 7. AI використовується як інструмент побудови чернетки, а не як автономний виконавець.  
 8. PDF-фактура обов’язково містить QR-код Pay by Square.  
-9. Email-відправка є частиною MVP (не відкладений модуль).  
+9. Real outbound email sending is not part of the current runtime MVP; it is unsupported/planned and requires Product Truth, external credentials/setup, tests, and explicit implementation evidence before it may be called supported.  
 10. Продукт мислиться як частина ширшої моделі кастомних ботів для малого бізнесу.  
 11. Для test/dev операцій додано явну дію `delete_existing_invoice` з обов’язковим підтвердженням `áno/nie` та supplier-scoped пошуком за суфіксом/повним номером.  
 

@@ -26,14 +26,19 @@ Before touching code for top-level actions, in-action decisions, LLM routing, vo
 
 Required baseline:
 1. `AGENTS.md`
-2. `docs/TZ_FakturaBot.md`
-3. `PROJECT_LOG.md`
-4. `docs/FakturaBot_LLM_Orchestrator_Contract.md`
-5. `docs/Canonical_Decision_Resolver_Contract.md`
-6. `docs/llm/Canonical_Action_Registry.md`
-7. `docs/llm/In_Action_Response_Registry.md`
-8. `docs/llm/Bounded_Resolver_Prompt_Template.md`
-9. this guide
+2. `docs/Product_Doctrine_2030.md`
+3. `docs/AI_Layer_Implementation_Standards.md`
+4. `docs/Product_Truth_Layer.md`
+5. `docs/Info_Help_Guidance_Layer.md`
+6. `docs/Evaluation_and_Smoke_Test_Standards.md`
+7. `docs/TZ_FakturaBot.md`
+8. `PROJECT_LOG.md`
+9. `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+10. `docs/Canonical_Decision_Resolver_Contract.md`
+11. `docs/llm/Canonical_Action_Registry.md`
+12. `docs/llm/In_Action_Response_Registry.md`
+13. `docs/llm/Bounded_Resolver_Prompt_Template.md`
+14. this guide
 
 Extra scopes:
 - OfficeFlow / Document Intake: read OfficeFlow and Document Intake contracts before changing attachment routing, accounting intake, LMM prompts, storage, duplicate checks, or document previews.
@@ -70,7 +75,10 @@ A top-level action is not done when a token is added to a registry. It is done o
 - [ ] Handler/service tests prove route, side effects, wrong-state behavior, and unauthorized behavior.
 - [ ] Voice reachability tests exist, or intentional voice exclusion is documented and tested.
 - [ ] Exact-value voice rejection tests exist for precision/destructive states.
-- [ ] Docs are synchronized: TZ if product behavior changed, project log, registries, changelog when appropriate, and README architecture tree/navigation when action surfaces change.
+- [ ] Product Truth is synchronized: new capability status, limitations, setup/admin/external-credential flags, forbidden claims, and safe next steps are documented or updated in the runtime registry when it exists.
+- [ ] InfoHelp/support truth is synchronized: capability/how-to questions for the new action have a truthful answer path or a documented pending gap if runtime InfoHelp is not yet implemented.
+- [ ] Product UX evals include at least one capability/how-to question for the new action and one unsupported/unknown nearby-action case where relevant.
+- [ ] Docs are synchronized: TZ if product behavior changed, project log, Product Truth, InfoHelp guidance, registries, changelog when appropriate, and README architecture tree/navigation when action surfaces change.
 
 If any item is intentionally out of scope, document that explicitly as `reserved`, `partial`, or `not voice-applicable`. Do not mark the action `implemented`.
 
@@ -249,6 +257,9 @@ Update as applicable:
 - `PROJECT_LOG.md`: every meaningful session, constraints read, touched scopes, verification.
 - `CHANGELOG.md`: user-visible behavior or release-note-worthy changes.
 - `docs/TZ_FakturaBot.md`: product logic, MVP scope, authorization, storage, or runtime behavior changes.
+- `docs/Product_Truth_Layer.md` or the runtime Product Truth registry when it exists: capability status, limitations, setup/admin/external-credential flags, forbidden claims, safe next steps.
+- `docs/Info_Help_Guidance_Layer.md` or the runtime InfoHelp registry when it exists: how users should learn about the capability and what answer they receive when they ask whether/how the bot can do it.
+- `docs/Evaluation_and_Smoke_Test_Standards.md` or focused eval artifacts: product UX smoke scenarios for capability questions, unsupported nearby requests, active FSM confusion, and no hidden side effects.
 - `docs/FakturaBot_LLM_Orchestrator_Contract.md`: bounded resolver contract changes.
 - `docs/Canonical_Decision_Resolver_Contract.md`: decision family or confirmation policy changes.
 - `docs/llm/Canonical_Action_Registry.md`: top-level action status, entry modes, source evidence.
@@ -278,7 +289,10 @@ Before code changes, the implementation agent must be able to answer:
 - [ ] Which DecisionResolver family is used?
 - [ ] What side effects occur, and which Python service owns them?
 - [ ] What tenant/user scope is enforced?
+- [ ] What is the Product Truth status after this change?
+- [ ] How will InfoHelp answer "can you do this?" and "how do I use this?" for this action?
 - [ ] What tests prove the route, voice behavior, authorization, wrong-state safety, exact-value safety, and docs/runtime synchronization?
+- [ ] What product UX eval proves the user can discover and understand the new capability?
 - [ ] Which docs are updated in the same patch?
 
 If any answer depends on guessing, the implementation is not ready.

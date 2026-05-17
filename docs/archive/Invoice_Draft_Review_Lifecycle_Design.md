@@ -46,7 +46,7 @@ Runtime behavior is no longer docs-only after Session 054. The draft review life
 - `docs/llm/Bounded_Resolver_Prompt_Template.md`
 - `docs/llm/Canonical_Action_Registry.md`
 - `docs/llm/In_Action_Response_Registry.md`
-- `docs/llm/Confirmation_Decision_Audit_2026-04-14.md`
+- `docs/archive/llm/Confirmation_Decision_Audit_2026-04-14.md`
 - `docs/llm/New_Action_Design_Checklist.md`
 - `PROJECT_LOG.md`, especially sessions about bounded confirmation, post-PDF decision routing, edit-flow redesign, item edit wording, `novy opis polozky`, and date edit expansion
 - `bot/handlers/invoice.py`

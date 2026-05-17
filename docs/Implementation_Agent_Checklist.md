@@ -1,0 +1,412 @@
+# Implementation Agent Checklist
+
+## Purpose
+
+This guide defines how an implementation agent must approach an approved
+OfficeFlow/FakturaBot product change, customization request, bug fix, or
+feature implementation.
+
+It is the general implementation gate for changes that are not necessarily new
+top-level canonical actions. For top-level actions or in-FSM canonical
+controls, also use `docs/llm/New_Action_Design_Checklist.md`.
+
+The goal is to prevent shallow "just patch it" work. The agent must understand
+the product need, read the governing docs, inspect the current code, choose the
+lowest-risk implementation path, preserve existing behavior, add tests/evals,
+and report what was proven.
+
+## When To Use This Guide
+
+Use this guide for:
+
+- approved customization requests;
+- product features that extend an existing flow;
+- PDF/layout changes;
+- Product Truth or InfoHelp runtime work;
+- self-learning extensions;
+- code-agent task execution;
+- external integration work;
+- reporting/export/reminder/workflow changes;
+- bug fixes with product behavior impact;
+- any implementation where the safest path is not obvious.
+
+Do not use this guide to skip the top-level action checklist. If the change
+adds or upgrades a canonical top-level action, read and apply
+`docs/llm/New_Action_Design_Checklist.md` too.
+
+## Required Starting Inputs
+
+The agent must not begin implementation from a vague request.
+
+Minimum task input:
+
+```text
+Task:
+Product/business need:
+Decision status:
+Current Product Truth:
+Target behavior:
+Out of scope:
+Acceptance criteria:
+Risk level:
+Required docs:
+Tests/evals expected:
+Approval gates:
+```
+
+If the task came from a user customization request, the agent must also know:
+
+- source request id or summary;
+- user-confirmed need;
+- required user inputs or examples;
+- admin/developer approval status;
+- whether the request is product-wide or account-specific.
+
+If those inputs are missing, the first job is to produce a short clarification
+or implementation-readiness report, not to patch code.
+
+## Mandatory Docs To Read
+
+Always read:
+
+1. `AGENTS.md`;
+2. `docs/Product_Doctrine_2030.md`;
+3. `docs/AI_Layer_Implementation_Standards.md`;
+4. `docs/Product_Truth_Layer.md`;
+5. `docs/Evaluation_and_Smoke_Test_Standards.md`;
+6. `docs/TZ_FakturaBot.md`;
+7. `PROJECT_LOG.md` recent relevant entries;
+8. current code around the target module.
+
+For customization/request-driven work, also read:
+
+- `docs/Customization_Request_Layer.md`;
+- `docs/Code_Agent_Handoff_Contract.md`.
+
+For AI/LLM/FSM/routing/action work, also read:
+
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/Canonical_Action_Registry.md`;
+- `docs/llm/In_Action_Response_Registry.md`;
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`;
+- `docs/llm/New_Action_Design_Checklist.md`.
+
+For confirmation-like replies, read:
+
+- `docs/Canonical_Decision_Resolver_Contract.md`.
+
+For self-learning, read:
+
+- `docs/Self_Learning_Layer.md`;
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`.
+
+For PDF/layout work, read:
+
+- `docs/FakturaBot_PDF_Layout_Spec.md`;
+- invoice PDF generator code and tests.
+
+For DB/storage/path/server-impacting work, read:
+
+- `docs/FakturaBot_Data_Migration_Runbook.md`;
+- storage/DB owner code;
+- server/local runbook when server state is in scope.
+
+For OfficeFlow/document intake work, read:
+
+- `docs/OfficeFlow_Architecture_Framing.md`;
+- `docs/OfficeFlow_Storage_Model_Proposal.md`;
+- `docs/Document_Intake_Module_Proposal.md`;
+- `docs/Document_Intake_MVP_Implementation_Plan.md`.
+
+## Pre-Implementation Analysis
+
+Before editing code, the agent must answer:
+
+```text
+What user problem is being solved?
+Is this already supported, partial, planned, unsupported, or unknown?
+Is this a new top-level action, an extension of an existing flow, or internal
+runtime behavior?
+Which existing module/service owns the closest behavior?
+Can this be integrated into an existing module safely?
+Is a new module justified?
+What current behavior must not change?
+What data model or storage shape is affected?
+Does this touch tenant/workspace boundaries?
+Does this touch external credentials/services?
+Does this touch PDF/layout output?
+Does this touch AI/LLM/STT/LMM behavior?
+Does this touch confirmation or destructive behavior?
+What tests/evals will prove value and safety?
+```
+
+If any answer depends on guessing, inspect more code/docs or stop with a
+readiness report.
+
+## Codebase Exploration Rules
+
+The agent must inspect existing ownership before designing a patch.
+
+Required exploration:
+
+- find current handlers/routes for the affected flow;
+- find service/storage owner;
+- find existing tests for that behavior;
+- find Product Truth/docs entries that will need updates;
+- search for similar patterns before adding new abstractions;
+- check active FSM boundaries if conversation state is involved;
+- check access/authorization path before AI or storage behavior;
+- check current voice/text boundaries if input mode is involved.
+
+Prefer existing patterns over new architecture. Add a new module only when it
+removes real complexity or matches a clear ownership boundary.
+
+## Integrate Or Create New Module
+
+Default preference:
+
+- extend the existing owner service/handler when the behavior belongs to an
+  existing workflow;
+- create a small helper when shared logic is needed by multiple owners;
+- create a new module only for a distinct domain with its own lifecycle,
+  storage, tests, and ownership.
+
+Do not create a new module only because it is easier than understanding the
+current one.
+
+Decision criteria:
+
+```text
+Existing owner can support it without becoming incoherent -> integrate.
+Logic is reused by multiple flows but has no storage/lifecycle -> helper.
+New domain has separate storage, lifecycle, registry, or review process -> new
+module.
+```
+
+## Product Truth And Scope
+
+Before implementation, classify the change:
+
+- `supported`;
+- `partial`;
+- `planned`;
+- `unsupported`;
+- `unknown`;
+- `dangerous`;
+- `requires_setup`;
+- `requires_admin`;
+- `requires_external_credentials`.
+
+After implementation, update Product Truth docs/registry only to the level
+actually proven.
+
+Do not mark the capability `supported` if:
+
+- only docs were added;
+- only fallback copy exists;
+- only a draft prompt exists;
+- only one untested branch exists;
+- runtime supports only a narrow slice.
+
+## Top-Level Action Decision
+
+Not every product feature needs a new top-level canonical action.
+
+Ask:
+
+- does the user need to start this as a standalone task?
+- is there a new business operation?
+- is this only an option/field inside an existing flow?
+- is this only a PDF/layout/data model extension?
+- is this only InfoHelp/Product Truth behavior?
+
+If it is a new top-level action or canonical in-FSM control, use
+`docs/llm/New_Action_Design_Checklist.md`.
+
+If it is not a top-level action, do not invent a canonical action just to make
+implementation easier.
+
+## AI Boundary
+
+For AI-assisted features:
+
+- Python owns orchestration, validation, Product Truth, side effects, and
+  storage.
+- AI may extract, classify, draft, explain, or select from Python-provided
+  options.
+- Python must validate AI output before use.
+- User confirmation is required where business data or side effects are
+  affected.
+
+Do not:
+
+- let AI invent schema fields;
+- let AI save data;
+- let AI change Product Truth;
+- let AI pass destructive confirmations;
+- trigger AI calls for unauthorized users.
+
+## Data And Migration Safety
+
+If the change touches persisted data, stop and prepare migration-sensitive
+pre-work.
+
+Persisted data includes:
+
+- SQLite or future DB rows;
+- invoice PDFs and `pdf_path`;
+- accounting document files and JSON sidecars;
+- tenant/workspace keys;
+- file names and storage paths;
+- archive/backup/delete routines.
+
+Required before write implementation:
+
+- current data shape;
+- proposed data shape;
+- migration/repair need;
+- read-only audit plan;
+- backup plan;
+- rollback plan;
+- dry-run plan where practical;
+- user/admin approval if server data is touched.
+
+## PDF/Layout Safety
+
+For invoice PDF/layout work, define visual criteria before implementation:
+
+- exact location of new block/field;
+- behavior when value is empty;
+- wrapping rules;
+- table spacing;
+- long text behavior;
+- QR placement;
+- footer placement;
+- multi-item behavior;
+- regression/snapshot/manual review expectation.
+
+If the feature depends on a sample invoice or old template, ask for the sample
+before implementation or document that the first implementation uses a generic
+layout pending sample review.
+
+## Test Plan
+
+Tests must match risk and touched scope.
+
+Common requirements:
+
+- unit tests for pure logic;
+- handler/FSM tests for user-facing flows;
+- service/storage tests for DB/file writes;
+- DecisionResolver tests for confirmation-like flows;
+- access/tenant tests for any user data;
+- Product Truth/InfoHelp tests for capability claims;
+- PDF/layout regression or manual rendered review for invoice layout;
+- migration dry-run tests where persisted data changes;
+- product UX smoke tests from `docs/Evaluation_and_Smoke_Test_Standards.md`.
+
+Run focused tests during development and full suite before marking runtime
+complete when feasible:
+
+```powershell
+python -m pytest -q
+```
+
+If full tests are not run, state why and do not overclaim completion.
+
+## Implementation Plan Required
+
+Before editing code for a non-trivial change, produce or record a short plan:
+
+```text
+Docs/contracts read:
+Constraints extracted:
+Existing code owners:
+Chosen implementation path:
+Why not a new module / why a new module is justified:
+Data/storage impact:
+AI/LLM impact:
+FSM/confirmation impact:
+Access/tenant impact:
+PDF/layout impact:
+Tests/evals:
+Out of scope:
+```
+
+This plan can be in the working summary, task package, or project log depending
+on scope.
+
+## Implementation Rules
+
+During implementation:
+
+- keep changes scoped;
+- preserve existing behavior unless the task explicitly changes it;
+- reuse established services and helpers;
+- avoid broad refactors;
+- keep user-facing copy honest;
+- update docs in the same patch when product behavior changes;
+- update `PROJECT_LOG.md` after meaningful changes;
+- update `CHANGELOG.md` when user-visible release behavior changes.
+
+## Product Eval Examples
+
+For a new optional invoice description block:
+
+- invoice without description keeps old PDF layout;
+- invoice with description renders block above item rows;
+- long description wraps safely;
+- multi-item invoice still renders;
+- user can preview/edit/cancel;
+- old invoices remain readable;
+- Product Truth says partial/supported only for the proven behavior.
+
+For Google Drive storage:
+
+- no upload without credentials;
+- local invoice remains valid if upload fails;
+- tenant-scoped folder rules are enforced;
+- Product Truth says requires external credentials/setup;
+- user gets clear failure/retry/admin message.
+
+For SMS reminders:
+
+- no sending without provider/setup/consent;
+- schedule and opt-out behavior are explicit;
+- rate limits and logs exist;
+- high-risk admin approval is required.
+
+## Final Output Required
+
+The implementation agent must report:
+
+- docs/contracts read;
+- files changed;
+- implementation summary;
+- integration path chosen and why;
+- risks considered;
+- tests run and results;
+- tests/evals not run and why;
+- Product Truth status after change;
+- docs updated;
+- migration/rollback notes if relevant;
+- remaining gaps or follow-up tasks.
+
+## No-Go Rules
+
+Do not:
+
+- start from code before understanding the product need;
+- ignore existing module ownership;
+- create a new module to avoid reading current code;
+- add a top-level action for an internal field/option;
+- call docs-only work runtime implementation;
+- call partial behavior supported;
+- bypass Product Truth;
+- bypass DecisionResolver;
+- bypass access/tenant gates;
+- let AI own side effects;
+- change persisted data without migration pre-work;
+- change PDF layout without visual criteria;
+- skip product UX evals for Level 2+ behavior;
+- hide tests not run.

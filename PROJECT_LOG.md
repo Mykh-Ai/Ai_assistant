@@ -1,5 +1,214 @@
 # PROJECT_LOG
 
+## 2026-05-17 - Session 085 - Documentation cleanup after architecture review
+
+Summary:
+- Accepted the external architecture review verdict as a cleanup backlog before
+  runtime implementation.
+- Updated `docs/TZ_FakturaBot.md` to remove stale active-truth claims around
+  real outbound email support, align InfoHelp routing/status language with
+  Product Truth, and split current accounting document intake Phase 1 from
+  broader planned Document Intake.
+- Updated `docs/llm/Canonical_Action_Registry.md` with explicit implemented
+  rows for `edit_existing_invoice` and `delete_existing_invoice`, and clarified
+  reserved `send_invoice` / `edit_invoice` behavior under Product Truth /
+  InfoHelp rather than generic support.
+- Updated `README.md` current-runtime date framing and added an explicit
+  archive warning.
+- Added `docs/Product_Truth_Registry_MVP_Design.md` and
+  `docs/Product_UX_Eval_Artifacts.md` to define the first concrete registry and
+  eval artifact conventions before runtime work.
+- Added `docs/evals/README.md` as the placeholder/index for future eval
+  artifacts.
+
+Touched scopes:
+- documentation/product truth cleanup: yes;
+- action registry documentation: yes;
+- Product Truth registry design and eval artifact convention: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access,
+  server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only cleanup patch.
+
+## 2026-05-17 - Session 084 - Top-level action Product Truth and InfoHelp sync gate
+
+Summary:
+- Updated `docs/llm/New_Action_Design_Checklist.md` so new or upgraded
+  top-level canonical actions must synchronize Product Truth and InfoHelp /
+  support guidance, not only action registries, TZ, README, and tests.
+- Added explicit requirements for capability status, limitations,
+  setup/admin/external-credential flags, forbidden claims, safe next steps,
+  capability/how-to answer paths, and product UX evals for new actions.
+
+Touched scopes:
+- documentation/product direction: yes;
+- top-level action implementation checklist: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access,
+  server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only patch.
+
+## 2026-05-16 - Session 083 - General implementation agent checklist
+
+Summary:
+- Added `docs/Implementation_Agent_Checklist.md` as the general implementation
+  gate for approved product/customization changes that are not necessarily new
+  top-level canonical actions.
+- The checklist requires agents to read governing docs, inspect current code
+  ownership, decide whether to integrate into existing modules or create a new
+  module, analyze Product Truth, data/migration, AI, FSM, access, PDF/layout,
+  risks, tests, and product UX evals before coding.
+- Updated `AGENTS.md`, `README.md`, `docs/Code_Agent_Handoff_Contract.md`,
+  `docs/Customization_Request_Layer.md`, and
+  `docs/Evaluation_and_Smoke_Test_Standards.md` to reference the new checklist.
+
+Touched scopes:
+- documentation/product direction: yes;
+- implementation-agent checklist: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access,
+  server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only patch.
+
+## 2026-05-16 - Session 082 - Evaluation and smoke test standards
+
+Summary:
+- Added `docs/Evaluation_and_Smoke_Test_Standards.md` as the mandatory
+  evaluation contract for AI/product layers, Product Truth, InfoHelp,
+  customization requests, self-learning, code-agent handoff, FSM recovery,
+  access safety, document intake, PDF/layout, and migration/server checks.
+- Clarified that unit tests are required but not sufficient for Level 2+
+  AI/product layers; product UX evals and smoke scenarios must prove real user
+  journeys, truthfulness, safety, state-awareness, and no hidden side effects.
+- Updated `AGENTS.md`, `README.md`, `docs/Product_Doctrine_2030.md`,
+  `docs/AI_Layer_Implementation_Standards.md`, `docs/Product_Truth_Layer.md`,
+  `docs/Info_Help_Guidance_Layer.md`, `docs/Customization_Request_Layer.md`,
+  `docs/Self_Learning_Layer.md`, and `docs/Code_Agent_Handoff_Contract.md` to
+  reference the new evaluation contract.
+
+Touched scopes:
+- documentation/product direction: yes;
+- evaluation and smoke-test contract: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access,
+  server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only patch.
+
+## 2026-05-16 - Session 081 - Self-learning and code-agent handoff contracts
+
+Summary:
+- Added `docs/Self_Learning_Layer.md` as the umbrella contract for controlled
+  learning beyond current invoice customer/service aliases.
+- Added `docs/Code_Agent_Handoff_Contract.md` as the contract for converting
+  approved customization/product requests into bounded implementation tasks
+  with docs, scope, tests, evals, no-go constraints, rollback notes, and human
+  approval gates.
+- Updated `docs/Confirmed_Semantic_Alias_Learning_Contract.md` to clarify that
+  it remains the focused runtime contract for current confirmed aliases under
+  the broader self-learning policy.
+- Updated `AGENTS.md`, `README.md`, `docs/Product_Doctrine_2030.md`,
+  `docs/AI_Layer_Implementation_Standards.md`, `docs/Product_Truth_Layer.md`,
+  `docs/Customization_Request_Layer.md`, and
+  `docs/Info_Help_Guidance_Layer.md` to reference the new contracts.
+
+Touched scopes:
+- documentation/product direction: yes;
+- self-learning and code-agent handoff contracts: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access,
+  server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only patch.
+
+## 2026-05-16 - Session 080 - Product Truth and Customization Request contracts
+
+Summary:
+- Added `docs/Product_Truth_Layer.md` as the source-of-truth contract for
+  supported/partial/planned/unsupported/unknown/dangerous/setup/admin/external
+  credential capability answers.
+- Added `docs/Customization_Request_Layer.md` as the contract for turning
+  unsupported, partial, planned, unknown, or account-specific business needs
+  into confirmed pending requests instead of fake promises or blind fallback.
+- Updated `AGENTS.md`, `README.md`, `docs/Product_Doctrine_2030.md`,
+  `docs/AI_Layer_Implementation_Standards.md`, and
+  `docs/Info_Help_Guidance_Layer.md` to reference the new contracts.
+
+Touched scopes:
+- documentation/product direction: yes;
+- Product Truth and customization request contracts: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access,
+  server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only patch.
+
+## 2026-05-16 - Session 079 - AI layer standards and InfoHelp contract reset
+
+Summary:
+- Added `docs/AI_Layer_Implementation_Standards.md` as the mandatory maturity
+  and acceptance contract for AI-facing product layers.
+- Rewrote `docs/Info_Help_Guidance_Layer.md` from a Phase 1 fallback-oriented
+  planning spec into a Level 2+ capability-aware support concierge contract.
+- Clarified that current top-level InfoHelp fallback behavior remains Level 1
+  only until Product Truth, capability-aware Q&A, customization request
+  creation, controlled learning, and UX evals exist.
+- Updated `AGENTS.md`, `README.md`, and `docs/Product_Doctrine_2030.md` so the
+  new AI-layer standard is part of the active documentation set.
+
+Touched scopes:
+- documentation/product direction: yes;
+- InfoHelp contract: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access,
+  server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only patch.
+
+## 2026-05-16 - Session 078 - Archive superseded planning and audit docs
+
+Summary:
+- Moved superseded historical planning/audit/task docs out of the active documentation set:
+  - `docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md` -> `docs/archive/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md`
+  - `docs/Invoice_Draft_Review_Lifecycle_Design.md` -> `docs/archive/Invoice_Draft_Review_Lifecycle_Design.md`
+  - `docs/llm/Confirmation_Decision_Audit_2026-04-14.md` -> `docs/archive/llm/Confirmation_Decision_Audit_2026-04-14.md`
+  - `docs/llm/TASK_invoice_customer_raw_mention_for_alias_learning.md` -> `docs/archive/llm/TASK_invoice_customer_raw_mention_for_alias_learning.md`
+- Updated `README.md` so active docs no longer list archived planning files as current planning docs.
+- Updated `docs/archive/README.md` with the newly archived documents and their historical role.
+- Updated `AGENTS.md` to state that `docs/archive/` is historical context only and must not be used as active source of truth.
+
+Touched scopes:
+- documentation organization: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access, server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only archive move.
+
+## 2026-05-16 - Session 077 - Product doctrine and agent contract reset
+
+Summary:
+- Rewrote `AGENTS.md` as the main OfficeFlow/FakturaBot agent contract instead of a narrow Telegram-bot MVP instruction file.
+- Added `docs/Product_Doctrine_2030.md` as the product north-star: OfficeFlow/FakturaBot is an AI-assisted business operating layer, not a command bot.
+- Clarified the current runtime truth: controlled tenant-scoped multi-user runtime exists, while full SaaS, public signup, billing, per-client bot/runtime provisioning, and complex role/workspace administration remain not implemented.
+- Preserved and strengthened existing safety rules: no invented project state, docs-first work, approval discipline, migration safety, Python-owned execution, DecisionResolver, access boundaries, OfficeFlow attachment boundaries, and project-log discipline.
+- Added explicit AI-layer maturity language so static fallback/repair work cannot be called a completed AI product layer.
+- Added Product Truth, customization request, self-learning, code-agent handoff, state-aware explanation, and product UX evaluation expectations as mandatory project direction.
+
+Source material:
+- `AGENTS.md`
+- `PROJECT_LOG.md` read from first line to last line before the patch
+- prior read-only audit context over the listed FakturaBot/OfficeFlow docs and runtime files
+
+Touched scopes:
+- documentation/product direction: yes;
+- runtime code, routing, LLM/STT/LMM behavior, FSM, DB, storage, access, server: no behavior changes.
+
+Verification:
+- Tests not run; documentation-only patch.
+
 ## 2026-05-16 - Session 076 - Invoice edit fallback examples
 
 Summary:

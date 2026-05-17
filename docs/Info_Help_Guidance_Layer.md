@@ -1,346 +1,518 @@
-# FakturaBot Info Help Guidance/Navigation Layer (Docs-First Spec)
+# InfoHelp Guidance Layer
 
-**Status:** planned (docs-first)  
-**Date:** 2026-04-19  
-**Scope:** product/architecture contract for new `info_help` capability
+## Purpose
 
----
+This document defines the target InfoHelp layer for OfficeFlow/FakturaBot.
 
-## 1) Purpose of this document
+InfoHelp is not a menu fallback and not a free-form chatbot. It is the
+capability-aware support concierge for the product: it answers real business
+questions, explains current workflow state, classifies requested capabilities
+against Product Truth, and offers safe next steps.
+
+Current runtime fallback guidance is Level 1 only. This document defines the
+Level 2+ target and the acceptance rules for getting there.
 
-This document defines the planned `info_help` guidance/navigation/recovery layer for FakturaBot.
+## Normative Status
 
-`info_help` is **not** a duplicate of the existing action system and **not** a generic free-form chatbot mode.
+This document is a mandatory-read contract for work touching:
 
-Its purpose is to help users:
-- understand what the bot can do,
-- understand how to perform supported tasks,
-- navigate to correct actions,
-- recover when confused or stuck,
-- return to a clean “new task” state,
-- receive truthful implemented/planned/unsupported capability answers.
+- `bot/services/info_help.py`;
+- top-level unknown text or voice handling;
+- support/capability/how-to answers;
+- fallback guidance;
+- active-FSM confusion handling;
+- Product Truth responses;
+- customization request handoff from user questions;
+- InfoHelp topic aliases or self-learning.
 
----
+This document is subordinate to the bounded Python-to-LLM contracts in
+`docs/llm/`, the DecisionResolver contract, access-control rules, and Product
+Truth. It does not authorize free-form AI execution.
 
-## 2) Contract precedence: `docs/llm` is governing law
+Required companion docs:
 
-All bot↔LLM interactions for `info_help` remain governed by the existing bounded Python→LLM contract documented in `docs/llm`.
+- `docs/Product_Doctrine_2030.md`;
+- `docs/AI_Layer_Implementation_Standards.md`;
+- `docs/Product_Truth_Layer.md`;
+- `docs/Customization_Request_Layer.md`;
+- `docs/Self_Learning_Layer.md`;
+- `docs/Evaluation_and_Smoke_Test_Standards.md`;
+- `docs/TZ_FakturaBot.md`;
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/Canonical_Action_Registry.md`;
+- `docs/llm/In_Action_Response_Registry.md`;
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`;
+- `docs/llm/New_Action_Design_Checklist.md`;
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`.
 
-Normative rules:
-- All `info_help` interactions **MUST** follow the bounded Python→LLM contract defined in `docs/llm`.
-- No `info_help` flow may bypass or weaken those constraints.
-- Python remains source of truth for workflow state, allowed outputs, validation, and side effects.
-- LLM does not own business logic, side effects, persistence, or final execution decisions.
-- `info_help` does not introduce free-form reasoning/execution mode.
-- Bounded prompts and bounded outputs remain mandatory.
+## Product Role
 
----
+InfoHelp must help users understand and move through business workflows.
 
-## 3) Product role of `info_help`
+It must answer questions like:
 
-`info_help` is a service layer with three product functions:
-1. information,
-2. navigation/handoff toward valid actions,
-3. recovery/reset support.
+- "Vie bot posielat faktury emailom?"
+- "Viete posielat SMS?"
+- "Vie bot ukladat faktury na Google Disk?"
+- "Chcem evidovat odpracovane hodiny."
+- "Chcem mesacny vykaz."
+- "Chcem stary format faktury."
+- "Chcem pridat DPH riadok."
+- "Viete kategorizovat blocky?"
+- "Viete exportovat do uctovneho softveru?"
+- "Chcem aby sa faktury posielali uctovnicke."
+- "Mozete mi pripomenut neuhradene faktury?"
 
-It does not replace direct actions and does not redefine existing top-level routing.
+The correct response is a truthful business answer plus a safe next step. The
+wrong response is only `/menu`, "nerozumiem", or a fake claim that the feature
+already exists.
 
-Future direction (Phase 2/3): `info_help` may expand into a controlled runtime explainability layer where Python supplies bounded runtime/debug facts and LLM converts them into clear user-facing guidance.
+## Current Runtime Classification
 
----
+Unless later code proves otherwise:
 
-## 4) Scope and non-goals
+- current top-level InfoHelp fallback guidance is Level 1 static guidance;
+- it is not full capability-aware Q&A;
+- it does not implement a complete Product Truth Layer;
+- it does not implement customization request creation;
+- it does not implement broad self-learning for topics/capability questions;
+- it does not implement code-agent handoff.
 
-### In scope
-- informational bot-usage questions,
-- capability explanation,
-- navigation toward existing actions,
-- linked handoff into existing actions/subtargets,
-- reset/start-over/new-task handling,
-- planned-feature notices,
-- structured logging of all info-layer usage.
+Agents must not call current Level 1 fallback behavior "InfoHelp complete".
 
-### Out of scope
-- open-ended assistant behavior,
-- hidden mutation from informational requests,
-- fake support/ticketing systems (unless explicitly implemented),
-- arbitrary uncontrolled document retrieval.
+## Target Maturity
 
----
+InfoHelp must progress through these levels:
 
-## 5) Core routing contract
+- Level 1: static fallback guidance and recovery copy.
+- Level 2: capability-aware Q&A backed by Product Truth.
+- Level 3: customization request draft and confirmation.
+- Level 4: controlled learning of topic/capability aliases.
+- Level 5: code-agent handoff package for approved requests.
 
-Routing order:
+Level 2 is the minimum product-grade InfoHelp target. Level 1 is useful repair
+work but not the product destination.
 
-A. Run top-level action resolution first.  
-B. Enter `info_help` only if top-level resolution returns `unknown`.  
-C. If `info_help` also cannot resolve safely, use bounded fallback response.
+## Product Truth Contract
 
-Question form does **not** block direct action routing.
+InfoHelp must classify every capability answer using Product Truth.
 
-Examples:
-- “How do I create a new invoice?” may resolve directly to `create_invoice`.
-- “How do I add a new contact?” may resolve directly to `add_contact`.
+Allowed capability statuses:
 
-If the request matches an existing top-level action, bot should use action path directly.
+- `supported`;
+- `partial`;
+- `planned`;
+- `unsupported`;
+- `unknown`;
+- `dangerous`;
+- `requires_setup`;
+- `requires_admin`;
+- `requires_external_credentials`.
 
----
+Product Truth rules are governed by `docs/Product_Truth_Layer.md`.
 
-## 6) Practical classification rules
+Until a runtime Product Truth registry exists, InfoHelp must derive truth from:
 
-Operational classes:
-- direct action request,
-- informational/guidance request,
-- recovery/reset request.
-
-Execution rule remains:
-- top-level action first,
-- `info_help` only on top-level miss.
-
-Recovery/reset requests can be handled as controlled `info_help` service behavior when top-level resolution misses.
-
----
-
-## 7) Internal structure of `info_help`
-
-Internal service submodes (not new top-level actions by default):
-- `faq_topic`
-- `state_guidance`
-- `action_offer_or_handoff`
-- `restart_or_reset_request`
-- `support_escalation`
-
-These are internal `info_help` categories used for bounded policy decisions.
-
----
-
-## 8) Action layer vs guidance layer
-
-Rules:
-- direct actions remain direct,
-- `info_help` may explain action usage,
-- `info_help` may offer navigation into action,
-- `info_help` must not duplicate existing actions.
-
-Example (`change_email`):
-- user: “How do I change my email?”
-- top-level action match: `unknown`
-- `info_help` topic resolves to supplier profile update guidance
-- linked action: `edit_supplier` (planned canonical naming for supplier update path)
-- linked target: `email`
-- bot explains flow first
-- bot offers to proceed
-- action starts only after explicit user confirmation.
-
-Note: this example defines target behavior for `info_help`; it does not claim a new standalone `change_email` top-level action.
-
----
-
-## 9) Capability status model
-
-Each guidance topic/capability carries status:
-- `implemented`
-- `planned`
-- `unsupported`
-
-Response rules:
-- `implemented` → explain current usage, optionally offer linked action.
-- `planned` → truthfully state planned/not yet available.
-- `unsupported` → bounded fallback, no fake promise.
-
-Examples:
-- delete old invoice history entry → planned/unsupported until runtime feature exists.
-- send invoice by email → planned/unsupported until runtime implementation is confirmed.
-
----
-
-## 10) Controlled knowledge source
-
-`info_help` must run on a bounded help/capability registry, not arbitrary free-form doc search.
-
-Recommended registry shape:
-- `topic_id`
-- `title`
-- `status`
-- `guidance_text`
-- `linked_action` (optional)
-- `linked_target` (optional)
-- `planned_note` (optional)
-- `support_note` (optional)
-- `safe_reset_available` (optional)
-
----
-
-## 11) LLM interaction model (planned)
-
-### Stage A: top-level resolution
-- Python sends bounded top-level action request.
-- LLM returns one allowed action or `unknown`.
-
-### Stage B: `info_help` topic resolution (only if Stage A = `unknown`)
-- Python sends bounded help topic registry/context.
-- LLM returns one topic id or `unknown`.
-
-### Stage C: Python response policy
-Python decides final response mode:
-- `inform_only`
-- `offer_linked_action`
-- `offer_reset`
-- `planned_feature_notice`
-- `unsupported_fallback`
-
-Python remains final execution authority for all behavior.
-
-### 11.1) Controlled runtime introspection context (Phase 2/3 planned)
-
-For runtime-problem explanations, Python may provide a bounded/sanitized runtime context to `info_help`, and LLM may translate it into plain user language.
-
-Examples of allowed Python-provided facts:
-- current FSM state,
-- current flow identifier,
-- allowed next actions,
-- reset availability,
-- recent STT failure count,
-- last known error category,
-- recent fallback reason,
-- whether manual text input remains available,
-- whether external model/API call failed,
-- whether capability is currently blocked by quota/credits/API availability,
-- short sanitized debug summary prepared by Python.
-
-This remains a bounded contract interaction: LLM explains only provided structured facts and does not become a free investigator.
-
----
-
-## 12) Safety and behavior rules
-
-Mandatory behavior:
-- informational request is not authorization for mutation,
-- linked action launch requires explicit user confirmation,
-- destructive reset requires explicit confirmation where applicable,
-- responses must come from controlled knowledge entries,
-- no hallucinated instructions,
-- no bypass around business validation/invariants,
-- no arbitrary source-code reading by LLM as a primary information path,
-- no arbitrary raw-log reading by LLM as a primary information path,
-- no exposure of secrets, tokens, stack traces, internal filesystem paths, or hidden internals in user-facing explanations,
-- only sanitized, bounded Python-prepared summaries may be used for runtime/debug explainability.
-
----
-
-## 13) Reset / new-task behavior
-
-Product goal: help confused users return to clean starting point safely.
-
-Planned behavior:
-1. detect reset/start-over intent in `info_help`,
-2. require confirmation if transition is destructive,
-3. clear current flow/session state as appropriate,
-4. return to idle/waiting-for-new-task state,
-5. explicitly inform user that previous scenario was reset.
-
-Current limitation to keep explicit:
-- no claim of universal “step back” support across all flows unless implemented.
-
----
-
-## 14) Logging and analytics (mandatory)
-
-Every `info_help` entry must be logged as a structured product signal.
+1. current runtime code;
+2. `PROJECT_LOG.md`;
+3. `docs/TZ_FakturaBot.md`;
+4. focused contract docs;
+5. `CHANGELOG.md` as supporting historical context.
+
+Roadmap intent is not runtime support. If runtime does not prove the feature,
+InfoHelp must say `planned`, `partial`, `unsupported`, or `unknown`.
+
+## Response Contract
+
+Every InfoHelp answer must include:
+
+1. direct answer to the user's question;
+2. current capability status;
+3. plain-language limitation or setup condition;
+4. safe next step;
+5. customization request offer when useful and supported by the request layer.
+
+InfoHelp must not:
+
+- hide behind `/menu` for a real capability question;
+- claim unsupported integrations are available;
+- launch a mutation from an informational question without explicit user
+  confirmation;
+- disclose internal stack traces, filesystem paths, secrets, prompts, or raw
+  debug logs;
+- let the LLM invent actions, product status, or setup state.
+
+## Routing Contract
+
+Routing must respect this order:
+
+1. Authorization and access checks.
+2. Exact deterministic controls such as `/cancel` or destructive typed
+   confirmations where applicable.
+3. Active FSM state ownership.
+4. Direct action intent when the user clearly asks to start or perform a known
+   action.
+5. InfoHelp classification for capability/how-to/support/recovery/customization
+   questions.
+6. Bounded fallback only after InfoHelp cannot resolve safely.
+
+Important distinction:
+
+- "Create an invoice for..." is a direct action request.
+- "How do I create an invoice?" is a how-to question and may answer first,
+  then offer to start invoice creation.
+- "Can you send invoices by email?" is a capability question and must not start
+  any invoice flow.
+
+Question form does not block action routing when the user's intent is clearly
+to execute a supported action. But InfoHelp must not convert informational
+questions into side effects.
+
+## Active FSM State Guidance
+
+When the user is inside an active FSM flow, that state owns the conversation.
+
+InfoHelp may explain:
+
+- what the user is doing now;
+- what input is expected;
+- accepted input format;
+- why the previous input failed;
+- what safe choices are available;
+- how to cancel or return to a clean state.
+
+Example weak response:
+
+```text
+Ak nechcete pokracovat, napiste zrusit.
+```
+
+Example target response:
+
+```text
+Teraz upravujete datum faktury. Datum sa nepodarilo rozpoznat.
+Zadajte datum vo formate DD.MM.RRRR, napriklad 16.05.2026.
+Ak nechcete pokracovat, napiste zrusit.
+```
+
+Active FSM state must not fall through into idle top-level routing or idle
+attachment classification unless the flow explicitly allows that handoff.
+
+## Capability Registry Shape
+
+InfoHelp must use a controlled registry or Product Truth source. It must not
+rely on arbitrary free-form document search as runtime truth.
+
+Minimum topic/capability fields:
+
+```text
+capability_id
+topic_id
+title
+domain
+status
+runtime_owner
+truth_source_refs
+summary_for_user
+current_limitations
+safe_next_steps
+linked_action
+linked_target
+requires_setup
+requires_admin
+requires_external_credentials
+dangerous
+customization_allowed
+forbidden_claims
+last_verified_at
+```
+
+`linked_action` and `linked_target` are optional. If present, Python still owns
+the handoff and must ask confirmation before starting a mutating flow from an
+informational question.
+
+## Bounded LLM Interaction
+
+The model may help classify the user's question only inside Python-provided
+bounds.
+
+Allowed model outputs:
+
+- one known `topic_id`;
+- one known `capability_id`;
+- one known response mode;
+- `unknown`;
+- bounded slots requested by Python for a customization draft.
+
+Forbidden model outputs:
+
+- new canonical actions;
+- unregistered capabilities;
+- product status not present in Product Truth;
+- direct side effects;
+- DB/storage writes;
+- unauthorized support claims.
+
+Python owns final response policy.
+
+## Response Modes
+
+InfoHelp response modes:
+
+- `inform_only`;
+- `explain_supported_usage`;
+- `explain_partial_usage`;
+- `planned_notice`;
+- `unsupported_notice`;
+- `unknown_notice`;
+- `setup_required_notice`;
+- `admin_required_notice`;
+- `external_credentials_required_notice`;
+- `dangerous_operation_notice`;
+- `offer_linked_action`;
+- `offer_customization_request`;
+- `state_guidance`;
+- `offer_reset`;
+- `bounded_fallback`.
+
+Each mode must have deterministic safety rules and tests.
+
+## Customization Request Handoff
+
+When a user asks for a feature that is unsupported, partial, planned, or
+account-specific, InfoHelp should offer a customization request when safe.
+
+Example:
+
+```text
+Momentane Google Disk nie je podporovany. Faktury sa teraz ukladaju v systeme
+bota a mozete si ich zobrazit alebo stiahnut cez Telegram.
+
+Ak potrebujete ukladanie na Google Disk, mozem pripravit poziadavku na upravu.
+Pred ulozenim vam ukazem navrh a poziadam o potvrdenie.
+```
+
+Customization request rules are governed by
+`docs/Customization_Request_Layer.md`.
+
+InfoHelp may draft a request only when the runtime Customization Request Layer
+exists. Until then, it may say that the feature is a future/requestable product
+direction only if the wording does not imply storage happened. Otherwise it
+must not pretend a request was created.
+
+## Self-Learning Hooks
+
+InfoHelp should produce controlled learning candidates for:
+
+- topic aliases;
+- capability question phrasings;
+- recurring unsupported-feature patterns;
+- customization request patterns;
+- state-confusion phrases.
+
+Learning must follow the confirmed semantic learning rules:
+
+- learn only after successful resolution or explicit confirmation;
+- never learn destructive confirmations;
+- never invent canonical actions;
+- never bypass registries;
+- store scoped aliases/patterns, not raw sensitive full transcripts;
+- separate intent from slots;
+- keep counts and review/expiry metadata where practical.
+
+InfoHelp topic learning is not complete until there is a reviewable scoped
+storage model and tests proving that learned mappings cannot bypass Product
+Truth.
+
+## Logging And Analytics
+
+Every InfoHelp entry should be logged as a structured product signal once the
+runtime layer exists.
 
 Minimum fields:
-- timestamp,
-- user/chat/session id,
-- current FSM state,
-- raw user input,
-- resolved topic,
-- capability status,
-- linked action / linked target,
-- response mode,
-- accepted handoff (yes/no),
-- accepted reset (yes/no).
 
-Rationale:
-- repeated questions indicate missing features/docs,
-- repeated confusion indicates UX pain points,
-- repeated planned-feature requests inform roadmap priority,
-- repeated runtime failure signals (STT failures, unresolved intents, API/LLM error categories, repeated reset-after-failure) can guide reliability improvements,
-- admin notifications/summaries may be future enhancement, but structured logging is required in first implementation phase.
+```text
+timestamp
+user_id / workspace_id
+authorization_status
+current_fsm_state
+input_channel
+user_text_redacted_or_hash
+resolved_topic_id
+resolved_capability_id
+capability_status
+response_mode
+linked_action
+linked_target
+customization_offered
+customization_confirmed
+reset_offered
+reset_confirmed
+model_used
+fallback_reason
+```
 
----
+Do not store broad raw sensitive transcripts as reusable knowledge. Raw text
+storage, if ever used, must be explicitly justified by product policy and data
+safety rules.
 
-## 15) Worked examples
+## User-Facing Examples
 
-### Example A: direct action despite question form
-Input: “How do I create a new invoice?”  
-Expected: top-level resolver maps to `create_invoice`, action path starts directly.
+### Google Drive
 
-### Example B: info→action navigation
-Input: “How do I change my email?”  
-Expected: top-level miss → `info_help` topic → supplier email guidance → offer linked action (`edit_supplier`, target `email`) → launch only after explicit confirmation.
+User:
 
-### Example C: planned capability answer
-Input: “How do I delete an old invoice?”  
-Expected: truthful planned/not-yet-implemented response (no fake execution path).
+```text
+Vie bot ukladat faktury na Google Disk?
+```
 
-### Example D: recovery/reset
-Input: “I am confused, start over.”  
-Expected: `info_help` reset intent → confirmation if destructive → clear relevant state → return to new-task state.
+Expected target answer:
 
-### Example E: repeated voice/STT failures (runtime explainability)
-Input: user sends several voice commands, then asks “Why is this not working?”  
-Expected: Python reports repeated STT failures in bounded debug context; `info_help` explains that voice recognition is currently unreliable and suggests safe fallback to text input for continuation.
+```text
+Momentane nie. Faktury sa teraz ukladaju v systeme bota a mozete si ich
+zobrazit alebo stiahnut cez Telegram.
 
-### Example F: external model/API failure or quota/credits block
-Input: “What happened? Why are you not responding?”  
-Expected: Python reports a bounded error category (e.g., temporary model/API unavailability or quota/credits issue); `info_help` returns safe plain-language explanation and next safe action (retry later, continue with available path, or contact admin if applicable).
+Ak potrebujete Google Disk alebo ine vlastne ukladanie faktur, mozem z toho
+pripravit poziadavku na upravu uctu. Spravca potom skontroluje, co presne treba
+nastavit.
+```
 
----
+### SMS
 
-## 16) Confirmed vs unconfirmed flow truthfulness
+User:
 
-Must not be overstated as implemented unless runtime confirms:
-- dedicated end-to-end contact-details edit flow,
-- historical old-invoice deletion as user-facing capability,
-- send-email/send-invoice runtime capability,
-- support/ticket escalation workflow.
+```text
+Viete posielat SMS?
+```
 
-This spec is docs-first and does not alter runtime truth.
+Expected target answer:
 
----
+```text
+Momentane nie. SMS odosielanie nie je podporovana funkcia v aktualnom runtime.
 
-## 17) Phase rollout proposal
+Ak potrebujete SMS pripomienky alebo upozornenia, mozem pripravit poziadavku na
+upravu. Bude potrebne vyriesit poskytovatela SMS, cenu, suhlasy a pravidla,
+kedy sa spravy maju posielat.
+```
 
-### Phase 1
-- top-level-first routing (existing pattern retained),
-- basic `info_help` layer,
-- bounded topic registry,
-- capability statuses,
-- structured logging.
+### Old PDF Template
 
-### Phase 2
-- state-aware guidance,
-- explicit reset/new-task flow,
-- linked action handoff with explicit confirmation,
-- controlled runtime explainability using bounded Python-prepared debug context.
+User:
 
-### Phase 3
-- broader topic coverage,
-- richer analytics/admin summaries,
-- advanced guidance coverage for more flows,
-- richer debug-aware user guidance and optional admin-facing reliability summaries.
+```text
+Chcem aby faktura vyzerala ako moja stara PDF sablona.
+```
 
----
+Expected target answer:
 
-## 18) Required documentation alignment after acceptance
+```text
+Aktualny bot generuje faktury podla sucasnej sablony. Vlastna PDF sablona nie
+je automaticky dostupna bez upravy.
 
-After accepting this spec, follow-up alignment should be planned for:
-- `docs/TZ_FakturaBot.md`
-- `docs/llm/Canonical_Action_Registry.md`
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
-- `docs/llm/Bounded_Resolver_Prompt_Template.md`
-- `docs/llm/In_Action_Response_Registry.md`
-- `README.md` (small note only if appropriate)
-- `PROJECT_LOG.md`
+Mozem pripravit poziadavku na upravu sablony. Budem potrebovat priklad starej
+faktury alebo PDF sablonu a popis toho, co sa ma zachovat: rozlozenie, logo,
+riadky, QR kod, paticka a sirky stlpcov.
+```
 
-This document is subordinate to existing `docs/llm` contract law and does not rewrite it.
+### Active FSM Confusion
+
+User is editing invoice date and sends:
+
+```text
+Preco to nejde?
+```
+
+Expected target answer:
+
+```text
+Teraz upravujete datum faktury. Posledny vstup sa nepodarilo rozpoznat ako
+datum. Zadajte datum vo formate DD.MM.RRRR, napriklad 16.05.2026, alebo napiste
+zrusit.
+```
+
+## Acceptance Criteria For Level 2 InfoHelp
+
+Level 2 InfoHelp is not complete until:
+
+- arbitrary capability questions are classified against Product Truth;
+- `supported`, `partial`, `planned`, `unsupported`, and `unknown` answers are
+  covered by tests and UX evals;
+- unsupported features do not claim availability;
+- supported features link to real runtime actions or documented usage;
+- partial features explain limits;
+- active FSM state guidance works for representative confusion cases;
+- access control prevents unauthorized AI/STT/LMM use;
+- logs capture structured product signals without unsafe transcript learning;
+- no mutation happens from informational questions without confirmation;
+- `PROJECT_LOG.md`, README, and relevant contract docs state the real maturity
+  level.
+
+## Product UX Evals
+
+Required eval scenarios:
+
+- first user asks "What can you do?";
+- approved user asks whether email sending is supported;
+- approved user asks whether Google Drive storage is supported;
+- approved user asks for SMS reminders;
+- approved user asks for old PDF template customization;
+- approved user asks for accounting export;
+- user asks a how-to question for an implemented action;
+- user asks a direct action request phrased as a question;
+- active FSM user sends confused text;
+- unauthorized user asks a capability question;
+- unsupported request offers customization only when request storage exists;
+- no hidden invoice/contact/document side effects occur.
+
+## Rollout Plan
+
+### Step 1: Keep Level 1 Honest
+
+- Preserve current fallback only as Level 1.
+- Remove "complete" language from docs/logs unless acceptance criteria match.
+- Ensure fallback copy does not claim unsupported features.
+
+### Step 2: Product Truth Registry
+
+- Create a controlled source for supported/partial/planned/unsupported
+  capabilities.
+- Include forbidden claims and setup/admin/external-credential flags.
+- Add tests proving the registry backs user-facing answers.
+
+### Step 3: Level 2 InfoHelp
+
+- Add bounded topic/capability resolver.
+- Return capability-aware answers.
+- Add UX evals for arbitrary business questions.
+
+### Step 4: Level 3 Customization Request
+
+- Draft structured requests.
+- Ask confirmation.
+- Save pending requests only after approval.
+
+### Step 5: Level 4 Learning
+
+- Store confirmed topic/capability aliases.
+- Add review/expiry and tenant/workspace scoping.
+- Prove learned aliases cannot bypass Product Truth.
+
+### Step 6: Level 5 Handoff
+
+- Convert approved requests into code-agent task packages.
+- Require tests, docs, no-go constraints, rollback notes, and human approval.
+
+## No-Go Rules
+
+Do not:
+
+- call Level 1 fallback "capability-aware InfoHelp";
+- answer business capability questions with only `/menu`;
+- let LLM invent Product Truth;
+- create side effects from informational questions;
+- store unsupported requests without confirmation;
+- learn raw sensitive transcripts as aliases;
+- allow learned aliases to create canonical actions;
+- expose internal debug data to users;
+- bypass active FSM ownership;
+- trigger AI calls for unauthorized users.

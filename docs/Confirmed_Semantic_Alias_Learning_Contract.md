@@ -2,6 +2,10 @@
 
 **Document role:** reusable AI-memory contract for storing user-confirmed semantic aliases that improve future bounded lookup/resolution without letting AI or STT mutate business data autonomously.
 
+This document is the focused runtime contract for currently implemented
+confirmed semantic aliases. The broader future self-learning policy is defined
+in `docs/Self_Learning_Layer.md`.
+
 This contract applies first to FakturaBot invoice customer lookup, where an extracted customer candidate such as `Real-Time Technologies` may be confirmed as an alias for an existing local contact such as `REALTIME TECHNOLOGIES SK, s.r.o.`.
 
 Current implemented domains:

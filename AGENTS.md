@@ -1,226 +1,469 @@
-﻿# AGENTS.md
+# AGENTS.md
 
-## Призначення
+## Mission
 
-Цей репозиторій використовується для розробки практичних Telegram-ботів під задачі малого бізнесу.
+This repository is the working base for **OfficeFlow / FakturaBot**.
 
-Перший основний кейс: **FakturaBot**.
+OfficeFlow/FakturaBot is not a Telegram command bot with menus. It is an
+AI-assisted business operating layer for craftspeople, živnostníci, small
+s.r.o. companies, accountants, and people who run real business workflows.
 
-## Головне правило
+The current runtime surface is Telegram, but Telegram is only the interface.
+The product direction is a business assistant that understands natural
+language, guides users through business processes, stays honest about product
+capabilities, learns only from confirmed signals, and keeps all side effects
+behind deterministic Python gates.
 
-Не вигадувати стан проєкту.
+The north-star product doctrine is documented in:
 
-Якщо чогось немає в коді, документації або журналі проєкту — вважати, що цього ще не існує.
+- `docs/Product_Doctrine_2030.md`
 
-## Джерела істини
+Agents must treat that document as mission and product-direction context, not
+as proof that every described future capability is already implemented.
 
-Пріоритет джерел істини:
+## Non-Negotiable Rule
 
-1. `docs/TZ_FakturaBot.md`
+Do not invent project state.
+
+If a capability is not proven by current code, product docs, contract docs, or
+`PROJECT_LOG.md`, treat it as not implemented. If the documents describe a
+future target but runtime code does not implement it, report it as `planned` or
+`partial`, not `supported`.
+
+Static fallback text, a menu reply, a placeholder handler, or a deterministic
+repair patch is not a completed AI product layer.
+
+## Current Product Baseline
+
+The current project is a Python/aiogram Telegram runtime with SQLite, OpenAI
+STT/LLM/LMM boundaries, invoice PDF generation, supplier profiles, contacts,
+service aliases, accounting document intake, access control, FSM flows,
+bounded semantic routing, DecisionResolver, and partial self-learning for
+confirmed invoice/contact/service aliases.
+
+The project already has **controlled tenant-scoped multi-user runtime**:
+
+- one shared Telegram bot token, backend, and SQLite database in the current
+  controlled rollout model;
+- authorization/allowlist/admin approval before business flows;
+- tenant/workspace scoping through fields such as `telegram_id`,
+  `supplier_telegram_id`, and accounting workspace keys;
+- tenant-scoped invoice numbering/storage paths where implemented;
+- accounting document storage scoped under workspace/year/month structures.
+
+The project does **not** yet have full commercial SaaS runtime unless later
+docs/code explicitly say so:
+
+- no public self-serve signup;
+- no billing/subscription system;
+- no per-client Telegram bot token orchestration;
+- no per-client VPS/container/DB provisioning flow;
+- no full role/workspace administration system;
+- no broad account-specific adaptive workflow engine.
+
+Agents must preserve the current tenant-scoped isolation model and must not
+describe the product as either single-user-only or full SaaS.
+
+## Sources Of Truth
+
+Use different sources for different kinds of truth.
+
+Product mission and direction:
+
+1. `docs/Product_Doctrine_2030.md`
+2. `docs/TZ_FakturaBot.md`
+
+Current implementation and decision truth:
+
+1. current code
 2. `PROJECT_LOG.md`
-3. поточний код репозиторію
-4. `CHANGELOG.md`
+3. `docs/TZ_FakturaBot.md`
+4. focused contract docs
+5. `CHANGELOG.md`
 
-Якщо між ними є конфлікт:
-- спочатку звіряти ТЗ,
-- потім журнал рішень,
-- потім уже робити висновки.
+Agent conduct and repository workflow:
 
-Спеціалізовані contract scopes мають додаткові джерела, які треба читати перед змінами у відповідній зоні:
+1. `AGENTS.md`
+2. focused contract docs
+3. `PROJECT_LOG.md`
 
-### LLM / action / FSM / semantic routing
+If product doctrine and runtime code differ, do not claim the doctrine as
+implemented. Classify the capability as `planned`, `partial`, `unsupported`, or
+`unknown` according to evidence.
 
+If `docs/TZ_FakturaBot.md`, `PROJECT_LOG.md`, and code disagree, inspect the
+code and log first, then state the conflict explicitly before changing
+behavior.
+
+`docs/archive/` is historical context only. Do not use archived documents as
+active source of truth, mandatory pre-read material, or proof that a capability
+is current. If an archived document is useful for background, verify every
+claim against active docs, code, and `PROJECT_LOG.md`.
+
+## Mandatory Contract Reads
+
+Before changing handlers, FSM flows, top-level actions, in-action decisions,
+confirmation flows, LLM prompts, document intake, attachment routing,
+voice/text routing, user access, storage, DB schema, or authorization, read the
+relevant contract docs first.
+
+For any AI-layer or user-facing intelligence task, read:
+
+- `docs/Product_Doctrine_2030.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Product_Truth_Registry_MVP_Design.md`
+- `docs/Self_Learning_Layer.md`
+- `docs/Evaluation_and_Smoke_Test_Standards.md`
+- `docs/Product_UX_Eval_Artifacts.md`
+- `docs/TZ_FakturaBot.md`
 - `docs/FakturaBot_LLM_Orchestrator_Contract.md`
 - `docs/llm/Canonical_Action_Registry.md`
 - `docs/llm/In_Action_Response_Registry.md`
 - `docs/llm/New_Action_Design_Checklist.md`
 - `docs/llm/Bounded_Resolver_Prompt_Template.md`
 
-### Confirmation-like decisions
+For InfoHelp/support/capability guidance tasks, also read:
+
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Customization_Request_Layer.md`
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`
+
+For code-agent handoff, customization implementation planning, or
+agent-generated implementation proposals, also read:
+
+- `docs/Customization_Request_Layer.md`
+- `docs/Code_Agent_Handoff_Contract.md`
+- `docs/Implementation_Agent_Checklist.md`
+- `docs/Evaluation_and_Smoke_Test_Standards.md`
+- `docs/FakturaBot_Data_Migration_Runbook.md` when persisted data can be
+  touched
+- `docs/FakturaBot_PDF_Layout_Spec.md` when invoice/PDF layout can be touched
+
+For confirmation-like decisions, read:
 
 - `docs/Canonical_Decision_Resolver_Contract.md`
 
-### OfficeFlow / Document Intake
+For OfficeFlow / accounting / document intake / idle attachments, read:
 
 - `docs/OfficeFlow_Architecture_Framing.md`
 - `docs/OfficeFlow_Storage_Model_Proposal.md`
 - `docs/Document_Intake_Module_Proposal.md`
 - `docs/Document_Intake_MVP_Implementation_Plan.md`
 
-### User access / onboarding / authorization
+For user access, onboarding, and authorization, read:
 
 - `docs/User_Access_Model_Roadmap.md`
 
-## Mandatory pre-work contract-read step
-
-Перед змінами в handlers, FSM flows, top-level actions, in-action decisions, confirmation flows, LLM prompts, document intake, attachment router, voice/text routing, user access або authorization агент повинен спочатку прочитати релевантні contract docs.
-
-У відповіді або робочому підсумку перед зміною треба явно зафіксувати:
-- contracts read;
-- constraints extracted;
-- whether the change touches confirmation, routing, LLM, FSM, storage, DB, or access.
-
-If the agent did not list contracts read and extracted constraints, the task is not ready for implementation.
-
-Якщо зміна торкається кількох scopes, читати всі відповідні contracts. Не покладатися лише на назву файлу або стару пам’ять про архітектуру.
-
-## Canonical top-level action completion gate
-
-Новий canonical top-level action не вважається `implemented`, доки не виконано весь runtime + docs + tests контур:
-
-- action зареєстрований у `docs/llm/Canonical_Action_Registry.md`;
-- Python має власника виконання: handler/FSM/service route;
-- top-level resolver отримує action тільки через Python-provided `allowed_actions`;
-- `action_hints`, якщо потрібні, описують semantic meaning, а не literal alias whitelist;
-- text/command route працює або явно не застосовується;
-- voice reachability працює і має тести, або є явна documented причина, чому voice для цього action не застосовується;
-- active FSM states не падають назад у top-level routing;
-- in-FSM controls/confirmations документовані в `docs/llm/In_Action_Response_Registry.md`;
-- exact-value steps, де голос небезпечний, лишаються text/file-only;
-- README architecture tree оновлений для user-facing top-level/subflow карти;
-- `PROJECT_LOG.md` і `CHANGELOG.md` оновлені.
-
-Voice rule:
-- voice може запускати top-level actions і вибирати bounded actions/fields/options у FSM;
-- voice не повинен заповнювати precision-sensitive exact values: IBAN, IČO, DIČ, IČ DPH, email, invoice number, item numeric values, prices, quantities, final item descriptions, service alias names, or exact destructive confirmations.
-
-## Server-side operational context
-
-Для будь-яких дій на сервері FakturaBot спочатку перевіряти приватний локальний файл:
+For server-side operations, first check the private local runbook:
 
 - `docs/local-only/FakturaBot_Server_Agent_Context.md`
 
-Цей файл не призначений для публічного індексу Git і може бути проігнорований `.gitignore`.
+Never use `docs/local-only/*.example.md` as the live server runbook. Example
+files are public-safe placeholders only.
 
-Не використовувати `docs/local-only/*.example.md` як робочий server runbook.
-Файли `*.example.md` у `docs/local-only/` — це лише безпечні публічні заглушки / шаблони без реальних серверних даних.
+## Agent Preflight
 
-## Як працювати зі змінами
+Before implementation, the agent must state or record:
 
-Будь-яка суттєва зміна повинна:
-- або відповідати чинному ТЗ,
-- або супроводжуватись оновленням ТЗ,
-- або бути явно зафіксована в `PROJECT_LOG.md`.
+- docs/contracts read;
+- constraints extracted;
+- touched scopes: confirmation, routing, LLM, STT, LMM, FSM, storage, DB,
+  access, server, PDF/layout, product docs;
+- current implementation status: `implemented`, `partial`, `planned`,
+  `unsupported`, `unknown`, `dangerous`, `requires_setup`, `requires_admin`, or
+  `requires_external_credentials`;
+- AI maturity level being implemented;
+- what is explicitly out of scope;
+- what product/user journey proves the change works;
+- what self-learning hooks were considered;
+- what source of truth backs every user-facing product claim.
 
-Не робити прихованих концептуальних змін.
+If these points are not known, the task is not ready for implementation.
 
-Before making file changes, the agent must present a concise action plan and wait for the user's approval. Read-only investigation can be done without approval. If the user explicitly requests a narrow file edit, that request counts as approval for that scoped edit only.
+## Approval Discipline
 
-Агент повинен питати дозвіл лише перед важливими змінами, зміною концепції, ризиковими діями або видаленням файлів / логіки.
-Не засипати користувача постійними погодженнями для дрібних, очевидних або безпечних змін.
+Do not bother the user with secondary confirmations for routine work.
 
-## Read-only і Sandbox
+Read-only work inside the repo never requires permission:
 
-Read-only дії в межах репозиторію не потребують окремого дозволу користувача:
-- читання файлів;
-- пошук по коду або документації;
-- перегляд `git status`, `git diff`, `git log`, `git branch`;
-- інші команди, які не змінюють файли, git history, runtime state або зовнішні сервіси.
+- reading files;
+- searching code/docs;
+- `git status`, `git diff`, `git log`, `git branch`;
+- other commands that do not modify files, git history, runtime state,
+  database/storage, server state, or external services.
 
-The agent must not ask for permission before running read-only commands. If a command does not modify files, git history, runtime state, DB/storage, or external services, run it directly without a separate approval request.
+If the user explicitly asks for a scoped edit, that request counts as approval
+for that scoped edit.
 
-Якщо read-only команда падає через sandbox / environment setup, агент не повинен перетворювати це на цикл погоджень.
-Правильна поведінка:
-- повторити або спростити read-only команду, якщо це має сенс;
-- використати уже доступний контекст;
-- коротко зафіксувати технічне обмеження, якщо частину даних неможливо прочитати;
-- продовжити роботу без запиту дозволу, якщо задача все ще може бути виконана коректно.
+Ask for explicit approval only before:
 
-Запит дозволу потрібен для:
-- запису за межами дозволеної робочої директорії;
-- network / server дій;
-- встановлення залежностей;
-- commit / merge / push, якщо користувач прямо цього не просив;
-- destructive або risky дій;
-- runtime / DB / storage змін, якщо вони не були явно замовлені.
+- major concept/scope changes not already requested;
+- destructive actions;
+- server/network actions;
+- dependency installation;
+- DB/storage/runtime writes not explicitly requested;
+- migration-sensitive changes;
+- commit, merge, rebase, or push unless directly requested;
+- edits outside the approved workspace.
 
-## Data migration / persisted data safety
+Do not turn sandbox limitations or read-only command failures into repeated
+approval loops. Simplify the read-only command, use available context, record
+the limitation briefly, and continue when the task can still be done correctly.
 
-Будь-яка зміна, яка може вплинути на вже збережені дані, повинна вважатись migration-sensitive change.
+## AI Architecture Contract
 
-Persisted data includes:
-- SQLite / майбутні PostgreSQL або інші DB rows;
-- invoice `pdf_path` values and generated PDF files;
-- storage folders, file names, and path conventions;
-- accounting document originals and metadata JSON sidecars;
-- tenant / workspace keys;
-- `telegram_id` / `supplier_telegram_id` scoping;
-- JSON metadata schemas;
-- backup, archive, cleanup, and deletion routines.
+The authority split is mandatory:
 
-Before implementing a migration-sensitive change, the agent must not proceed directly to code or server writes.
+- Python orchestrates.
+- AI extracts, canonicalizes, explains, or drafts within Python-provided bounds.
+- Python validates.
+- User confirms where needed.
+- Python saves or executes.
 
-Required pre-work:
-1. identify existing persisted data affected by the change;
-2. describe the current data shape and the proposed new shape;
-3. state whether a migration or repair is required;
-4. provide a read-only audit plan;
-5. provide a backup and rollback plan for server-side data;
-6. provide a dry-run migration / repair plan where practical;
-7. ask the user for explicit approval before any write, migration, cleanup, delete, or persisted path rewrite;
-8. record the decision in `PROJECT_LOG.md`;
-9. update `docs/TZ_FakturaBot.md` or a dedicated migration / runbook doc if runtime behavior, data ownership, or storage architecture changes.
+LLM/LMM/STT must not:
 
-Forbidden:
-- silently changing DB / storage semantics without migration notes;
-- relying on cross-tenant fallback reads instead of migration;
-- rewriting persisted paths without backup;
-- deleting legacy data because new code no longer reads it;
-- treating local/dev machine absolute paths as canonical server paths;
-- changing DB engine, schema, tenant scoping, or storage layout just because it seems technically cleaner.
+- invent canonical actions;
+- execute side effects;
+- bypass registries;
+- query or mutate DB/storage directly;
+- claim unsupported product capabilities;
+- turn `unknown` into action execution;
+- replace deterministic safety gates.
 
-## Test commands
+Python must provide allowed actions/options/candidates. The model may select
+only from those bounds or return `unknown`.
 
-For this repository, run tests with `python -m pytest -q` from `D:\AI_Model\Ai_assistant`.
-Avoid bare `pytest -q` because it may not include the project root on `sys.path` and can fail to import `bot`.
+## AI Layer Maturity Model
 
-## Формат результату
+Every AI-layer change must declare the maturity level it actually implements.
 
-Після виконання запиту на зміни в проєкті агент повинен за замовчуванням повертати результат у форматі:
-1. Короткий summary, що саме змінено.
-2. Unified diff.
-3. Без зайвих покращень поза цими пунктами.
+Level 0 - placeholder/fallback:
 
-Якщо користувач явно задав інший формат відповіді, треба дотримуватись формату користувача.
+- static "I do not understand" or `/menu`;
+- no product truth lookup;
+- no domain understanding;
+- no request capture.
 
-## Як працювати з AI-функціональністю
+Level 1 - static guidance:
 
-AI не повинен трактуватись як автономний виконавець.
+- deterministic help text or fallback hints;
+- useful recovery copy;
+- no capability-aware product truth.
 
-Правильна модель:
-- Python orchestrates
-- AI extracts / drafts
-- Python validates
-- user confirms
-- system saves
+Level 2 - capability-aware Q&A:
 
-Це правило особливо обов’язкове для:
-- invoice draft
-- contract customer extraction
-- будь-яких реквізитів контрагентів
-- email / PDF сценаріїв
+- understands arbitrary capability/how-to/support questions;
+- checks a Product Truth source;
+- answers `supported`, `partial`, `planned`, `unsupported`, or `unknown`;
+- proposes a safe next step.
 
-## Canonical DecisionResolver rule
+Level 3 - customization request creation:
 
-Усі confirmation-like replies повинні проходити через `bot/services/decision_resolver.py`.
+- detects unsupported or account-specific business needs;
+- drafts a structured request;
+- asks confirmation;
+- saves a pending request only after approval.
 
-Не додавати локальні парсери для:
-- `ano` / `nie`
-- `ok` / `tak`
-- `schvalit` / `upravit` / `zrusit`
-- Slovak diacritics variants
-- Cyrillic або multilingual variants
+Level 4 - controlled self-learning:
 
-Кожен новий confirmation-like flow повинен:
-- вибрати decision family: `yes_no` або `approve_edit_cancel`;
-- зареєструвати `context_name` у `tests/test_decision_resolver.py`;
-- додати handler-level tests, які доводять використання shared resolver, а не локального parser/branching.
+- stores confirmed aliases/topic mappings/patterns;
+- scoped, reviewable, bounded, and non-destructive;
+- never bypasses canonical registries.
 
-Це правило обов’язкове для invoice preview/post-PDF, contact confirmation, onboarding confirmation, accounting document preview, duplicate confirmation, delete/cancel flows та будь-яких майбутніх OfficeFlow confirmations.
+Level 5 - code-agent handoff:
 
-## User access / security boundary
+- converts confirmed requests into implementation tasks;
+- includes files/contracts/tests/no-go constraints;
+- requires human approval before merge/deploy.
 
-Unknown або unauthorized Telegram users must not create:
+Level 6 - evaluated autonomous implementation proposal:
+
+- prepares patch/module proposal, test plan, rollback notes, and evaluation
+  results;
+- still requires deterministic tests and human approval.
+
+Level 7 - account-specific adaptive workflow layer:
+
+- adapts workflows per workspace/account based on confirmed preferences,
+  setup state, and approved patterns;
+- remains bounded by Product Truth and deterministic gates.
+
+A phase is not complete unless runtime, docs, tests, product UX evals, and
+acceptance criteria match the declared level.
+
+## Product Truth Layer Rules
+
+User-facing AI must answer real business questions, not hide behind `/menu`.
+The detailed Product Truth contract is `docs/Product_Truth_Layer.md`.
+
+When a user asks whether the bot can do something, the bot must eventually be
+able to:
+
+1. understand the question;
+2. check Product Truth;
+3. classify the capability as `supported`, `partial`, `planned`,
+   `unsupported`, `unknown`, `dangerous`, `requires_setup`, `requires_admin`,
+   or `requires_external_credentials`;
+4. explain the current limitation honestly;
+5. offer a safe next step;
+6. offer a customization request when appropriate.
+
+Product Truth must include:
+
+- runtime-supported capabilities;
+- partial capabilities;
+- planned capabilities;
+- unsupported capabilities;
+- dangerous/sensitive operations;
+- current limitations;
+- commands/actions;
+- forbidden claims;
+- account/workspace setup state.
+
+LLM output is never Product Truth. It may only verbalize truth prepared or
+validated by Python.
+
+## Customization Request Layer
+
+Unsupported or account-specific requests must not end in a blind
+`nerozumiem`.
+The detailed request contract is `docs/Customization_Request_Layer.md`.
+
+Future customization requests must use a structured object with at least:
+
+- `request_id`;
+- `user_id` / `workspace_id`;
+- `original_user_text`;
+- `normalized_business_need`;
+- `detected_domain`;
+- `capability_status`;
+- `proposed_task_title`;
+- `proposed_description`;
+- `proposed_acceptance_criteria`;
+- `required_user_inputs`;
+- `risk_level`;
+- `requires_human_approval`;
+- `status`;
+- `created_at` / `updated_at`.
+
+The bot must not promise that unsupported features are already available. It
+may draft a request, ask for confirmation, and save a pending request after
+approval.
+
+## Self-Learning Layer
+
+Controlled learning is expected for semantic layers, but it must be safe.
+The detailed umbrella contract is `docs/Self_Learning_Layer.md`.
+
+Valid learning candidates include:
+
+- action aliases;
+- InfoHelp topic aliases;
+- capability question phrasings;
+- contact/customer aliases;
+- service aliases;
+- document classification hints;
+- recurring customization patterns.
+
+Learning rules:
+
+- learn only after successful resolution or explicit user confirmation;
+- never learn destructive confirmations;
+- never invent canonical actions;
+- never bypass the canonical action registry;
+- store scoped aliases/patterns, not raw sensitive full transcripts;
+- separate intent from slots;
+- variable commands must be patterns, not literal aliases;
+- limit count, allow review, and support expiry/cleanup where practical.
+
+Current implemented learning is partial. Do not generalize it beyond what code
+and docs prove.
+
+## State-Aware Runtime Explanation
+
+When a user is inside an FSM flow, that state owns the conversation.
+
+The bot should explain:
+
+- what is happening now;
+- what input is expected;
+- what format is required;
+- why the previous input failed;
+- how to cancel safely.
+
+Active FSM state must not fall back into top-level routing, idle attachment
+classification, or generic InfoHelp unless the flow explicitly allows it.
+
+## Canonical Action Completion Gate
+
+A new canonical top-level action is not `implemented` until the full runtime,
+docs, and tests loop is complete:
+
+- action registered in `docs/llm/Canonical_Action_Registry.md`;
+- Python execution owner exists: handler/FSM/service route;
+- top-level resolver receives action only through Python-provided
+  `allowed_actions`;
+- `action_hints`, if used, describe semantic meaning, not a literal alias
+  whitelist;
+- text/command route works or is explicitly not applicable;
+- voice reachability works and has tests, or a documented reason says voice is
+  not applicable;
+- active FSM states do not fall back into top-level routing;
+- in-FSM controls/confirmations are documented in
+  `docs/llm/In_Action_Response_Registry.md`;
+- precision-sensitive exact-value steps stay text/file-only where needed;
+- README/user-facing architecture docs are updated when the action changes the
+  surface map;
+- `PROJECT_LOG.md` and `CHANGELOG.md` are updated when required;
+- product UX evals prove the actual user journey, not just unit branches.
+
+## Voice Rules
+
+Voice may:
+
+- start top-level actions;
+- choose bounded actions/fields/options in FSM;
+- provide non-precision natural language where the flow supports it.
+
+Voice must not fill precision-sensitive exact values unless a specific
+documented flow safely normalizes and validates them:
+
+- IBAN;
+- IČO;
+- DIČ;
+- IČ DPH;
+- email;
+- invoice number;
+- item numeric values, prices, quantities;
+- final item descriptions;
+- service alias names;
+- exact destructive confirmations.
+
+## Canonical DecisionResolver Rule
+
+All confirmation-like replies must go through:
+
+- `bot/services/decision_resolver.py`
+
+Do not add local parsers for:
+
+- `ano` / `nie`;
+- `ok` / `tak`;
+- `schvalit` / `upravit` / `zrusit`;
+- Slovak diacritics variants;
+- Cyrillic or multilingual confirmation variants.
+
+Every new confirmation-like flow must:
+
+- choose the decision family: `yes_no` or `approve_edit_cancel`;
+- register the context in resolver tests;
+- add handler-level tests proving shared resolver usage, not local branching.
+
+## Access And Security Boundary
+
+Unknown or unauthorized Telegram users must not create:
+
 - supplier profiles;
 - contacts;
 - invoices;
@@ -231,55 +474,169 @@ Unknown або unauthorized Telegram users must not create:
 - tenant storage directories;
 - workspaces.
 
-Unknown або unauthorized Telegram users must not trigger:
+Unknown or unauthorized users must not trigger:
+
 - LLM calls;
 - STT calls;
-- LMM / Vision calls;
+- LMM/Vision calls;
 - document classification/extraction calls.
 
-Pending access requests are not tenants, not supplier profiles, and not business onboarding. Approval is required before `/supplier` and before any business flow.
+Pending access requests are not tenants, not supplier profiles, and not
+business onboarding. Approval is required before `/supplier` and before any
+business flow.
 
-Phase 1 controlled dry run uses one shared Telegram bot token, one backend, one SQLite DB, and allowlisted Telegram IDs. Per-client Telegram bot tokens / VPS / container / DB / API-key deployment is future commercial / installation-as-a-service only unless `docs/TZ_FakturaBot.md` and `PROJECT_LOG.md` explicitly say otherwise.
+## OfficeFlow Attachment And Document Intake Boundary
 
-## OfficeFlow attachment / document intake boundary
+Idle photo/PDF classification may happen only after authorization.
 
-Idle photo/PDF classification must only happen after authorization.
+Active FSM state wins over idle classifier. If the user is in an active FSM
+flow, attachment routing must respect that state before any idle OfficeFlow
+classifier.
 
-Active FSM state wins over idle classifier. Якщо користувач перебуває в active FSM flow, attachment routing must respect that state before any idle OfficeFlow classifier.
+No automatic contact creation from receipts, incoming invoices, PDFs, photos,
+or idle attachments.
 
-No automatic contact creation from receipts, incoming invoices, PDFs, photos, or idle attachments.
+No automatic expense/accounting document save before user approval. AI/LMM may
+extract or draft; Python validates; user confirms; only then Python saves.
 
-No automatic expense/accounting document save before user approval. AI/LMM may extract or draft; Python validates; user confirms; only then system saves.
+## Data Migration And Persisted Data Safety
 
-## Як працювати з документами
+Any change that can affect already-saved data is migration-sensitive.
 
-Після кожної змістовної сесії треба оновлювати `PROJECT_LOG.md`.
+Persisted data includes:
 
-Якщо зміни впливають на продуктову логіку, MVP або архітектуру — треба оновити і ТЗ.
+- SQLite or future DB rows;
+- invoice `pdf_path` values and generated PDF files;
+- storage folders, file names, and path conventions;
+- accounting document originals and metadata JSON sidecars;
+- tenant/workspace keys;
+- `telegram_id` / `supplier_telegram_id` scoping;
+- JSON metadata schemas;
+- backup, archive, cleanup, and deletion routines.
 
-## Що вважати завершеним завданням
+Before migration-sensitive implementation, do not proceed directly to code or
+server writes.
 
-Завдання не вважається завершеним, якщо:
-- змінено код, але не зафіксовано важливе рішення;
-- змінено концепцію, але не оновлено ТЗ;
-- зроблено новий flow, але його немає в документації;
-- змінено MVP scope, але це ніде не записано.
+Required pre-work:
 
-## Стиль роботи
+1. identify existing persisted data affected by the change;
+2. describe current shape and proposed shape;
+3. state whether migration or repair is required;
+4. provide a read-only audit plan;
+5. provide backup and rollback plan for server-side data;
+6. provide dry-run migration/repair plan where practical;
+7. ask explicit approval before any write, migration, cleanup, delete, or path
+   rewrite;
+8. record the decision in `PROJECT_LOG.md`;
+9. update `docs/TZ_FakturaBot.md` or a dedicated migration/runbook doc if
+   runtime behavior, data ownership, or storage architecture changes.
 
-Перевага надається:
-- простим рішенням,
-- мінімальній залежності від зовнішніх сервісів,
-- стабільності,
-- прозорій логіці,
-- валідації після AI,
-- локальному збереженню перевірених даних.
+Forbidden:
 
-## Що не робити без окремого рішення
+- silently changing DB/storage semantics;
+- relying on cross-tenant fallback reads instead of migration;
+- rewriting persisted paths without backup;
+- deleting legacy data because new code no longer reads it;
+- treating local/dev absolute paths as canonical server paths;
+- changing DB engine, schema, tenant scoping, or storage layout because it
+  seems cleaner.
 
-Не додавати самостійно:
-- multi-tenant SaaS логіку
-- зовнішній lookup контрагентів як критичну залежність
-- автоматичне збереження AI-результатів без підтвердження
-- складну рольову систему
-- нові модулі, які роздувають MVP
+## Evaluation Standards
+
+AI/product changes require more than unit tests.
+The detailed evaluation contract is
+`docs/Evaluation_and_Smoke_Test_Standards.md`.
+
+Use focused unit tests for code behavior and product UX evals/smoke tests for
+real journeys, including:
+
+- first `/start` journey;
+- `/menu` clarity;
+- arbitrary capability questions;
+- unknown plausible business request;
+- active FSM confusion;
+- destructive action safety;
+- unsupported feature honesty;
+- customization request confirmation;
+- no hidden side effects;
+- no fake support claims;
+- voice and text parity where promised;
+- tenant/access isolation where data is touched.
+
+Do not mark a phase complete if only primitive fallback behavior is present.
+
+## Test Commands
+
+Run tests from `D:\AI_Model\Ai_assistant`.
+
+Use:
+
+```powershell
+python -m pytest -q
+```
+
+Avoid bare `pytest -q`; it may not include the project root on `sys.path` and
+can fail to import `bot`.
+
+## Documentation And Project Log
+
+After every meaningful session, update `PROJECT_LOG.md`.
+
+If a change affects product logic, MVP scope, architecture, capability truth,
+or user-facing behavior, update `docs/TZ_FakturaBot.md` or the relevant
+contract doc.
+
+No hidden conceptual changes.
+
+Documentation must distinguish:
+
+- runtime-supported;
+- partial;
+- planned;
+- unsupported;
+- unknown;
+- dangerous;
+- requires setup/admin/external credentials.
+
+## Result Format
+
+After project changes, default to:
+
+1. short summary of what changed;
+2. unified diff;
+3. no unrelated improvements.
+
+If the user asks for another format, follow the user's format.
+
+## What Not To Do
+
+Do not:
+
+- reduce OfficeFlow/FakturaBot to a command menu bot;
+- answer capability questions with only `/menu`;
+- call Level 0/1 fallback a completed AI layer;
+- hide unsupported capabilities behind vague wording;
+- invent features, integrations, or setup state;
+- bypass Product Truth;
+- add handler-local confirmation parsers;
+- auto-save AI/LMM results without confirmation;
+- trigger AI calls for unauthorized users;
+- expand controlled tenant-scoped runtime into full SaaS without explicit
+  product decision and docs update;
+- add billing, public signup, per-client bot token orchestration, or complex
+  role/workspace admin flows without explicit scope decision;
+- add external lookup as a critical dependency without product and failure-mode
+  approval;
+- add modules that expand scope without acceptance criteria and evaluation.
+
+## Definition Of Done
+
+A task is not done if:
+
+- code changed but the decision was not logged;
+- concept changed but product docs were not updated;
+- a new flow exists but docs/contracts do not mention it;
+- MVP scope changed but no source-of-truth doc records it;
+- AI layer level is overstated;
+- only unit tests pass but the relevant user journey is not evaluated;
+- user-facing copy claims capabilities the runtime cannot prove.

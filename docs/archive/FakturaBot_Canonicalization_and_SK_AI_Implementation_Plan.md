@@ -222,4 +222,4 @@ Reason: Phase 1 reduces operational risk immediately and creates deterministic s
 
 ## 7) Suggested spec document path in repo
 
-`docs/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md`
+`docs/archive/FakturaBot_Canonicalization_and_SK_AI_Implementation_Plan.md`
