@@ -369,6 +369,32 @@ def test_invoice_create_not_misrouted_to_add_contact_when_company_mentioned() ->
     ) == 'create_invoice'
 
 
+def test_top_level_edit_existing_invoice_short_reference_beats_create_invoice() -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'edit_existing_invoice', 'edit_invoice', 'unknown'],
+            user_input_text='Uprav faktúru 15',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'edit_existing_invoice'
+
+
+def test_pdf_template_question_does_not_resolve_to_invoice_edit_action() -> None:
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'edit_existing_invoice', 'edit_invoice', 'unknown'],
+            user_input_text='Môžem si upraviť PDF šablónu?',
+            api_key=None,
+            model='gpt-4o',
+        )
+    )
+
+    assert result == 'unknown'
+
+
 def test_process_invoice_text_routes_add_service_alias_to_existing_service_flow(tmp_path: Path, monkeypatch) -> None:
     message = _DummyMessage('pridaj novú službu')
     state = _DummyState()
@@ -1243,6 +1269,49 @@ def test_delete_database_question_uses_safety_guidance_not_delete_flow(tmp_path:
     assert state.current_state is None
     assert 'Vymazanie používateľskej databázy' in message.answers[-1]
     assert 'citliv' in message.answers[-1]
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected_title', 'expected_status_fragment'),
+    [
+        ('Vieš exportovať podklady pre účtovníctvo?', 'Export do účtovníctva', 'nepodporovan'),
+        ('Môžem si upraviť PDF šablónu?', 'Vlastná PDF šablóna faktúry', 'nepodporovan'),
+        ('Chcem vlastnú funkciu', 'Požiadavky na úpravu', 'nepodporovan'),
+        ('Vieš odovzdať úlohu code agentovi?', 'Odovzdanie úlohy kódovaciemu agentovi', 'nepodporovan'),
+        ('Ako vymažem databázu?', 'Vymazanie používateľskej databázy', 'citliv'),
+    ],
+)
+def test_product_ux_info_help_smoke_phrases_do_not_execute_actions(
+    tmp_path: Path,
+    monkeypatch,
+    user_input: str,
+    expected_title: str,
+    expected_status_fragment: str,
+) -> None:
+    unexpected_calls: list[str] = []
+
+    async def _unexpected_start_edit(**kwargs):
+        unexpected_calls.append('edit_existing_invoice')
+
+    async def _unexpected_delete_database(**kwargs):
+        unexpected_calls.append('delete_user_database')
+
+    monkeypatch.setattr('bot.handlers.invoice.start_invoice_edit_flow', _unexpected_start_edit)
+    monkeypatch.setattr('bot.handlers.invoice.start_delete_user_database_flow', _unexpected_delete_database)
+
+    message = _DummyMessage(user_input)
+    state = _DummyState()
+    config = _config(tmp_path)
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=user_input))
+
+    assert unexpected_calls == []
+    assert state.cleared is True
+    assert state.current_state is None
+    assert expected_title in message.answers[-1]
+    assert expected_status_fragment in message.answers[-1]
+    assert 'Bot nie je nakonfigurovan' not in message.answers[-1]
+    assert not config.db_path.exists()
 
 
 def test_direct_invoice_creation_text_still_routes_to_invoice_flow(tmp_path: Path) -> None:

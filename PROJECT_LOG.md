@@ -1,5 +1,92 @@
 # PROJECT_LOG
 
+## 2026-05-17 - Session 088 - Product UX InfoHelp smoke fix-only patch
+
+Summary:
+- Implemented the approved fix-only service patch for six failed Level 2
+  InfoHelp UX smoke phrases.
+- Extended conservative InfoHelp topic matching for accounting export
+  materials, PDF template customization, own/custom function requests,
+  code-agent handoff wording, and delete-database safety questions.
+- Tightened top-level edit intent fallback so persisted invoice editing
+  requires invoice-edit semantics and no longer captures PDF template
+  questions; `Uprav fakturu 15` resolves to existing `edit_existing_invoice`.
+- Added focused service and prerouter regression tests proving Product Truth
+  answers for the failed phrases and no invoice/edit/delete execution from
+  informational questions.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `bot/services/product_truth.py`
+- `bot/services/info_help.py`
+- `bot/services/semantic_action_resolver.py`
+- `bot/handlers/invoice.py`
+- `tests/test_info_help.py`
+- `tests/test_invoice_intent_prerouter.py`
+
+Constraints extracted:
+- Product Truth remains the source for capability status and user-facing
+  capability claims.
+- InfoHelp may classify only known topic/capability IDs and must not execute
+  actions.
+- No new canonical action names, LLM classifier, prompt changes, handler-local
+  business phrase dictionaries, DecisionResolver changes, or DB/storage/config
+  changes belong in this patch.
+- Direct destructive execution remains behind existing deterministic gates;
+  delete-user-database final typed confirmation is unchanged.
+
+Touched scopes:
+- InfoHelp service: yes, conservative topic-bound Product Truth matching.
+- Semantic action resolver: yes, narrowed top-level persisted-invoice edit
+  fallback.
+- Tests and project log: yes.
+- `invoice.py`, handlers, DecisionResolver, prompts, LLM/STT/LMM integration,
+  DB/storage/config, invoice/contact/accounting/supplier flows: unchanged.
+
+Current implementation status:
+- InfoHelp Level 2: partial, limited to controlled Product Truth topics.
+- Accounting export, custom PDF templates, customization request storage, and
+  code-agent handoff: unsupported runtime capabilities.
+- Delete user database: supported but dangerous and confirmation-gated.
+- Existing invoice edit: supported through `edit_existing_invoice`.
+
+AI maturity:
+- Level 2 partial. This patch fixes specific capability/safety smoke coverage
+  without broad free-form classification, learning, or customization storage.
+
+Out of scope:
+- Broad semantic guessing, new actions, new prompts, handler routing changes,
+  request persistence, code-agent execution, data migration, server changes,
+  and product scope expansion.
+
+Self-learning hooks considered:
+- None added. These smoke phrases are fixed through controlled Product Truth
+  topic matching, not learned aliases.
+
+Product/user journey proof:
+- Capability/safety questions receive Slovak Product Truth guidance with no
+  hidden invoice/edit/delete side effects.
+- Direct persisted invoice edit phrase still enters the existing bounded
+  `edit_existing_invoice` route.
+
+User-facing product claim sources:
+- `bot/services/product_truth.py`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- current runtime tests
+
+Verification:
+- `python -m pytest -q tests/test_product_truth.py tests/test_info_help.py tests/test_invoice_intent_prerouter.py` - 143 passed.
+- `python -m pytest -q` - 1031 passed.
+
 ## 2026-05-17 - Session 087 - InfoHelp Level 2 first Product Truth wiring
 
 Summary:

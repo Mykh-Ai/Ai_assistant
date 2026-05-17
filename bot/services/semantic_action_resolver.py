@@ -83,6 +83,34 @@ def _matches_top_level_show_invoice(tokens: set[str]) -> bool:
     return bool(tokens.intersection(show_verbs)) and bool(tokens.intersection(invoice_targets))
 
 
+def _matches_top_level_edit_existing_invoice(tokens: set[str]) -> bool:
+    edit_verbs = {
+        'uprav',
+        'upravit',
+        'oprav',
+        'opravit',
+        'zmen',
+        'zmenit',
+        'edit',
+        'change',
+        'correct',
+        '\u0440\u0435\u0434\u0430\u0433\u0443\u0432\u0430\u0442\u0438',
+        '\u0438\u0441\u043f\u0440\u0430\u0432\u044c',
+        '\u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c',
+        '\u0443\u043f\u0440\u0430\u0432\u0438\u0442\u044c',
+    }
+    invoice_targets = {
+        'fakturu',
+        'faktura',
+        'faktury',
+        'invoice',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0443',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0430',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u044b',
+    }
+    return bool(tokens.intersection(edit_verbs)) and bool(tokens.intersection(invoice_targets))
+
+
 _STT_ANO_ARTIFACTS = {
     'ah nao',
     'a nao',
@@ -291,13 +319,13 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'delete_user_database'
         if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'відправ', 'отправь'}):
             return 'send_invoice'
-        if 'edit_existing_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить', 'управить'}):
+        if 'edit_existing_invoice' in allowed and _matches_top_level_edit_existing_invoice(tokens):
             return 'edit_existing_invoice'
         if 'delete_existing_invoice' in allowed and _matches_top_level_delete_invoice(tokens):
             return 'delete_existing_invoice'
         if 'show_existing_invoice' in allowed and _matches_top_level_show_invoice(tokens):
             return 'show_existing_invoice'
-        if 'edit_invoice' in allowed and tokens.intersection({'upravit', 'редагувати', 'исправь', 'изменить'}):
+        if 'edit_invoice' in allowed and _matches_top_level_edit_existing_invoice(tokens):
             return 'edit_invoice'
         if 'create_invoice' in allowed and tokens.intersection(create_invoice_triggers):
             return 'create_invoice'

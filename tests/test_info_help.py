@@ -89,6 +89,67 @@ def test_delete_database_question_renders_safety_guidance() -> None:
     assert 'presnú napísanú frázu' in answer
 
 
+def test_accounting_export_smoke_phrase_renders_product_truth_guidance() -> None:
+    assert (
+        classify_info_help_capability(user_input_text='Vieš exportovať podklady pre účtovníctvo?')
+        == 'accounting_export'
+    )
+    answer = build_product_truth_guidance(user_input_text='Vieš exportovať podklady pre účtovníctvo?')
+
+    assert answer is not None
+    assert 'Export do účtovníctva' in answer
+    assert 'nepodporované' in answer
+    assert 'externé prístupy' in answer
+
+
+def test_custom_pdf_template_smoke_phrase_renders_product_truth_guidance() -> None:
+    assert (
+        classify_info_help_capability(user_input_text='Môžem si upraviť PDF šablónu?')
+        == 'invoice_pdf_custom_template'
+    )
+    answer = build_product_truth_guidance(user_input_text='Môžem si upraviť PDF šablónu?')
+
+    assert answer is not None
+    assert 'Vlastná PDF šablóna faktúry' in answer
+    assert 'nepodporované' in answer
+    assert 'nevytvorím uloženú požiadavku' in answer
+
+
+def test_custom_function_smoke_phrase_renders_product_truth_guidance() -> None:
+    assert classify_info_help_capability(user_input_text='Chcem vlastnú funkciu') == 'customization_requests'
+    answer = build_product_truth_guidance(user_input_text='Chcem vlastnú funkciu')
+
+    assert answer is not None
+    assert 'Požiadavky na úpravu' in answer
+    assert 'nepodporované' in answer
+    assert 'nevytvorím uloženú požiadavku' not in answer
+    assert 'požiadavku vytvoril alebo uložil' in answer
+
+
+def test_code_agent_handoff_smoke_phrase_renders_product_truth_guidance() -> None:
+    assert (
+        classify_info_help_capability(user_input_text='Vieš odovzdať úlohu code agentovi?')
+        == 'code_agent_handoff'
+    )
+    answer = build_product_truth_guidance(user_input_text='Vieš odovzdať úlohu code agentovi?')
+
+    assert answer is not None
+    assert 'Odovzdanie úlohy kódovaciemu agentovi' in answer
+    assert 'nepodporované' in answer
+    assert 'vyžaduje správcu' in answer
+    assert 'citlivá alebo deštruktívna' in answer
+
+
+def test_delete_database_smoke_phrase_renders_safety_guidance() -> None:
+    assert classify_info_help_capability(user_input_text='Ako vymažem databázu?') == 'delete_user_database'
+    answer = build_product_truth_guidance(user_input_text='Ako vymažem databázu?')
+
+    assert answer is not None
+    assert 'Vymazanie používateľskej databázy' in answer
+    assert 'podporované' in answer
+    assert 'citlivá alebo deštruktívna' in answer
+
+
 def test_ambiguous_direct_invoice_text_is_not_info_help() -> None:
     assert classify_info_help_capability(user_input_text='Vytvor faktúru pre ABC za opravu 100 eur') is None
 

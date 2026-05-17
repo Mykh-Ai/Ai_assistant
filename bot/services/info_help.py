@@ -322,7 +322,18 @@ def _mentions_google_drive(normalized: str, tokens: set[str]) -> bool:
 
 def _mentions_accounting_export(normalized: str, tokens: set[str]) -> bool:
     return bool(tokens.intersection({'export', 'exportovat', 'exportujete'})) and bool(
-        tokens.intersection({'uctovnictva', 'uctovny', 'uctovneho', 'accounting', 'pohoda', 'omega'})
+        tokens.intersection(
+            {
+                'uctovnictva',
+                'uctovnictvo',
+                'uctovny',
+                'uctovneho',
+                'podklady',
+                'accounting',
+                'pohoda',
+                'omega',
+            }
+        )
     )
 
 
@@ -330,19 +341,26 @@ def _mentions_custom_pdf_template(normalized: str, tokens: set[str]) -> bool:
     return (
         'pdf' in tokens
         and bool(tokens.intersection({'sablona', 'sablonu', 'template', 'vzor'}))
-        and bool(tokens.intersection({'stara', 'vlastna', 'custom', 'moja', 'moju', 'old'}))
+        and bool(
+            tokens.intersection(
+                {'stara', 'vlastna', 'vlastnu', 'custom', 'moja', 'moju', 'old', 'upravit', 'zmenit'}
+            )
+        )
     )
 
 
 def _mentions_customization_request(normalized: str, tokens: set[str]) -> bool:
-    return bool(tokens.intersection({'upravu', 'customizaciu', 'customization', 'poziadavku', 'poziadavka'})) and bool(
+    return bool(
+        tokens.intersection({'upravu', 'customizaciu', 'customization', 'poziadavku', 'poziadavka', 'vlastnu'})
+    ) and bool(
         tokens.intersection({'funkciu', 'feature', 'zmenu', 'request'})
     )
 
 
 def _mentions_code_agent_handoff(normalized: str, tokens: set[str]) -> bool:
+    mentions_code_agent = 'code' in tokens and any(token == 'agent' or token.startswith('agent') for token in tokens)
     return (
-        ('code' in tokens and 'agent' in tokens)
+        mentions_code_agent
         or ('kod' in tokens and 'agent' in tokens)
         or bool(tokens.intersection({'nasadit', 'deploy', 'merge'}))
     )
@@ -357,7 +375,7 @@ def _mentions_voice_limit(normalized: str, tokens: set[str]) -> bool:
 def _mentions_delete_database_safety(normalized: str, tokens: set[str]) -> bool:
     if not tokens.intersection({'databazu', 'database', 'udaje', 'ucet'}):
         return False
-    if not tokens.intersection({'vymazat', 'zmazat', 'delete', 'odstranit', 'zrusit'}):
+    if not tokens.intersection({'vymaz', 'vymazat', 'vymazem', 'zmaz', 'zmazat', 'zmazem', 'delete', 'odstranit', 'zrusit'}):
         return False
     return bool(tokens.intersection(_HELP_CUES)) or normalized.startswith('ako ')
 
