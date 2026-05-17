@@ -1,5 +1,74 @@
 # PROJECT_LOG
 
+## 2026-05-17 - Session 089 - Align InfoHelp Product Truth status
+
+Summary:
+- Updated the `info_help` Product Truth capability record so it matches the
+  current runtime after Sessions 087-088.
+- Classified current InfoHelp as partial: selected conservative Product
+  Truth-backed capability/safety topics plus Level 1 unknown-input guidance.
+- Removed the stale forbidden claim that live Product Truth InfoHelp does not
+  exist at all.
+- Kept explicit forbidden claims against overstatement: complete Level 2,
+  arbitrary capability Q&A, saved customization requests, and voice/STT parity.
+- Added a focused registry regression test for the `info_help` record.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `bot/services/product_truth.py`
+- `tests/test_product_truth.py`
+- `tests/test_info_help.py`
+- `tests/test_invoice_intent_prerouter.py`
+
+Constraints extracted:
+- Product Truth must not claim roadmap or future capability as implemented.
+- InfoHelp may be described only as a partial Level 2 foundation with
+  deterministic fast-path coverage for selected topics.
+- Full Level 2 still requires bounded InfoHelp resolver coverage, voice/STT
+  parity, multilingual/noisy tests, and account-context-aware runtime evidence.
+- Customization request storage and code-agent handoff remain unsupported.
+- No resolver, handler, phrase dictionary, prompt, LLM/STT/LMM, DB/storage,
+  access, server, or PDF/layout change belongs in this patch.
+
+Touched scopes:
+- Product Truth registry: yes, `info_help` capability metadata only.
+- Tests: yes, registry-level status regression.
+- Project log: yes.
+- Confirmation, routing, handlers, LLM, STT, LMM, FSM, storage, DB, access,
+  server, PDF/layout: unchanged.
+
+Current implementation status:
+- InfoHelp: partial.
+- AI maturity: Level 2 foundation only, not complete Level 2.
+- Customization requests: unsupported runtime storage.
+- Code-agent handoff: unsupported runtime behavior.
+
+Out of scope:
+- Bounded InfoHelp resolver implementation.
+- Broad arbitrary capability question support.
+- Phrase dictionaries or handler-local keyword matching.
+- Customization Request Layer storage.
+- Voice/STT parity work.
+
+Self-learning hooks considered:
+- None added. Product Truth status metadata does not create learning behavior.
+
+Product/user journey proof:
+- Product Truth payloads now describe current InfoHelp honestly: selected
+  supported fast-path coverage exists, but complete Level 2 is still not
+  claimed.
+
+User-facing product claim sources:
+- `bot/services/product_truth.py`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `PROJECT_LOG.md`
+
 ## 2026-05-17 - Session 088 - Product UX InfoHelp smoke fix-only patch
 
 Summary:

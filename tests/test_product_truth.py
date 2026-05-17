@@ -121,6 +121,24 @@ def test_external_integrations_have_credential_flags_and_forbidden_claims() -> N
         assert entry.forbidden_claims
 
 
+def test_info_help_record_matches_partial_product_truth_runtime() -> None:
+    entry = _registry_by_id()['info_help']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert 'selected conservative capability and safety topics' in entry.summary_for_user
+    assert 'partial Level 2 foundation' in entry.current_limitations[0]
+    assert 'bounded InfoHelp resolver' in entry.current_limitations[1]
+    assert 'voice/STT parity' in entry.current_limitations[1]
+    assert 'account-context-aware runtime evidence' in entry.current_limitations[1]
+    assert 'Customization request drafting/storage' in entry.current_limitations[2]
+    assert 'build_product_truth_guidance' in (entry.runtime_owner or '')
+    assert 'tests/test_info_help.py' in entry.test_refs
+    assert 'I answered from Product Truth in the live bot.' not in entry.forbidden_claims
+    assert 'InfoHelp Level 2 is complete.' in entry.forbidden_claims
+    assert 'I can answer any product capability question.' in entry.forbidden_claims
+    assert 'Customization requests are saved.' in entry.forbidden_claims
+
+
 def test_create_invoice_returns_supported_with_account_setup_requirement() -> None:
     result = product_truth.get_capability(
         'create_invoice',
