@@ -154,6 +154,41 @@ Required pattern:
 Python supplies allowed outputs -> resolver returns one token or unknown -> Python validates context -> Python executes existing handler/service.
 ```
 
+### 4.1 InfoHelp Unknown / Discovery / Triage
+
+InfoHelp bounded resolution is not a top-level action resolver. It must not
+return executable action tokens. It may return a known Product Truth
+`capability_id` / topic or, when no known capability fits, one Python-owned
+triage class:
+
+```text
+known_product_capability
+new_business_feature_request
+customization_request_candidate
+admin_review_candidate
+out_of_domain
+spam_or_abuse
+smalltalk
+unclear_needs_clarification
+possible_product_truth_candidate
+unknown
+```
+
+Rules:
+
+- [ ] `unknown capability_id` triggers safe triage only after auth/state/routing
+  gates allow it.
+- [ ] Triage classes never mark a feature as supported.
+- [ ] Triage classes never create canonical actions.
+- [ ] Triage classes never save customization requests or notify admins.
+- [ ] Out-of-domain, spam/noise, smalltalk, and unclear input are separated
+  from business/customization candidates.
+- [ ] Direct executable actions still win before InfoHelp/triage.
+- [ ] Active FSM state still wins before InfoHelp/triage.
+- [ ] Voice transcripts follow the same state-aware path.
+- [ ] Tests cover Slovak, Ukrainian, Russian, mixed/surzhyk, and noisy-STT
+  examples.
+
 ---
 
 ## 5. Voice coverage gate

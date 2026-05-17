@@ -93,6 +93,15 @@ Do not offer a customization request when:
   request was saved;
 - the request is illegal, abusive, or clearly unsafe.
 
+Unknown / Discovery / Triage may classify an input as
+`new_business_feature_request`, `customization_request_candidate`, or
+`admin_review_candidate`. That classification is not a saved request and not a
+promise that work will happen. It only permits Python to offer a
+confirmation-gated next step when the Customization Request Layer exists.
+
+Out-of-domain, spam/abuse/noise, smalltalk, and unclear inputs must not become
+customization requests by default.
+
 ## Required Flow
 
 Target flow:
@@ -101,13 +110,15 @@ Target flow:
 2. Resolve direct supported actions first when the user clearly wants action
    execution.
 3. For capability/customization questions, check Product Truth.
-4. Detect business need and domain.
-5. Draft a structured request.
-6. Show the draft to the user.
-7. Ask explicit confirmation.
-8. Save a pending request only after confirmation.
-9. Route to admin/developer review.
-10. Optionally convert to a code-agent handoff task after approval.
+4. If no known capability/topic matches, run Unknown / Discovery / Triage.
+5. Detect business need and domain only for safe business/admin/customization
+   candidates.
+6. Draft a structured request.
+7. Show the draft to the user.
+8. Ask explicit confirmation.
+9. Save a pending request only after confirmation.
+10. Route to admin/developer review.
+11. Optionally convert to a code-agent handoff task after approval.
 
 No side effect may happen at step 5 or 6. Drafting is not saving.
 
@@ -428,6 +439,12 @@ Required eval scenarios:
 - user asks for invoice email delivery to accountant;
 - user asks for accounting export;
 - user asks for a supported action and no customization request is created;
+- unknown business feature request is offered only as a confirmation-gated
+  future request path;
+- out-of-domain question is rejected or redirected and does not create a
+  request;
+- spam/noise does not create a request or admin work;
+- smalltalk does not create a request;
 - user cancels a request draft;
 - user edits a request draft;
 - unauthorized user asks for customization;

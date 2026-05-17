@@ -78,3 +78,68 @@ Guidelines:
 Note:
 - noisy user forms (including malformed mixed-language input) may appear in runtime input examples,
 - but canonical bot-facing wording remains controlled by product docs and Slovak bot replies.
+
+## 4) InfoHelp and Unknown / Discovery / Triage
+
+InfoHelp uses two bounded classification steps before any response is rendered:
+
+1. known Product Truth capability/topic classification;
+2. Unknown / Discovery / Triage when no known `capability_id` or topic fits.
+
+The model may only classify into Python-provided IDs/classes. It must not
+invent capability IDs, change Product Truth status, execute actions, promise
+feature availability, save customization requests, notify admins, or bypass
+FSM/state/auth gates.
+
+Allowed triage classes:
+
+```json
+[
+  "known_product_capability",
+  "new_business_feature_request",
+  "customization_request_candidate",
+  "admin_review_candidate",
+  "out_of_domain",
+  "spam_or_abuse",
+  "smalltalk",
+  "unclear_needs_clarification",
+  "possible_product_truth_candidate",
+  "unknown"
+]
+```
+
+Compact triage envelope:
+
+```json
+{
+  "context_name": "info_help_unknown_triage",
+  "current_state": null,
+  "user_input_text": "Vieš mi spraviť prehľad tržieb za minulý mesiac?",
+  "supported_languages": ["sk", "uk", "ru"],
+  "allowed_triage_classes": [
+    "new_business_feature_request",
+    "customization_request_candidate",
+    "admin_review_candidate",
+    "out_of_domain",
+    "spam_or_abuse",
+    "smalltalk",
+    "unclear_needs_clarification",
+    "possible_product_truth_candidate",
+    "unknown"
+  ],
+  "known_capability_ids": ["create_invoice", "send_invoice_email", "accounting_export"],
+  "expected_output": {
+    "triage_class": "one allowed triage class",
+    "capability_id": "known id or unknown",
+    "response_mode": "one allowed response mode"
+  },
+  "auxiliary_context": {
+    "request_storage_available": false,
+    "admin_notification_available": false
+  }
+}
+```
+
+The output is classification only. Python decides whether to render Product
+Truth, ask clarification, reject out-of-domain input, ignore/block noise,
+answer smalltalk briefly, or offer a future confirmation-gated request path.

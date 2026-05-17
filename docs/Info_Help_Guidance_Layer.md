@@ -9,8 +9,10 @@ capability-aware support concierge for the product: it answers real business
 questions, explains current workflow state, classifies requested capabilities
 against Product Truth, and offers safe next steps.
 
-Current runtime fallback guidance is Level 1 only. This document defines the
-Level 2+ target and the acceptance rules for getting there.
+Current runtime has Level 1 unknown-input guidance plus partial Product
+Truth-backed fast-paths for selected conservative capability/safety topics.
+This document defines the Level 2+ target and the acceptance rules for getting
+there.
 
 ## Normative Status
 
@@ -71,14 +73,17 @@ already exists.
 
 Unless later code proves otherwise:
 
-- current top-level InfoHelp fallback guidance is Level 1 static guidance;
+- current top-level unknown-input guidance is Level 1 static guidance;
+- current Product Truth-backed InfoHelp is partial and limited to selected
+  conservative topics;
 - it is not full capability-aware Q&A;
-- it does not implement a complete Product Truth Layer;
+- it does not implement Unknown / Discovery / Triage at runtime;
 - it does not implement customization request creation;
 - it does not implement broad self-learning for topics/capability questions;
 - it does not implement code-agent handoff.
 
-Agents must not call current Level 1 fallback behavior "InfoHelp complete".
+Agents must not call current fallback or partial fast-path behavior "InfoHelp
+complete" or "complete Level 2".
 
 ## Target Maturity
 
@@ -122,6 +127,45 @@ Until a runtime Product Truth registry exists, InfoHelp must derive truth from:
 Roadmap intent is not runtime support. If runtime does not prove the feature,
 InfoHelp must say `planned`, `partial`, `unsupported`, or `unknown`.
 
+## Unknown / Discovery / Triage
+
+An unknown `capability_id` is not one thing and is not a final answer.
+It is a signal that the input did not map to a known Product Truth capability
+or topic. When authorization, active state, and routing permit it, InfoHelp
+should hand the input to a separate Unknown / Discovery / Triage step.
+
+The triage step is Python-owned and side-effect free. It classifies the input
+into one allowed class:
+
+```text
+known_product_capability
+new_business_feature_request
+customization_request_candidate
+admin_review_candidate
+out_of_domain
+spam_or_abuse
+smalltalk
+unclear_needs_clarification
+possible_product_truth_candidate
+unknown
+```
+
+These classes do not change Product Truth. They help choose a safe response:
+
+- render Product Truth when the input maps to a known capability;
+- ask a clarification question when the business need is unclear;
+- politely reject or redirect out-of-domain questions;
+- ignore/block spam or abusive noise safely;
+- answer smalltalk briefly and return to business workflow scope;
+- offer to prepare a feature/customization/admin request only when the flow is
+  implemented and confirmation-gated.
+
+Current status: Product Truth MVP exists, and deterministic Product
+Truth-backed InfoHelp fast-paths exist for selected topics. Unknown /
+Discovery / Triage is design-level only unless later runtime code proves
+otherwise. Bounded InfoHelp resolver is not complete. Customization Request
+storage is not implemented. InfoHelp Level 2 is not complete.
+
 ## Response Contract
 
 Every InfoHelp answer must include:
@@ -154,7 +198,9 @@ Routing must respect this order:
    action.
 5. InfoHelp classification for capability/how-to/support/recovery/customization
    questions.
-6. Bounded fallback only after InfoHelp cannot resolve safely.
+6. Unknown / Discovery / Triage classification when no known capability/topic
+   fits and the current state allows discovery.
+7. Bounded fallback only after InfoHelp and triage cannot resolve safely.
 
 Important distinction:
 
@@ -252,8 +298,17 @@ Forbidden model outputs:
 - direct side effects;
 - DB/storage writes;
 - unauthorized support claims.
+- triage classes outside the Python-provided enum;
+- saved customization/admin/developer request claims without an implemented
+  confirmation-gated flow.
 
 Python owns final response policy.
+
+For Unknown / Discovery / Triage, the model may select only one allowed triage
+class and optional bounded metadata requested by Python. It must not invent
+capability IDs, change Product Truth status, promise feature availability,
+send admin notifications, save requests, bypass active FSM ownership, or
+bypass authorization.
 
 ## Response Modes
 
@@ -357,6 +412,115 @@ storage, if ever used, must be explicitly justified by product policy and data
 safety rules.
 
 ## User-Facing Examples
+
+### Known Product Truth
+
+User:
+
+```text
+Vies poslat fakturu emailom?
+```
+
+Expected target outcome:
+
+```text
+Map to known capability `send_invoice_email` and render Product Truth:
+unsupported / requires_external_credentials. Do not start invoice creation.
+```
+
+### New Business Feature
+
+User:
+
+```text
+Vies mi spravit prehlad trzieb za minuly mesiac?
+```
+
+Expected target outcome:
+
+```text
+No known capability_id. Classify as `new_business_feature_request`.
+Explain that this is not confirmed as supported, and offer to prepare a
+future request/admin note only through a confirmation-gated flow.
+```
+
+### Out Of Domain
+
+User:
+
+```text
+Ake bude pocasie zajtra?
+```
+
+Expected target outcome:
+
+```text
+Classify as `out_of_domain`. Give a short polite redirect to OfficeFlow /
+FakturaBot business workflows. Do not create a customization request.
+```
+
+### Spam Or Noise
+
+User:
+
+```text
+@@@ #### !!!
+```
+
+Expected target outcome:
+
+```text
+Classify as `spam_or_abuse` or noise. Do not call side-effect services, do
+not save a request, and do not create DB/storage records except possible
+future safe telemetry.
+```
+
+### Smalltalk
+
+User:
+
+```text
+Ako sa mas?
+```
+
+Expected target outcome:
+
+```text
+Classify as `smalltalk`. Reply briefly and redirect to business workflows.
+Do not trigger a business action.
+```
+
+### Unclear
+
+User:
+
+```text
+urob mi to
+```
+
+Expected target outcome:
+
+```text
+Classify as `unclear_needs_clarification`. Ask what business task the user
+means. Do not execute any action.
+```
+
+### Admin Or Developer Request
+
+User:
+
+```text
+Povedz adminovi, ze potrebujem automaticke pripomienky nezaplatenych faktur.
+```
+
+Expected target outcome:
+
+```text
+Classify as `admin_review_candidate` or
+`customization_request_candidate`. Ask confirmation before any save/send.
+Current runtime must not claim that an admin note or request was saved unless
+that confirmed flow exists.
+```
 
 ### Google Drive
 
@@ -463,6 +627,16 @@ Required eval scenarios:
 - unauthorized user asks a capability question;
 - unsupported request offers customization only when request storage exists;
 - no hidden invoice/contact/document side effects occur.
+- unknown but plausible business feature request does not fall to only static
+  menu fallback;
+- out-of-domain input does not become a customization request;
+- spam/noise does not create admin/developer work;
+- smalltalk does not trigger a business action;
+- clear direct action still wins before InfoHelp/triage;
+- active FSM state still wins before InfoHelp/triage;
+- voice transcript follows the same state-aware path;
+- Slovak, Ukrainian, Russian, mixed/surzhyk, and noisy STT examples are
+  represented for known capabilities, discovery, and unclear cases.
 
 ## Rollout Plan
 

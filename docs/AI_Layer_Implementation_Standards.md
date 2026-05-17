@@ -82,6 +82,48 @@ Capability statuses:
 
 The LLM may phrase the answer, but it cannot be the source of the status.
 
+## Unknown / Discovery / Triage Requirement
+
+Product Truth `unknown` is not enough by itself for the 2026-2030 OfficeFlow
+front door. If user input does not map to a known Product Truth
+`capability_id`, the system must not behave like a registry search engine or
+a command-menu bot.
+
+When authorization, active state, and routing allow discovery, Python should
+run a separate Unknown / Discovery / Triage layer. Its allowed classes are:
+
+```text
+known_product_capability
+new_business_feature_request
+customization_request_candidate
+admin_review_candidate
+out_of_domain
+spam_or_abuse
+smalltalk
+unclear_needs_clarification
+possible_product_truth_candidate
+unknown
+```
+
+This layer is classification only. It may not execute actions, change Product
+Truth, create capability IDs, mark anything as supported, save customization
+requests, send admin notifications, write DB/storage, or bypass FSM/state/auth
+gates.
+
+The correct runtime order for top-level natural language is:
+
+1. authorization gate;
+2. active FSM state wins;
+3. clear direct executable action resolver;
+4. known Product Truth capability/topic resolver;
+5. Unknown / Discovery / Triage resolver;
+6. Python-controlled outcome.
+
+Python-controlled outcomes include known Product Truth answer rendering,
+clarification, bounded out-of-domain refusal, safe spam/noise handling,
+smalltalk redirect, and a confirmation-gated future request/admin-review flow
+when implemented.
+
 ## Maturity Model
 
 Every AI-layer change must state the highest level it actually implements.
@@ -144,6 +186,8 @@ Behavior:
 - answers `supported`, `partial`, `planned`, `unsupported`, or `unknown`;
 - explains current limits in business language;
 - proposes a safe next step.
+- sends non-matching inputs through safe Unknown / Discovery / Triage instead
+  of treating `unknown capability_id` as one generic fallback.
 
 Complete only when:
 
@@ -160,6 +204,8 @@ Incomplete if:
 - the model freely invents capability facts;
 - the bot answers `/menu` to real business questions;
 - no regression/eval suite proves honesty.
+- unknown plausible business needs, out-of-domain questions, spam/noise,
+  smalltalk, and unclear inputs are not separated safely.
 
 ### Level 3: Customization Request Creation
 
@@ -386,6 +432,11 @@ journeys, such as:
 - no fake support claims;
 - voice/text parity where promised;
 - access isolation where data or AI calls are involved.
+- unknown business feature request triage;
+- out-of-domain rejection without request creation;
+- spam/noise without admin/customization side effects;
+- smalltalk without business action execution;
+- multilingual and noisy-STT triage examples.
 
 ## No-Go Patterns
 

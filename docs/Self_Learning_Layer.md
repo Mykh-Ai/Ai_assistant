@@ -79,6 +79,8 @@ Allowed learning candidates:
 - action aliases for existing canonical actions;
 - InfoHelp topic aliases;
 - capability question phrasings;
+- Unknown / Discovery / Triage phrasings after safe resolution or explicit
+  review;
 - contact/customer aliases;
 - service aliases;
 - document classification hints;
@@ -101,6 +103,7 @@ Never learn:
 - new canonical action names outside the registry;
 - Product Truth status from model guesses;
 - unsupported features as if they were supported;
+- triage classes from unconfirmed, abusive, out-of-domain, or unclear inputs;
 - cross-tenant patterns that expose one workspace to another.
 
 ## Learning Candidate Object
@@ -157,6 +160,7 @@ Initial domain families:
 - `top_level_action`;
 - `info_help_topic`;
 - `capability_question`;
+- `unknown_discovery_triage`;
 - `customization_pattern`;
 - `document_classification`;
 - `account_workflow_preference`.
@@ -250,6 +254,9 @@ Learned action aliases may map only to existing canonical actions in
 `docs/llm/Canonical_Action_Registry.md` and runtime `allowed_actions`.
 
 Learned InfoHelp topic aliases may map only to known topics/capabilities.
+Learned triage patterns may map only to documented triage classes and may not
+create Product Truth records, customization requests, admin notifications, or
+side effects.
 
 Learning must never create:
 

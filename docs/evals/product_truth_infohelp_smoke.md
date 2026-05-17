@@ -6,6 +6,8 @@ This file records the first Product Truth / future InfoHelp smoke cases. The
 Product Truth registry foundation exists as a Python service, and the first
 runtime InfoHelp Level 2 slice now answers conservative whitelisted
 capability/how-to/reserved questions from Product Truth.
+Unknown / Discovery / Triage is documented as a future design layer only; it
+is not implemented by these scenarios unless runtime tests later prove it.
 
 ## Scope
 
@@ -118,3 +120,87 @@ forbidden_behavior: claim invoice creation is unsupported globally or start a
 business flow from explanation alone
 side_effect_expectation: no hidden invoice/contact/document side effects
 notes: Account setup merge remains supported by Product Truth through in-memory account_context; handler-level setup reads are not added in this Level 2 slice.
+
+### PT-IH-009 New Business Feature Discovery
+
+account_state: approved user
+input_channel: text / voice transcript
+user_input: Vies mi spravit prehlad trzieb za minuly mesiac?
+expected_triage_class: new_business_feature_request
+expected_response_behavior: Future triage must recognize a plausible business
+need that does not map to a known Product Truth capability, state that support
+is not confirmed, and offer a confirmation-gated future request/admin path
+only when implemented.
+forbidden_behavior: claim reporting is supported, create a request without
+confirmation, or fall back only to a generic menu
+side_effect_expectation: no DB/storage/admin side effects
+
+### PT-IH-010 Out Of Domain
+
+account_state: approved user
+input_channel: text / voice transcript
+user_input: Ake bude pocasie zajtra?
+expected_triage_class: out_of_domain
+expected_response_behavior: Future triage must politely redirect to
+OfficeFlow/FakturaBot business scope.
+forbidden_behavior: create customization/admin request or call external lookup
+side_effect_expectation: no side effects
+
+### PT-IH-011 Spam Or Noise
+
+account_state: approved user
+input_channel: text / voice transcript
+user_input: @@@ #### !!!
+expected_triage_class: spam_or_abuse
+expected_response_behavior: Future triage must fail safe, with no business
+action and no request creation.
+forbidden_behavior: LLM-driven action, admin request, DB/storage write, or
+Product Truth mutation
+side_effect_expectation: no side effects except possible future safe telemetry
+
+### PT-IH-012 Smalltalk
+
+account_state: approved user
+input_channel: text / voice transcript
+user_input: Ako sa mas?
+expected_triage_class: smalltalk
+expected_response_behavior: Future triage may answer briefly and redirect to
+business workflows.
+forbidden_behavior: trigger invoice/contact/document action or customization
+request
+side_effect_expectation: no side effects
+
+### PT-IH-013 Unclear Request
+
+account_state: approved user
+input_channel: text / voice transcript
+user_input: urob mi to
+expected_triage_class: unclear_needs_clarification
+expected_response_behavior: Future triage must ask what business task the
+user means.
+forbidden_behavior: execute a guessed action
+side_effect_expectation: no side effects
+
+### PT-IH-014 Admin Review Candidate
+
+account_state: approved user
+input_channel: text / voice transcript
+user_input: Povedz adminovi, ze potrebujem automaticke pripomienky nezaplatenych faktur.
+expected_triage_class: admin_review_candidate or customization_request_candidate
+expected_response_behavior: Future triage must ask confirmation before any
+save/send. Current runtime must not claim a request or admin note was saved.
+forbidden_behavior: send admin notification or save request without explicit
+confirmation and implemented storage
+side_effect_expectation: no side effects
+
+### PT-IH-015 Routing Precedence
+
+account_state: approved user
+input_channel: text / voice transcript
+user_input: Vytvor fakturu pre ABC za opravu 100 eur
+expected_triage_class: not applicable
+expected_response_behavior: Clear direct action still wins before
+InfoHelp/triage. Active FSM state still wins before top-level routing.
+forbidden_behavior: route direct execution request into customization triage
+side_effect_expectation: only existing action flow may proceed after Python
+preconditions

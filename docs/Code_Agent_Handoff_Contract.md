@@ -81,6 +81,8 @@ A task package must not originate from:
 
 - raw unconfirmed user request;
 - unsupported capability question without request confirmation;
+- Unknown / Discovery / Triage classification without a confirmed request or
+  admin-created task;
 - LLM suggestion alone;
 - unauthorized user input;
 - destructive request without explicit human review.

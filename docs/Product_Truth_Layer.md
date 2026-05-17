@@ -15,19 +15,23 @@ registries provide verified truth, AI explains it inside bounds."
 
 ## Current Status
 
-This document is a docs-first contract.
+This document is a docs-first contract, with a current Python Product Truth
+MVP foundation in `bot/services/product_truth.py`.
 
-As of this documentation reset:
+As of the current logged state:
 
-- no complete runtime Product Truth registry exists;
-- current InfoHelp fallback is Level 1 only;
-- capability-aware InfoHelp is planned as Level 2+;
-- customization request creation is not implemented unless later code proves
-  otherwise.
+- a Product Truth MVP registry foundation exists;
+- deterministic Product Truth-backed InfoHelp fast-paths exist for selected
+  conservative capability/safety topics;
+- the `info_help` Product Truth status is partial, not complete Level 2;
+- Unknown / Discovery / Triage is documented here as design-level only unless
+  later runtime code proves otherwise;
+- bounded InfoHelp resolver is not complete;
+- customization request creation/storage is not implemented unless later code
+  proves otherwise.
 
-Until a runtime registry exists, Product Truth must be derived from current
-code, `PROJECT_LOG.md`, `docs/TZ_FakturaBot.md`, active contract docs, and
-focused evidence in tests.
+Product Truth must be derived from current code, `PROJECT_LOG.md`,
+`docs/TZ_FakturaBot.md`, active contract docs, and focused evidence in tests.
 
 ## Normative Status
 
@@ -74,6 +78,42 @@ The model must not:
 - infer account setup that Python has not provided;
 - promise external integrations;
 - classify dangerous operations as ordinary support.
+
+## Product Truth vs Unknown Discovery
+
+Product Truth answers what is known about registered product capabilities.
+It is not the whole discovery layer for every user utterance.
+
+An unknown `capability_id` lookup is not a final product answer. It means
+Product Truth has no verified capability record for that input. When routing,
+authorization, and active state allow it, the next safe step is Unknown /
+Discovery / Triage, not registry guessing.
+
+The triage layer may classify the user's input as one of these Python-owned
+classes:
+
+```text
+known_product_capability
+new_business_feature_request
+customization_request_candidate
+admin_review_candidate
+out_of_domain
+spam_or_abuse
+smalltalk
+unclear_needs_clarification
+possible_product_truth_candidate
+unknown
+```
+
+Triage classes are not Product Truth statuses. They must never mark anything
+as `supported`, create new capability IDs, or imply runtime support. They only
+decide the safe next response path: render known Product Truth, ask a
+clarifying question, politely reject out-of-domain input, ignore/block
+spam/noise safely, or offer to prepare a future request under the
+Customization Request Layer.
+
+The Unknown / Discovery / Triage layer is design-level only unless current
+runtime code and tests prove otherwise.
 
 ## Capability Statuses
 
@@ -127,6 +167,12 @@ The system cannot establish truth from active sources.
 Unknown must not become action execution. The safe next step is to ask for
 clarification, route to admin/developer review, or say that support cannot be
 confirmed.
+
+`unknown` at Product Truth level must not collapse all inputs into the same
+fallback. Unknown may mean a new business feature request, an admin/developer
+request, out-of-domain text, spam/noise, smalltalk, unclear wording, or a
+possible future Product Truth candidate. That distinction belongs to the
+separate triage layer and must remain side-effect free.
 
 ### `dangerous`
 
@@ -366,6 +412,26 @@ InfoHelp must not:
 - override dangerous/setup/admin flags;
 - create side effects from informational questions.
 
+If InfoHelp cannot map wording to a known `capability_id` or known topic, it
+must not behave like a simple registry search engine. It should pass the input
+to Unknown / Discovery / Triage only when authorization, active FSM ownership,
+and routing rules allow that step.
+
+Correct order:
+
+1. authorization gate;
+2. active FSM state wins;
+3. clear direct executable action resolver;
+4. known Product Truth capability/topic resolver;
+5. Unknown / Discovery / Triage resolver;
+6. Python-controlled outcome.
+
+Python-controlled outcomes include rendering a known Product Truth answer,
+asking clarification, politely rejecting out-of-domain input, safely ignoring
+spam/abuse, offering to prepare a feature/customization request, or saving /
+sending an admin note only after explicit confirmation in a future implemented
+flow.
+
 ## Interaction With Customization Requests
 
 Customization requests are allowed when:
@@ -428,6 +494,13 @@ Required smoke/eval cases:
 - unauthorized user asks a capability question;
 - user with missing supplier profile asks for invoice creation;
 - user in active FSM asks why input failed.
+- unknown but plausible business feature request does not fall to a dumb menu
+  fallback;
+- out-of-domain question does not become a customization request;
+- spam/noise does not create an admin request;
+- smalltalk does not trigger business action;
+- direct action still wins when clear;
+- voice transcript follows the same state-aware path.
 
 ## Current Known Truth Examples
 

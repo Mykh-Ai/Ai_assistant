@@ -1,5 +1,87 @@
 # PROJECT_LOG
 
+## 2026-05-17 - Session 090 - Document Unknown Discovery Triage layer
+
+Summary:
+- Added docs-only architecture guidance for the Unknown / Discovery / Triage
+  layer before bounded InfoHelp resolver implementation.
+- Clarified that `unknown capability_id` is not a final answer and must be
+  triaged safely when auth/state/routing allow it.
+- Defined the Python-owned triage classes:
+  `known_product_capability`, `new_business_feature_request`,
+  `customization_request_candidate`, `admin_review_candidate`,
+  `out_of_domain`, `spam_or_abuse`, `smalltalk`,
+  `unclear_needs_clarification`, `possible_product_truth_candidate`, and
+  `unknown`.
+- Documented the intended order: authorization, active FSM ownership, direct
+  executable action resolver, known Product Truth capability/topic resolver,
+  Unknown / Discovery / Triage resolver, then Python-controlled outcome.
+- Added examples and eval expectations for known Product Truth, new business
+  feature discovery, out-of-domain questions, spam/noise, smalltalk, unclear
+  requests, and admin/developer candidates.
+
+Reason:
+- Prevent Product Truth from becoming only a search index over known
+  capability IDs and preserve OfficeFlow/FakturaBot as a safe business
+  discovery layer.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/Product_Doctrine_2030.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Customization_Request_Layer.md`
+- `docs/Self_Learning_Layer.md`
+- `docs/Code_Agent_Handoff_Contract.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `bot/services/product_truth.py`
+- `bot/services/info_help.py`
+- `bot/services/semantic_action_resolver.py`
+- `tests/test_info_help.py`
+- `tests/test_product_truth.py`
+
+Constraints extracted:
+- Documentation-only update.
+- No runtime code, resolver, handlers, phrase dictionaries, DB/storage/schema,
+  or customization request storage changes.
+- Unknown / Discovery / Triage may classify only into Python-owned classes and
+  must not execute, save, notify, invent capability IDs, change Product Truth,
+  or mark anything as supported.
+- Direct executable actions and active FSM state remain higher priority than
+  InfoHelp/triage.
+
+Touched scopes:
+- Product docs/contracts/eval artifact: yes.
+- Runtime code, confirmation, routing, LLM, STT, LMM, FSM, storage, DB,
+  access, server, PDF/layout: unchanged.
+
+Current implementation status:
+- Product Truth MVP: implemented foundation.
+- Deterministic Product Truth-backed InfoHelp fast-path: partial.
+- Unknown / Discovery / Triage layer: documented, not implemented.
+- Bounded InfoHelp resolver: not complete.
+- Customization Request storage: unsupported runtime.
+- InfoHelp Level 2: not complete.
+
+AI maturity:
+- Design documentation only. No runtime maturity increase.
+
+Out of scope:
+- Bounded InfoHelp resolver implementation.
+- Customization Request storage/admin notification flow.
+- Self-learning triage patterns.
+- Runtime telemetry.
+
+Self-learning hooks considered:
+- Documented as future only; no learning behavior added.
+
+Verification:
+- `git diff --check` is the required verification for this docs-only update.
+- Runtime tests were not required because no code changed.
+
 ## 2026-05-17 - Session 089 - Align InfoHelp Product Truth status
 
 Summary:

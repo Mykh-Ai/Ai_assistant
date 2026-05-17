@@ -58,11 +58,15 @@ Current implemented and partial runtime includes:
 - recent accounting document view;
 - tenant/workspace scoped storage in the controlled rollout model.
 
-Current gaps that must not be overstated:
+Current gaps and partial foundations that must not be overstated:
 
-- InfoHelp is currently Phase 1 / Level 1 fallback only unless later code proves
-  otherwise;
-- Product Truth Layer is not yet a complete runtime registry;
+- Product Truth MVP registry foundation exists, but Product Truth is not yet a
+  complete runtime Product Truth layer;
+- InfoHelp has Level 1 unknown-input guidance plus partial Product
+  Truth-backed fast-paths for selected conservative capability/safety topics;
+- Unknown / Discovery / Triage is documented design only unless later code
+  proves otherwise;
+- bounded InfoHelp resolver is not complete;
 - Customization Request Layer is not yet implemented;
 - Code-Agent Handoff Layer is not yet implemented;
 - broad self-learning for topics/capabilities/customization patterns is not yet
@@ -160,6 +164,31 @@ Expected:
 > Ak potrebujete Google Disk alebo iné vlastné ukladanie faktúr, môžem z toho
 > pripraviť požiadavku na úpravu účtu. Správca potom skontroluje, čo presne
 > treba nastaviť.
+
+### 4.1 Unknown / Discovery / Triage
+
+Product Truth is necessary but not sufficient as the whole conversational
+front door. When a user asks for something that does not map to a known
+Product Truth capability, the bot must not behave like a simple registry
+search engine or generic menu fallback.
+
+Unknown input must be triaged safely as one of:
+
+- known product capability;
+- new business feature request;
+- customization request candidate;
+- admin/developer review candidate;
+- out-of-domain question;
+- spam/abuse/noise;
+- smalltalk;
+- unclear input that needs clarification;
+- possible future Product Truth candidate;
+- unknown.
+
+Triage is not support. It must not mark a feature as available, promise
+implementation, create requests, notify admins, or write DB/storage without a
+later implemented and confirmed flow. Its job is to keep unknown business
+needs visible while keeping every side effect behind Python-owned gates.
 
 ### 5. Customization Request Layer
 
@@ -264,6 +293,9 @@ Required product eval areas:
 - voice/text parity;
 - no hidden side effects;
 - no fake product claims.
+- unknown/discovery triage for plausible business requests;
+- out-of-domain, spam/noise, smalltalk, and unclear input handling;
+- multilingual and noisy-STT paths through the same state-aware routing.
 
 Detailed evaluation rules are governed by
 `docs/Evaluation_and_Smoke_Test_Standards.md`.
@@ -313,6 +345,10 @@ The documentation and architecture should move in this order:
 
 Runtime implementation should follow these documents, not replace them with
 static fallbacks.
+
+Unknown / Discovery / Triage must be designed before broad bounded InfoHelp
+resolver work. Otherwise Product Truth risks becoming only a search index over
+known capability IDs instead of a safe business-discovery layer.
 
 ## Product Standard
 
