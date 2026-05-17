@@ -1,5 +1,83 @@
 # PROJECT_LOG
 
+## 2026-05-17 - Session 087 - InfoHelp Level 2 first Product Truth wiring
+
+Summary:
+- Added the first Product Truth-aware InfoHelp runtime slice in
+  `bot/services/info_help.py`.
+- Added a conservative whitelist classifier for clearly informational
+  capability/help questions and reserved unsupported send-invoice intent.
+- Added Slovak Product Truth response rendering from structured registry
+  payloads for supported, partial, unsupported, dangerous, and
+  external-credential cases.
+- Wired the existing idle invoice top-level path to Product Truth guidance only
+  for unknown/reserved informational messages and narrow how-to/safety
+  questions before existing action execution.
+- Kept direct invoice/contact/accounting/supplier behavior, active FSM
+  ownership, DecisionResolver semantics, prompts, LLM/STT/LMM calls, DB schema,
+  storage, config, and Product Truth statuses unchanged.
+- Updated `docs/evals/product_truth_infohelp_smoke.md` from scenarios-only to
+  first partial automated Level 2 wiring coverage.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Product_Truth_Registry_MVP_Design.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Evaluation_and_Smoke_Test_Standards.md`
+- `docs/Product_UX_Eval_Artifacts.md`
+- `docs/evals/README.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `bot/services/product_truth.py`
+- `bot/services/info_help.py`
+- `bot/handlers/invoice.py`
+- `bot/services/semantic_action_resolver.py`
+- focused idle routing tests in `tests/test_invoice_intent_prerouter.py`
+
+Constraints extracted:
+- Product Truth remains the only source for capability truth.
+- InfoHelp answers must be Slovak, structured, and side-effect free.
+- No LLM classifier, prompt change, new canonical action, customization request
+  storage, code-agent handoff, email/SMS/Google Drive/accounting-export
+  implementation, or Product Truth status change belongs in this patch.
+- Direct actions must remain direct actions; active FSM state must not fall
+  through to idle InfoHelp.
+- Reserved unsupported send-invoice intent must not become executable.
+
+Touched scopes:
+- InfoHelp service: yes, first Level 2 Product Truth renderer/classifier.
+- Idle top-level invoice routing: narrow guidance hook only.
+- Tests/eval/log: yes.
+- Semantic resolver, DecisionResolver, active FSM flows, invoice/contact/
+  accounting/supplier execution, delete-user-database final typed confirmation,
+  prompts, LLM/STT/LMM, DB/storage/config/access/server/PDF layout: unchanged.
+
+Current implementation status:
+- InfoHelp Level 2: partial first runtime slice for conservative whitelisted
+  topics only.
+- Product Truth Registry: existing MVP foundation consumed by InfoHelp.
+- Customization requests and code-agent handoff: unsupported runtime.
+- Email, SMS, Google Drive, accounting export, and custom PDF templates:
+  unsupported runtime capabilities.
+
+AI maturity:
+- Level 2 partial. The bot can answer selected capability/how-to/reserved
+  questions from Product Truth, but broad arbitrary InfoHelp, customization
+  request creation, topic learning, and code-agent handoff remain out of scope.
+
+Out of scope:
+- Broad semantic guessing.
+- LLM-backed InfoHelp classification.
+- Mutation from informational questions.
+- Account-context DB reads for setup-aware handler answers.
+- Any persisted data, storage, tenant, or authorization model change.
+
+Verification:
+- `python -m pytest -q tests/test_product_truth.py tests/test_info_help.py tests/test_invoice_intent_prerouter.py` - 131 passed.
+- `python -m pytest -q` - 1019 passed.
+
 ## 2026-05-17 - Session 086 - Product Truth Registry MVP foundation
 
 Summary:

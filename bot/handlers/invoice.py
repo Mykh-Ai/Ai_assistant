@@ -29,7 +29,7 @@ from bot.keyboards.decision import (
 )
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
-from bot.services.info_help import build_top_level_unknown_guidance
+from bot.services.info_help import build_product_truth_guidance, build_top_level_unknown_guidance
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
@@ -2403,6 +2403,22 @@ async def process_invoice_text(
             ensure_ascii=False,
         )
     )
+    if top_level_intent in {
+        _UNKNOWN_INVOICE_INTENT,
+        _SEND_INVOICE_INTENT,
+        _CREATE_INVOICE_INTENT,
+        _ADD_RECEIPT_INTENT,
+        _DELETE_USER_DATABASE_INTENT,
+    }:
+        product_truth_guidance = build_product_truth_guidance(
+            user_input_text=invoice_text,
+            resolved_top_level_intent=top_level_intent,
+        )
+        if product_truth_guidance is not None:
+            await message.answer(product_truth_guidance)
+            await state.clear()
+            return
+
     if top_level_intent == _START_INTENT:
         await cmd_start(message=message, config=config, state=state)
         return

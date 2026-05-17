@@ -1,18 +1,19 @@
 # Product Truth + InfoHelp Smoke Scenarios
 
-Status: scenarios only, not yet wired to runtime InfoHelp.
+Status: scenarios plus first automated Level 2 InfoHelp wiring checks.
 
 This file records the first Product Truth / future InfoHelp smoke cases. The
-Product Truth registry foundation exists as a Python service, but runtime
-InfoHelp Level 2 capability Q&A is not implemented by this artifact.
+Product Truth registry foundation exists as a Python service, and the first
+runtime InfoHelp Level 2 slice now answers conservative whitelisted
+capability/how-to/reserved questions from Product Truth.
 
 ## Scope
 
-feature_or_layer: Product Truth Registry MVP foundation / future InfoHelp
-declared_maturity_level: registry foundation only, below InfoHelp Level 2
-automation_status: not automated here
-last_result: not run
-last_run_at: not run
+feature_or_layer: Product Truth Registry MVP foundation / InfoHelp Level 2 first wiring
+declared_maturity_level: Level 2 partial, conservative whitelist only
+automation_status: partially automated in `tests/test_info_help.py` and `tests/test_invoice_intent_prerouter.py`
+last_result: focused automated tests passed during implementation
+last_run_at: 2026-05-17
 
 ## Scenarios
 
@@ -27,7 +28,7 @@ invoice email sending is not implemented and requires external credentials /
 provider setup before it can be supported.
 forbidden_behavior: claim that email sending works or that an invoice was sent
 side_effect_expectation: no side effects
-notes: Current patch does not route this question to InfoHelp Level 2.
+notes: First Level 2 wiring answers this from Product Truth and does not execute email sending.
 
 ### PT-IH-002 Google Drive
 
@@ -40,7 +41,7 @@ invoice storage/sync is not implemented and requires external credentials and
 explicit integration work.
 forbidden_behavior: claim that Drive storage or sync is active
 side_effect_expectation: no side effects
-notes: Current patch does not route this question to InfoHelp Level 2.
+notes: First Level 2 wiring answers this from Product Truth and states the external integration limitation.
 
 ### PT-IH-003 SMS Reminders
 
@@ -52,7 +53,7 @@ expected_response_behavior: Future InfoHelp must state that SMS reminders are
 not implemented and require provider, consent, cost, and delivery rules.
 forbidden_behavior: claim SMS sending/reminders are active
 side_effect_expectation: no side effects
-notes: Current patch does not route this question to InfoHelp Level 2.
+notes: First Level 2 wiring answers this from Product Truth and states the external provider/credential limitation.
 
 ### PT-IH-004 Create Invoice How-To
 
@@ -65,7 +66,7 @@ creation route and offer the safe linked action without starting a mutating
 flow unless the user confirms the action.
 forbidden_behavior: create an invoice from the informational question alone
 side_effect_expectation: no side effects
-notes: Current patch does not route this question to InfoHelp Level 2.
+notes: First Level 2 wiring answers how-to questions from Product Truth without starting invoice creation.
 
 ### PT-IH-005 Custom PDF Template
 
@@ -78,7 +79,7 @@ uses the built-in PDF layout and custom templates are not available without a
 future customization/request layer.
 forbidden_behavior: claim a custom template is active
 side_effect_expectation: no side effects
-notes: Current patch does not implement customization request storage.
+notes: First Level 2 wiring states custom templates are unsupported and does not claim saved customization requests.
 
 ### PT-IH-006 Accounting Export
 
@@ -90,7 +91,7 @@ expected_response_behavior: Future InfoHelp must state that accounting export
 is not implemented and needs target software/API or file format scope.
 forbidden_behavior: claim export is configured or changed
 side_effect_expectation: no side effects
-notes: Current patch does not route this question to InfoHelp Level 2.
+notes: Accounting export remains unsupported in Product Truth. Coverage is in the InfoHelp unit whitelist.
 
 ### PT-IH-007 Unauthorized Capability Question
 
@@ -103,7 +104,7 @@ LMM, DB business writes, temp files, or tenant storage are triggered.
 forbidden_behavior: run Product Truth through a path that bypasses access
 control or disclose tenant data
 side_effect_expectation: no business side effects
-notes: Current patch does not change authorization middleware.
+notes: Authorization middleware remains unchanged and owns unauthorized access before business handlers.
 
 ### PT-IH-008 Missing Setup For Invoice
 
@@ -116,5 +117,4 @@ is supported in product truth but the account needs setup first.
 forbidden_behavior: claim invoice creation is unsupported globally or start a
 business flow from explanation alone
 side_effect_expectation: no hidden invoice/contact/document side effects
-notes: Current patch supports this status merge only through in-memory
-Product Truth account_context.
+notes: Account setup merge remains supported by Product Truth through in-memory account_context; handler-level setup reads are not added in this Level 2 slice.

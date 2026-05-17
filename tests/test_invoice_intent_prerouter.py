@@ -1184,20 +1184,13 @@ def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
     assert 'pridaj bloček' in message.answers[-1]
 
 
-def test_known_reserved_top_level_action_does_not_call_info_help(tmp_path: Path, monkeypatch) -> None:
+def test_known_reserved_send_invoice_action_uses_product_truth_and_does_not_execute(tmp_path: Path, monkeypatch) -> None:
     message = _DummyMessage('pošli faktúru 20260001')
     state = _DummyState()
-    calls: list[str | None] = []
-
     async def _resolver(**kwargs):
         return 'send_invoice'
 
-    def _info_help(**kwargs) -> str:
-        calls.append(kwargs.get('user_input_text'))
-        return 'unexpected'
-
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
-    monkeypatch.setattr('bot.handlers.invoice.build_top_level_unknown_guidance', _info_help)
 
     asyncio.run(
         process_invoice_text(
@@ -1208,9 +1201,66 @@ def test_known_reserved_top_level_action_does_not_call_info_help(tmp_path: Path,
         )
     )
 
-    assert calls == []
     assert state.cleared is True
-    assert 'Nerozumiem požadovanej akcii' in message.answers[-1]
+    assert 'Odosielanie faktúr emailom' in message.answers[-1]
+    assert 'nepodporovan' in message.answers[-1]
+    assert 'Email delivery is configured.' not in message.answers[-1]
+
+
+def test_email_capability_question_uses_product_truth_not_invoice_execution(tmp_path: Path) -> None:
+    message = _DummyMessage('Vieš poslať faktúru emailom?')
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            invoice_text='Vieš poslať faktúru emailom?',
+        )
+    )
+
+    assert state.cleared is True
+    assert 'Odosielanie faktúr emailom' in message.answers[-1]
+    assert 'nepodporovan' in message.answers[-1]
+    assert 'Bot nie je nakonfigurovan' not in message.answers[-1]
+
+
+def test_delete_database_question_uses_safety_guidance_not_delete_flow(tmp_path: Path) -> None:
+    message = _DummyMessage('Ako môžem vymazať databázu?')
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            invoice_text='Ako môžem vymazať databázu?',
+        )
+    )
+
+    assert state.cleared is True
+    assert state.current_state is None
+    assert 'Vymazanie používateľskej databázy' in message.answers[-1]
+    assert 'citliv' in message.answers[-1]
+
+
+def test_direct_invoice_creation_text_still_routes_to_invoice_flow(tmp_path: Path) -> None:
+    message = _DummyMessage('Vytvor faktúru pre ABC za opravu 100 eur')
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            invoice_text='Vytvor faktúru pre ABC za opravu 100 eur',
+        )
+    )
+
+    assert state.cleared is True
+    assert 'Bot nie je nakonfigurovan' in message.answers[-1]
+    assert 'Product Truth' not in message.answers[-1]
 
 
 def test_active_fsm_top_level_text_does_not_route_to_info_help(tmp_path: Path, monkeypatch) -> None:
