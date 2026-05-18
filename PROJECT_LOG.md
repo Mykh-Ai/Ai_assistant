@@ -1,5 +1,36 @@
 # PROJECT_LOG
 
+## 2026-05-18 - Session 091 - Clarify InfoHelp response policy and Product Truth flags
+
+Summary:
+- Performed a docs-only consistency cleanup before bounded InfoHelp resolver
+  implementation.
+- Clarified that LLM output may classify into Python-provided
+  capability/topic/triage options, but must not authoritatively choose the
+  final `response_mode`.
+- Documented that Python derives final response behavior from Product Truth
+  `primary_status`, flags/context, account state, active FSM/routing state, and
+  safety policy.
+- Clarified Product Truth status model:
+  `supported`, `partial`, `planned`, `unsupported`, and `unknown` are primary
+  support statuses; `dangerous`, `requires_setup`, `requires_admin`, and
+  `requires_external_credentials` are flags/context, not primary statuses.
+
+Constraints:
+- Documentation-only update.
+- No runtime code, resolver, handlers, phrase dictionaries, DB/storage/schema,
+  or customization request storage changes.
+- InfoHelp Level 2 remains not complete.
+
+Touched scopes:
+- Product/AI/InfoHelp/LLM docs and project log only.
+- Runtime code, routing, LLM execution, STT, FSM, storage, DB, access, server,
+  and tests unchanged.
+
+Verification:
+- `git diff --check` is the required verification for this docs-only update.
+- Runtime tests were not required because no code changed.
+
 ## 2026-05-17 - Session 090 - Document Unknown Discovery Triage layer
 
 Summary:

@@ -131,7 +131,7 @@ Compact triage envelope:
   "expected_output": {
     "triage_class": "one allowed triage class",
     "capability_id": "known id or unknown",
-    "response_mode": "one allowed response mode"
+    "response_mode_hint": "optional non-authoritative hint, only if requested"
   },
   "auxiliary_context": {
     "request_storage_available": false,
@@ -140,6 +140,11 @@ Compact triage envelope:
 }
 ```
 
-The output is classification only. Python decides whether to render Product
-Truth, ask clarification, reject out-of-domain input, ignore/block noise,
-answer smalltalk briefly, or offer a future confirmation-gated request path.
+The output is classification only. The model must not authoritatively choose
+the final response mode. If `response_mode_hint` is requested, Python may
+validate, ignore, or override it. Python derives the final response mode from
+Product Truth primary status, flags/context, account state, active
+FSM/routing state, and safety policy before rendering Product Truth, asking
+clarification, rejecting out-of-domain input, ignoring/blocking noise,
+answering smalltalk briefly, or offering a future confirmation-gated request
+path.

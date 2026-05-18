@@ -115,9 +115,34 @@ Customization Request Layer.
 The Unknown / Discovery / Triage layer is design-level only unless current
 runtime code and tests prove otherwise.
 
-## Capability Statuses
+## Capability Status Model
 
-Every user-facing capability answer must use one of these statuses.
+Every user-facing capability answer must separate:
+
+1. `primary_status`: availability truth.
+2. flags/context: safety, setup, admin, credential, and account-state facts
+   that modify the answer or gate the next step.
+
+Allowed `primary_status` values:
+
+- `supported`;
+- `partial`;
+- `planned`;
+- `unsupported`;
+- `unknown`.
+
+Allowed flags/context include:
+
+- `dangerous`;
+- `requires_setup`;
+- `requires_admin`;
+- `requires_external_credentials`.
+
+Flags/context must not be treated as primary support statuses. For example,
+real outbound email can be `unsupported` with
+`requires_external_credentials=true`; deleting user data can be `supported`
+with `dangerous=true`; invoice creation can be `supported` with account-level
+`requires_setup` when the user has not completed required setup.
 
 ### `supported`
 
@@ -173,6 +198,8 @@ fallback. Unknown may mean a new business feature request, an admin/developer
 request, out-of-domain text, spam/noise, smalltalk, unclear wording, or a
 possible future Product Truth candidate. That distinction belongs to the
 separate triage layer and must remain side-effect free.
+
+## Flags And Context
 
 ### `dangerous`
 
@@ -253,7 +280,7 @@ Minimum capability entry:
 capability_id
 title
 domain
-status
+primary_status
 summary_for_user
 current_limitations
 runtime_owner
@@ -337,8 +364,8 @@ Example:
 
 ```text
 Capability: create invoice
-Product status: supported
-Account status: requires_setup when supplier profile or service alias is
+Primary status: supported
+Account context: requires_setup when supplier profile or service alias is
 missing
 ```
 
@@ -346,7 +373,7 @@ missing
 
 Every Product Truth answer should produce:
 
-1. answer status;
+1. primary status plus flags/context;
 2. short direct answer;
 3. current limitation/setup condition;
 4. safe next step;
@@ -355,7 +382,8 @@ Every Product Truth answer should produce:
 Example for unsupported integration:
 
 ```text
-Status: unsupported / requires_external_credentials
+Primary status: unsupported
+Flags/context: requires_external_credentials
 Answer: Google Drive storage is not available in the current runtime.
 Limit: invoices are stored in the bot system and can be viewed/downloaded via
 Telegram.
@@ -401,7 +429,7 @@ questions.
 InfoHelp may:
 
 - map user language to a known `capability_id`;
-- explain the status;
+- explain the primary status plus relevant flags/context;
 - offer linked safe actions;
 - offer customization requests where allowed.
 
@@ -456,7 +484,7 @@ Customization requests are not allowed when:
 Adding or changing a capability entry requires:
 
 1. evidence from code/docs/logs;
-2. status classification;
+2. primary status classification plus flags/context review;
 3. forbidden claims review;
 4. safe next step definition;
 5. tests/evals for user-facing answers;

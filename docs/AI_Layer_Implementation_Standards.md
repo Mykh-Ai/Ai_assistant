@@ -67,20 +67,31 @@ from current code, `PROJECT_LOG.md`, `docs/TZ_FakturaBot.md`, and focused
 contract docs. If those sources do not prove support, the answer must be
 `partial`, `planned`, `unsupported`, or `unknown`.
 
-Capability statuses:
+Product Truth status model:
+
+Primary support statuses:
 
 - `supported`: current runtime implements the capability end to end.
 - `partial`: current runtime implements only a bounded subset.
 - `planned`: documented direction exists, runtime support does not.
 - `unsupported`: current product does not support this capability.
 - `unknown`: truth cannot be established from current sources.
+
+Flags/context:
+
 - `dangerous`: capability is sensitive/destructive and needs stronger gates.
 - `requires_setup`: supported only after user/workspace setup exists.
 - `requires_admin`: requires admin approval or admin-side configuration.
 - `requires_external_credentials`: requires third-party credentials or
   integration setup.
 
-The LLM may phrase the answer, but it cannot be the source of the status.
+Flags/context are not primary support statuses. Python must derive final
+response behavior from the primary status, flags/context, account state,
+active FSM/routing state, and safety policy.
+
+The LLM may phrase the answer or classify user input into Python-provided
+capability/topic/triage options, but it cannot be the source of the status,
+flags, account context, or final response mode.
 
 ## Unknown / Discovery / Triage Requirement
 
@@ -293,7 +304,7 @@ Detailed handoff behavior is governed by
 
 Complete only when task packages include:
 
-- product need and current Product Truth status;
+- product need and current Product Truth primary status plus flags/context;
 - required docs/contracts to read;
 - likely files/modules;
 - implementation scope;

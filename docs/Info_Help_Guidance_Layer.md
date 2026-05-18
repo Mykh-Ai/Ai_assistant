@@ -102,17 +102,24 @@ work but not the product destination.
 
 InfoHelp must classify every capability answer using Product Truth.
 
-Allowed capability statuses:
+Product Truth separates primary support status from safety/account context.
+Allowed primary statuses:
 
 - `supported`;
 - `partial`;
 - `planned`;
 - `unsupported`;
-- `unknown`;
+- `unknown`.
+
+Allowed flags/context:
+
 - `dangerous`;
 - `requires_setup`;
 - `requires_admin`;
 - `requires_external_credentials`.
+
+Flags are not primary support statuses. They modify how Python renders or
+gates a capability whose primary status is known.
 
 Product Truth rules are governed by `docs/Product_Truth_Layer.md`.
 
@@ -171,7 +178,7 @@ storage is not implemented. InfoHelp Level 2 is not complete.
 Every InfoHelp answer must include:
 
 1. direct answer to the user's question;
-2. current capability status;
+2. current Product Truth primary status plus relevant flags/context;
 3. plain-language limitation or setup condition;
 4. safe next step;
 5. customization request offer when useful and supported by the request layer.
@@ -256,7 +263,7 @@ capability_id
 topic_id
 title
 domain
-status
+primary_status
 runtime_owner
 truth_source_refs
 summary_for_user
@@ -286,8 +293,8 @@ Allowed model outputs:
 
 - one known `topic_id`;
 - one known `capability_id`;
-- one known response mode;
 - `unknown`;
+- one Python-provided triage class when running Unknown / Discovery / Triage;
 - bounded slots requested by Python for a customization draft.
 
 Forbidden model outputs:
@@ -295,6 +302,7 @@ Forbidden model outputs:
 - new canonical actions;
 - unregistered capabilities;
 - product status not present in Product Truth;
+- authoritative final response modes;
 - direct side effects;
 - DB/storage writes;
 - unauthorized support claims.
@@ -302,7 +310,11 @@ Forbidden model outputs:
 - saved customization/admin/developer request claims without an implemented
   confirmation-gated flow.
 
-Python owns final response policy.
+Python owns final response policy. The model may provide an optional
+non-authoritative `response_mode_hint` only when Python explicitly asks for
+one, but Python must derive the final response mode from Product Truth
+`primary_status`, flags/context, account state, active FSM/routing state, and
+safety policy.
 
 For Unknown / Discovery / Triage, the model may select only one allowed triage
 class and optional bounded metadata requested by Python. It must not invent
@@ -312,7 +324,7 @@ bypass authorization.
 
 ## Response Modes
 
-InfoHelp response modes:
+InfoHelp response modes are Python-owned rendering decisions:
 
 - `inform_only`;
 - `explain_supported_usage`;
@@ -331,6 +343,10 @@ InfoHelp response modes:
 - `bounded_fallback`.
 
 Each mode must have deterministic safety rules and tests.
+
+The LLM must not choose these modes authoritatively. If examples include a
+response-mode-like field, it is only an optional hint for Python to validate or
+ignore.
 
 ## Customization Request Handoff
 
@@ -395,8 +411,9 @@ input_channel
 user_text_redacted_or_hash
 resolved_topic_id
 resolved_capability_id
-capability_status
-response_mode
+primary_status
+flags_context
+final_response_mode
 linked_action
 linked_target
 customization_offered
