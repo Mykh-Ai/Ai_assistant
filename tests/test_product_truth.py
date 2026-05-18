@@ -125,13 +125,15 @@ def test_info_help_record_matches_partial_product_truth_runtime() -> None:
     entry = _registry_by_id()['info_help']
 
     assert entry.status == ProductTruthStatus.PARTIAL
-    assert 'selected conservative capability and safety topics' in entry.summary_for_user
+    assert 'bounded Unknown / Discovery / Triage v1' in entry.summary_for_user
     assert 'partial Level 2 foundation' in entry.current_limitations[0]
-    assert 'bounded InfoHelp resolver' in entry.current_limitations[1]
+    assert 'bounded triage v1' in entry.current_limitations[0]
+    assert 'broader bounded InfoHelp resolver coverage' in entry.current_limitations[1]
     assert 'voice/STT parity' in entry.current_limitations[1]
     assert 'account-context-aware runtime evidence' in entry.current_limitations[1]
     assert 'Customization request drafting/storage' in entry.current_limitations[2]
     assert 'build_product_truth_guidance' in (entry.runtime_owner or '')
+    assert 'build_info_help_triage_guidance' in (entry.runtime_owner or '')
     assert 'tests/test_info_help.py' in entry.test_refs
     assert 'I answered from Product Truth in the live bot.' not in entry.forbidden_claims
     assert 'InfoHelp Level 2 is complete.' in entry.forbidden_claims

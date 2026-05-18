@@ -24,9 +24,9 @@ As of the current logged state:
 - deterministic Product Truth-backed InfoHelp fast-paths exist for selected
   conservative capability/safety topics;
 - the `info_help` Product Truth status is partial, not complete Level 2;
-- Unknown / Discovery / Triage is documented here as design-level only unless
-  later runtime code proves otherwise;
-- bounded InfoHelp resolver is not complete;
+- bounded Unknown / Discovery / Triage v1 classification exists for safe
+  non-persistent responses;
+- broader bounded InfoHelp resolver coverage is not complete;
 - customization request creation/storage is not implemented unless later code
   proves otherwise.
 
@@ -112,8 +112,10 @@ clarifying question, politely reject out-of-domain input, ignore/block
 spam/noise safely, or offer to prepare a future request under the
 Customization Request Layer.
 
-The Unknown / Discovery / Triage layer is design-level only unless current
-runtime code and tests prove otherwise.
+The current Unknown / Discovery / Triage runtime is a bounded v1 foundation
+only: it may classify and render safe non-persistent responses, but it must
+not save requests, notify admins, create Product Truth entries, or claim
+complete Level 2 InfoHelp.
 
 ## Capability Status Model
 

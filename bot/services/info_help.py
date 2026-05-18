@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+import json
 import re
 import unicodedata
 from typing import Any, Mapping
@@ -176,6 +178,110 @@ _DIRECT_ACTION_GUARD_WORDS = {
     'ukaz',
 }
 
+TRIAGE_KNOWN_PRODUCT_CAPABILITY = 'known_product_capability'
+TRIAGE_NEW_BUSINESS_FEATURE_REQUEST = 'new_business_feature_request'
+TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE = 'customization_request_candidate'
+TRIAGE_ADMIN_REVIEW_CANDIDATE = 'admin_review_candidate'
+TRIAGE_OUT_OF_DOMAIN = 'out_of_domain'
+TRIAGE_SPAM_OR_ABUSE = 'spam_or_abuse'
+TRIAGE_SMALLTALK = 'smalltalk'
+TRIAGE_UNCLEAR_NEEDS_CLARIFICATION = 'unclear_needs_clarification'
+TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE = 'possible_product_truth_candidate'
+TRIAGE_UNKNOWN = 'unknown'
+
+ALLOWED_INFO_HELP_TRIAGE_CLASSES = (
+    TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+    TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+    TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE,
+    TRIAGE_ADMIN_REVIEW_CANDIDATE,
+    TRIAGE_OUT_OF_DOMAIN,
+    TRIAGE_SPAM_OR_ABUSE,
+    TRIAGE_SMALLTALK,
+    TRIAGE_UNCLEAR_NEEDS_CLARIFICATION,
+    TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE,
+    TRIAGE_UNKNOWN,
+)
+
+ALLOWED_INFO_HELP_TOPIC_IDS = (
+    'product_capability',
+    'new_business_feature',
+    'customization_request',
+    'admin_review',
+    'out_of_domain',
+    'spam_or_abuse',
+    'smalltalk',
+    'clarification',
+    'possible_product_truth_candidate',
+    TRIAGE_UNKNOWN,
+)
+
+_TRIAGE_TOPIC_BY_CLASS = {
+    TRIAGE_KNOWN_PRODUCT_CAPABILITY: 'product_capability',
+    TRIAGE_NEW_BUSINESS_FEATURE_REQUEST: 'new_business_feature',
+    TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE: 'customization_request',
+    TRIAGE_ADMIN_REVIEW_CANDIDATE: 'admin_review',
+    TRIAGE_OUT_OF_DOMAIN: 'out_of_domain',
+    TRIAGE_SPAM_OR_ABUSE: 'spam_or_abuse',
+    TRIAGE_SMALLTALK: 'smalltalk',
+    TRIAGE_UNCLEAR_NEEDS_CLARIFICATION: 'clarification',
+    TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE: 'possible_product_truth_candidate',
+    TRIAGE_UNKNOWN: TRIAGE_UNKNOWN,
+}
+
+
+@dataclass(frozen=True)
+class InfoHelpTriageResult:
+    capability_id: str = 'unknown'
+    topic_id: str = 'unknown'
+    triage_class: str = TRIAGE_UNKNOWN
+    confidence: float = 0.0
+    needs_clarification: bool = False
+
+
+def parse_info_help_triage_model_output(
+    raw_model_output: str,
+    *,
+    allowed_capability_ids: tuple[str, ...] | list[str] | None = None,
+    allowed_topic_ids: tuple[str, ...] | list[str] | None = None,
+) -> InfoHelpTriageResult:
+    """Validate bounded model classification output without accepting answer text."""
+    allowed_capabilities = set(allowed_capability_ids or _known_capability_ids())
+    allowed_topics = set(allowed_topic_ids or ALLOWED_INFO_HELP_TOPIC_IDS)
+    try:
+        parsed = json.loads(raw_model_output or '{}')
+    except (TypeError, json.JSONDecodeError):
+        return InfoHelpTriageResult()
+    if not isinstance(parsed, dict):
+        return InfoHelpTriageResult()
+
+    capability_id = str(parsed.get('capability_id') or 'unknown').strip()
+    if capability_id not in allowed_capabilities:
+        capability_id = 'unknown'
+
+    triage_class = str(parsed.get('triage_class') or TRIAGE_UNKNOWN).strip()
+    if triage_class not in ALLOWED_INFO_HELP_TRIAGE_CLASSES:
+        triage_class = TRIAGE_UNKNOWN
+    if triage_class == TRIAGE_KNOWN_PRODUCT_CAPABILITY and capability_id == 'unknown':
+        triage_class = TRIAGE_UNKNOWN
+    if capability_id != 'unknown':
+        triage_class = TRIAGE_KNOWN_PRODUCT_CAPABILITY
+
+    topic_id = str(parsed.get('topic_id') or _TRIAGE_TOPIC_BY_CLASS.get(triage_class, TRIAGE_UNKNOWN)).strip()
+    if topic_id not in allowed_topics:
+        topic_id = _TRIAGE_TOPIC_BY_CLASS.get(triage_class, TRIAGE_UNKNOWN)
+    if topic_id not in allowed_topics:
+        topic_id = TRIAGE_UNKNOWN
+
+    confidence = _bounded_confidence(parsed.get('confidence'))
+    needs_clarification = bool(parsed.get('needs_clarification')) or triage_class == TRIAGE_UNCLEAR_NEEDS_CLARIFICATION
+    return InfoHelpTriageResult(
+        capability_id=capability_id,
+        topic_id=topic_id,
+        triage_class=triage_class,
+        confidence=confidence,
+        needs_clarification=needs_clarification,
+    )
+
 
 def build_product_truth_guidance(
     *,
@@ -194,6 +300,103 @@ def build_product_truth_guidance(
         return _build_capability_overview()
     payload = get_safe_answer_payload(capability_id, account_context=account_context)
     return _render_product_truth_payload(payload)
+
+
+def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageResult:
+    """Classify unresolved InfoHelp input into Python-owned safe triage classes."""
+    capability_id = classify_info_help_capability(user_input_text=user_input_text)
+    if capability_id is not None and capability_id != 'overview':
+        return InfoHelpTriageResult(
+            capability_id=capability_id,
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.9,
+        )
+    if capability_id == 'overview':
+        return InfoHelpTriageResult(
+            capability_id='unknown',
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.9,
+        )
+
+    raw_text = user_input_text or ''
+    normalized = _normalize_text(raw_text)
+    if not normalized:
+        if raw_text.strip():
+            return _triage_result(TRIAGE_SPAM_OR_ABUSE, confidence=0.75)
+        return InfoHelpTriageResult(needs_clarification=True)
+    tokens = set(normalized.split())
+
+    if _is_noise_or_abuse(normalized, tokens):
+        return _triage_result(TRIAGE_SPAM_OR_ABUSE, confidence=0.75)
+    if _is_smalltalk(normalized, tokens):
+        return _triage_result(TRIAGE_SMALLTALK, confidence=0.85)
+    if _is_unclear_request(normalized, tokens):
+        return _triage_result(TRIAGE_UNCLEAR_NEEDS_CLARIFICATION, confidence=0.85, needs_clarification=True)
+    if _is_out_of_domain(normalized, tokens):
+        return _triage_result(TRIAGE_OUT_OF_DOMAIN, confidence=0.85)
+    if _is_admin_review_request(normalized, tokens):
+        return _triage_result(TRIAGE_ADMIN_REVIEW_CANDIDATE, confidence=0.8)
+    if _is_new_business_feature_request(normalized, tokens):
+        return _triage_result(TRIAGE_NEW_BUSINESS_FEATURE_REQUEST, confidence=0.8)
+    if _is_customization_candidate(normalized, tokens):
+        return _triage_result(TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE, confidence=0.75)
+    if _is_possible_product_truth_candidate(normalized, tokens):
+        return _triage_result(TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE, confidence=0.6)
+    return InfoHelpTriageResult()
+
+
+def build_info_help_triage_guidance(
+    *,
+    user_input_text: str | None,
+    account_context: Mapping[str, Any] | None = None,
+) -> str | None:
+    """Render a safe non-persistent answer for bounded InfoHelp/Triage v1."""
+    result = classify_info_help_triage(user_input_text=user_input_text)
+    if result.triage_class == TRIAGE_KNOWN_PRODUCT_CAPABILITY:
+        if result.capability_id != 'unknown':
+            payload = get_safe_answer_payload(result.capability_id, account_context=account_context)
+            return _render_product_truth_payload(payload)
+        return _build_capability_overview()
+    if result.triage_class == TRIAGE_NEW_BUSINESS_FEATURE_REQUEST:
+        return (
+            'Toto vyzer\u00e1 ako po\u017eiadavka na nov\u00fa biznis funkciu. '
+            'V aktu\u00e1lnom runtime ju neviem potvrdi\u0165 ako podporovan\u00fa.\n\n'
+            'Ukladanie po\u017eiadaviek zatia\u013e nie je zapnut\u00e9, preto som ni\u010d neulo\u017eil ani neposlal spr\u00e1vcovi.'
+        )
+    if result.triage_class == TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE:
+        return (
+            'Toto vyzer\u00e1 ako po\u017eiadavka na \u00fapravu alebo prisp\u00f4sobenie. '
+            'V tomto chate zatia\u013e neexistuje potvrden\u00fd tok na ulo\u017eenie takejto po\u017eiadavky.\n\n'
+            'Ni\u010d som neulo\u017eil. Ak chcete, pop\u00ed\u0161te presne, ak\u00fd biznis v\u00fdsledok potrebujete.'
+        )
+    if result.triage_class == TRIAGE_ADMIN_REVIEW_CANDIDATE:
+        return (
+            'Toto vyzer\u00e1 ako po\u017eiadavka pre spr\u00e1vcu alebo v\u00fdvoj\u00e1ra. '
+            'Automatick\u00e9 odoslanie spr\u00e1vcovi zatia\u013e nie je zapnut\u00e9.\n\n'
+            'Ni\u010d som neposlal ani neulo\u017eil. Nap\u00ed\u0161te pros\u00edm konkr\u00e9tnu po\u017eiadavku, ktor\u00fa chcete nesk\u00f4r odovzda\u0165.'
+        )
+    if result.triage_class == TRIAGE_OUT_OF_DOMAIN:
+        return (
+            'Toto je mimo rozsahu OfficeFlow/FakturaBotu. '
+            'Viem pom\u00e1ha\u0165 s fakt\u00farami, kontaktmi, profilom dod\u00e1vate\u013ea, slu\u017ebami a \u00fa\u010dtovn\u00fdmi dokladmi.'
+        )
+    if result.triage_class == TRIAGE_SPAM_OR_ABUSE:
+        return 'Tomuto vstupu nerozumiem. Sk\u00faste nap\u00edsa\u0165 konkr\u00e9tnu biznis \u00falohu alebo ot\u00e1zku k FakturaBotu.'
+    if result.triage_class == TRIAGE_SMALLTALK:
+        return (
+            'Som pripraven\u00fd pom\u00f4c\u0165 s biznis \u00falohami vo FakturaBote. '
+            'M\u00f4\u017eete sa op\u00fdta\u0165 na fakt\u00fary, kontakty, slu\u017eby, PDF alebo \u00fa\u010dtovn\u00e9 doklady.'
+        )
+    if result.triage_class == TRIAGE_UNCLEAR_NEEDS_CLARIFICATION:
+        return 'Nie je jasn\u00e9, ak\u00fa biznis \u00falohu mysl\u00edte. Nap\u00ed\u0161te pros\u00edm konkr\u00e9tne, \u010do m\u00e1m spravi\u0165.'
+    if result.triage_class == TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE:
+        return (
+            'Toto m\u00f4\u017ee by\u0165 ot\u00e1zka na schopnos\u0165 produktu, ale neviem ju bezpe\u010dne priradi\u0165 ku konkr\u00e9tnej Product Truth polo\u017eke.\n\n'
+            'Spresnite pros\u00edm, \u010di sa p\u00fdtate na fakt\u00fary, PDF, kontakty, slu\u017eby, \u00fa\u010dtovn\u00e9 doklady alebo nastavenie \u00fa\u010dtu.'
+        )
+    return None
 
 
 def classify_info_help_capability(
@@ -397,6 +600,135 @@ def _mentions_invoice_how_to(normalized: str, tokens: set[str]) -> bool:
 def _mentions_info_help(normalized: str, tokens: set[str]) -> bool:
     return bool(tokens.intersection({'pomoc', 'help', 'funkcie', 'capabilities'})) or any(
         phrase in normalized for phrase in _OVERVIEW_PHRASES
+    )
+
+
+def _known_capability_ids() -> tuple[str, ...]:
+    return tuple(capability.capability_id for capability in list_capabilities())
+
+
+def _bounded_confidence(value: object) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if parsed < 0:
+        return 0.0
+    if parsed > 1:
+        return 1.0
+    return parsed
+
+
+def _triage_result(
+    triage_class: str,
+    *,
+    confidence: float,
+    needs_clarification: bool = False,
+) -> InfoHelpTriageResult:
+    return InfoHelpTriageResult(
+        topic_id=_TRIAGE_TOPIC_BY_CLASS.get(triage_class, TRIAGE_UNKNOWN),
+        triage_class=triage_class,
+        confidence=confidence,
+        needs_clarification=needs_clarification,
+    )
+
+
+def _is_noise_or_abuse(normalized: str, tokens: set[str]) -> bool:
+    if not tokens:
+        return True
+    if len(normalized) <= 2:
+        return True
+    alpha_count = sum(1 for char in normalized if char.isalpha())
+    if alpha_count == 0:
+        return True
+    return normalized in {'asdf', 'qwerty', 'bla bla bla'}
+
+
+def _is_smalltalk(normalized: str, tokens: set[str]) -> bool:
+    return (
+        normalized in {'ako sa mas', 'ako sa mate', 'how are you', 'jak sa mas'}
+        or ('ako' in tokens and 'mas' in tokens and len(tokens) <= 4)
+        or ('справи' in tokens and len(tokens) <= 4)
+        or ('дела' in tokens and len(tokens) <= 4)
+    )
+
+
+def _is_unclear_request(normalized: str, tokens: set[str]) -> bool:
+    return normalized in {
+        'urob mi to',
+        'sprav mi to',
+        'zrob mi to',
+        'urob to',
+        'sprav to',
+        'do it',
+        'зроби це',
+        'сделай это',
+    } or (tokens.intersection({'urob', 'sprav', 'zrob', 'сделай', 'зроби'}) and tokens <= {
+        'urob',
+        'sprav',
+        'zrob',
+        'mi',
+        'to',
+        'сделай',
+        'зроби',
+        'це',
+        'это',
+    })
+
+
+def _is_out_of_domain(normalized: str, tokens: set[str]) -> bool:
+    return bool(tokens.intersection({'pocasie', 'weather', 'forecast', 'погода', 'погоду'}))
+
+
+def _is_admin_review_request(normalized: str, tokens: set[str]) -> bool:
+    mentions_admin = bool(tokens.intersection({'adminovi', 'admin', 'spravcovi', 'spravca', 'админу', 'адміну'}))
+    return mentions_admin and bool(
+        tokens.intersection({'povedz', 'posli', 'odosli', 'napis', 'potrebujem', 'скажи', 'передай'})
+    )
+
+
+def _is_new_business_feature_request(normalized: str, tokens: set[str]) -> bool:
+    mentions_revenue_overview = bool(tokens.intersection({'trzieb', 'trzby', 'revenue', 'vynosov', 'выручки', 'виручки'})) and bool(
+        tokens.intersection({'prehlad', 'report', 'vykaz', 'overview', 'отчет', 'звіт'})
+    )
+    mentions_month = bool(tokens.intersection({'mesiac', 'mesacny', 'monthly', 'месяц', 'місяць'}))
+    return mentions_revenue_overview or (
+        mentions_month
+        and bool(tokens.intersection({'prehlad', 'report', 'vykaz', 'overview', 'отчет', 'звіт'}))
+        and not tokens.intersection({'fakturu', 'faktura', 'invoice'})
+    )
+
+
+def _is_customization_candidate(normalized: str, tokens: set[str]) -> bool:
+    if bool(tokens.intersection({'automaticke', 'automaticky', 'automatic', 'автоматичні', 'автоматические'})) and bool(
+        tokens.intersection({'pripomienky', 'reminders', 'напоминания', 'нагадування'})
+    ):
+        return True
+    return bool(tokens.intersection({'potrebujem', 'chcem', 'хочу', 'потрібно'})) and bool(
+        tokens.intersection({'upravu', 'prisposobit', 'custom', 'vlastne', 'vlastnu', 'zmenu'})
+    )
+
+
+def _is_possible_product_truth_candidate(normalized: str, tokens: set[str]) -> bool:
+    if not _is_help_like(normalized, tokens):
+        return False
+    return bool(
+        tokens.intersection(
+            {
+                'faktura',
+                'fakturu',
+                'faktury',
+                'invoice',
+                'pdf',
+                'kontakt',
+                'doklad',
+                'blocky',
+                'uctovnictvo',
+                'uctovne',
+                'sluzby',
+                'profil',
+            }
+        )
     )
 
 

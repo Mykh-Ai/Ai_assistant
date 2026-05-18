@@ -1,5 +1,90 @@
 # PROJECT_LOG
 
+## 2026-05-18 - Session 092 - Add bounded InfoHelp triage resolver foundation
+
+Summary:
+- Added bounded InfoHelp / Unknown / Discovery / Triage v1 classification.
+- Resolver output is Python-owned structured data only:
+  `capability_id`, `topic_id`, `triage_class`, `confidence`, and
+  `needs_clarification`.
+- Added validation that rejects invented capability IDs, invalid JSON, and
+  free-form answer-only model output.
+- Explicitly ignores model-provided support status and final `response_mode`;
+  Python still derives answers from Product Truth primary status, flags/context,
+  routing/FSM/account state, and safety policy.
+- Wired triage only after active-state routing, direct top-level action
+  resolution, and conservative Product Truth fast-paths.
+- Added safe non-persistent responses for new business feature requests,
+  customization/admin candidates, out-of-domain input, spam/noise, smalltalk,
+  unclear text, and possible Product Truth candidates.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `bot/services/info_help.py`
+- `bot/services/product_truth.py`
+- `bot/services/semantic_action_resolver.py`
+- `bot/handlers/invoice.py`
+- `bot/handlers/voice.py`
+- `tests/test_info_help.py`
+- `tests/test_product_truth.py`
+- `tests/test_invoice_intent_prerouter.py`
+- `tests/test_voice_state_routing.py`
+
+Constraints extracted:
+- Classification only; no Customization Request storage, admin notification,
+  DB/storage request records, new canonical business actions, DecisionResolver
+  changes, handler-local keyword matching, or phrase dictionaries as the main
+  understanding layer.
+- LLM output must not choose final response mode or decide Product Truth
+  support status.
+- Product Truth remains authoritative for primary status, flags/context,
+  limitations, setup requirements, forbidden claims, and safe next steps.
+
+Touched scopes:
+- InfoHelp service: yes.
+- Product Truth `info_help` capability metadata: yes.
+- Top-level routing: narrow integration after existing direct-action and
+  Product Truth fast-path precedence.
+- Shared semantic action resolver: tightened generic `urob/sprav` so it does
+  not create invoices without an invoice target.
+- Tests/docs/project log: yes.
+- Confirmation, DecisionResolver, STT, LMM, FSM side effects, storage, DB,
+  access, server, PDF/layout: unchanged.
+
+Current implementation status:
+- Product Truth MVP: implemented foundation.
+- Deterministic Product Truth-backed InfoHelp fast-path: partial.
+- Bounded Unknown / Discovery / Triage: v1 foundation implemented.
+- Bounded InfoHelp resolver: partial foundation only, not complete Level 2.
+- Customization Request storage/admin notification: unsupported runtime.
+- InfoHelp Level 2: not complete.
+
+AI maturity:
+- Partial Level 2 foundation. This patch adds safe classification and
+  rendering paths, but does not complete arbitrary capability-aware Q&A,
+  request storage, self-learning, or code-agent handoff.
+
+Out of scope:
+- Customization Request persistence/admin send flow.
+- New canonical actions.
+- Product Truth status changes based on model output.
+- Runtime storage/DB/schema changes.
+- Broad multilingual production evaluation beyond focused tests.
+
+Self-learning hooks considered:
+- None implemented. Triage classifications are not learned or persisted.
+
+Verification:
+- Focused and full test commands required before commit:
+  `python -m pytest -q tests/test_product_truth.py tests/test_info_help.py tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py`
+  and `python -m pytest -q`.
+
 ## 2026-05-18 - Session 091 - Clarify InfoHelp response policy and Product Truth flags
 
 Summary:

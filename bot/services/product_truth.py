@@ -504,19 +504,19 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         title='InfoHelp guidance',
         domain='info_help',
         status=ProductTruthStatus.PARTIAL,
-        summary_for_user='Current runtime has deterministic Product Truth-backed InfoHelp for selected conservative capability and safety topics, plus Level 1 unknown-input guidance.',
+        summary_for_user='Current runtime has deterministic Product Truth-backed InfoHelp for selected conservative capability and safety topics, plus bounded Unknown / Discovery / Triage v1 classification.',
         current_limitations=(
-            'This is a partial Level 2 foundation and deterministic fast-path, not complete arbitrary capability-aware Q&A.',
-            'Full Level 2 still requires a bounded InfoHelp resolver, voice/STT parity, multilingual and noisy-input tests, and account-context-aware runtime evidence.',
+            'This is a partial Level 2 foundation with deterministic fast-path and bounded triage v1, not complete arbitrary capability-aware Q&A.',
+            'Full Level 2 still requires broader bounded InfoHelp resolver coverage, voice/STT parity across the full surface, multilingual and noisy-input evaluation, and account-context-aware runtime evidence.',
             'Customization request drafting/storage and code-agent handoff are not implemented by InfoHelp.',
         ),
-        runtime_owner='bot/services/info_help.py::build_product_truth_guidance and build_top_level_unknown_guidance',
+        runtime_owner='bot/services/info_help.py::build_product_truth_guidance, build_info_help_triage_guidance, and build_top_level_unknown_guidance',
         linked_handlers=('bot/services/info_help.py',),
         truth_source_refs=('docs/Info_Help_Guidance_Layer.md', 'PROJECT_LOG.md'),
         test_refs=('tests/test_product_truth.py', 'tests/test_info_help.py', 'tests/test_invoice_intent_prerouter.py'),
         safe_next_steps=(
             'Use only the current conservative Product Truth fast-path for covered topics.',
-            'Plan a separate bounded InfoHelp resolver before claiming broad Level 2 coverage.',
+            'Use bounded triage v1 only for safe classification; do not claim broad Level 2 coverage.',
         ),
         forbidden_claims=(
             'InfoHelp Level 2 is complete.',
@@ -524,7 +524,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'Customization requests are saved.',
             'InfoHelp has voice/STT parity.',
         ),
-        notes_for_agents='Partial Product Truth-backed runtime exists for selected topics only; do not describe InfoHelp as complete Level 2.',
+        notes_for_agents='Partial Product Truth-backed runtime and bounded triage v1 exist for selected topics/discovery classes only; do not describe InfoHelp as complete Level 2.',
     ),
 )
 

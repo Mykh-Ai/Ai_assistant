@@ -383,6 +383,9 @@ level:
   AI product leap.
 - Current bounded semantic action resolver: bounded action interpretation, not
   broad Product Truth or customization support by itself.
+- Current bounded InfoHelp / Unknown / Discovery / Triage v1: safe
+  non-persistent classification foundation only, not complete Level 2 and not
+  customization request creation.
 - Current confirmed invoice/contact/service alias learning: partial
   controlled learning in specific flows, not broad self-learning across
   actions, topics, capability questions, or customization patterns.

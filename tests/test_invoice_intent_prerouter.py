@@ -1233,6 +1233,35 @@ def test_known_reserved_send_invoice_action_uses_product_truth_and_does_not_exec
     assert 'Email delivery is configured.' not in message.answers[-1]
 
 
+@pytest.mark.parametrize(
+    ('user_input', 'expected_fragment'),
+    [
+        ('Vie\u0161 mi spravi\u0165 preh\u013ead tr\u017eieb za minul\u00fd mesiac?', 'nov\u00fa biznis funkciu'),
+        ('Ak\u00e9 bude po\u010dasie zajtra?', 'mimo rozsahu OfficeFlow'),
+        ('@@@ #### !!!', 'Tomuto vstupu nerozumiem'),
+        ('Ako sa m\u00e1\u0161?', 'biznis \u00falohami'),
+        ('urob mi to', 'Nie je jasn\u00e9'),
+        ('Povedz adminovi, \u017ee potrebujem automatick\u00e9 pripomienky nezaplaten\u00fdch fakt\u00far.', 'Ni\u010d som neposlal ani neulo\u017eil'),
+    ],
+)
+def test_process_invoice_text_uses_bounded_info_help_triage_without_side_effects(
+    tmp_path: Path,
+    user_input: str,
+    expected_fragment: str,
+) -> None:
+    message = _DummyMessage(user_input)
+    state = _DummyState()
+    config = _config(tmp_path)
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=user_input))
+
+    assert state.cleared is True
+    assert state.current_state is None
+    assert expected_fragment in message.answers[-1]
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
+
+
 def test_email_capability_question_uses_product_truth_not_invoice_execution(tmp_path: Path) -> None:
     message = _DummyMessage('Vieš poslať faktúru emailom?')
     state = _DummyState()

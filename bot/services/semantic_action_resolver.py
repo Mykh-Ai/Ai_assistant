@@ -251,16 +251,19 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             '\u0434\u0430\u043d\u043d\u044b\u0435',
             '\u0430\u043a\u043a\u0430\u0443\u043d\u0442',
         }
-        create_invoice_triggers = {
+        create_invoice_targets = {
             'fakturu',
             'faktura',
             'faktury',
             'фактуру',
             'invoice',
+        }
+        create_invoice_verbs = {
             'vytvor',
             'sprav',
             'urob',
             'zrob',
+            '\u0441\u0434\u0435\u043b\u0430\u0438',
             'сделай',
             'витворить',
             'створи',
@@ -327,7 +330,11 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'show_existing_invoice'
         if 'edit_invoice' in allowed and _matches_top_level_edit_existing_invoice(tokens):
             return 'edit_invoice'
-        if 'create_invoice' in allowed and tokens.intersection(create_invoice_triggers):
+        if (
+            'create_invoice' in allowed
+            and tokens.intersection(create_invoice_targets)
+            and (tokens.intersection(create_invoice_verbs) or 'invoice' in tokens)
+        ):
             return 'create_invoice'
         if 'add_contact' in allowed and tokens.intersection(add_contact_verbs) and tokens.intersection(add_contact_targets):
             return 'add_contact'

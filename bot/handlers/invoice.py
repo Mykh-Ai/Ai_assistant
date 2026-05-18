@@ -29,7 +29,11 @@ from bot.keyboards.decision import (
 )
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
-from bot.services.info_help import build_product_truth_guidance, build_top_level_unknown_guidance
+from bot.services.info_help import (
+    build_info_help_triage_guidance,
+    build_product_truth_guidance,
+    build_top_level_unknown_guidance,
+)
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
@@ -2568,6 +2572,11 @@ async def process_invoice_text(
         )
         return
     if top_level_intent == _UNKNOWN_INVOICE_INTENT:
+        triage_guidance = build_info_help_triage_guidance(user_input_text=invoice_text)
+        if triage_guidance is not None:
+            await message.answer(triage_guidance)
+            await state.clear()
+            return
         await message.answer(build_top_level_unknown_guidance(user_input_text=invoice_text))
         await state.clear()
         return

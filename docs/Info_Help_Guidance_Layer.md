@@ -75,9 +75,11 @@ Unless later code proves otherwise:
 
 - current top-level unknown-input guidance is Level 1 static guidance;
 - current Product Truth-backed InfoHelp is partial and limited to selected
-  conservative topics;
+  conservative topics plus bounded Unknown / Discovery / Triage v1
+  classification;
 - it is not full capability-aware Q&A;
-- it does not implement Unknown / Discovery / Triage at runtime;
+- it implements only a safe non-persistent Unknown / Discovery / Triage v1
+  foundation;
 - it does not implement customization request creation;
 - it does not implement broad self-learning for topics/capability questions;
 - it does not implement code-agent handoff.
@@ -167,11 +169,12 @@ These classes do not change Product Truth. They help choose a safe response:
 - offer to prepare a feature/customization/admin request only when the flow is
   implemented and confirmation-gated.
 
-Current status: Product Truth MVP exists, and deterministic Product
-Truth-backed InfoHelp fast-paths exist for selected topics. Unknown /
-Discovery / Triage is design-level only unless later runtime code proves
-otherwise. Bounded InfoHelp resolver is not complete. Customization Request
-storage is not implemented. InfoHelp Level 2 is not complete.
+Current status: Product Truth MVP exists, deterministic Product
+Truth-backed InfoHelp fast-paths exist for selected topics, and bounded
+Unknown / Discovery / Triage v1 classification exists for safe
+non-persistent responses. Bounded InfoHelp resolver coverage is still not
+complete. Customization Request storage is not implemented. InfoHelp Level 2
+is not complete.
 
 ## Response Contract
 
