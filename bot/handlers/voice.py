@@ -140,6 +140,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 config=config,
                 invoice_text=recognized_text,
                 request_id=request_id,
+                input_channel='voice',
             )
         elif current_state == InvoiceStates.waiting_confirm.state:
             if config.debug_invoice_transparency:
@@ -338,6 +339,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 config=config,
                 invoice_text=recognized_text,
                 request_id=request_id,
+                input_channel='voice',
             )
 
     finally:

@@ -1,19 +1,72 @@
+import asyncio
 import inspect
+import json
 
+import pytest
+
+from bot.services.info_help_resolver import (
+    build_info_help_triage_payload,
+    resolve_info_help_triage_with_llm,
+)
 from bot.services import info_help
 from bot.services.info_help import (
     TRIAGE_ADMIN_REVIEW_CANDIDATE,
+    TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE,
     TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
     TRIAGE_OUT_OF_DOMAIN,
+    TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE,
     TRIAGE_SMALLTALK,
     TRIAGE_SPAM_OR_ABUSE,
     TRIAGE_UNCLEAR_NEEDS_CLARIFICATION,
+    build_info_help_triage_guidance_with_llm,
     build_info_help_triage_guidance,
     build_product_truth_guidance,
     classify_info_help_capability,
     classify_info_help_triage,
     parse_info_help_triage_model_output,
 )
+
+
+class _FakeChoice:
+    def __init__(self, content: str) -> None:
+        self.message = type('_Msg', (), {'content': content})()
+
+
+class _FakeResponse:
+    def __init__(self, content: str) -> None:
+        self.choices = [_FakeChoice(content)]
+
+
+class _InfoHelpOpenAIFake:
+    output = '{"capability_id":"unknown","topic_id":"unknown","triage_class":"unknown","confidence":0,"needs_clarification":false}'
+    last_payload: dict | None = None
+    last_system_prompt: str | None = None
+
+    def __init__(self, *, api_key: str) -> None:
+        self.api_key = api_key
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        _InfoHelpOpenAIFake.last_system_prompt = kwargs['messages'][0]['content']
+        _InfoHelpOpenAIFake.last_payload = json.loads(kwargs['messages'][1]['content'])
+        return _FakeResponse(_InfoHelpOpenAIFake.output)
+
+
+class _InfoHelpOpenAIErrorFake:
+    def __init__(self, *, api_key: str) -> None:
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        raise RuntimeError('client failed')
+
+
+class _InfoHelpOpenAISlowFake:
+    def __init__(self, *, api_key: str) -> None:
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        await asyncio.sleep(1)
+        return _FakeResponse(_InfoHelpOpenAIFake.output)
 
 
 def test_email_capability_question_renders_unsupported_product_truth_guidance() -> None:
@@ -166,6 +219,41 @@ def test_ambiguous_direct_invoice_text_is_not_info_help() -> None:
     assert classify_info_help_capability(user_input_text='Vytvor faktúru pre ABC za opravu 100 eur') is None
 
 
+def test_info_help_llm_payload_contains_only_classification_fields() -> None:
+    payload = build_info_help_triage_payload(
+        user_input_text='Chcem dashboard cashflow.',
+        input_channel='voice',
+    )
+
+    assert payload['context_name'] == 'info_help_triage'
+    assert payload['input_channel'] == 'voice'
+    assert payload['request_storage_available'] is False
+    assert payload['admin_notification_available'] is False
+    assert set(payload['expected_output']) == {
+        'capability_id',
+        'topic_id',
+        'triage_class',
+        'confidence',
+        'needs_clarification',
+    }
+
+    forbidden_keys = {
+        'primary_status',
+        'response_mode',
+        'safe_next_steps',
+        'forbidden_claims',
+        'answer_text',
+        'canonical_action',
+        'request_draft',
+        'admin_message',
+    }
+    assert forbidden_keys.isdisjoint(payload)
+    assert payload['known_capabilities']
+    for capability in payload['known_capabilities']:
+        assert set(capability) == {'capability_id', 'title', 'domain', 'classification_summary'}
+        assert forbidden_keys.isdisjoint(capability)
+
+
 def test_triage_model_output_rejects_invented_capability_id() -> None:
     result = parse_info_help_triage_model_output(
         '{"capability_id":"magic_export","triage_class":"known_product_capability","topic_id":"product_capability"}'
@@ -191,6 +279,12 @@ def test_triage_model_output_rejects_unsupported_triage_class() -> None:
     assert result.capability_id == 'unknown'
     assert result.triage_class == 'unknown'
     assert result.topic_id == 'unknown'
+
+
+def test_triage_model_output_non_object_json_is_unknown() -> None:
+    result = parse_info_help_triage_model_output('["send_invoice_email"]')
+
+    assert result == info_help.InfoHelpTriageResult()
 
 
 def test_triage_model_output_confidence_is_bounded_and_safe() -> None:
@@ -244,6 +338,19 @@ def test_triage_model_output_ignores_answer_text_status_and_response_mode() -> N
     assert not hasattr(result, 'response_mode')
 
 
+def test_triage_model_output_conflicting_known_capability_and_triage_fails_safe() -> None:
+    result = parse_info_help_triage_model_output(
+        (
+            '{"capability_id":"send_invoice_email",'
+            '"triage_class":"out_of_domain",'
+            '"topic_id":"out_of_domain",'
+            '"confidence":0.9}'
+        )
+    )
+
+    assert result == info_help.InfoHelpTriageResult()
+
+
 def test_response_mode_and_primary_status_do_not_override_product_truth_rendering() -> None:
     result = parse_info_help_triage_model_output(
         (
@@ -268,6 +375,253 @@ def test_triage_model_output_rejects_free_form_answer_only() -> None:
     result = parse_info_help_triage_model_output('{"answer_text":"Sure, I can do that."}')
 
     assert result == info_help.InfoHelpTriageResult()
+
+
+def test_triage_model_output_ignores_side_effect_and_action_fields() -> None:
+    result = parse_info_help_triage_model_output(
+        (
+            '{"capability_id":"unknown",'
+            '"triage_class":"admin_review_candidate",'
+            '"topic_id":"admin_review",'
+            '"canonical_action":"create_invoice",'
+            '"request_draft":{"title":"Save this"},'
+            '"admin_message":"Please notify admin"}'
+        )
+    )
+
+    assert result.triage_class == TRIAGE_ADMIN_REVIEW_CANDIDATE
+    assert not hasattr(result, 'canonical_action')
+    assert not hasattr(result, 'request_draft')
+    assert not hasattr(result, 'admin_message')
+
+
+@pytest.mark.parametrize(
+    ('model_output', 'expected_capability', 'expected_triage', 'expected_topic'),
+    [
+        (
+            {
+                'capability_id': 'send_invoice_email',
+                'topic_id': 'product_capability',
+                'triage_class': 'known_product_capability',
+                'confidence': 0.91,
+                'needs_clarification': False,
+            },
+            'send_invoice_email',
+            'known_product_capability',
+            'product_capability',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'new_business_feature',
+                'triage_class': 'new_business_feature_request',
+                'confidence': 0.8,
+                'needs_clarification': False,
+            },
+            'unknown',
+            TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+            'new_business_feature',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'customization_request',
+                'triage_class': 'customization_request_candidate',
+                'confidence': 0.8,
+                'needs_clarification': False,
+            },
+            'unknown',
+            TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE,
+            'customization_request',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'admin_review',
+                'triage_class': 'admin_review_candidate',
+                'confidence': 0.8,
+                'needs_clarification': False,
+            },
+            'unknown',
+            TRIAGE_ADMIN_REVIEW_CANDIDATE,
+            'admin_review',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'out_of_domain',
+                'triage_class': 'out_of_domain',
+                'confidence': 0.8,
+                'needs_clarification': False,
+            },
+            'unknown',
+            TRIAGE_OUT_OF_DOMAIN,
+            'out_of_domain',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'spam_or_abuse',
+                'triage_class': 'spam_or_abuse',
+                'confidence': 0.8,
+                'needs_clarification': False,
+            },
+            'unknown',
+            TRIAGE_SPAM_OR_ABUSE,
+            'spam_or_abuse',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'smalltalk',
+                'triage_class': 'smalltalk',
+                'confidence': 0.8,
+                'needs_clarification': False,
+            },
+            'unknown',
+            TRIAGE_SMALLTALK,
+            'smalltalk',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'clarification',
+                'triage_class': 'unclear_needs_clarification',
+                'confidence': 0.8,
+                'needs_clarification': True,
+            },
+            'unknown',
+            TRIAGE_UNCLEAR_NEEDS_CLARIFICATION,
+            'clarification',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'possible_product_truth_candidate',
+                'triage_class': 'possible_product_truth_candidate',
+                'confidence': 0.6,
+                'needs_clarification': False,
+            },
+            'unknown',
+            TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE,
+            'possible_product_truth_candidate',
+        ),
+        (
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'unknown',
+                'triage_class': 'unknown',
+                'confidence': 0.0,
+                'needs_clarification': False,
+            },
+            'unknown',
+            'unknown',
+            'unknown',
+        ),
+    ],
+)
+def test_llm_info_help_triage_classifier_valid_outputs(
+    monkeypatch,
+    model_output: dict,
+    expected_capability: str,
+    expected_triage: str,
+    expected_topic: str,
+) -> None:
+    _InfoHelpOpenAIFake.output = json.dumps(model_output)
+    _InfoHelpOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIFake)
+
+    result = asyncio.run(
+        resolve_info_help_triage_with_llm(
+            user_input_text='neznama poziadavka',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert result.capability_id == expected_capability
+    assert result.triage_class == expected_triage
+    assert result.topic_id == expected_topic
+    assert _InfoHelpOpenAIFake.last_payload is not None
+    assert set(_InfoHelpOpenAIFake.last_payload['expected_output']) == {
+        'capability_id',
+        'topic_id',
+        'triage_class',
+        'confidence',
+        'needs_clarification',
+    }
+
+
+def test_llm_info_help_triage_no_api_key_is_safe_unknown(monkeypatch) -> None:
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIErrorFake)
+
+    result = asyncio.run(
+        resolve_info_help_triage_with_llm(
+            user_input_text='cashflow dashboard',
+            api_key=None,
+            model='gpt-4o',
+        )
+    )
+
+    assert result == info_help.InfoHelpTriageResult()
+
+
+def test_llm_info_help_triage_client_exception_is_safe_unknown(monkeypatch) -> None:
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIErrorFake)
+
+    result = asyncio.run(
+        resolve_info_help_triage_with_llm(
+            user_input_text='cashflow dashboard',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert result == info_help.InfoHelpTriageResult()
+
+
+def test_llm_info_help_triage_timeout_is_safe_unknown(monkeypatch) -> None:
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAISlowFake)
+
+    result = asyncio.run(
+        resolve_info_help_triage_with_llm(
+            user_input_text='cashflow dashboard',
+            api_key='sk-test',
+            model='gpt-4o',
+            timeout_seconds=0.001,
+        )
+    )
+
+    assert result == info_help.InfoHelpTriageResult()
+
+
+def test_llm_response_mode_and_status_do_not_override_product_truth_rendering(monkeypatch) -> None:
+    _InfoHelpOpenAIFake.output = json.dumps(
+        {
+            'capability_id': 'send_invoice_email',
+            'topic_id': 'product_capability',
+            'triage_class': 'known_product_capability',
+            'confidence': 0.91,
+            'needs_clarification': False,
+            'primary_status': 'supported',
+            'response_mode': 'explain_supported_usage',
+            'answer_text': 'I can send this invoice now.',
+        }
+    )
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIFake)
+
+    answer = asyncio.run(
+        build_info_help_triage_guidance_with_llm(
+            user_input_text='viete to dorucit klientovi digitalne?',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert answer is not None
+    assert 'Odosielanie fakt\u00far emailom' in answer
+    assert 'nepodporovan\u00e9' in answer
+    assert 'I can send this invoice now.' not in answer
 
 
 def test_info_help_triage_known_product_truth_email_question() -> None:

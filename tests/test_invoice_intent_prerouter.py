@@ -1040,6 +1040,19 @@ class _TopLevelActionOpenAIFake:
         return _FakeResponse(json.dumps({'canonical_action': _TopLevelActionOpenAIFake.canonical_action}))
 
 
+class _InfoHelpTriageOpenAIFake:
+    output = '{"capability_id":"unknown","topic_id":"unknown","triage_class":"unknown","confidence":0,"needs_clarification":false}'
+    last_payload: dict | None = None
+
+    def __init__(self, *, api_key: str) -> None:
+        self.api_key = api_key
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        _InfoHelpTriageOpenAIFake.last_payload = json.loads(kwargs['messages'][1]['content'])
+        return _FakeResponse(_InfoHelpTriageOpenAIFake.output)
+
+
 class _InventedTopLevelActionOpenAIFake:
     def __init__(self, *, api_key: str) -> None:
         self.api_key = api_key
@@ -1286,6 +1299,59 @@ def test_process_invoice_text_uses_bounded_info_help_triage_without_side_effects
     assert state.cleared is True
     assert state.current_state is None
     assert expected_fragment in message.answers[-1]
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
+
+
+def test_process_invoice_text_unknown_can_use_llm_info_help_triage_without_side_effects(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    _InfoHelpTriageOpenAIFake.output = json.dumps(
+        {
+            'capability_id': 'unknown',
+            'topic_id': 'new_business_feature',
+            'triage_class': 'new_business_feature_request',
+            'confidence': 0.82,
+            'needs_clarification': False,
+            'request_draft': {'title': 'Do not persist'},
+            'admin_message': 'Do not send',
+        }
+    )
+    _InfoHelpTriageOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpTriageOpenAIFake)
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='sk-test',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'test.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage('cashflow dashboard pls')
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text='cashflow dashboard pls',
+        )
+    )
+
+    assert state.cleared is True
+    assert 'nov\u00fa biznis funkciu' in message.answers[-1]
+    assert _InfoHelpTriageOpenAIFake.last_payload is not None
+    assert _InfoHelpTriageOpenAIFake.last_payload['input_channel'] == 'text'
+    assert 'request_draft' not in _InfoHelpTriageOpenAIFake.last_payload
+    assert 'admin_message' not in _InfoHelpTriageOpenAIFake.last_payload
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 

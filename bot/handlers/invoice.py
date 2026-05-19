@@ -30,7 +30,7 @@ from bot.keyboards.decision import (
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.info_help import (
-    build_info_help_triage_guidance,
+    build_info_help_triage_guidance_with_llm,
     build_product_truth_guidance,
     build_top_level_unknown_guidance,
 )
@@ -2250,6 +2250,7 @@ async def process_invoice_text(
     config: Config,
     invoice_text: str,
     request_id: str | None = None,
+    input_channel: str = 'text',
 ) -> None:
     flow_request_id = request_id or str(uuid4())
     message_id = getattr(message, 'message_id', None)
@@ -2572,7 +2573,12 @@ async def process_invoice_text(
         )
         return
     if top_level_intent == _UNKNOWN_INVOICE_INTENT:
-        triage_guidance = build_info_help_triage_guidance(user_input_text=invoice_text)
+        triage_guidance = await build_info_help_triage_guidance_with_llm(
+            user_input_text=invoice_text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            input_channel=input_channel,
+        )
         if triage_guidance is not None:
             await message.answer(triage_guidance)
             await state.clear()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -42,6 +43,29 @@ class _DummyBot:
     async def download_file(self, file_path: str, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b'voice')
+
+
+class _FakeChoice:
+    def __init__(self, content: str) -> None:
+        self.message = type('_Msg', (), {'content': content})()
+
+
+class _FakeResponse:
+    def __init__(self, content: str) -> None:
+        self.choices = [_FakeChoice(content)]
+
+
+class _VoiceInfoHelpOpenAIFake:
+    output = '{"capability_id":"unknown","topic_id":"unknown","triage_class":"unknown","confidence":0,"needs_clarification":false}'
+    last_payload: dict | None = None
+
+    def __init__(self, *, api_key: str) -> None:
+        self.api_key = api_key
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        _VoiceInfoHelpOpenAIFake.last_payload = json.loads(kwargs['messages'][1]['content'])
+        return _FakeResponse(_VoiceInfoHelpOpenAIFake.output)
 
 
 class _DummyState:
@@ -923,6 +947,55 @@ def test_voice_idle_transcript_uses_safe_info_help_triage(
 
     assert state.current_state is None
     assert expected_fragment in message.answers[-1]
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
+
+
+def test_voice_idle_transcript_can_use_llm_info_help_triage_without_side_effects(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'cashflow dashboard pls'
+
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    _VoiceInfoHelpOpenAIFake.output = json.dumps(
+        {
+            'capability_id': 'unknown',
+            'topic_id': 'out_of_domain',
+            'triage_class': 'out_of_domain',
+            'confidence': 0.81,
+            'needs_clarification': False,
+            'answer_text': 'Free-form answer must not render',
+        }
+    )
+    _VoiceInfoHelpOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _VoiceInfoHelpOpenAIFake)
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='sk-test',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'voice.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage()
+    state = _DummyState(None)
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert state.current_state is None
+    assert 'mimo rozsahu OfficeFlow' in message.answers[-1]
+    assert 'Free-form answer must not render' not in message.answers[-1]
+    assert _VoiceInfoHelpOpenAIFake.last_payload is not None
+    assert _VoiceInfoHelpOpenAIFake.last_payload['input_channel'] == 'voice'
+    assert 'answer_text' not in _VoiceInfoHelpOpenAIFake.last_payload
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 

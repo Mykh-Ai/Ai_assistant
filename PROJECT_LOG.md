@@ -1,5 +1,75 @@
 # PROJECT_LOG
 
+## 2026-05-19 - Session 094 - LLM-backed InfoHelp triage resolver path
+
+Summary:
+- Added `bot/services/info_help_resolver.py` as the bounded LLM-backed
+  InfoHelp / Unknown-Triage classifier path behind deterministic v1.
+- Deterministic Product Truth / triage matching remains the first fast-path;
+  LLM classification is used only when deterministic triage returns no
+  renderable result and a plausible API key is configured.
+- LLM input is classification-only: context name, input channel, user text,
+  supported languages, known capability IDs with title/domain/classification
+  summaries, allowed topic IDs, allowed triage classes, disabled request
+  storage/admin notification flags, and the expected output schema.
+- LLM output is validated back into Python-owned fields only:
+  `capability_id`, `topic_id`, `triage_class`, `confidence`, and
+  `needs_clarification`.
+- Hardened validation so conflicting `capability_id` + `triage_class`
+  combinations fail safe instead of forcing a known capability.
+- Wired the unknown top-level text path and idle voice transcript path to use
+  deterministic triage first, then the bounded LLM classifier fallback.
+- Added mocked LLM payload, parser, fallback, rendering, text integration, and
+  voice transcript regression tests.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- No Customization Request storage, admin notifications, DB/storage request
+  records, new canonical business actions, DecisionResolver changes,
+  handler-local keyword matching, or deterministic phrase dictionary expansion
+  as the main solution.
+- LLM output must not choose final `response_mode`, decide Product Truth
+  `primary_status`, return answer text, return canonical actions, draft
+  requests, or create admin messages.
+- Product Truth remains the only source of primary status, flags/context,
+  limitations, setup requirements, forbidden claims, and safe next steps.
+
+Touched scopes:
+- InfoHelp resolver/service, unknown top-level text routing, idle voice
+  transcript channel wiring, tests, and project log.
+- No DB/storage/schema, admin notification, DecisionResolver, canonical action,
+  customization storage, or handler-local keyword matching changes.
+
+Current implementation status:
+- LLM-backed bounded InfoHelp / Unknown-Triage resolver path: implemented as
+  partial Level 2 foundation.
+- InfoHelp Level 2: still not complete.
+- Customization Request storage/admin notification: still unsupported runtime.
+
+AI maturity:
+- Partial Level 2 foundation only. Broader Level 2 still requires evaluated
+  resolver behavior, voice/STT parity coverage beyond smoke, multilingual/noisy
+  evals, and account-context-aware Product Truth evidence.
+
+Out of scope:
+- Runtime support claims beyond Product Truth.
+- Request persistence, admin sends, new business actions, Product Truth status
+  mutation, and self-learning.
+
+Verification:
+- Focused suite required:
+  `python -m pytest -q tests/test_info_help.py tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py tests/test_product_truth.py`.
+- Full suite required:
+  `python -m pytest -q`.
+
 ## 2026-05-19 - Session 093 - Harden bounded InfoHelp triage regressions
 
 Summary:

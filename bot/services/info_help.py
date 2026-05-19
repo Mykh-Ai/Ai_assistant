@@ -264,8 +264,8 @@ def parse_info_help_triage_model_output(
         triage_class = TRIAGE_UNKNOWN
     if triage_class == TRIAGE_KNOWN_PRODUCT_CAPABILITY and capability_id == 'unknown':
         triage_class = TRIAGE_UNKNOWN
-    if capability_id != 'unknown':
-        triage_class = TRIAGE_KNOWN_PRODUCT_CAPABILITY
+    if capability_id != 'unknown' and triage_class != TRIAGE_KNOWN_PRODUCT_CAPABILITY:
+        return InfoHelpTriageResult()
 
     topic_id = str(parsed.get('topic_id') or _TRIAGE_TOPIC_BY_CLASS.get(triage_class, TRIAGE_UNKNOWN)).strip()
     if invalid_triage_class:
@@ -357,6 +357,39 @@ def build_info_help_triage_guidance(
 ) -> str | None:
     """Render a safe non-persistent answer for bounded InfoHelp/Triage v1."""
     result = classify_info_help_triage(user_input_text=user_input_text)
+    return _render_info_help_triage_result(result, account_context=account_context)
+
+
+async def build_info_help_triage_guidance_with_llm(
+    *,
+    user_input_text: str | None,
+    api_key: str | None,
+    model: str,
+    input_channel: str = 'text',
+    account_context: Mapping[str, Any] | None = None,
+) -> str | None:
+    """Render deterministic triage first, then optional bounded LLM triage fallback."""
+    deterministic_result = classify_info_help_triage(user_input_text=user_input_text)
+    deterministic_answer = _render_info_help_triage_result(deterministic_result, account_context=account_context)
+    if deterministic_answer is not None:
+        return deterministic_answer
+
+    from bot.services.info_help_resolver import resolve_info_help_triage_with_llm
+
+    llm_result = await resolve_info_help_triage_with_llm(
+        user_input_text=user_input_text or '',
+        api_key=api_key,
+        model=model,
+        input_channel=input_channel,
+    )
+    return _render_info_help_triage_result(llm_result, account_context=account_context)
+
+
+def _render_info_help_triage_result(
+    result: InfoHelpTriageResult,
+    *,
+    account_context: Mapping[str, Any] | None = None,
+) -> str | None:
     if result.triage_class == TRIAGE_KNOWN_PRODUCT_CAPABILITY:
         if result.capability_id != 'unknown':
             payload = get_safe_answer_payload(result.capability_id, account_context=account_context)
