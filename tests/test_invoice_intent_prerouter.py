@@ -395,6 +395,34 @@ def test_pdf_template_question_does_not_resolve_to_invoice_edit_action() -> None
     assert result == 'unknown'
 
 
+def test_generic_urob_mi_to_does_not_create_invoice_without_target() -> None:
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'unknown'],
+            user_input_text='urob mi to',
+            api_key=None,
+            model='gpt-4o',
+        )
+    )
+
+    assert result == 'unknown'
+
+
+def test_send_invoice_request_does_not_become_invoice_creation() -> None:
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'send_invoice', 'unknown'],
+            user_input_text='Po\u0161li fakt\u00faru 12',
+            api_key=None,
+            model='gpt-4o',
+        )
+    )
+
+    assert result == 'send_invoice'
+
+
 def test_process_invoice_text_routes_add_service_alias_to_existing_service_flow(tmp_path: Path, monkeypatch) -> None:
     message = _DummyMessage('pridaj novú službu')
     state = _DummyState()

@@ -1,5 +1,68 @@
 # PROJECT_LOG
 
+## 2026-05-19 - Session 093 - Harden bounded InfoHelp triage regressions
+
+Summary:
+- Added regression coverage for bounded InfoHelp / Unknown-Triage v1.
+- Covered unsupported triage class rejection, confidence bounds, invalid
+  `topic_id` fallback, ignored model `response_mode`, ignored model
+  `primary_status`, and ignored free-form `answer_text`.
+- Added idle voice transcript triage coverage for new business feature
+  requests, out-of-domain questions, smalltalk, unclear requests, and
+  admin/customization candidates.
+- Added voice regression proving final delete-database confirmation remains
+  typed-only and does not call STT.
+- Extended multilingual/noisy smoke coverage and action separation tests.
+- Added a minimal parser hardening fix so an unsupported triage class cannot
+  keep a model-provided topic as trusted output.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- Prefer tests-only.
+- No Customization Request storage, admin notification, DB/storage request
+  records, new canonical business actions, DecisionResolver changes,
+  handler-local keyword matching, or phrase dictionaries as main
+  understanding.
+- LLM output must not choose final response mode or decide Product Truth
+  support status.
+
+Touched scopes:
+- Tests, project log, and one narrow `bot/services/info_help.py` parser
+  validation fix.
+- Runtime routing, handlers, DB/storage/schema, DecisionResolver, STT/LMM
+  implementation, and Product Truth status are unchanged.
+
+Current implementation status:
+- Bounded Unknown / Discovery / Triage: v1 foundation implemented.
+- Bounded InfoHelp resolver: partial foundation only, not complete Level 2.
+- Customization Request storage/admin notification: unsupported runtime.
+- InfoHelp Level 2: not complete.
+
+AI maturity:
+- Test hardening for a partial Level 2 foundation. This does not complete
+  arbitrary capability-aware Q&A, request storage, self-learning, or
+  code-agent handoff.
+
+Out of scope:
+- Runtime feature expansion.
+- Broader deterministic phrase dictionaries.
+- Persistence, admin notifications, new actions, and Product Truth status
+  changes.
+
+Verification:
+- Focused suite required:
+  `python -m pytest -q tests/test_info_help.py tests/test_invoice_intent_prerouter.py tests/test_product_truth.py tests/test_voice_state_routing.py`.
+- Full suite required:
+  `python -m pytest -q`.
+
 ## 2026-05-18 - Session 092 - Add bounded InfoHelp triage resolver foundation
 
 Summary:

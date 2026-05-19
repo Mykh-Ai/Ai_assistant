@@ -259,7 +259,8 @@ def parse_info_help_triage_model_output(
         capability_id = 'unknown'
 
     triage_class = str(parsed.get('triage_class') or TRIAGE_UNKNOWN).strip()
-    if triage_class not in ALLOWED_INFO_HELP_TRIAGE_CLASSES:
+    invalid_triage_class = triage_class not in ALLOWED_INFO_HELP_TRIAGE_CLASSES
+    if invalid_triage_class:
         triage_class = TRIAGE_UNKNOWN
     if triage_class == TRIAGE_KNOWN_PRODUCT_CAPABILITY and capability_id == 'unknown':
         triage_class = TRIAGE_UNKNOWN
@@ -267,6 +268,8 @@ def parse_info_help_triage_model_output(
         triage_class = TRIAGE_KNOWN_PRODUCT_CAPABILITY
 
     topic_id = str(parsed.get('topic_id') or _TRIAGE_TOPIC_BY_CLASS.get(triage_class, TRIAGE_UNKNOWN)).strip()
+    if invalid_triage_class:
+        topic_id = TRIAGE_UNKNOWN
     if topic_id not in allowed_topics:
         topic_id = _TRIAGE_TOPIC_BY_CLASS.get(triage_class, TRIAGE_UNKNOWN)
     if topic_id not in allowed_topics:

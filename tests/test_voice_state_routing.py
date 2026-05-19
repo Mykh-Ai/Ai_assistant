@@ -4,9 +4,12 @@ import asyncio
 import logging
 from pathlib import Path
 
+import pytest
+
 from bot.config import Config
 from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
 from bot.handlers.contacts import ContactStates
+from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
 from bot.handlers.invoice import InvoiceStates
 from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates
 from bot.handlers.supplier import ServiceAliasStates
@@ -97,6 +100,25 @@ def test_voice_waiting_confirm_routes_to_preview_confirmation(monkeypatch, tmp_p
 
     asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(InvoiceStates.waiting_confirm.state)))
     assert calls == ['preview']
+
+
+def test_voice_delete_database_final_confirmation_is_typed_only(monkeypatch, tmp_path: Path) -> None:
+    async def _unexpected_stt(*args, **kwargs) -> str:
+        raise AssertionError('final delete confirmation must not call STT')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _unexpected_stt)
+
+    message = _DummyMessage()
+    asyncio.run(
+        handle_voice(
+            message,
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(DeleteUserDatabaseStates.waiting_exact_confirmation.state),
+        )
+    )
+
+    assert message.answers == [VOICE_EXACT_CONFIRMATION_MESSAGE]
 
 
 def test_voice_waiting_confirm_routes_to_preview_confirmation_for_uk_no(monkeypatch, tmp_path: Path) -> None:
@@ -863,6 +885,46 @@ def test_voice_idle_unknown_gets_info_help_guidance(monkeypatch, tmp_path: Path)
 
     assert 'Nerozumiem, čo chcete spraviť.' in message.answers[-1]
     assert 'vytvoriť faktúru' in message.answers[-1]
+
+
+@pytest.mark.parametrize(
+    ('transcript', 'expected_fragment'),
+    [
+        ('Vie\u0161 mi spravi\u0165 preh\u013ead tr\u017eieb za minul\u00fd mesiac?', 'nov\u00fa biznis funkciu'),
+        ('Ak\u00e9 bude po\u010dasie zajtra?', 'mimo rozsahu OfficeFlow'),
+        ('Ako sa m\u00e1\u0161?', 'biznis \u00falohami'),
+        ('urob mi to', 'Nie je jasn\u00e9'),
+        (
+            'Povedz adminovi, \u017ee potrebujem automatick\u00e9 pripomienky nezaplaten\u00fdch fakt\u00far.',
+            'Ni\u010d som neposlal ani neulo\u017eil',
+        ),
+    ],
+)
+def test_voice_idle_transcript_uses_safe_info_help_triage(
+    monkeypatch,
+    tmp_path: Path,
+    transcript: str,
+    expected_fragment: str,
+) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return transcript
+
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+
+    message = _DummyMessage()
+    state = _DummyState(None)
+    config = _config(tmp_path)
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert state.current_state is None
+    assert expected_fragment in message.answers[-1]
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
 
 
 def test_voice_idle_profile_rekvizity_uses_top_level_resolver_path(monkeypatch, tmp_path: Path) -> None:

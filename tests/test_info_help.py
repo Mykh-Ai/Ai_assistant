@@ -183,6 +183,47 @@ def test_triage_model_output_invalid_json_is_unknown() -> None:
     assert result.triage_class == 'unknown'
 
 
+def test_triage_model_output_rejects_unsupported_triage_class() -> None:
+    result = parse_info_help_triage_model_output(
+        '{"capability_id":"unknown","triage_class":"invented_class","topic_id":"admin_review"}'
+    )
+
+    assert result.capability_id == 'unknown'
+    assert result.triage_class == 'unknown'
+    assert result.topic_id == 'unknown'
+
+
+def test_triage_model_output_confidence_is_bounded_and_safe() -> None:
+    high = parse_info_help_triage_model_output(
+        '{"capability_id":"unknown","triage_class":"smalltalk","confidence":9.5}'
+    )
+    low = parse_info_help_triage_model_output(
+        '{"capability_id":"unknown","triage_class":"smalltalk","confidence":-2}'
+    )
+    non_numeric = parse_info_help_triage_model_output(
+        '{"capability_id":"unknown","triage_class":"smalltalk","confidence":"very sure"}'
+    )
+
+    assert high.confidence == 1.0
+    assert low.confidence == 0.0
+    assert non_numeric.confidence == 0.0
+
+
+def test_triage_model_output_unknown_topic_id_falls_back_safely() -> None:
+    result = parse_info_help_triage_model_output(
+        (
+            '{"capability_id":"unknown",'
+            '"triage_class":"new_business_feature_request",'
+            '"topic_id":"trusted_product_truth",'
+            '"confidence":0.7}'
+        )
+    )
+
+    assert result.capability_id == 'unknown'
+    assert result.triage_class == TRIAGE_NEW_BUSINESS_FEATURE_REQUEST
+    assert result.topic_id == 'new_business_feature'
+
+
 def test_triage_model_output_ignores_answer_text_status_and_response_mode() -> None:
     result = parse_info_help_triage_model_output(
         (
@@ -201,6 +242,26 @@ def test_triage_model_output_ignores_answer_text_status_and_response_mode() -> N
     assert not hasattr(result, 'answer_text')
     assert not hasattr(result, 'primary_status')
     assert not hasattr(result, 'response_mode')
+
+
+def test_response_mode_and_primary_status_do_not_override_product_truth_rendering() -> None:
+    result = parse_info_help_triage_model_output(
+        (
+            '{"capability_id":"send_invoice_email",'
+            '"triage_class":"known_product_capability",'
+            '"topic_id":"product_capability",'
+            '"primary_status":"supported",'
+            '"response_mode":"explain_supported_usage",'
+            '"answer_text":"I can send this invoice now."}'
+        )
+    )
+    answer = build_info_help_triage_guidance(user_input_text='Vie\u0161 posla\u0165 fakt\u00faru emailom?')
+
+    assert result.capability_id == 'send_invoice_email'
+    assert answer is not None
+    assert 'Odosielanie fakt\u00far emailom' in answer
+    assert 'nepodporovan\u00e9' in answer
+    assert 'I can send this invoice now.' not in answer
 
 
 def test_triage_model_output_rejects_free_form_answer_only() -> None:
@@ -280,6 +341,25 @@ def test_multilingual_and_noisy_triage_examples() -> None:
         classify_info_help_triage(user_input_text='Treba mesacny report trzieb, no tak trochu').triage_class
         == TRIAGE_NEW_BUSINESS_FEATURE_REQUEST
     )
+
+
+def test_multilingual_noisy_triage_matrix_extends_discovery_smoke() -> None:
+    examples = [
+        ('Vie\u0161 mi spravi\u0165 preh\u013ead tr\u017eieb za minul\u00fd mesiac?', TRIAGE_NEW_BUSINESS_FEATURE_REQUEST),
+        ('Vies poslat fakturu emailom?', 'send_invoice_email'),
+        ('\u042f\u043a\u0430 \u0431\u0443\u0434\u0435 \u043f\u043e\u0433\u043e\u0434\u0430 \u0437\u0430\u0432\u0442\u0440\u0430?', TRIAGE_OUT_OF_DOMAIN),
+        ('sprav mi to', TRIAGE_UNCLEAR_NEEDS_CLARIFICATION),
+        ('Treba report trzieb \u0431\u0443\u0434\u044c \u043b\u0430\u0441\u043a\u0430', TRIAGE_NEW_BUSINESS_FEATURE_REQUEST),
+        ('em mozno poslat fakturu emailom', 'send_invoice_email'),
+    ]
+
+    for user_input, expected in examples:
+        result = classify_info_help_triage(user_input_text=user_input)
+        if expected in {'send_invoice_email', 'google_drive_invoice_storage', 'sms_reminders'}:
+            assert result.capability_id == expected
+            assert result.triage_class == 'known_product_capability'
+        else:
+            assert result.triage_class == expected
 
 
 def test_info_help_service_has_no_runtime_side_effect_imports() -> None:
