@@ -60,6 +60,11 @@ class _InfoHelpOpenAIErrorFake:
         raise RuntimeError('client failed')
 
 
+class _InfoHelpOpenAIUnexpectedCallFake:
+    def __init__(self, *, api_key: str) -> None:
+        raise AssertionError('InfoHelp LLM client must not be instantiated')
+
+
 class _InfoHelpOpenAISlowFake:
     def __init__(self, *, api_key: str) -> None:
         self.chat = type('_Chat', (), {'completions': self})()
@@ -240,6 +245,7 @@ def test_info_help_llm_payload_contains_only_classification_fields() -> None:
     forbidden_keys = {
         'primary_status',
         'response_mode',
+        'safe_next',
         'safe_next_steps',
         'forbidden_claims',
         'answer_text',
@@ -316,6 +322,21 @@ def test_triage_model_output_unknown_topic_id_falls_back_safely() -> None:
     assert result.capability_id == 'unknown'
     assert result.triage_class == TRIAGE_NEW_BUSINESS_FEATURE_REQUEST
     assert result.topic_id == 'new_business_feature'
+
+
+def test_triage_model_output_known_capability_invalid_topic_normalizes_safely() -> None:
+    result = parse_info_help_triage_model_output(
+        (
+            '{"capability_id":"send_invoice_email",'
+            '"triage_class":"known_product_capability",'
+            '"topic_id":"invented_trusted_topic",'
+            '"confidence":0.7}'
+        )
+    )
+
+    assert result.capability_id == 'send_invoice_email'
+    assert result.triage_class == 'known_product_capability'
+    assert result.topic_id == 'product_capability'
 
 
 def test_triage_model_output_ignores_answer_text_status_and_response_mode() -> None:
@@ -553,12 +574,26 @@ def test_llm_info_help_triage_classifier_valid_outputs(
 
 
 def test_llm_info_help_triage_no_api_key_is_safe_unknown(monkeypatch) -> None:
-    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIErrorFake)
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIUnexpectedCallFake)
 
     result = asyncio.run(
         resolve_info_help_triage_with_llm(
             user_input_text='cashflow dashboard',
             api_key=None,
+            model='gpt-4o',
+        )
+    )
+
+    assert result == info_help.InfoHelpTriageResult()
+
+
+def test_llm_info_help_triage_non_sk_api_key_is_safe_unknown_without_client_call(monkeypatch) -> None:
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIUnexpectedCallFake)
+
+    result = asyncio.run(
+        resolve_info_help_triage_with_llm(
+            user_input_text='cashflow dashboard',
+            api_key='not-a-real-key',
             model='gpt-4o',
         )
     )
@@ -622,6 +657,148 @@ def test_llm_response_mode_and_status_do_not_override_product_truth_rendering(mo
     assert 'Odosielanie fakt\u00far emailom' in answer
     assert 'nepodporovan\u00e9' in answer
     assert 'I can send this invoice now.' not in answer
+
+
+def test_llm_unknown_classification_returns_no_triage_answer(monkeypatch) -> None:
+    _InfoHelpOpenAIFake.output = json.dumps(
+        {
+            'capability_id': 'unknown',
+            'topic_id': 'unknown',
+            'triage_class': 'unknown',
+            'confidence': 0.0,
+            'needs_clarification': False,
+        }
+    )
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIFake)
+
+    answer = asyncio.run(
+        build_info_help_triage_guidance_with_llm(
+            user_input_text='cashflow dashboard maybe',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert answer is None
+
+
+def test_llm_possible_product_truth_candidate_renders_clarification(monkeypatch) -> None:
+    _InfoHelpOpenAIFake.output = json.dumps(
+        {
+            'capability_id': 'unknown',
+            'topic_id': 'possible_product_truth_candidate',
+            'triage_class': 'possible_product_truth_candidate',
+            'confidence': 0.61,
+            'needs_clarification': False,
+        }
+    )
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIFake)
+
+    answer = asyncio.run(
+        build_info_help_triage_guidance_with_llm(
+            user_input_text='viete spravit veci okolo workflow?',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert answer is not None
+    assert 'neviem ju bezpe\u010dne priradi\u0165' in answer
+    assert 'fakt\u00fary, PDF, kontakty, slu\u017eby' in answer
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'model_output', 'expected_triage'),
+    [
+        (
+            'Potrebujem nový typ prehľadu tržieb',
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'new_business_feature',
+                'triage_class': 'new_business_feature_request',
+                'confidence': 0.8,
+                'needs_clarification': False,
+            },
+            TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+        ),
+        (
+            'Vies spravit novy dashboard trzby pls',
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'new_business_feature',
+                'triage_class': 'new_business_feature_request',
+                'confidence': 0.78,
+                'needs_clarification': False,
+            },
+            TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+        ),
+        (
+            '\u0427\u0438 \u043c\u043e\u0436\u0435\u0448 \u0437\u0440\u043e\u0431\u0438\u0442\u0438 \u043d\u043e\u0432\u0438\u0439 \u0437\u0432\u0456\u0442?',
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'new_business_feature',
+                'triage_class': 'new_business_feature_request',
+                'confidence': 0.76,
+                'needs_clarification': False,
+            },
+            TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+        ),
+        (
+            '\u041f\u043e\u0433\u043e\u0434\u0430 \u0437\u0430\u0432\u0442\u0440\u0430?',
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'out_of_domain',
+                'triage_class': 'out_of_domain',
+                'confidence': 0.82,
+                'needs_clarification': False,
+            },
+            TRIAGE_OUT_OF_DOMAIN,
+        ),
+        (
+            'treba report trzieb \u0431\u0443\u0434\u044c \u043b\u0430\u0441\u043a\u0430 hmm',
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'new_business_feature',
+                'triage_class': 'new_business_feature_request',
+                'confidence': 0.72,
+                'needs_clarification': False,
+            },
+            TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+        ),
+        (
+            'em chcem asi nejaky prehlad trzby no',
+            {
+                'capability_id': 'unknown',
+                'topic_id': 'new_business_feature',
+                'triage_class': 'new_business_feature_request',
+                'confidence': 0.66,
+                'needs_clarification': False,
+            },
+            TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+        ),
+    ],
+)
+def test_llm_info_help_triage_multilingual_noisy_payload_smoke(
+    monkeypatch,
+    user_input: str,
+    model_output: dict,
+    expected_triage: str,
+) -> None:
+    _InfoHelpOpenAIFake.output = json.dumps(model_output)
+    _InfoHelpOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIFake)
+
+    result = asyncio.run(
+        resolve_info_help_triage_with_llm(
+            user_input_text=user_input,
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert result.triage_class == expected_triage
+    assert _InfoHelpOpenAIFake.last_payload is not None
+    assert _InfoHelpOpenAIFake.last_payload['user_input_text'] == user_input
 
 
 def test_info_help_triage_known_product_truth_email_question() -> None:

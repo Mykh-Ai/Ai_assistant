@@ -1356,6 +1356,106 @@ def test_process_invoice_text_unknown_can_use_llm_info_help_triage_without_side_
     assert not (tmp_path / 'invoices').exists()
 
 
+def test_process_invoice_text_llm_unknown_falls_back_to_generic_guidance_without_side_effects(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    _InfoHelpTriageOpenAIFake.output = json.dumps(
+        {
+            'capability_id': 'unknown',
+            'topic_id': 'unknown',
+            'triage_class': 'unknown',
+            'confidence': 0.0,
+            'needs_clarification': False,
+        }
+    )
+    _InfoHelpTriageOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpTriageOpenAIFake)
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='sk-test',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'test.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage('cashflow maybe maybe')
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text='cashflow maybe maybe',
+        )
+    )
+
+    assert state.cleared is True
+    assert 'Nerozumiem, \u010do chcete spravi\u0165.' in message.answers[-1]
+    assert 'vytvori\u0165 fakt\u00faru' in message.answers[-1]
+    assert _InfoHelpTriageOpenAIFake.last_payload is not None
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
+
+
+def test_process_invoice_text_llm_possible_product_truth_candidate_asks_clarification_without_side_effects(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    _InfoHelpTriageOpenAIFake.output = json.dumps(
+        {
+            'capability_id': 'unknown',
+            'topic_id': 'possible_product_truth_candidate',
+            'triage_class': 'possible_product_truth_candidate',
+            'confidence': 0.62,
+            'needs_clarification': False,
+            'primary_status': 'supported',
+        }
+    )
+    _InfoHelpTriageOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpTriageOpenAIFake)
+
+    config = Config(
+        bot_token='token',
+        openai_api_key='sk-test',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'test.db',
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage('viete spravit veci okolo workflow?')
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text='viete spravit veci okolo workflow?',
+        )
+    )
+
+    assert state.cleared is True
+    assert 'neviem ju bezpe\u010dne priradi\u0165' in message.answers[-1]
+    assert 'supported' not in message.answers[-1]
+    assert _InfoHelpTriageOpenAIFake.last_payload is not None
+    assert 'primary_status' not in _InfoHelpTriageOpenAIFake.last_payload
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
+
+
 def test_email_capability_question_uses_product_truth_not_invoice_execution(tmp_path: Path) -> None:
     message = _DummyMessage('Vieš poslať faktúru emailom?')
     state = _DummyState()

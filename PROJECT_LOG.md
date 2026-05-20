@@ -1,5 +1,66 @@
 # PROJECT_LOG
 
+## 2026-05-20 - Session 095 - Harden LLM InfoHelp triage fallback tests
+
+Summary:
+- Added regression tests for the LLM-backed InfoHelp / Unknown-Triage fallback
+  path without changing runtime behavior.
+- Covered absent and non-`sk-` API key no-call behavior so the OpenAI client is
+  not instantiated when the LLM fallback is unavailable.
+- Extended payload assertions to exclude both `safe_next` and
+  `safe_next_steps`, plus request/admin/action side-effect fields.
+- Added parser coverage proving an invalid topic for a known capability is not
+  trusted and normalizes to the safe `product_capability` topic.
+- Added service and top-level integration coverage for model `unknown`
+  returning generic bounded fallback guidance.
+- Added service and top-level integration coverage for
+  `possible_product_truth_candidate` clarification without Product Truth
+  mutation, DB/storage writes, admin notification, or request save.
+- Added mocked multilingual/noisy LLM-path smoke inputs for SK, SK without
+  diacritics, Ukrainian, Russian, mixed/surzhyk, and mild STT-like text.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- Tests-only unless a failing test exposes a tiny safety bug.
+- No new features, routing behavior changes, storage/admin/customization
+  writes, canonical actions, heuristic/dictionary expansion, DecisionResolver
+  changes, or complete Level 2 claims.
+
+Touched scopes:
+- Tests and project log only.
+- Runtime routing, handlers, DB/storage/schema, admin notifications,
+  customization storage, canonical actions, DecisionResolver, and Product
+  Truth status are unchanged.
+
+Current implementation status:
+- LLM-backed bounded InfoHelp / Unknown-Triage resolver path: partial Level 2
+  foundation.
+- InfoHelp Level 2: still not complete.
+- Customization Request storage/admin notification: still unsupported runtime.
+
+AI maturity:
+- Test hardening for a partial Level 2 foundation. No new runtime capability
+  claims.
+
+Out of scope:
+- Runtime behavior changes.
+- Request persistence, admin sends, new business actions, Product Truth status
+  mutation, broad heuristic expansion, and self-learning.
+
+Verification:
+- Focused suite required:
+  `python -m pytest -q tests/test_info_help.py tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py tests/test_product_truth.py`.
+- Full suite required:
+  `python -m pytest -q`.
+
 ## 2026-05-19 - Session 094 - LLM-backed InfoHelp triage resolver path
 
 Summary:
