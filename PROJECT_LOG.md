@@ -1,5 +1,72 @@
 # PROJECT_LOG
 
+## 2026-05-20 - Session 097 - Harden Customization Request service boundaries
+
+Summary:
+- Hardened the Customization Request Phase 1 storage/service API before any
+  user-facing flow is wired.
+- Added `get_customization_request_for_user()` as the tenant-scoped read API;
+  it requires `telegram_id` and returns only rows matching both `request_id`
+  and user scope.
+- Renamed the unscoped lookup to
+  `get_customization_request_by_id_for_admin()` and documented it as
+  admin/internal only.
+- Renamed pending-review listing to
+  `list_pending_customization_requests_for_admin()` and documented it as an
+  admin/internal primitive, not a tenant-user listing API.
+- Re-redacts caller-provided `redacted_original_text` before persistence so a
+  handler-side mistake cannot store obvious secrets as redacted text.
+- Restricts request creation to request-starting triage classes:
+  `new_business_feature_request`, `customization_request_candidate`,
+  `admin_review_candidate`, and `possible_product_truth_candidate`.
+- Added tests for scoped reads, cross-user read prevention, required
+  `telegram_id`, admin/internal method naming, direct-redacted-text
+  re-redaction, invalid triage classes, and invalid source channel.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/Customization_Request_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+
+Constraints extracted:
+- Service/API hardening and tests only.
+- No user-facing InfoHelp/Triage flow, handlers, routing changes, admin list
+  command, admin notification, Product Truth mutation, code-agent handoff, or
+  complete Level 3 claim.
+
+Touched scopes:
+- Customization Request storage service, tests, and project log.
+- DB table shape, runtime routing, handlers, voice/STT, LLM behavior, admin
+  notification, Product Truth registry, and code-agent handoff are unchanged.
+
+Current implementation status:
+- Customization Request storage/service foundation: hardened partial Phase 1
+  runtime foundation for confirmed rows only.
+- User-facing Customization Request flow: not implemented.
+- Admin review/notification: not implemented.
+- Code-agent handoff: not implemented.
+- Customization Request Level 3: not complete.
+
+AI maturity:
+- Storage prerequisite hardening for future Level 3. This patch does not
+  provide a confirmation-gated user journey.
+
+Out of scope:
+- Draft preview FSM, confirmation UI, InfoHelp integration, admin list,
+  admin notification, Product Truth candidate conversion, and code-agent
+  task creation.
+
+Verification:
+- Service tests:
+  `python -m pytest -q tests/test_customization_requests.py`.
+- Required focused suite:
+  `python -m pytest -q tests/test_customization_requests.py tests/test_product_truth.py tests/test_info_help.py`.
+- Full suite:
+  `python -m pytest -q`.
+
 ## 2026-05-20 - Session 096 - Customization Request storage foundation
 
 Summary:

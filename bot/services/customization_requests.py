@@ -32,6 +32,13 @@ ALLOWED_PERSISTED_STATUSES = {
     STATUS_EXPIRED_UNCONFIRMED,
 }
 
+REQUEST_STARTING_TRIAGE_CLASSES = {
+    'new_business_feature_request',
+    'customization_request_candidate',
+    'admin_review_candidate',
+    'possible_product_truth_candidate',
+}
+
 _VALID_SOURCE_CHANNELS = {'text', 'voice'}
 _DEFAULT_RISK_LEVEL = 'medium'
 _DEFAULT_SCHEMA_VERSION = 1
@@ -106,11 +113,11 @@ class CustomizationRequestService:
         if clean_channel not in _VALID_SOURCE_CHANNELS:
             raise ValueError('invalid_source_channel')
 
-        clean_triage_class = _required_text(source_triage_class, 'source_triage_class_required')
+        clean_triage_class = _normalize_source_triage_class(source_triage_class)
         clean_status = _normalize_status(status)
         clean_request_id = _clean_optional(request_id) or f'cr_{uuid4().hex}'
         now = _utc_timestamp()
-        clean_original = _clean_optional(redacted_original_text)
+        clean_original = redact_customization_request_text(redacted_original_text)
         raw_source = _clean_optional(original_user_text)
         if clean_original is None and raw_source is not None:
             clean_original = redact_customization_request_text(raw_source)
@@ -174,25 +181,45 @@ class CustomizationRequestService:
             raise RuntimeError('customization_request_save_failed')
         return _record_from_row(row)
 
-    def get_customization_request_by_id(
+    def get_customization_request_for_user(
         self,
         *,
         request_id: str,
-        telegram_id: int | None = None,
+        telegram_id: int | None,
     ) -> CustomizationRequestRecord | None:
+        if telegram_id is None:
+            raise ValueError('telegram_id_required')
+        if int(telegram_id) <= 0:
+            raise ValueError('telegram_id_required')
+
         clean_request_id = _clean_optional(request_id)
         if clean_request_id is None:
             return None
 
-        params: list[object] = [clean_request_id]
-        where_clause = ' WHERE request_id = ?'
-        if telegram_id is not None:
-            where_clause += ' AND telegram_id = ?'
-            params.append(int(telegram_id))
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ? AND telegram_id = ?',
+                (clean_request_id, int(telegram_id)),
+            ).fetchone()
+        return _record_from_row(row) if row is not None else None
+
+    def get_customization_request_by_id_for_admin(
+        self,
+        *,
+        request_id: str,
+    ) -> CustomizationRequestRecord | None:
+        """Admin/internal unscoped lookup; user-facing reads must use tenant scope."""
+        clean_request_id = _clean_optional(request_id)
+        if clean_request_id is None:
+            return None
 
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
-            row = connection.execute(_SELECT_CUSTOMIZATION_REQUEST + where_clause, params).fetchone()
+            row = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
+                (clean_request_id,),
+            ).fetchone()
         return _record_from_row(row) if row is not None else None
 
     def list_customization_requests_for_user(
@@ -215,7 +242,8 @@ class CustomizationRequestService:
             ).fetchall()
         return [_record_from_row(row) for row in rows]
 
-    def list_pending_customization_requests(self) -> list[CustomizationRequestRecord]:
+    def list_pending_customization_requests_for_admin(self) -> list[CustomizationRequestRecord]:
+        """Admin/internal pending-review primitive; not a tenant-user listing API."""
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
@@ -273,6 +301,13 @@ def _normalize_confidence(value: float | int | str | None) -> float | None:
     except (TypeError, ValueError):
         return None
     return min(1.0, max(0.0, confidence))
+
+
+def _normalize_source_triage_class(value: str | None) -> str:
+    triage_class = _required_text(value, 'source_triage_class_required')
+    if triage_class not in REQUEST_STARTING_TRIAGE_CLASSES:
+        raise ValueError('invalid_source_triage_class')
+    return triage_class
 
 
 def _normalize_status(value: str) -> str:
