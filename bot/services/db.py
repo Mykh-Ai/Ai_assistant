@@ -144,6 +144,37 @@ CREATE TABLE IF NOT EXISTS confirmed_semantic_alias (
 );
 """
 
+CUSTOMIZATION_REQUEST_SCHEMA = """
+CREATE TABLE IF NOT EXISTS customization_requests (
+    request_id TEXT PRIMARY KEY,
+    telegram_id INTEGER NOT NULL,
+    supplier_telegram_id INTEGER,
+    workspace_id TEXT,
+    source_channel TEXT NOT NULL,
+    source_triage_class TEXT NOT NULL,
+    source_capability_id TEXT,
+    source_topic_id TEXT,
+    normalized_title TEXT NOT NULL,
+    normalized_summary TEXT NOT NULL,
+    redacted_original_text TEXT,
+    raw_text_hash TEXT,
+    language_hint TEXT,
+    confidence REAL,
+    status TEXT NOT NULL,
+    risk_level TEXT,
+    requires_human_approval INTEGER NOT NULL DEFAULT 1,
+    product_truth_relation TEXT,
+    privacy_redaction_flags TEXT,
+    admin_note TEXT,
+    reviewed_by INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    confirmed_at TEXT,
+    reviewed_at TEXT,
+    schema_version INTEGER NOT NULL DEFAULT 1
+);
+"""
+
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'telegram_id': 'INTEGER NOT NULL UNIQUE',
@@ -257,6 +288,35 @@ CONFIRMED_SEMANTIC_ALIAS_EXPECTED_COLUMNS = {
     'source': 'TEXT NOT NULL',
     'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+}
+
+CUSTOMIZATION_REQUEST_EXPECTED_COLUMNS = {
+    'request_id': 'TEXT PRIMARY KEY',
+    'telegram_id': 'INTEGER NOT NULL',
+    'supplier_telegram_id': 'INTEGER',
+    'workspace_id': 'TEXT',
+    'source_channel': 'TEXT NOT NULL',
+    'source_triage_class': 'TEXT NOT NULL',
+    'source_capability_id': 'TEXT',
+    'source_topic_id': 'TEXT',
+    'normalized_title': 'TEXT NOT NULL',
+    'normalized_summary': 'TEXT NOT NULL',
+    'redacted_original_text': 'TEXT',
+    'raw_text_hash': 'TEXT',
+    'language_hint': 'TEXT',
+    'confidence': 'REAL',
+    'status': 'TEXT NOT NULL',
+    'risk_level': 'TEXT',
+    'requires_human_approval': 'INTEGER NOT NULL',
+    'product_truth_relation': 'TEXT',
+    'privacy_redaction_flags': 'TEXT',
+    'admin_note': 'TEXT',
+    'reviewed_by': 'INTEGER',
+    'created_at': 'TEXT NOT NULL',
+    'updated_at': 'TEXT NOT NULL',
+    'confirmed_at': 'TEXT',
+    'reviewed_at': 'TEXT',
+    'schema_version': 'INTEGER NOT NULL',
 }
 
 
@@ -504,6 +564,45 @@ def _bootstrap_confirmed_semantic_alias_table(connection: sqlite3.Connection) ->
     )
 
 
+def _bootstrap_customization_request_table(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1]: row[2] for row in connection.execute('PRAGMA table_info(customization_requests)')
+    }
+
+    if not existing_columns:
+        connection.execute(CUSTOMIZATION_REQUEST_SCHEMA)
+        _ensure_customization_request_indexes(connection)
+        return
+
+    if set(existing_columns.keys()) == set(CUSTOMIZATION_REQUEST_EXPECTED_COLUMNS.keys()):
+        _ensure_customization_request_indexes(connection)
+        return
+
+    raise RuntimeError(
+        'Incompatible local schema for table customization_requests. '
+        'Manual migration/intervention is required; automatic DROP is disabled.'
+    )
+
+
+def ensure_customization_request_schema(connection: sqlite3.Connection) -> None:
+    _bootstrap_customization_request_table(connection)
+
+
+def _ensure_customization_request_indexes(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_customization_requests_user_status_created '
+        'ON customization_requests (telegram_id, status, created_at)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_customization_requests_supplier_status_created '
+        'ON customization_requests (supplier_telegram_id, status, created_at)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_customization_requests_status_created '
+        'ON customization_requests (status, created_at)'
+    )
+
+
 @contextmanager
 def managed_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(db_path)
@@ -526,4 +625,5 @@ def init_db(db_path: Path) -> None:
         _bootstrap_authorized_user_table(connection)
         _bootstrap_invoice_number_settings_table(connection)
         _bootstrap_confirmed_semantic_alias_table(connection)
+        _bootstrap_customization_request_table(connection)
         connection.commit()

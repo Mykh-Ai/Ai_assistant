@@ -1,5 +1,71 @@
 # PROJECT_LOG
 
+## 2026-05-20 - Session 096 - Customization Request storage foundation
+
+Summary:
+- Added additive SQLite storage foundation for confirmed customization
+  requests through the new `customization_requests` table.
+- Added `bot/services/customization_requests.py` with a narrow service API for
+  creating confirmed request rows, fetching by id, listing user-scoped
+  requests, listing pending review rows, hashing raw text, and deterministic
+  redaction.
+- Persisted records require tenant/user scope, non-empty title and summary,
+  allowed persisted status, and explicit confirmed storage semantics.
+- `draft_unconfirmed` is rejected from long-term persistence in Phase 1.
+- Duplicate `request_id` creation fails deterministically instead of silently
+  upserting.
+- Added redaction coverage for API keys / `sk-` tokens, password/secret/token
+  fields, IBAN-like values, email addresses, and phone numbers.
+- Added tests proving tenant-scoped listing, status filtering, timestamp
+  population, redaction/hash behavior, Product Truth immutability, and absence
+  of admin notification / code-agent hooks.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/Customization_Request_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- Storage/service foundation only.
+- No user-facing InfoHelp/Triage flow, routing behavior change, admin
+  notification, admin list command, code-agent handoff, Product Truth mutation,
+  pre-confirmation request persistence, handler-local matching, or complete
+  Level 3 claim.
+
+Touched scopes:
+- DB schema bootstrap, storage service, tests, and project log.
+- Runtime routing, handlers, voice/STT, LLM behavior, admin notification,
+  Product Truth registry, and code-agent handoff are unchanged.
+
+Current implementation status:
+- Customization Request storage/service foundation: partial Phase 1 runtime
+  foundation for confirmed rows only.
+- User-facing Customization Request flow: not implemented.
+- Admin review/notification: not implemented.
+- Code-agent handoff: not implemented.
+- Customization Request Level 3: not complete.
+
+AI maturity:
+- Storage prerequisite for future Level 3. This patch does not itself provide
+  a confirmation-gated user journey.
+
+Out of scope:
+- Draft preview FSM, confirmation UI, InfoHelp integration, admin list,
+  admin notification, Product Truth candidate conversion, and code-agent
+  task creation.
+
+Verification:
+- Focused service test:
+  `python -m pytest -q tests/test_customization_requests.py`.
+- Required focused suite:
+  `python -m pytest -q tests/test_customization_requests.py tests/test_product_truth.py tests/test_info_help.py`.
+- Full suite:
+  `python -m pytest -q`.
+
 ## 2026-05-20 - Session 095 - Harden LLM InfoHelp triage fallback tests
 
 Summary:
