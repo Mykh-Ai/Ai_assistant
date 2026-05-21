@@ -26,8 +26,8 @@ As of Customization Request MVP Phase 2:
   duplicate approval attempts do not create duplicate rows;
 - pre-confirmation FSM draft data should keep redacted original text plus a raw
   text hash instead of raw unredacted transcripts; save re-applies redaction;
-- an admin-only read/list command exists for pending confirmed requests as a
-  read-only review surface;
+- admin-only read/list and read-detail commands exist as read-only review
+  surfaces;
 - admin notification is not implemented;
 - approve/reject/status transition review decisions are not implemented;
 - Product Truth mutation is not implemented;
@@ -136,8 +136,9 @@ Target flow:
 11. Optionally convert to a code-agent handoff task after approval.
 
 No side effect may happen at step 5 or 6. Drafting is not saving.
-Current runtime covers only a read-only admin list for pending confirmed
-requests; approve/reject decisions and status transitions remain later phases.
+Current runtime covers only read-only admin list/detail review surfaces for
+confirmed requests; approve/reject decisions and status transitions remain later
+phases.
 
 ## Request Object
 

@@ -1,5 +1,32 @@
 # PROJECT_LOG
 
+## 2026-05-21 - Session 102 - Admin-only customization request detail view
+
+Summary:
+- Added `/customization_request <request_id>` as an admin-only read-detail
+  command for customization requests.
+- The detail view is read-only, supports full `request_id` lookup and safe
+  unique short-prefix lookup, and rejects ambiguous prefixes.
+- Output uses conservative display redaction and omits `raw_text_hash`.
+- Added tests for full ID lookup, unique-prefix lookup, ambiguous/missing
+  lookup, non-admin denial, unauthorized middleware blocking, read-only
+  behavior, and sensitive value redaction.
+
+Constraints:
+- No approve/reject status changes.
+- No admin notifications.
+- No Product Truth mutation.
+- No code-agent handoff or backlog conversion.
+- No self-learning.
+- Still a partial Level 3 MVP slice, not the complete Customization Request
+  Layer.
+
+Verification:
+- `python -m pytest -q tests/test_customization_request_admin.py tests/test_access_request_flow.py tests/test_customization_requests.py`
+  - 61 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1232 passed, 7 subtests passed.
+
 ## 2026-05-21 - Session 101 - Admin-only customization request pending list
 
 Summary:

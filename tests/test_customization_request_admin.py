@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from bot.config import Config
-from bot.handlers.access_admin import cmd_customization_requests
+from bot.handlers.access_admin import cmd_customization_request_detail, cmd_customization_requests
 from bot.services import product_truth
 from bot.services.access_control import AccessControlService, ROLE_ADMIN
 from bot.services.authorization import TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
@@ -79,6 +79,7 @@ def _create_request(
     summary: str = 'Pou\u017e\u00edvate\u013e chce mesa\u010dn\u00fd report tr\u017eieb.',
     status: str = STATUS_CONFIRMED_PENDING_REVIEW,
     raw_text_hash: str = 'hash-value-not-for-ui',
+    privacy_redaction_flags: str | None = None,
 ) -> None:
     service.create_confirmed_customization_request(
         request_id=request_id,
@@ -94,6 +95,7 @@ def _create_request(
         redacted_original_text=summary,
         raw_text_hash=raw_text_hash,
         status=status,
+        privacy_redaction_flags=privacy_redaction_flags,
     )
 
 
@@ -291,3 +293,189 @@ def test_customization_request_admin_limit_uses_newest_first(tmp_path: Path) -> 
     assert 'Request 02' in output
     assert 'Request 01' not in output
     assert 'Request 00' not in output
+
+
+def test_admin_can_view_customization_request_detail_by_full_id(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(
+        service,
+        request_id='cr_detail_full_1234567890abcdef',
+        telegram_id=USER_ID,
+        privacy_redaction_flags='email,phone',
+    )
+    message = _DummyMessage('/customization_request cr_detail_full_1234567890abcdef', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert 'Detail po\u017eiadavky:' in output
+    assert 'request_id=cr_detail_full_1234567890abcdef' in output
+    assert 'status=confirmed_pending_review' in output
+    assert 'confirmed_at=' in output
+    assert 'telegram_id=960002' in output
+    assert 'workspace_id=telegram:960002' in output
+    assert 'source_channel=text' in output
+    assert 'source_triage_class=customization_request_candidate' in output
+    assert 'source_capability_id=monthly_report' in output
+    assert 'source_topic_id=customization_request' in output
+    assert 'privacy_redaction_flags=email,phone' in output
+    assert 'n\u00e1zov=Mesa\u010dn\u00fd report' in output
+    assert 'zhrnutie=Pou\u017e\u00edvate\u013e chce mesa\u010dn\u00fd report tr\u017eieb.' in output
+    assert 'redacted_original_text=Pou\u017e\u00edvate\u013e chce mesa\u010dn\u00fd report tr\u017eieb.' in output
+
+
+def test_admin_can_view_customization_request_detail_by_unique_prefix(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_unique_prefix_abcdef123456', title='Unique prefix title')
+    message = _DummyMessage('/customization_request cr_unique_prefix', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert 'request_id=cr_unique_prefix_abcdef123456' in output
+    assert 'n\u00e1zov=Unique prefix title' in output
+
+
+def test_customization_request_detail_ambiguous_prefix_is_rejected(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_ambiguous_one_111111', title='First hidden')
+    _create_request(service, request_id='cr_ambiguous_two_222222', title='Second hidden')
+    message = _DummyMessage('/customization_request cr_ambiguous', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert output == 'Na\u0161iel som viac po\u017eiadaviek s t\u00fdmto za\u010diatkom ID. Pou\u017eite dlh\u0161\u00ed request_id.'
+    assert 'First hidden' not in output
+    assert 'Second hidden' not in output
+
+
+def test_customization_request_detail_missing_and_short_prefix_are_safe(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    short_message = _DummyMessage('/customization_request cr_x', ADMIN_ID)
+    missing_message = _DummyMessage('/customization_request cr_missing_long_prefix', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(short_message, config))
+    asyncio.run(cmd_customization_request_detail(missing_message, config))
+
+    assert short_message.answers == [
+        'Po\u017eiadavku som nena\u0161iel. Zadajte cel\u00fd request_id alebo aspo\u0148 8 znakov za\u010diatku ID.'
+    ]
+    assert missing_message.answers == ['Po\u017eiadavku som nena\u0161iel.']
+
+
+def test_customization_request_detail_requires_request_id_argument(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage('/customization_request', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    assert message.answers == ['Pou\u017eitie: /customization_request <request_id>']
+
+
+def test_non_admin_authorized_user_cannot_view_customization_request_detail(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=USER_ID, approved_by=ADMIN_ID)
+    _create_request(CustomizationRequestService(config.db_path), request_id='cr_detail_hidden_from_user')
+    message = _DummyMessage('/customization_request cr_detail_hidden_from_user', USER_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    assert message.answers == [UNAUTHORIZED_MESSAGE]
+
+
+def test_unauthorized_user_is_blocked_by_middleware_for_customization_request_detail(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage('/customization_request cr_detail_hidden', UNKNOWN_ID)
+    state = _DummyState()
+    calls: list[str] = []
+
+    async def _handler(event, data):
+        calls.append('handler-called')
+
+    asyncio.run(
+        TelegramUserAuthorizationMiddleware()(
+            _handler,
+            message,
+            {'config': config, 'state': state},
+        )
+    )
+
+    assert calls == []
+    assert state.cleared is True
+    assert message.answers == [UNAUTHORIZED_MESSAGE]
+
+
+def test_bootstrap_admin_detail_command_passes_middleware_without_user_access(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage('/customization_request cr_detail', ADMIN_ID)
+    calls: list[str] = []
+
+    async def _handler(event, data):
+        calls.append('handler-called')
+
+    asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config}))
+
+    assert calls == ['handler-called']
+    assert message.answers == []
+
+
+def test_customization_request_detail_omits_hash_and_redacts_sensitive_values(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(
+        service,
+        request_id='cr_detail_sensitive',
+        title='Report for person@example.com token sk-secretTOKEN123',
+        summary='Send report to person@example.com phone +421 900 123 456 IBAN SK7700000000000000000000',
+        raw_text_hash='detail-raw-hash-should-not-render',
+        privacy_redaction_flags='email,phone,iban,token',
+    )
+    message = _DummyMessage('/customization_request cr_detail_sensitive', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert 'raw_text_hash' not in output
+    assert 'detail-raw-hash-should-not-render' not in output
+    assert 'person@example.com' not in output
+    assert 'sk-secretTOKEN123' not in output
+    assert '+421 900 123 456' not in output
+    assert 'SK7700000000000000000000' not in output
+    assert '[REDACTED]' in output
+
+
+def test_customization_request_detail_command_is_read_only(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_detail_read_only', telegram_id=USER_ID)
+    before_product_truth = [entry.to_payload() for entry in product_truth.list_capabilities()]
+    bot = _DummyBot()
+    message = _DummyMessage('/customization_request cr_detail_read_only', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    after = service.get_customization_request_for_user(
+        request_id='cr_detail_read_only',
+        telegram_id=USER_ID,
+    )
+    assert after is not None
+    assert after.status == STATUS_CONFIRMED_PENDING_REVIEW
+    assert [entry.to_payload() for entry in product_truth.list_capabilities()] == before_product_truth
+    assert bot.sent == []
+    assert not hasattr(service, 'notify_admin')
+    assert not hasattr(service, 'send_admin_notification')
+    assert not hasattr(service, 'create_code_agent_handoff')

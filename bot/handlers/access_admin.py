@@ -19,6 +19,8 @@ from bot.services.customization_requests import CustomizationRequestRecord, Cust
 router = Router(name='access_admin')
 logger = logging.getLogger(__name__)
 _CUSTOMIZATION_REQUEST_ADMIN_LIMIT = 10
+_CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH = 8
+_CUSTOMIZATION_REQUEST_DETAIL_MAX_MESSAGE_LENGTH = 3500
 
 
 _ACCESS_REQUESTS_ALIASES = {
@@ -53,6 +55,11 @@ async def cmd_access_requests(message: Message, config: Config) -> None:
 @router.message(Command('customization_requests'))
 async def cmd_customization_requests(message: Message, config: Config) -> None:
     await _send_customization_requests(message, config)
+
+
+@router.message(Command('customization_request'))
+async def cmd_customization_request_detail(message: Message, config: Config) -> None:
+    await _send_customization_request_detail(message, config)
 
 
 @router.message(
@@ -103,6 +110,43 @@ async def _send_customization_requests(message: Message, config: Config) -> None
     for request in requests:
         lines.extend(_format_customization_request_lines(request))
     await message.answer('\n'.join(lines))
+
+
+async def _send_customization_request_detail(message: Message, config: Config) -> None:
+    if not _is_admin_message(message, config):
+        await message.answer(UNAUTHORIZED_MESSAGE)
+        return
+
+    request_id_or_prefix = _parse_text_arg(message.text or '')
+    if request_id_or_prefix is None:
+        await message.answer('Pou\u017eitie: /customization_request <request_id>')
+        return
+
+    service = CustomizationRequestService(config.db_path)
+    request = service.get_customization_request_by_id_for_admin(request_id=request_id_or_prefix)
+    if request is not None:
+        await message.answer(_format_customization_request_detail(request))
+        return
+
+    if len(request_id_or_prefix) < _CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH:
+        await message.answer(
+            'Po\u017eiadavku som nena\u0161iel. Zadajte cel\u00fd request_id alebo aspo\u0148 '
+            f'{_CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH} znakov za\u010diatku ID.'
+        )
+        return
+
+    matches = service.find_customization_requests_by_id_prefix_for_admin(
+        request_id_prefix=request_id_or_prefix,
+        limit=2,
+    )
+    if not matches:
+        await message.answer('Po\u017eiadavku som nena\u0161iel.')
+        return
+    if len(matches) > 1:
+        await message.answer('Na\u0161iel som viac po\u017eiadaviek s t\u00fdmto za\u010diatkom ID. Pou\u017eite dlh\u0161\u00ed request_id.')
+        return
+
+    await message.answer(_format_customization_request_detail(matches[0]))
 
 
 @router.message(Command('approve'))
@@ -210,14 +254,22 @@ def _is_admin_message(message: Message, config: Config) -> bool:
 
 
 def _parse_telegram_id_arg(text: str) -> int | None:
-    parts = text.split(maxsplit=1)
-    if len(parts) != 2:
+    value = _parse_text_arg(text)
+    if value is None:
         return None
     try:
-        telegram_id = int(parts[1].strip())
+        telegram_id = int(value)
     except ValueError:
         return None
     return telegram_id if telegram_id > 0 else None
+
+
+def _parse_text_arg(text: str) -> str | None:
+    parts = text.split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+    value = parts[1].strip()
+    return value or None
 
 
 def _normalize_alias(value: str) -> str:
@@ -258,6 +310,32 @@ def _format_customization_request_lines(request: CustomizationRequestRecord) -> 
         f'  zhrnutie={summary}',
         f'  capability_id={capability}',
     ]
+
+
+def _format_customization_request_detail(request: CustomizationRequestRecord) -> str:
+    lines = [
+        'Detail po\u017eiadavky:',
+        f'request_id={_safe_display_text(request.request_id, max_length=96)}',
+        f'status={_safe_display_text(request.status, max_length=40)}',
+        f'created_at={_safe_display_text(request.created_at, max_length=32)}',
+        f'confirmed_at={_safe_display_text(request.confirmed_at or "-", max_length=32)}',
+        f'telegram_id={request.telegram_id}',
+        f'workspace_id={_safe_display_text(request.workspace_id or "-", max_length=80)}',
+        f'source_channel={_safe_display_text(request.source_channel, max_length=30)}',
+        f'source_triage_class={_safe_display_text(request.source_triage_class, max_length=70)}',
+        f'source_capability_id={_safe_display_text(request.source_capability_id or "-", max_length=80)}',
+        f'source_topic_id={_safe_display_text(request.source_topic_id or "-", max_length=80)}',
+        f'privacy_redaction_flags={_safe_display_text(request.privacy_redaction_flags or "-", max_length=160)}',
+        f'n\u00e1zov={_safe_display_text(request.normalized_title, max_length=160)}',
+        f'zhrnutie={_safe_display_text(request.normalized_summary, max_length=700)}',
+    ]
+    if request.redacted_original_text:
+        lines.append(f'redacted_original_text={_safe_display_text(request.redacted_original_text, max_length=900)}')
+
+    text = '\n'.join(lines)
+    if len(text) <= _CUSTOMIZATION_REQUEST_DETAIL_MAX_MESSAGE_LENGTH:
+        return text
+    return text[: _CUSTOMIZATION_REQUEST_DETAIL_MAX_MESSAGE_LENGTH - 1].rstrip() + '\u2026'
 
 
 def _short_request_id(request_id: str) -> str:

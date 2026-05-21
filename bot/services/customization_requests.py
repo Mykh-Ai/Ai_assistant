@@ -222,6 +222,29 @@ class CustomizationRequestService:
             ).fetchone()
         return _record_from_row(row) if row is not None else None
 
+    def find_customization_requests_by_id_prefix_for_admin(
+        self,
+        *,
+        request_id_prefix: str,
+        limit: int | None = None,
+    ) -> list[CustomizationRequestRecord]:
+        """Admin/internal unscoped prefix lookup; user-facing reads must use tenant scope."""
+        clean_prefix = _clean_optional(request_id_prefix)
+        if clean_prefix is None:
+            return []
+
+        clean_limit = _normalize_limit(limit)
+        query = _SELECT_CUSTOMIZATION_REQUEST + ' WHERE substr(request_id, 1, ?) = ? ORDER BY created_at DESC, request_id DESC'
+        params: list[object] = [len(clean_prefix), clean_prefix]
+        if clean_limit is not None:
+            query += ' LIMIT ?'
+            params.append(clean_limit)
+
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(query, params).fetchall()
+        return [_record_from_row(row) for row in rows]
+
     def list_customization_requests_for_user(
         self,
         *,
