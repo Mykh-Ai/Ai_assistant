@@ -8,10 +8,11 @@ from aiogram.types import CallbackQuery, User
 from bot.config import Config
 from bot.handlers.contacts import ContactStates
 from bot.handlers.decision_callbacks import _dispatch_decision_token, decision_callback
-from bot.handlers.invoice import InvoiceStates
-from bot.keyboards.decision import DECISION_APPROVE, DECISION_CANCEL, DECISION_NO, DECISION_YES
+from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
+from bot.keyboards.decision import DECISION_APPROVE, DECISION_CANCEL, DECISION_EDIT, DECISION_NO, DECISION_YES
 from bot.services.authorization import TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
 from bot.services.contact_service import ContactProfile, ContactService
+from bot.services.customization_requests import CustomizationRequestService
 from bot.services.db import init_db, managed_connection
 from bot.services.invoice_service import InvoiceService
 from bot.services.supplier_service import SupplierProfile, SupplierService
@@ -136,6 +137,24 @@ def _draft(contact_id: int) -> dict:
     }
 
 
+def _customization_request_draft(request_id: str = 'cr_callback') -> dict:
+    return {
+        'request_id': request_id,
+        'requester_telegram_id': AUTHORIZED_ID,
+        'supplier_telegram_id': AUTHORIZED_ID,
+        'workspace_id': f'telegram:{AUTHORIZED_ID}',
+        'source_channel': 'text',
+        'source_triage_class': 'customization_request_candidate',
+        'source_capability_id': None,
+        'source_topic_id': None,
+        'normalized_title': 'Po\u017eiadavka: Mesa\u010dn\u00fd report',
+        'normalized_summary': 'Chcem mesa\u010dn\u00fd report tr\u017eieb.',
+        'redacted_original_text': 'Chcem mesa\u010dn\u00fd report tr\u017eieb.',
+        'raw_text_hash': '0' * 64,
+        'confidence': 0.8,
+    }
+
+
 def _callback(user_id: int, data: str) -> CallbackQuery:
     callback = CallbackQuery(
         id='callback-id',
@@ -241,6 +260,132 @@ def test_button_cancel_on_invoice_preview_uses_same_cancel_path(tmp_path: Path) 
     assert state.cleared is True
     assert message.answers[-1] == 'Návrh faktúry bol zrušený.'
     assert InvoiceService(config.db_path).get_invoice_by_number('20260001') is None
+
+
+def test_button_approve_on_customization_preview_saves_one_request(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage()
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_approve'),
+            'customization_request_saved_id': None,
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+
+    handled = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_APPROVE,
+            current_state=CustomizationRequestStates.waiting_preview_decision.state,
+            message=message,
+            state=state,
+            config=config,
+        )
+    )
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    )
+    assert handled is True
+    assert len(records) == 1
+    assert records[0].request_id == 'cr_callback_approve'
+    assert state.cleared is True
+
+
+def test_button_cancel_on_customization_preview_saves_nothing_and_clears(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage()
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_cancel'),
+            'customization_request_saved_id': None,
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+
+    handled = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_CANCEL,
+            current_state=CustomizationRequestStates.waiting_preview_decision.state,
+            message=message,
+            state=state,
+            config=config,
+        )
+    )
+
+    assert handled is True
+    assert state.cleared is True
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+
+
+def test_button_edit_on_customization_preview_transitions_to_text_edit(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage()
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_edit'),
+            'customization_request_saved_id': None,
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+
+    handled = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_EDIT,
+            current_state=CustomizationRequestStates.waiting_preview_decision.state,
+            message=message,
+            state=state,
+            config=config,
+        )
+    )
+
+    assert handled is True
+    assert state.current_state == CustomizationRequestStates.waiting_edit_text
+    assert 'n\u00e1zov a zhrnutie' in message.answers[-1]
+
+
+def test_stale_duplicate_customization_button_approve_does_not_save_twice(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage()
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_duplicate'),
+            'customization_request_saved_id': None,
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+
+    first = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_APPROVE,
+            current_state=CustomizationRequestStates.waiting_preview_decision.state,
+            message=message,
+            state=state,
+            config=config,
+        )
+    )
+    duplicate = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_APPROVE,
+            current_state=CustomizationRequestStates.waiting_preview_decision.state,
+            message=message,
+            state=state,
+            config=config,
+        )
+    )
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    )
+    assert first is True
+    assert duplicate is True
+    assert len(records) == 1
 
 
 def test_alias_confirmation_buttons_yes_and_no(tmp_path: Path, monkeypatch) -> None:

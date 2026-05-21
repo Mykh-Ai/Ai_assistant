@@ -19,7 +19,7 @@ from bot.handlers.invoice import (
 )
 from bot.services.customization_requests import CustomizationRequestService
 from bot.services.product_truth import list_capabilities
-from bot.services.info_help import build_top_level_unknown_guidance
+from bot.services.info_help import InfoHelpTriageResult, build_top_level_unknown_guidance
 from bot.services.db import init_db
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.service_alias_service import ServiceAliasService
@@ -1323,6 +1323,51 @@ def test_eligible_triage_creates_customization_preview_only_no_db_row(tmp_path: 
     assert state.current_state == CustomizationRequestStates.waiting_preview_decision
     assert 'N\u00e1vrh po\u017eiadavky' in message.answers[-1]
     assert 'Nestane sa: ni\u010d neimplementujem, ni\u010d neposielam spr\u00e1vcovi, nemen\u00edm Product Truth.' in message.answers[-1]
+    draft = state.data['customization_request_draft']
+    assert draft['requester_telegram_id'] == 111
+    assert str(draft['request_id']).startswith('cr_')
+    assert draft['redacted_original_text'] == message.text
+    assert isinstance(draft['raw_text_hash'], str)
+    assert 'original_user_text' not in draft
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+
+@pytest.mark.parametrize(
+    'triage_class',
+    [
+        'new_business_feature_request',
+        'customization_request_candidate',
+        'admin_review_candidate',
+        'possible_product_truth_candidate',
+    ],
+)
+def test_all_eligible_triage_classes_create_preview_only(
+    tmp_path: Path,
+    monkeypatch,
+    triage_class: str,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    async def _triage(**kwargs) -> InfoHelpTriageResult:
+        return InfoHelpTriageResult(
+            capability_id='unknown',
+            topic_id='new_business_feature',
+            triage_class=triage_class,
+            confidence=0.7,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_triage_result_with_llm', _triage)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Potrebujem nov\u00fd firemn\u00fd workflow.')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert state.data['customization_request_draft']['source_triage_class'] == triage_class
     assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
 
 
@@ -1333,6 +1378,7 @@ def test_customization_request_approve_saves_one_confirmed_pending_review_row(tm
     state = _DummyState()
 
     asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    draft_request_id = state.data['customization_request_draft']['request_id']
     approve_message = _authorized_message('schv\u00e1li\u0165')
     asyncio.run(
         customization_request_preview_decision(
@@ -1345,6 +1391,7 @@ def test_customization_request_approve_saves_one_confirmed_pending_review_row(tm
     records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
     assert len(records) == 1
     assert records[0].status == 'confirmed_pending_review'
+    assert records[0].request_id == draft_request_id
     assert records[0].source_triage_class == 'new_business_feature_request'
     assert records[0].telegram_id == 111
     assert records[0].supplier_telegram_id == 111
@@ -1404,6 +1451,53 @@ def test_customization_request_double_approve_does_not_create_duplicate(tmp_path
 
     records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
     assert len(records) == 1
+
+
+def test_customization_request_approval_rejects_non_owner(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb.', telegram_id=111)
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    approve_message = _authorized_message('schv\u00e1li\u0165', telegram_id=222)
+    asyncio.run(customization_request_preview_decision(message=approve_message, state=state, config=config))
+
+    service = CustomizationRequestService(config.db_path)
+    assert service.list_customization_requests_for_user(telegram_id=111) == []
+    assert service.list_customization_requests_for_user(telegram_id=222) == []
+    assert 'in\u00e9mu pou\u017e\u00edvate\u013eovi' in approve_message.answers[-1]
+
+
+def test_customization_request_duplicate_request_id_is_idempotent(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb.')
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    draft = state.data['customization_request_draft']
+    service = CustomizationRequestService(config.db_path)
+    service.create_confirmed_customization_request(
+        request_id=str(draft['request_id']),
+        telegram_id=111,
+        supplier_telegram_id=111,
+        workspace_id='telegram:111',
+        source_channel='text',
+        source_triage_class=str(draft['source_triage_class']),
+        normalized_title='Existing request',
+        normalized_summary='Already saved request',
+        redacted_original_text=str(draft['redacted_original_text']),
+        raw_text_hash=str(draft['raw_text_hash']),
+    )
+
+    approve_message = _authorized_message('schv\u00e1li\u0165')
+    asyncio.run(customization_request_preview_decision(message=approve_message, state=state, config=config))
+
+    records = service.list_customization_requests_for_user(telegram_id=111)
+    assert len(records) == 1
+    assert records[0].request_id == draft['request_id']
+    assert '\u010fal\u0161iu k\u00f3piu' in approve_message.answers[-1]
 
 
 def test_unauthorized_user_cannot_start_or_save_customization_request(tmp_path: Path) -> None:

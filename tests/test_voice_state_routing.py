@@ -15,6 +15,8 @@ from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
 from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates
 from bot.handlers.supplier import ServiceAliasStates
 from bot.handlers.voice import handle_voice
+from bot.services.customization_requests import CustomizationRequestService
+from bot.services.db import init_db
 
 
 class _DummyVoice:
@@ -89,6 +91,24 @@ class _DummyState:
     async def clear(self) -> None:
         self.current_state = None
         self.data.clear()
+
+
+def _customization_request_draft(request_id: str = 'cr_voice') -> dict:
+    return {
+        'request_id': request_id,
+        'requester_telegram_id': 111,
+        'supplier_telegram_id': 111,
+        'workspace_id': 'telegram:111',
+        'source_channel': 'voice',
+        'source_triage_class': 'customization_request_candidate',
+        'source_capability_id': None,
+        'source_topic_id': None,
+        'normalized_title': 'Po\u017eiadavka: Mesa\u010dn\u00fd report',
+        'normalized_summary': 'Chcem mesa\u010dn\u00fd report tr\u017eieb.',
+        'redacted_original_text': 'Chcem mesa\u010dn\u00fd report tr\u017eieb.',
+        'raw_text_hash': '1' * 64,
+        'confidence': 0.8,
+    }
 
 
 def _config(tmp_path: Path, *, debug_invoice_transparency: bool = False) -> Config:
@@ -967,6 +987,65 @@ def test_voice_idle_transcript_can_start_customization_request_preview(monkeypat
     assert 'N\u00e1vrh po\u017eiadavky' in message.answers[-1]
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
+
+
+def test_voice_customization_preview_approve_saves_one_request(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'schv\u00e1li\u0165'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState(CustomizationRequestStates.waiting_preview_decision.state)
+    state.data = {
+        'customization_request_draft': _customization_request_draft('cr_voice_approve'),
+        'customization_request_saved_id': None,
+    }
+    message = _DummyMessage()
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
+    assert len(records) == 1
+    assert records[0].request_id == 'cr_voice_approve'
+    assert state.current_state is None
+
+
+def test_voice_customization_preview_cancel_saves_nothing(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'zru\u0161i\u0165'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState(CustomizationRequestStates.waiting_preview_decision.state)
+    state.data = {
+        'customization_request_draft': _customization_request_draft('cr_voice_cancel'),
+        'customization_request_saved_id': None,
+    }
+    message = _DummyMessage()
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+    assert state.current_state is None
+
+
+def test_voice_customization_edit_text_is_text_first(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'Nov\u00fd presn\u00fd n\u00e1zov'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    original_draft = _customization_request_draft('cr_voice_edit')
+    state = _DummyState(CustomizationRequestStates.waiting_edit_text.state)
+    state.data = {'customization_request_draft': dict(original_draft)}
+    message = _DummyMessage()
+
+    asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), state))
+
+    assert state.current_state == CustomizationRequestStates.waiting_edit_text.state
+    assert state.data['customization_request_draft'] == original_draft
+    assert 'textom' in message.answers[-1]
 
 
 def test_voice_idle_transcript_can_use_llm_info_help_triage_without_side_effects(

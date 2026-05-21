@@ -1,5 +1,68 @@
 # PROJECT_LOG
 
+## 2026-05-21 - Session 099 - Customization Request Phase 2 ownership/idempotency hardening
+
+Summary:
+- Hardened the existing Phase 2 confirmation flow without adding new feature
+  surface.
+- Preview drafts now carry the original requester `telegram_id`, workspace
+  context, and deterministic `request_id` generated at preview time.
+- Approval uses the draft owner and stored `request_id`; mismatched users are
+  rejected without saving.
+- Duplicate approval attempts for the same `request_id` are handled
+  idempotently and do not create duplicate rows.
+- FSM draft storage now minimizes raw input by keeping redacted original text
+  plus a raw text hash; save still re-applies service-level redaction.
+- Added focused text/button/voice regression tests for ownership,
+  idempotency, callback decisions, voice approve/cancel, text-first edit, and
+  all four eligible triage classes.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/Customization_Request_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- Runtime hardening and tests only.
+- No admin notification or admin list command.
+- No Product Truth mutation.
+- No code-agent handoff.
+- No new canonical action.
+- No InfoHelp heuristic/dictionary expansion.
+- No broad routing change without a failing narrow test.
+- Do not call Level 3 complete.
+
+Touched scopes:
+- Confirmation: kept shared DecisionResolver `approve_edit_cancel` context.
+- FSM: hardened Customization Request preview draft ownership/idempotency data.
+- Storage/DB: no schema change; save still goes only through
+  `CustomizationRequestService.create_confirmed_customization_request(...)`
+  after approval.
+- Voice/STT: added coverage for voice approval/cancel and text-first edit
+  boundary; no voice phrase dictionary expansion.
+- Product docs: synchronized Customization Request contract only.
+
+Current implementation status:
+- Customization Request preview/save: partial Level 3 MVP slice, hardened.
+- Admin notification/list: unsupported and unchanged.
+- Product Truth mutation: unsupported and unchanged.
+- Code-agent handoff: unsupported and unchanged.
+- Complete Customization Request Layer / complete Level 3: not complete.
+
+Self-learning hooks considered:
+- None added. This hardening stores only confirmed request rows after explicit
+  approval and does not learn aliases, topics, or workflow rules.
+
+Verification:
+- `python -m pytest -q tests/test_customization_requests.py tests/test_info_help.py tests/test_voice_state_routing.py tests/test_invoice_intent_prerouter.py tests/test_decision_resolver.py tests/test_decision_callbacks.py`
+  - 775 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1205 passed, 7 subtests passed.
+
 ## 2026-05-21 - Session 098 - Customization Request MVP Phase 2 preview/save flow
 
 Summary:

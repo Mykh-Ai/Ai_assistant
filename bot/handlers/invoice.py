@@ -31,6 +31,8 @@ from bot.services.contact_service import ContactLookupResult, ContactProfile, Co
 from bot.services.customization_requests import (
     CustomizationRequestService,
     REQUEST_STARTING_TRIAGE_CLASSES,
+    STATUS_CONFIRMED_PENDING_REVIEW,
+    hash_raw_text,
     redact_customization_request_text,
 )
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
@@ -261,6 +263,9 @@ _CUSTOMIZATION_REQUEST_SAVED_MESSAGE = (
     'Po\u017eiadavku som ulo\u017eil na neskor\u0161iu kontrolu. '
     'Neznamen\u00e1 to, \u017ee funkcia je podporovan\u00e1 alebo \u017ee bude implementovan\u00e1.'
 )
+_CUSTOMIZATION_REQUEST_ALREADY_SAVED_MESSAGE = (
+    'Po\u017eiadavku u\u017e m\u00e1m ulo\u017een\u00fa na neskor\u0161iu kontrolu. Nevytvoril som \u010fal\u0161iu k\u00f3piu.'
+)
 
 _SLOT_PROMPTS = {
     _SLOT_CUSTOMER: 'Nepodarilo sa jednoznačne určiť odberateľa. Spresnite názov firmy, prosím.',
@@ -289,6 +294,7 @@ def _compact_text(value: str, *, max_length: int) -> str:
 
 def _build_customization_request_draft(
     *,
+    requester_telegram_id: int,
     user_input_text: str,
     source_channel: str,
     triage_class: str,
@@ -303,13 +309,18 @@ def _build_customization_request_draft(
         title = _compact_text(f'Po\u017eiadavka: {title}', max_length=80)
     summary = _compact_text(redacted_text or title, max_length=500)
     return {
+        'request_id': f'cr_{uuid4().hex}',
+        'requester_telegram_id': int(requester_telegram_id),
+        'supplier_telegram_id': int(requester_telegram_id),
+        'workspace_id': f'telegram:{int(requester_telegram_id)}',
         'source_channel': source_channel if source_channel in {'text', 'voice'} else 'text',
         'source_triage_class': triage_class,
         'source_capability_id': capability_id if capability_id and capability_id != 'unknown' else None,
         'source_topic_id': topic_id if topic_id and topic_id != 'unknown' else None,
         'normalized_title': title,
         'normalized_summary': summary,
-        'original_user_text': user_input_text,
+        'redacted_original_text': redacted_text or None,
+        'raw_text_hash': hash_raw_text(user_input_text),
         'confidence': confidence,
     }
 
@@ -333,6 +344,7 @@ async def _start_customization_request_preview(
     *,
     message: Message,
     state: FSMContext,
+    requester_telegram_id: int,
     user_input_text: str,
     source_channel: str,
     triage_class: str,
@@ -341,6 +353,7 @@ async def _start_customization_request_preview(
     confidence: float | None,
 ) -> None:
     draft = _build_customization_request_draft(
+        requester_telegram_id=requester_telegram_id,
         user_input_text=user_input_text,
         source_channel=source_channel,
         triage_class=triage_class,
@@ -369,31 +382,82 @@ async def _save_customization_request_draft(
     config: Config,
     draft: dict[str, object],
 ) -> None:
-    telegram_id = _message_supplier_telegram_id(message)
-    if telegram_id is None:
+    current_telegram_id = _message_supplier_telegram_id(message)
+    if current_telegram_id is None:
         await state.clear()
         await message.answer('Nepodarilo sa identifikova\u0165 pou\u017e\u00edvate\u013ea. Po\u017eiadavku som neulo\u017eil.')
         return
 
+    draft_owner = _draft_telegram_id(draft.get('requester_telegram_id'))
+    if draft_owner is None:
+        await state.clear()
+        await message.answer('N\u00e1vrh po\u017eiadavky u\u017e nie je platn\u00fd. Po\u017eiadavku som neulo\u017eil.')
+        return
+    if current_telegram_id != draft_owner:
+        await state.clear()
+        await message.answer('Tento n\u00e1vrh patr\u00ed in\u00e9mu pou\u017e\u00edvate\u013eovi. Po\u017eiadavku som neulo\u017eil.')
+        return
+
+    request_id = _clean_draft_text(draft.get('request_id'))
+    if request_id is None:
+        await state.clear()
+        await message.answer('N\u00e1vrh po\u017eiadavky u\u017e nie je platn\u00fd. Po\u017eiadavku som neulo\u017eil.')
+        return
+
     clean_title = redact_customization_request_text(str(draft.get('normalized_title') or '')) or 'Po\u017eiadavka'
     clean_summary = redact_customization_request_text(str(draft.get('normalized_summary') or '')) or clean_title
-    record = CustomizationRequestService(config.db_path).create_confirmed_customization_request(
-        telegram_id=telegram_id,
-        supplier_telegram_id=telegram_id,
-        workspace_id=f'telegram:{telegram_id}',
-        source_channel=str(draft.get('source_channel') or 'text'),
-        source_triage_class=str(draft.get('source_triage_class') or ''),
-        source_capability_id=draft.get('source_capability_id') if isinstance(draft.get('source_capability_id'), str) else None,
-        source_topic_id=draft.get('source_topic_id') if isinstance(draft.get('source_topic_id'), str) else None,
-        normalized_title=clean_title,
-        normalized_summary=clean_summary,
-        original_user_text=str(draft.get('original_user_text') or ''),
-        confidence=draft.get('confidence'),
-        privacy_redaction_flags='redacted_on_save',
-    )
+    service = CustomizationRequestService(config.db_path)
+    try:
+        record = service.create_confirmed_customization_request(
+            request_id=request_id,
+            telegram_id=draft_owner,
+            supplier_telegram_id=_draft_telegram_id(draft.get('supplier_telegram_id')) or draft_owner,
+            workspace_id=_clean_draft_text(draft.get('workspace_id')) or f'telegram:{draft_owner}',
+            source_channel=str(draft.get('source_channel') or 'text'),
+            source_triage_class=str(draft.get('source_triage_class') or ''),
+            source_capability_id=draft.get('source_capability_id') if isinstance(draft.get('source_capability_id'), str) else None,
+            source_topic_id=draft.get('source_topic_id') if isinstance(draft.get('source_topic_id'), str) else None,
+            normalized_title=clean_title,
+            normalized_summary=clean_summary,
+            redacted_original_text=_clean_draft_text(draft.get('redacted_original_text')),
+            raw_text_hash=_clean_draft_text(draft.get('raw_text_hash')),
+            confidence=draft.get('confidence'),
+            privacy_redaction_flags='redacted_before_confirmation_and_on_save',
+        )
+    except ValueError as exc:
+        if str(exc) != 'request_id_already_exists':
+            raise
+        record = service.get_customization_request_for_user(
+            request_id=request_id,
+            telegram_id=draft_owner,
+        )
+        if record is None or record.status != STATUS_CONFIRMED_PENDING_REVIEW:
+            await state.clear()
+            await message.answer('Po\u017eiadavku sa nepodarilo bezpe\u010dne ulo\u017ei\u0165. Nevytvoril som \u010fal\u0161iu k\u00f3piu.')
+            return
+        await state.update_data(customization_request_saved_id=record.request_id)
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_REQUEST_ALREADY_SAVED_MESSAGE)
+        return
+
     await state.update_data(customization_request_saved_id=record.request_id)
     await state.clear()
     await message.answer(_CUSTOMIZATION_REQUEST_SAVED_MESSAGE)
+
+
+def _draft_telegram_id(value: object | None) -> int | None:
+    try:
+        telegram_id = int(value) if value is not None else 0
+    except (TypeError, ValueError):
+        return None
+    return telegram_id if telegram_id > 0 else None
+
+
+def _clean_draft_text(value: object | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _parse_date(value: object) -> date | None:
@@ -2714,13 +2778,15 @@ async def process_invoice_text(
             input_channel=input_channel,
         )
         if triage_result.triage_class in REQUEST_STARTING_TRIAGE_CLASSES:
-            if _message_supplier_telegram_id(message) is None:
+            telegram_id = _message_supplier_telegram_id(message)
+            if telegram_id is None:
                 await message.answer('Nepodarilo sa identifikova\u0165 pou\u017e\u00edvate\u013ea. Po\u017eiadavku som neulo\u017eil.')
                 await state.clear()
                 return
             await _start_customization_request_preview(
                 message=message,
                 state=state,
+                requester_telegram_id=telegram_id,
                 user_input_text=invoice_text,
                 source_channel=input_channel,
                 triage_class=triage_result.triage_class,

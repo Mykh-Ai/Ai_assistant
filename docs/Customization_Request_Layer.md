@@ -22,6 +22,10 @@ As of Customization Request MVP Phase 2:
 - eligible idle InfoHelp/Triage candidates can show a user-facing preview and
   save one confirmed pending-review request only after explicit approval;
 - draft previews live only in FSM/temp state before approval;
+- draft previews are owner-bound and carry a deterministic `request_id` so
+  duplicate approval attempts do not create duplicate rows;
+- pre-confirmation FSM draft data should keep redacted original text plus a raw
+  text hash instead of raw unredacted transcripts; save re-applies redaction;
 - admin notification/listing is not implemented;
 - Product Truth mutation is not implemented;
 - code-agent handoff is not implemented;
@@ -99,10 +103,13 @@ Do not offer a customization request when:
 - the request is illegal, abusive, or clearly unsafe.
 
 Unknown / Discovery / Triage may classify an input as
-`new_business_feature_request`, `customization_request_candidate`, or
-`admin_review_candidate`. That classification is not a saved request and not a
-promise that work will happen. It only permits Python to offer a
-confirmation-gated next step when the Customization Request Layer exists.
+`new_business_feature_request`, `customization_request_candidate`,
+`admin_review_candidate`, or `possible_product_truth_candidate`. The
+`possible_product_truth_candidate` class is eligible only when there is enough
+business context to draft a safe preview without claiming Product Truth support.
+That classification is not a saved request and not a promise that work will
+happen. It only permits Python to offer a confirmation-gated next step when the
+Customization Request Layer exists.
 
 Out-of-domain, spam/abuse/noise, smalltalk, and unclear inputs must not become
 customization requests by default.
