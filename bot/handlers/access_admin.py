@@ -13,10 +13,12 @@ from bot.config import Config
 from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE
 from bot.services.access_control import ACCESS_STATUS_PENDING, AccessControlService
 from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_admin_telegram_user
+from bot.services.customization_requests import CustomizationRequestRecord, CustomizationRequestService, redact_customization_request_text
 
 
 router = Router(name='access_admin')
 logger = logging.getLogger(__name__)
+_CUSTOMIZATION_REQUEST_ADMIN_LIMIT = 10
 
 
 _ACCESS_REQUESTS_ALIASES = {
@@ -48,6 +50,11 @@ async def cmd_access_requests(message: Message, config: Config) -> None:
     await _send_access_requests(message, config)
 
 
+@router.message(Command('customization_requests'))
+async def cmd_customization_requests(message: Message, config: Config) -> None:
+    await _send_customization_requests(message, config)
+
+
 @router.message(
     StateFilter(None),
     lambda message: _normalize_alias(message.text or '') in _ACCESS_REQUESTS_ALIASES,
@@ -77,6 +84,24 @@ async def _send_access_requests(message: Message, config: Config) -> None:
                 status=request.status,
             )
         )
+    await message.answer('\n'.join(lines))
+
+
+async def _send_customization_requests(message: Message, config: Config) -> None:
+    if not _is_admin_message(message, config):
+        await message.answer(UNAUTHORIZED_MESSAGE)
+        return
+
+    requests = CustomizationRequestService(config.db_path).list_pending_customization_requests_for_admin(
+        limit=_CUSTOMIZATION_REQUEST_ADMIN_LIMIT,
+    )
+    if not requests:
+        await message.answer('Moment\u00e1lne nie s\u00fa \u017eiadne po\u017eiadavky \u010dakaj\u00face na kontrolu.')
+        return
+
+    lines = ['Po\u017eiadavky \u010dakaj\u00face na kontrolu:']
+    for request in requests:
+        lines.extend(_format_customization_request_lines(request))
     await message.answer('\n'.join(lines))
 
 
@@ -213,6 +238,41 @@ def _format_access_request_line(
     username_value = username or '-'
     full_name = ' '.join(part for part in [first_name, last_name] if part).strip() or '-'
     return f'- telegram_id={telegram_id}, username={username_value}, meno={full_name}, status={status}'
+
+
+def _format_customization_request_lines(request: CustomizationRequestRecord) -> list[str]:
+    request_id = _short_request_id(request.request_id)
+    created_at = _safe_display_text(request.created_at, max_length=32)
+    workspace_id = _safe_display_text(request.workspace_id or '-', max_length=60)
+    triage_class = _safe_display_text(request.source_triage_class, max_length=60)
+    title = _safe_display_text(request.normalized_title, max_length=90)
+    summary = _safe_display_text(request.normalized_summary, max_length=180)
+    capability = _safe_display_text(request.source_capability_id or '-', max_length=80)
+    status = _safe_display_text(request.status, max_length=40)
+    return [
+        '',
+        f'- id={request_id}, created_at={created_at}',
+        f'  telegram_id={request.telegram_id}, workspace_id={workspace_id}',
+        f'  trieda={triage_class}, status={status}',
+        f'  n\u00e1zov={title}',
+        f'  zhrnutie={summary}',
+        f'  capability_id={capability}',
+    ]
+
+
+def _short_request_id(request_id: str) -> str:
+    clean_id = _safe_display_text(request_id, max_length=64)
+    if len(clean_id) <= 14:
+        return clean_id
+    return f'{clean_id[:10]}\u2026{clean_id[-4:]}'
+
+
+def _safe_display_text(value: object | None, *, max_length: int) -> str:
+    redacted = redact_customization_request_text(str(value or '')) or '-'
+    compacted = re.sub(r'\s+', ' ', redacted).strip() or '-'
+    if len(compacted) <= max_length:
+        return compacted
+    return compacted[: max_length - 1].rstrip() + '\u2026'
 
 
 async def _notify_approved_user(*, bot: Bot | None, telegram_id: int) -> bool:

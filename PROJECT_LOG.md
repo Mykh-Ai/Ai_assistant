@@ -1,5 +1,60 @@
 # PROJECT_LOG
 
+## 2026-05-21 - Session 101 - Admin-only customization request pending list
+
+Summary:
+- Added `/customization_requests` as an admin-only read/list command for
+  pending confirmed customization requests.
+- The list is read-only and shows a compact pending-review summary for the
+  newest requests across tenants for administrators.
+- Added a narrow limit/newest-first option to the existing admin/internal
+  `CustomizationRequestService.list_pending_customization_requests_for_admin`.
+- Added tests for admin access, non-admin denial, middleware blocking for
+  unauthorized users, pending-only filtering, conservative output redaction,
+  admin-wide visibility, read-only behavior, and list limiting.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/Customization_Request_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- Add a minimal read-only admin review surface only.
+- Do not add approve/reject status changes.
+- Do not add admin notifications.
+- Do not mutate Product Truth.
+- Do not implement code-agent handoff or backlog conversion.
+- Do not add self-learning.
+- Do not expose requests to non-admin users.
+- Do not call the complete Level 3 customization layer.
+- Do not change InfoHelp/Triage creation flow.
+
+Touched scopes:
+- Admin/access: added one admin command and middleware admin-command allowlist
+  entry.
+- Storage/DB: read-only admin list query only; no schema change and no status
+  mutation.
+- Product docs: synchronized Customization Request contract narrowly.
+- LLM/STT/LMM/FSM/routing/voice/PDF/server: unchanged.
+
+Current implementation status:
+- Admin pending customization request list: implemented read-only MVP slice.
+- Approve/reject/status review decisions: unsupported.
+- Admin notification: unsupported.
+- Product Truth mutation: unsupported and unchanged.
+- Code-agent handoff/backlog conversion: unsupported.
+- Complete Customization Request Layer / complete Level 3: not complete.
+
+Verification:
+- `python -m pytest -q tests/test_customization_requests.py tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py tests/test_access_request_flow.py tests/test_customization_request_admin.py`
+  - 248 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1222 passed, 7 subtests passed.
+
 ## 2026-05-21 - Session 100 - Customization Request Phase 2 edge-case regression tests
 
 Summary:

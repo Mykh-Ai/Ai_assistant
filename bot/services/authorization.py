@@ -23,7 +23,7 @@ ACCESS_REQUEST_MESSAGE = (
     '\u010eakujeme za z\u00e1ujem. Pr\u00edstup k botovi mus\u00ed najprv schv\u00e1li\u0165 spr\u00e1vca. '
     'Po schv\u00e1len\u00ed budete m\u00f4c\u0165 pokra\u010dova\u0165 v nastaven\u00ed profilu.'
 )
-ADMIN_COMMANDS = {'/access_requests', '/approve', '/reject', '/block', '/users'}
+ADMIN_COMMANDS = {'/access_requests', '/customization_requests', '/approve', '/reject', '/block', '/users'}
 ADMIN_COMMAND_ALIASES = {
     'access requests',
     'access_requests',

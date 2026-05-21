@@ -242,17 +242,17 @@ class CustomizationRequestService:
             ).fetchall()
         return [_record_from_row(row) for row in rows]
 
-    def list_pending_customization_requests_for_admin(self) -> list[CustomizationRequestRecord]:
+    def list_pending_customization_requests_for_admin(self, *, limit: int | None = None) -> list[CustomizationRequestRecord]:
         """Admin/internal pending-review primitive; not a tenant-user listing API."""
+        clean_limit = _normalize_limit(limit)
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
-            rows = connection.execute(
-                (
-                    _SELECT_CUSTOMIZATION_REQUEST
-                    + ' WHERE status = ? ORDER BY created_at ASC, request_id ASC'
-                ),
-                (STATUS_CONFIRMED_PENDING_REVIEW,),
-            ).fetchall()
+            query = _SELECT_CUSTOMIZATION_REQUEST + ' WHERE status = ? ORDER BY created_at DESC, request_id DESC'
+            params: list[object] = [STATUS_CONFIRMED_PENDING_REVIEW]
+            if clean_limit is not None:
+                query += ' LIMIT ?'
+                params.append(clean_limit)
+            rows = connection.execute(query, params).fetchall()
         return [_record_from_row(row) for row in rows]
 
 
@@ -331,6 +331,16 @@ def _clean_optional(value: object | None) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _normalize_limit(value: int | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(limit, 50))
 
 
 def _utc_timestamp() -> str:
