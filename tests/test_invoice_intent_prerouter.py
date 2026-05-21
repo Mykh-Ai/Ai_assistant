@@ -1439,6 +1439,29 @@ def test_customization_request_edit_then_approve_saves_edited_title_summary(tmp_
     assert records[0].normalized_summary == 'Chcem s\u00fa\u010det tr\u017eieb po mesiacoch.'
 
 
+def test_customization_request_edit_preserves_draft_identity(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb pre test@example.com.')
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    original_draft = dict(state.data['customization_request_draft'])
+    asyncio.run(customization_request_preview_decision(message=_authorized_message('upravi\u0165'), state=state, config=config))
+    edit_message = _authorized_message('Mesa\u010dn\u00fd report\nZhrnutie po \u00faprave.')
+    asyncio.run(customization_request_edit_text(message=edit_message, state=state))
+
+    edited_draft = state.data['customization_request_draft']
+    assert edited_draft['normalized_title'] == 'Mesa\u010dn\u00fd report'
+    assert edited_draft['normalized_summary'] == 'Zhrnutie po \u00faprave.'
+    assert edited_draft['request_id'] == original_draft['request_id']
+    assert edited_draft['requester_telegram_id'] == original_draft['requester_telegram_id']
+    assert edited_draft['supplier_telegram_id'] == original_draft['supplier_telegram_id']
+    assert edited_draft['workspace_id'] == original_draft['workspace_id']
+    assert edited_draft['redacted_original_text'] == original_draft['redacted_original_text']
+    assert edited_draft['raw_text_hash'] == original_draft['raw_text_hash']
+
+
 def test_customization_request_double_approve_does_not_create_duplicate(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
@@ -1451,6 +1474,35 @@ def test_customization_request_double_approve_does_not_create_duplicate(tmp_path
 
     records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
     assert len(records) == 1
+
+
+def test_customization_request_same_draft_duplicate_approve_is_idempotent(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    initial_state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb.')
+
+    asyncio.run(process_invoice_text(message=message, state=initial_state, config=config, invoice_text=message.text))
+    draft = dict(initial_state.data['customization_request_draft'])
+    first_state = _DummyState()
+    first_state.data = {
+        'customization_request_draft': dict(draft),
+        'customization_request_saved_id': None,
+    }
+    second_state = _DummyState()
+    second_state.data = {
+        'customization_request_draft': dict(draft),
+        'customization_request_saved_id': None,
+    }
+
+    asyncio.run(customization_request_preview_decision(message=_authorized_message('schv\u00e1li\u0165'), state=first_state, config=config))
+    duplicate_message = _authorized_message('schv\u00e1li\u0165')
+    asyncio.run(customization_request_preview_decision(message=duplicate_message, state=second_state, config=config))
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
+    assert len(records) == 1
+    assert records[0].request_id == draft['request_id']
+    assert '\u010fal\u0161iu k\u00f3piu' in duplicate_message.answers[-1]
 
 
 def test_customization_request_approval_rejects_non_owner(tmp_path: Path) -> None:
@@ -1498,6 +1550,73 @@ def test_customization_request_duplicate_request_id_is_idempotent(tmp_path: Path
     assert len(records) == 1
     assert records[0].request_id == draft['request_id']
     assert '\u010fal\u0161iu k\u00f3piu' in approve_message.answers[-1]
+
+
+def test_customization_request_cross_user_duplicate_request_id_fails_safe(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb.', telegram_id=111)
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    draft = state.data['customization_request_draft']
+    service = CustomizationRequestService(config.db_path)
+    service.create_confirmed_customization_request(
+        request_id=str(draft['request_id']),
+        telegram_id=222,
+        supplier_telegram_id=222,
+        workspace_id='telegram:222',
+        source_channel='text',
+        source_triage_class=str(draft['source_triage_class']),
+        normalized_title='Other user request',
+        normalized_summary='Belongs to another tenant.',
+        redacted_original_text='Belongs to another tenant.',
+        raw_text_hash='2' * 64,
+    )
+
+    approve_message = _authorized_message('schv\u00e1li\u0165', telegram_id=111)
+    asyncio.run(customization_request_preview_decision(message=approve_message, state=state, config=config))
+
+    assert service.list_customization_requests_for_user(telegram_id=111) == []
+    other_records = service.list_customization_requests_for_user(telegram_id=222)
+    assert len(other_records) == 1
+    assert other_records[0].request_id == draft['request_id']
+    assert 'Other user request' not in approve_message.answers[-1]
+    assert 'Belongs to another tenant' not in approve_message.answers[-1]
+    assert 'Nevytvoril som \u010fal\u0161iu k\u00f3piu' in approve_message.answers[-1]
+
+
+def test_customization_request_duplicate_non_pending_request_id_fails_safe(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb.')
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    draft = state.data['customization_request_draft']
+    service = CustomizationRequestService(config.db_path)
+    service.create_confirmed_customization_request(
+        request_id=str(draft['request_id']),
+        telegram_id=111,
+        supplier_telegram_id=111,
+        workspace_id='telegram:111',
+        source_channel='text',
+        source_triage_class=str(draft['source_triage_class']),
+        normalized_title='Reviewed request',
+        normalized_summary='This request is already reviewed.',
+        redacted_original_text=str(draft['redacted_original_text']),
+        raw_text_hash=str(draft['raw_text_hash']),
+        status='reviewed_rejected',
+    )
+
+    approve_message = _authorized_message('schv\u00e1li\u0165')
+    asyncio.run(customization_request_preview_decision(message=approve_message, state=state, config=config))
+
+    records = service.list_customization_requests_for_user(telegram_id=111)
+    assert len(records) == 1
+    assert records[0].request_id == draft['request_id']
+    assert records[0].status == 'reviewed_rejected'
+    assert 'Nevytvoril som \u010fal\u0161iu k\u00f3piu' in approve_message.answers[-1]
 
 
 def test_unauthorized_user_cannot_start_or_save_customization_request(tmp_path: Path) -> None:

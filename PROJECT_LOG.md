@@ -1,5 +1,30 @@
 # PROJECT_LOG
 
+## 2026-05-21 - Session 100 - Customization Request Phase 2 edge-case regression tests
+
+Summary:
+- Added Phase 2 edge-case regression coverage for customization request
+  confirmation hardening.
+- Covered cross-user duplicate `request_id` collision, non-pending duplicate
+  `request_id`, full `decision_callback(...)` approve/edit/cancel routing,
+  edit draft identity preservation, and same-draft duplicate approval.
+- Tests-only change; no runtime bug was found during implementation.
+
+Constraints:
+- No admin list command.
+- No admin notification.
+- No Product Truth mutation.
+- No code-agent handoff.
+- No routing behavior change.
+- No new canonical actions.
+- No complete Level 3 claim.
+
+Verification:
+- `python -m pytest -q tests/test_customization_requests.py tests/test_decision_callbacks.py tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py`
+  - 233 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1212 passed, 7 subtests passed.
+
 ## 2026-05-21 - Session 099 - Customization Request Phase 2 ownership/idempotency hardening
 
 Summary:

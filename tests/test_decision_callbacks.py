@@ -262,6 +262,74 @@ def test_button_cancel_on_invoice_preview_uses_same_cancel_path(tmp_path: Path) 
     assert InvoiceService(config.db_path).get_invoice_by_number('20260001') is None
 
 
+def test_decision_callback_customization_approve_routes_and_saves(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_wrapper_approve'),
+            'customization_request_saved_id': None,
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+    callback = _callback(AUTHORIZED_ID, 'decision:approve')
+
+    asyncio.run(decision_callback(callback, state, config))
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    )
+    assert len(records) == 1
+    assert records[0].request_id == 'cr_callback_wrapper_approve'
+    assert state.cleared is True
+    assert callback.answers[-1] == (None, None)
+
+
+def test_decision_callback_customization_cancel_routes_and_saves_nothing(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_wrapper_cancel'),
+            'customization_request_saved_id': None,
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+    callback = _callback(AUTHORIZED_ID, 'decision:cancel')
+
+    asyncio.run(decision_callback(callback, state, config))
+
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+    assert state.cleared is True
+    assert any(answer[0] == 'Zru\u0161en\u00e9. Po\u017eiadavku som neulo\u017eil.' for answer in callback.answers)
+    assert callback.answers[-1] == (None, None)
+
+
+def test_decision_callback_customization_edit_routes_to_text_edit(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_wrapper_edit'),
+            'customization_request_saved_id': None,
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+    callback = _callback(AUTHORIZED_ID, 'decision:edit')
+
+    asyncio.run(decision_callback(callback, state, config))
+
+    assert state.current_state == CustomizationRequestStates.waiting_edit_text
+    assert state.cleared is False
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+    assert any('n\u00e1zov a zhrnutie' in str(answer[0]) for answer in callback.answers)
+    assert callback.answers[-1] == (None, None)
+
+
 def test_button_approve_on_customization_preview_saves_one_request(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
