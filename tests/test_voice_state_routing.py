@@ -11,7 +11,7 @@ from bot.config import Config
 from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
 from bot.handlers.contacts import ContactStates
 from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
-from bot.handlers.invoice import InvoiceStates
+from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
 from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates
 from bot.handlers.supplier import ServiceAliasStates
 from bot.handlers.voice import handle_voice
@@ -27,6 +27,7 @@ class _DummyMessage:
         self.voice = _DummyVoice('voice-file-id')
         self.answers: list[str] = []
         self.message_id = 77
+        self.from_user = type('_User', (), {'id': 111})()
 
     async def answer(self, text: str) -> None:
         self.answers.append(text)
@@ -914,14 +915,9 @@ def test_voice_idle_unknown_gets_info_help_guidance(monkeypatch, tmp_path: Path)
 @pytest.mark.parametrize(
     ('transcript', 'expected_fragment'),
     [
-        ('Vie\u0161 mi spravi\u0165 preh\u013ead tr\u017eieb za minul\u00fd mesiac?', 'nov\u00fa biznis funkciu'),
         ('Ak\u00e9 bude po\u010dasie zajtra?', 'mimo rozsahu OfficeFlow'),
         ('Ako sa m\u00e1\u0161?', 'biznis \u00falohami'),
         ('urob mi to', 'Nie je jasn\u00e9'),
-        (
-            'Povedz adminovi, \u017ee potrebujem automatick\u00e9 pripomienky nezaplaten\u00fdch fakt\u00far.',
-            'Ni\u010d som neposlal ani neulo\u017eil',
-        ),
     ],
 )
 def test_voice_idle_transcript_uses_safe_info_help_triage(
@@ -947,6 +943,28 @@ def test_voice_idle_transcript_uses_safe_info_help_triage(
 
     assert state.current_state is None
     assert expected_fragment in message.answers[-1]
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'invoices').exists()
+
+
+def test_voice_idle_transcript_can_start_customization_request_preview(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'Vie\u0161 mi spravi\u0165 preh\u013ead tr\u017eieb za minul\u00fd mesiac?'
+
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+
+    message = _DummyMessage()
+    state = _DummyState(None)
+    config = _config(tmp_path)
+
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision.state
+    assert 'N\u00e1vrh po\u017eiadavky' in message.answers[-1]
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 

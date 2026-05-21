@@ -582,7 +582,7 @@ def _fallback_bounded_confirmation_reply(
         return _UNKNOWN
 
     if (
-        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision'}
+        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision', 'customization_request_preview'}
         and _is_stt_ano_noise(normalized)
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):
@@ -624,7 +624,12 @@ def _fallback_bounded_confirmation_reply(
         return next(iter(matched)) if len(matched) == 1 else _UNKNOWN
 
     if (
-        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview'}
+        context_name in {
+            'invoice_preview_confirmation',
+            'invoice_postpdf_decision',
+            'accounting_document_intake_preview',
+            'customization_request_preview',
+        }
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):
         approve_values = {
@@ -672,7 +677,7 @@ def _fallback_bounded_confirmation_reply(
             'поміняй',
             'управить',
         }
-        if context_name in {'invoice_preview_confirmation', 'accounting_document_intake_preview'}:
+        if context_name in {'invoice_preview_confirmation', 'accounting_document_intake_preview', 'customization_request_preview'}:
             cancel_values = {
                 'zrusit',
                 'cancel',
@@ -1009,7 +1014,12 @@ async def resolve_bounded_confirmation_reply(
             allowed_outputs=allowed,
         )
     if (
-        context_name in {'invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview'}
+        context_name in {
+            'invoice_preview_confirmation',
+            'invoice_postpdf_decision',
+            'accounting_document_intake_preview',
+            'customization_request_preview',
+        }
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):
         local_output = _fallback_bounded_confirmation_reply(

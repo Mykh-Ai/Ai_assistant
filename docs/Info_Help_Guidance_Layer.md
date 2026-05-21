@@ -78,11 +78,13 @@ Unless later code proves otherwise:
   conservative topics plus bounded Unknown / Discovery / Triage v1
   classification;
 - it is not full capability-aware Q&A;
-- it implements only a safe non-persistent Unknown / Discovery / Triage v1
-  foundation;
-- it does not implement customization request creation;
+- eligible idle InfoHelp/Triage customization candidates can enter a
+  confirmation-gated preview/save flow backed by
+  `CustomizationRequestService`;
+- this preview/save path is a partial Level 3 MVP slice only;
+- it does not implement admin notification/listing, Product Truth mutation, or
+  code-agent handoff;
 - it does not implement broad self-learning for topics/capability questions;
-- it does not implement code-agent handoff.
 
 Agents must not call current fallback or partial fast-path behavior "InfoHelp
 complete" or "complete Level 2".

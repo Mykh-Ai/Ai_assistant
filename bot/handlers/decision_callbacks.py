@@ -7,7 +7,9 @@ from aiogram.types import CallbackQuery
 from bot.config import Config
 from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm
 from bot.handlers.invoice import (
+    CustomizationRequestStates,
     InvoiceStates,
+    customization_request_preview_decision,
     invoice_delete_existing_invoice_confirm,
     process_invoice_customer_alias_confirm,
     process_invoice_preview_confirmation,
@@ -113,6 +115,19 @@ async def _dispatch_decision_token(
             state=state,
             config=config,
             confirmation_text='',
+            canonical_decision=token,
+        )
+        return True
+
+    if current_state == CustomizationRequestStates.waiting_preview_decision.state and token in {
+        DECISION_APPROVE,
+        DECISION_EDIT,
+        DECISION_CANCEL,
+    }:
+        await customization_request_preview_decision(
+            message=message,
+            state=state,
+            config=config,
             canonical_decision=token,
         )
         return True

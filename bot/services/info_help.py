@@ -357,7 +357,38 @@ def build_info_help_triage_guidance(
 ) -> str | None:
     """Render a safe non-persistent answer for bounded InfoHelp/Triage v1."""
     result = classify_info_help_triage(user_input_text=user_input_text)
+    return render_info_help_triage_result(result, account_context=account_context)
+
+
+def render_info_help_triage_result(
+    result: InfoHelpTriageResult,
+    *,
+    account_context: Mapping[str, Any] | None = None,
+) -> str | None:
     return _render_info_help_triage_result(result, account_context=account_context)
+
+
+async def resolve_info_help_triage_result_with_llm(
+    *,
+    user_input_text: str | None,
+    api_key: str | None,
+    model: str,
+    input_channel: str = 'text',
+) -> InfoHelpTriageResult:
+    """Classify unresolved input deterministically first, then by bounded LLM fallback."""
+    deterministic_result = classify_info_help_triage(user_input_text=user_input_text)
+    deterministic_answer = _render_info_help_triage_result(deterministic_result)
+    if deterministic_answer is not None:
+        return deterministic_result
+
+    from bot.services.info_help_resolver import resolve_info_help_triage_with_llm
+
+    return await resolve_info_help_triage_with_llm(
+        user_input_text=user_input_text or '',
+        api_key=api_key,
+        model=model,
+        input_channel=input_channel,
+    )
 
 
 async def build_info_help_triage_guidance_with_llm(
@@ -369,20 +400,13 @@ async def build_info_help_triage_guidance_with_llm(
     account_context: Mapping[str, Any] | None = None,
 ) -> str | None:
     """Render deterministic triage first, then optional bounded LLM triage fallback."""
-    deterministic_result = classify_info_help_triage(user_input_text=user_input_text)
-    deterministic_answer = _render_info_help_triage_result(deterministic_result, account_context=account_context)
-    if deterministic_answer is not None:
-        return deterministic_answer
-
-    from bot.services.info_help_resolver import resolve_info_help_triage_with_llm
-
-    llm_result = await resolve_info_help_triage_with_llm(
+    result = await resolve_info_help_triage_result_with_llm(
         user_input_text=user_input_text or '',
         api_key=api_key,
         model=model,
         input_channel=input_channel,
     )
-    return _render_info_help_triage_result(llm_result, account_context=account_context)
+    return render_info_help_triage_result(result, account_context=account_context)
 
 
 def _render_info_help_triage_result(
@@ -399,19 +423,20 @@ def _render_info_help_triage_result(
         return (
             'Toto vyzer\u00e1 ako po\u017eiadavka na nov\u00fa biznis funkciu. '
             'V aktu\u00e1lnom runtime ju neviem potvrdi\u0165 ako podporovan\u00fa.\n\n'
-            'Ukladanie po\u017eiadaviek zatia\u013e nie je zapnut\u00e9, preto som ni\u010d neulo\u017eil ani neposlal spr\u00e1vcovi.'
+            'Samotn\u00e1 klasifik\u00e1cia ni\u010d neulo\u017eila ani neposlala spr\u00e1vcovi. '
+            'Ulo\u017eenie po\u017eiadavky je mo\u017en\u00e9 iba cez samostatn\u00fd potvrden\u00fd n\u00e1h\u013ead.'
         )
     if result.triage_class == TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE:
         return (
             'Toto vyzer\u00e1 ako po\u017eiadavka na \u00fapravu alebo prisp\u00f4sobenie. '
-            'V tomto chate zatia\u013e neexistuje potvrden\u00fd tok na ulo\u017eenie takejto po\u017eiadavky.\n\n'
-            'Ni\u010d som neulo\u017eil. Ak chcete, pop\u00ed\u0161te presne, ak\u00fd biznis v\u00fdsledok potrebujete.'
+            'Ulo\u017eenie takejto po\u017eiadavky mus\u00ed prejs\u0165 potvrden\u00fdm n\u00e1h\u013eadom.\n\n'
+            'Ni\u010d som neulo\u017eil bez schv\u00e1lenia. Ak chcete, pop\u00ed\u0161te presne, ak\u00fd biznis v\u00fdsledok potrebujete.'
         )
     if result.triage_class == TRIAGE_ADMIN_REVIEW_CANDIDATE:
         return (
             'Toto vyzer\u00e1 ako po\u017eiadavka pre spr\u00e1vcu alebo v\u00fdvoj\u00e1ra. '
-            'Automatick\u00e9 odoslanie spr\u00e1vcovi zatia\u013e nie je zapnut\u00e9.\n\n'
-            'Ni\u010d som neposlal ani neulo\u017eil. Nap\u00ed\u0161te pros\u00edm konkr\u00e9tnu po\u017eiadavku, ktor\u00fa chcete nesk\u00f4r odovzda\u0165.'
+            'Automatick\u00e9 odoslanie spr\u00e1vcovi nie je zapnut\u00e9.\n\n'
+            'Ni\u010d som neposlal ani neulo\u017eil bez schv\u00e1lenia. Ulo\u017eenie je mo\u017en\u00e9 iba ako potvrden\u00e1 po\u017eiadavka na neskor\u0161iu kontrolu.'
         )
     if result.triage_class == TRIAGE_OUT_OF_DOMAIN:
         return (
@@ -430,7 +455,7 @@ def _render_info_help_triage_result(
     if result.triage_class == TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE:
         return (
             'Toto m\u00f4\u017ee by\u0165 ot\u00e1zka na schopnos\u0165 produktu, ale neviem ju bezpe\u010dne priradi\u0165 ku konkr\u00e9tnej Product Truth polo\u017eke.\n\n'
-            'Spresnite pros\u00edm, \u010di sa p\u00fdtate na fakt\u00fary, PDF, kontakty, slu\u017eby, \u00fa\u010dtovn\u00e9 doklady alebo nastavenie \u00fa\u010dtu.'
+            'Bez potvrdenia ni\u010d nemen\u00edm v Product Truth ani neuklad\u00e1m ako podporovan\u00fa funkciu.'
         )
     return None
 

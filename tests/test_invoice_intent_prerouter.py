@@ -6,7 +6,10 @@ import pytest
 
 from bot.config import Config
 from bot.handlers.invoice import (
+    CustomizationRequestStates,
     InvoiceStates,
+    customization_request_edit_text,
+    customization_request_preview_decision,
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
     process_invoice_service_clarification,
@@ -14,6 +17,8 @@ from bot.handlers.invoice import (
     process_invoice_text,
     semantic_top_level_input,
 )
+from bot.services.customization_requests import CustomizationRequestService
+from bot.services.product_truth import list_capabilities
 from bot.services.info_help import build_top_level_unknown_guidance
 from bot.services.db import init_db
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
@@ -97,6 +102,12 @@ def _config_with_api_key(tmp_path: Path) -> Config:
         db_path=tmp_path / 'test.db',
         storage_dir=tmp_path,
     )
+
+
+def _authorized_message(text: str, telegram_id: int = 111) -> _DummyMessage:
+    message = _DummyMessage(text)
+    message.from_user = type('_User', (), {'id': telegram_id})()
+    return message
 
 
 def test_top_level_semantic_resolver_actions() -> None:
@@ -1277,12 +1288,10 @@ def test_known_reserved_send_invoice_action_uses_product_truth_and_does_not_exec
 @pytest.mark.parametrize(
     ('user_input', 'expected_fragment'),
     [
-        ('Vie\u0161 mi spravi\u0165 preh\u013ead tr\u017eieb za minul\u00fd mesiac?', 'nov\u00fa biznis funkciu'),
         ('Ak\u00e9 bude po\u010dasie zajtra?', 'mimo rozsahu OfficeFlow'),
         ('@@@ #### !!!', 'Tomuto vstupu nerozumiem'),
         ('Ako sa m\u00e1\u0161?', 'biznis \u00falohami'),
         ('urob mi to', 'Nie je jasn\u00e9'),
-        ('Povedz adminovi, \u017ee potrebujem automatick\u00e9 pripomienky nezaplaten\u00fdch fakt\u00far.', 'Ni\u010d som neposlal ani neulo\u017eil'),
     ],
 )
 def test_process_invoice_text_uses_bounded_info_help_triage_without_side_effects(
@@ -1301,6 +1310,188 @@ def test_process_invoice_text_uses_bounded_info_help_triage_without_side_effects
     assert expected_fragment in message.answers[-1]
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
+
+
+def test_eligible_triage_creates_customization_preview_only_no_db_row(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Vie\u0161 mi spravi\u0165 preh\u013ead tr\u017eieb za minul\u00fd mesiac?')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert 'N\u00e1vrh po\u017eiadavky' in message.answers[-1]
+    assert 'Nestane sa: ni\u010d neimplementujem, ni\u010d neposielam spr\u00e1vcovi, nemen\u00edm Product Truth.' in message.answers[-1]
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+
+def test_customization_request_approve_saves_one_confirmed_pending_review_row(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Vie\u0161 mi spravi\u0165 preh\u013ead tr\u017eieb za minul\u00fd mesiac?')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    approve_message = _authorized_message('schv\u00e1li\u0165')
+    asyncio.run(
+        customization_request_preview_decision(
+            message=approve_message,
+            state=state,
+            config=config,
+        )
+    )
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
+    assert len(records) == 1
+    assert records[0].status == 'confirmed_pending_review'
+    assert records[0].source_triage_class == 'new_business_feature_request'
+    assert records[0].telegram_id == 111
+    assert records[0].supplier_telegram_id == 111
+    assert approve_message.answers[-1] == (
+        'Po\u017eiadavku som ulo\u017eil na neskor\u0161iu kontrolu. '
+        'Neznamen\u00e1 to, \u017ee funkcia je podporovan\u00e1 alebo \u017ee bude implementovan\u00e1.'
+    )
+
+
+def test_customization_request_cancel_saves_nothing(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Povedz adminovi, \u017ee potrebujem automatick\u00e9 pripomienky fakt\u00far.')
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    cancel_message = _authorized_message('zru\u0161i\u0165')
+    asyncio.run(
+        customization_request_preview_decision(
+            message=cancel_message,
+            state=state,
+            config=config,
+        )
+    )
+
+    assert 'Zru\u0161en\u00e9. Po\u017eiadavku som neulo\u017eil.' in cancel_message.answers[-1]
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+
+def test_customization_request_edit_then_approve_saves_edited_title_summary(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb.')
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    asyncio.run(customization_request_preview_decision(message=_authorized_message('upravi\u0165'), state=state, config=config))
+    edit_message = _authorized_message('Mesa\u010dn\u00fd report tr\u017eieb\nChcem s\u00fa\u010det tr\u017eieb po mesiacoch.')
+    asyncio.run(customization_request_edit_text(message=edit_message, state=state))
+    asyncio.run(customization_request_preview_decision(message=_authorized_message('schv\u00e1li\u0165'), state=state, config=config))
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
+    assert len(records) == 1
+    assert records[0].normalized_title == 'Mesa\u010dn\u00fd report tr\u017eieb'
+    assert records[0].normalized_summary == 'Chcem s\u00fa\u010det tr\u017eieb po mesiacoch.'
+
+
+def test_customization_request_double_approve_does_not_create_duplicate(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb.')
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    asyncio.run(customization_request_preview_decision(message=_authorized_message('schv\u00e1li\u0165'), state=state, config=config))
+    asyncio.run(customization_request_preview_decision(message=_authorized_message('schv\u00e1li\u0165'), state=state, config=config))
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
+    assert len(records) == 1
+
+
+def test_unauthorized_user_cannot_start_or_save_customization_request(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage('Treba mesa\u010dn\u00fd report tr\u017eieb.')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.cleared is True
+    assert state.current_state is None
+    assert 'Po\u017eiadavku som neulo\u017eil' in message.answers[-1]
+    assert CustomizationRequestService(config.db_path).list_pending_customization_requests_for_admin() == []
+
+
+def test_customization_request_saved_row_is_tenant_scoped_and_redacted(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message(
+        'Chcem vlastn\u00fa \u00fapravu fakt\u00fary pre test@example.com token sk-1234567890abcdef',
+        telegram_id=222,
+    )
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    asyncio.run(
+        customization_request_preview_decision(
+            message=_authorized_message('schv\u00e1li\u0165', telegram_id=222),
+            state=state,
+            config=config,
+        )
+    )
+
+    service = CustomizationRequestService(config.db_path)
+    assert service.list_customization_requests_for_user(telegram_id=111) == []
+    records = service.list_customization_requests_for_user(telegram_id=222)
+    assert len(records) == 1
+    assert records[0].telegram_id == 222
+    assert records[0].supplier_telegram_id == 222
+    assert '[REDACTED]' in records[0].normalized_summary
+    assert 'test@example.com' not in records[0].normalized_title
+    assert 'test@example.com' not in records[0].normalized_summary
+    assert 'sk-1234567890abcdef' not in records[0].normalized_title
+    assert 'sk-1234567890abcdef' not in records[0].normalized_summary
+    assert records[0].redacted_original_text is not None
+    assert 'test@example.com' not in records[0].redacted_original_text
+    assert 'sk-1234567890abcdef' not in records[0].redacted_original_text
+
+
+def test_customization_request_flow_does_not_mutate_product_truth_or_create_handoff(tmp_path: Path) -> None:
+    before = [(cap.capability_id, cap.status.value, cap.summary_for_user) for cap in list_capabilities()]
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _authorized_message('Treba mesa\u010dn\u00fd report tr\u017eieb.')
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    asyncio.run(customization_request_preview_decision(message=_authorized_message('schv\u00e1li\u0165'), state=state, config=config))
+
+    after = [(cap.capability_id, cap.status.value, cap.summary_for_user) for cap in list_capabilities()]
+    service = CustomizationRequestService(config.db_path)
+    assert after == before
+    assert not hasattr(service, 'notify_admin')
+    assert not hasattr(service, 'send_admin_notification')
+    assert not hasattr(service, 'create_code_agent_handoff')
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Ak\u00e9 bude po\u010dasie zajtra?',
+        '@@@ #### !!!',
+        'Ako sa m\u00e1\u0161?',
+        'urob mi to',
+        'cashflow maybe maybe',
+    ],
+)
+def test_noneligible_triage_does_not_start_customization_draft(tmp_path: Path, user_input: str) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message(user_input)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=user_input))
+
+    assert state.current_state is None
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
 
 
 def test_process_invoice_text_unknown_can_use_llm_info_help_triage_without_side_effects(
@@ -1334,7 +1525,7 @@ def test_process_invoice_text_unknown_can_use_llm_info_help_triage_without_side_
         db_path=tmp_path / 'test.db',
         storage_dir=tmp_path,
     )
-    message = _DummyMessage('cashflow dashboard pls')
+    message = _authorized_message('cashflow dashboard pls')
     state = _DummyState()
 
     asyncio.run(
@@ -1346,8 +1537,9 @@ def test_process_invoice_text_unknown_can_use_llm_info_help_triage_without_side_
         )
     )
 
-    assert state.cleared is True
-    assert 'nov\u00fa biznis funkciu' in message.answers[-1]
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert 'N\u00e1vrh po\u017eiadavky' in message.answers[-1]
+    assert 'Nestane sa: ni\u010d neimplementujem' in message.answers[-1]
     assert _InfoHelpTriageOpenAIFake.last_payload is not None
     assert _InfoHelpTriageOpenAIFake.last_payload['input_channel'] == 'text'
     assert 'request_draft' not in _InfoHelpTriageOpenAIFake.last_payload
@@ -1435,7 +1627,7 @@ def test_process_invoice_text_llm_possible_product_truth_candidate_asks_clarific
         db_path=tmp_path / 'test.db',
         storage_dir=tmp_path,
     )
-    message = _DummyMessage('viete spravit veci okolo workflow?')
+    message = _authorized_message('viete spravit veci okolo workflow?')
     state = _DummyState()
 
     asyncio.run(
@@ -1447,8 +1639,8 @@ def test_process_invoice_text_llm_possible_product_truth_candidate_asks_clarific
         )
     )
 
-    assert state.cleared is True
-    assert 'neviem ju bezpe\u010dne priradi\u0165' in message.answers[-1]
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert 'N\u00e1vrh po\u017eiadavky' in message.answers[-1]
     assert 'supported' not in message.answers[-1]
     assert _InfoHelpTriageOpenAIFake.last_payload is not None
     assert 'primary_status' not in _InfoHelpTriageOpenAIFake.last_payload

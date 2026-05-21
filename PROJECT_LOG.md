@@ -1,5 +1,95 @@
 # PROJECT_LOG
 
+## 2026-05-21 - Session 098 - Customization Request MVP Phase 2 preview/save flow
+
+Summary:
+- Added a confirmation-gated Customization Request preview/save flow for
+  eligible idle InfoHelp/Triage candidates:
+  `new_business_feature_request`, `customization_request_candidate`,
+  `admin_review_candidate`, and `possible_product_truth_candidate`.
+- Drafts live only in FSM/temp state until the user explicitly approves.
+- Approval saves exactly one `confirmed_pending_review` row through
+  `CustomizationRequestService.create_confirmed_customization_request(...)`.
+- Edit lets the user revise a short title/summary before returning to the
+  preview.
+- Cancel clears the draft and saves nothing.
+- Idle voice transcripts can start the same preview flow, while exact
+  title/summary edits remain text-preferred.
+- Button, text, and voice confirmation paths use the shared
+  DecisionResolver `approve_edit_cancel` family with context
+  `customization_request_preview`.
+
+Contracts read:
+- `AGENTS.md`
+- `PROJECT_LOG.md`
+- `docs/Customization_Request_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+
+Constraints extracted:
+- No save before explicit confirmation.
+- No admin notification or admin list command.
+- No Product Truth mutation.
+- No code-agent handoff.
+- No new canonical business action.
+- Active FSM state and direct executable actions keep precedence.
+- Unauthorized/unknown users must not start or save request drafts.
+
+Touched scopes:
+- Confirmation: added `customization_request_preview` DecisionResolver context.
+- Routing: idle unknown InfoHelp/Triage candidate path only.
+- FSM: added `CustomizationRequestStates.waiting_preview_decision` and
+  `CustomizationRequestStates.waiting_edit_text`.
+- Storage/DB: uses existing `customization_requests` table/service only after
+  approval; no schema change.
+- Voice/STT: idle voice transcript can start preview; edit text remains
+  text-preferred.
+- LLM/LMM/server/PDF/layout/access model: no architecture expansion.
+- Product docs: updated active Customization Request and InfoHelp contracts.
+
+Current implementation status:
+- Customization Request storage foundation: implemented partial foundation.
+- Confirmation-gated preview/save: implemented partial MVP slice.
+- Admin notification/list: unsupported.
+- Product Truth mutation: unsupported and unchanged.
+- Code-agent handoff: unsupported.
+- Complete Level 3 customization layer: partial, not complete.
+
+AI maturity:
+- Partial Level 3 MVP slice. This does not complete the Customization Request
+  Layer because admin/developer review, richer structured request objects,
+  Product Truth candidate conversion, and code-agent handoff are still absent.
+
+Out of scope:
+- Admin notification/list command.
+- Product Truth writes or status changes.
+- Code-agent handoff/task creation.
+- New canonical business actions.
+- Timeout/cleanup scheduler beyond existing FSM clear/cancel behavior.
+
+Product/user journey proving the change:
+- An authorized idle user asks for a new business feature or customization.
+- The bot shows a Slovak preview with title, summary, what will be saved, and
+  what will not happen.
+- Approve saves one pending-review row; cancel saves nothing; edit then approve
+  saves the edited title/summary.
+
+Self-learning hooks considered:
+- None implemented. Request capture is explicit and confirmed, but no alias,
+  topic, or workflow learning is stored.
+
+Source of truth for user-facing claims:
+- Runtime code and tests prove preview/save only after approval.
+- `CustomizationRequestService` proves persisted status and tenant scope.
+- Product Truth registry is not mutated and no support claim is upgraded.
+
+Verification:
+- `python -m pytest -q tests/test_customization_requests.py tests/test_info_help.py tests/test_voice_state_routing.py tests/test_invoice_intent_prerouter.py`
+  - 268 passed, 7 subtests passed.
+
 ## 2026-05-20 - Session 097 - Harden Customization Request service boundaries
 
 Summary:

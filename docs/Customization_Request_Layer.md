@@ -13,15 +13,20 @@ request layer actually exists.
 
 ## Current Status
 
-This document is a docs-first contract.
+This document is an active contract with a partial runtime foundation.
 
-As of this documentation reset:
+As of Customization Request MVP Phase 2:
 
-- runtime customization request storage is not implemented unless later code
-  proves otherwise;
-- InfoHelp may describe this as a planned target, but must not claim a request
-  was created without implemented storage and confirmation;
-- code-agent handoff is not implemented unless later code proves otherwise.
+- confirmed customization request storage exists through
+  `CustomizationRequestService`;
+- eligible idle InfoHelp/Triage candidates can show a user-facing preview and
+  save one confirmed pending-review request only after explicit approval;
+- draft previews live only in FSM/temp state before approval;
+- admin notification/listing is not implemented;
+- Product Truth mutation is not implemented;
+- code-agent handoff is not implemented;
+- this is a partial Level 3 MVP slice, not the complete Customization Request
+  Layer.
 
 ## Normative Status
 

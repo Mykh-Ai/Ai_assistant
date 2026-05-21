@@ -41,6 +41,7 @@ APPROVE_EDIT_CANCEL_CONTEXTS = (
     'invoice_preview_confirmation',
     'invoice_postpdf_decision',
     'accounting_document_intake_preview',
+    'customization_request_preview',
 )
 
 GLOBAL_CANCEL_CONTEXTS = (
@@ -249,7 +250,7 @@ def test_customer_alias_yes_no_stt_noise_does_not_call_llm(monkeypatch: pytest.M
     ) == 'unknown'
 
 
-@pytest.mark.parametrize('context_name', ['invoice_preview_confirmation', 'invoice_postpdf_decision'])
+@pytest.mark.parametrize('context_name', ['invoice_preview_confirmation', 'invoice_postpdf_decision', 'customization_request_preview'])
 def test_invoice_approve_edit_cancel_stt_ano_noise_maps_to_approve(context_name: str) -> None:
     assert asyncio.run(
         resolve_approve_edit_cancel(
@@ -412,7 +413,7 @@ def test_postpdf_approve_edit_cancel_canonical_outputs(user_input: str, expected
 
 @pytest.mark.parametrize(
     'context_name',
-    ['invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview'],
+    ['invoice_preview_confirmation', 'invoice_postpdf_decision', 'accounting_document_intake_preview', 'customization_request_preview'],
 )
 @pytest.mark.parametrize(
     'user_input',

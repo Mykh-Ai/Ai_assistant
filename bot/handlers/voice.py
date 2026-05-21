@@ -15,7 +15,9 @@ from bot.handlers.accounting_document_intake import (
 from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm
 from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
 from bot.handlers.invoice import (
+    CustomizationRequestStates,
     InvoiceStates,
+    customization_request_preview_decision,
     invoice_delete_existing_invoice_confirm,
     invoice_edit_invoice_action,
     invoice_edit_invoice_date_value,
@@ -320,6 +322,14 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 config=config,
                 decision_text=recognized_text,
             )
+        elif current_state == CustomizationRequestStates.waiting_preview_decision.state:
+            await customization_request_preview_decision(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == CustomizationRequestStates.waiting_edit_text.state:
+            await message.answer('Upraven\u00fd n\u00e1zov alebo zhrnutie po\u017eiadavky pros\u00edm nap\u00ed\u0161te textom.')
         elif _is_officeflow_attachment_state(current_state):
             await message.answer('Hlasovu odpoved v tomto kroku zatial neviem spracovat. Odpovedzte, prosim, textom.')
         elif current_state == ContactStates.name_hint.state:

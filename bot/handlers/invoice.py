@@ -28,11 +28,17 @@ from bot.keyboards.decision import (
     yes_no_keyboard,
 )
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
+from bot.services.customization_requests import (
+    CustomizationRequestService,
+    REQUEST_STARTING_TRIAGE_CLASSES,
+    redact_customization_request_text,
+)
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.info_help import (
-    build_info_help_triage_guidance_with_llm,
     build_product_truth_guidance,
     build_top_level_unknown_guidance,
+    render_info_help_triage_result,
+    resolve_info_help_triage_result_with_llm,
 )
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
@@ -199,6 +205,11 @@ class InvoiceStates(StatesGroup):
     waiting_delete_existing_invoice_confirm = State()
 
 
+class CustomizationRequestStates(StatesGroup):
+    waiting_preview_decision = State()
+    waiting_edit_text = State()
+
+
 _SLOT_SERVICE = 'service_term'
 _SLOT_CUSTOMER = 'customer_name'
 _SLOT_DELIVERY_DATE = 'delivery_date'
@@ -244,6 +255,13 @@ _ITEM_BOUNDARY_NUMBERED_MARKER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_CUSTOMIZATION_REQUEST_DRAFT_KEY = 'customization_request_draft'
+_CUSTOMIZATION_REQUEST_CONFIRM_CONTEXT = 'customization_request_preview'
+_CUSTOMIZATION_REQUEST_SAVED_MESSAGE = (
+    'Po\u017eiadavku som ulo\u017eil na neskor\u0161iu kontrolu. '
+    'Neznamen\u00e1 to, \u017ee funkcia je podporovan\u00e1 alebo \u017ee bude implementovan\u00e1.'
+)
+
 _SLOT_PROMPTS = {
     _SLOT_CUSTOMER: 'Nepodarilo sa jednoznačne určiť odberateľa. Spresnite názov firmy, prosím.',
     _SLOT_SERVICE: 'Nepodarilo sa jednoznačne určiť typ služby. Spresnite ho, prosím.',
@@ -260,6 +278,122 @@ _SLOT_PROMPTS = {
         'Napíšte položky jasne po riadkoch alebo oddelené čiarkou (max 3 položky).'
     ),
 }
+
+
+def _compact_text(value: str, *, max_length: int) -> str:
+    compacted = re.sub(r'\s+', ' ', value).strip()
+    if len(compacted) <= max_length:
+        return compacted
+    return compacted[: max_length - 1].rstrip() + '…'
+
+
+def _build_customization_request_draft(
+    *,
+    user_input_text: str,
+    source_channel: str,
+    triage_class: str,
+    capability_id: str | None,
+    topic_id: str | None,
+    confidence: float | None,
+) -> dict[str, object]:
+    redacted_text = redact_customization_request_text(user_input_text) or ''
+    title_source = redacted_text or 'Nov\u00e1 po\u017eiadavka'
+    title = _compact_text(title_source, max_length=80)
+    if not title.lower().startswith('po\u017eiadavka'):
+        title = _compact_text(f'Po\u017eiadavka: {title}', max_length=80)
+    summary = _compact_text(redacted_text or title, max_length=500)
+    return {
+        'source_channel': source_channel if source_channel in {'text', 'voice'} else 'text',
+        'source_triage_class': triage_class,
+        'source_capability_id': capability_id if capability_id and capability_id != 'unknown' else None,
+        'source_topic_id': topic_id if topic_id and topic_id != 'unknown' else None,
+        'normalized_title': title,
+        'normalized_summary': summary,
+        'original_user_text': user_input_text,
+        'confidence': confidence,
+    }
+
+
+def _format_customization_request_preview(draft: dict[str, object]) -> str:
+    title = str(draft.get('normalized_title') or 'Po\u017eiadavka')
+    summary = str(draft.get('normalized_summary') or 'Bez zhrnutia')
+    return (
+        'Vyzer\u00e1 to ako po\u017eiadavka na nov\u00fa funkciu alebo \u00fapravu. '
+        'M\u00f4\u017eem z nej pripravi\u0165 n\u00e1vrh po\u017eiadavky na neskor\u0161iu kontrolu.\n\n'
+        'N\u00e1vrh po\u017eiadavky:\n'
+        f'N\u00e1zov: {title}\n'
+        f'Zhrnutie: {summary}\n\n'
+        'Ulo\u017e\u00ed sa: stru\u010dn\u00fd popis po\u017eiadavky, stav, zdroj a v\u00e1\u0161 pracovn\u00fd kontext.\n'
+        'Nestane sa: ni\u010d neimplementujem, ni\u010d neposielam spr\u00e1vcovi, nemen\u00edm Product Truth.\n\n'
+        'Chcete t\u00fato po\u017eiadavku ulo\u017ei\u0165? Schv\u00e1li\u0165 / Upravi\u0165 / Zru\u0161i\u0165.'
+    )
+
+
+async def _start_customization_request_preview(
+    *,
+    message: Message,
+    state: FSMContext,
+    user_input_text: str,
+    source_channel: str,
+    triage_class: str,
+    capability_id: str | None,
+    topic_id: str | None,
+    confidence: float | None,
+) -> None:
+    draft = _build_customization_request_draft(
+        user_input_text=user_input_text,
+        source_channel=source_channel,
+        triage_class=triage_class,
+        capability_id=capability_id,
+        topic_id=topic_id,
+        confidence=confidence,
+    )
+    await state.update_data(
+        **{
+            _CUSTOMIZATION_REQUEST_DRAFT_KEY: draft,
+            'customization_request_saved_id': None,
+        }
+    )
+    await state.set_state(CustomizationRequestStates.waiting_preview_decision)
+    await answer_with_decision_keyboard(
+        message,
+        _format_customization_request_preview(draft),
+        approve_edit_cancel_keyboard(),
+    )
+
+
+async def _save_customization_request_draft(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    draft: dict[str, object],
+) -> None:
+    telegram_id = _message_supplier_telegram_id(message)
+    if telegram_id is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikova\u0165 pou\u017e\u00edvate\u013ea. Po\u017eiadavku som neulo\u017eil.')
+        return
+
+    clean_title = redact_customization_request_text(str(draft.get('normalized_title') or '')) or 'Po\u017eiadavka'
+    clean_summary = redact_customization_request_text(str(draft.get('normalized_summary') or '')) or clean_title
+    record = CustomizationRequestService(config.db_path).create_confirmed_customization_request(
+        telegram_id=telegram_id,
+        supplier_telegram_id=telegram_id,
+        workspace_id=f'telegram:{telegram_id}',
+        source_channel=str(draft.get('source_channel') or 'text'),
+        source_triage_class=str(draft.get('source_triage_class') or ''),
+        source_capability_id=draft.get('source_capability_id') if isinstance(draft.get('source_capability_id'), str) else None,
+        source_topic_id=draft.get('source_topic_id') if isinstance(draft.get('source_topic_id'), str) else None,
+        normalized_title=clean_title,
+        normalized_summary=clean_summary,
+        original_user_text=str(draft.get('original_user_text') or ''),
+        confidence=draft.get('confidence'),
+        privacy_redaction_flags='redacted_on_save',
+    )
+    await state.update_data(customization_request_saved_id=record.request_id)
+    await state.clear()
+    await message.answer(_CUSTOMIZATION_REQUEST_SAVED_MESSAGE)
 
 
 def _parse_date(value: object) -> date | None:
@@ -2573,12 +2707,29 @@ async def process_invoice_text(
         )
         return
     if top_level_intent == _UNKNOWN_INVOICE_INTENT:
-        triage_guidance = await build_info_help_triage_guidance_with_llm(
+        triage_result = await resolve_info_help_triage_result_with_llm(
             user_input_text=invoice_text,
             api_key=config.openai_api_key,
             model=config.openai_llm_model,
             input_channel=input_channel,
         )
+        if triage_result.triage_class in REQUEST_STARTING_TRIAGE_CLASSES:
+            if _message_supplier_telegram_id(message) is None:
+                await message.answer('Nepodarilo sa identifikova\u0165 pou\u017e\u00edvate\u013ea. Po\u017eiadavku som neulo\u017eil.')
+                await state.clear()
+                return
+            await _start_customization_request_preview(
+                message=message,
+                state=state,
+                user_input_text=invoice_text,
+                source_channel=input_channel,
+                triage_class=triage_result.triage_class,
+                capability_id=triage_result.capability_id,
+                topic_id=triage_result.topic_id,
+                confidence=triage_result.confidence,
+            )
+            return
+        triage_guidance = render_info_help_triage_result(triage_result)
         if triage_guidance is not None:
             await message.answer(triage_guidance)
             await state.clear()
@@ -3604,6 +3755,93 @@ async def invoice_delete_existing_invoice_confirm(
                 logger.exception('Failed to delete invoice PDF after hard-delete', extra={'invoice_id': invoice_id})
     await state.clear()
     await message.answer(f'Faktúra {invoice_number} bola vymazaná.')
+
+
+@router.message(CustomizationRequestStates.waiting_preview_decision)
+async def customization_request_preview_decision(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    state_data = await state.get_data()
+    saved_id = state_data.get('customization_request_saved_id')
+    if isinstance(saved_id, str) and saved_id.strip():
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_REQUEST_SAVED_MESSAGE)
+        return
+
+    draft = state_data.get(_CUSTOMIZATION_REQUEST_DRAFT_KEY)
+    if not isinstance(draft, dict):
+        await state.clear()
+        await message.answer('N\u00e1vrh po\u017eiadavky u\u017e nie je dostupn\u00fd. Po\u017eiadavku som neulo\u017eil.')
+        return
+
+    if canonical_decision is None:
+        decision = await resolve_approve_edit_cancel(
+            context_name=_CUSTOMIZATION_REQUEST_CONFIRM_CONTEXT,
+            user_input_text=(message.text or ''),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    else:
+        decision = canonical_decision if canonical_decision in {'approve', 'edit', 'cancel', 'unknown'} else 'unknown'
+
+    if decision == 'unknown':
+        await message.answer('Pros\u00edm, odpovedzte: schv\u00e1li\u0165, upravi\u0165 alebo zru\u0161i\u0165.')
+        return
+    if decision == 'cancel':
+        await state.clear()
+        await message.answer('Zru\u0161en\u00e9. Po\u017eiadavku som neulo\u017eil.')
+        return
+    if decision == 'edit':
+        await state.set_state(CustomizationRequestStates.waiting_edit_text)
+        await message.answer(
+            'Nap\u00ed\u0161te upraven\u00fd kr\u00e1tky n\u00e1zov a zhrnutie. '
+            'M\u00f4\u017eete pou\u017ei\u0165 prv\u00fd riadok ako n\u00e1zov a druh\u00fd ako zhrnutie.'
+        )
+        return
+
+    await _save_customization_request_draft(
+        message=message,
+        state=state,
+        config=config,
+        draft=draft,
+    )
+
+
+@router.message(CustomizationRequestStates.waiting_edit_text)
+async def customization_request_edit_text(message: Message, state: FSMContext) -> None:
+    revised_text = (message.text or '').strip()
+    if not revised_text:
+        await message.answer('Nap\u00ed\u0161te pros\u00edm kr\u00e1tky n\u00e1zov alebo zhrnutie po\u017eiadavky textom.')
+        return
+
+    state_data = await state.get_data()
+    draft = state_data.get(_CUSTOMIZATION_REQUEST_DRAFT_KEY)
+    if not isinstance(draft, dict):
+        await state.clear()
+        await message.answer('N\u00e1vrh po\u017eiadavky u\u017e nie je dostupn\u00fd. Po\u017eiadavku som neulo\u017eil.')
+        return
+
+    lines = [line.strip() for line in revised_text.splitlines() if line.strip()]
+    if len(lines) >= 2:
+        title = _compact_text(redact_customization_request_text(lines[0]) or lines[0], max_length=80)
+        summary_source = ' '.join(lines[1:])
+    else:
+        summary_source = revised_text
+        title = _compact_text(redact_customization_request_text(revised_text) or revised_text, max_length=80)
+    summary = _compact_text(redact_customization_request_text(summary_source) or summary_source, max_length=500)
+    updated_draft = dict(draft)
+    updated_draft['normalized_title'] = title
+    updated_draft['normalized_summary'] = summary
+    await state.update_data(**{_CUSTOMIZATION_REQUEST_DRAFT_KEY: updated_draft})
+    await state.set_state(CustomizationRequestStates.waiting_preview_decision)
+    await answer_with_decision_keyboard(
+        message,
+        _format_customization_request_preview(updated_draft),
+        approve_edit_cancel_keyboard(),
+    )
 
 
 @router.message(InvoiceStates.waiting_edit_item_target)

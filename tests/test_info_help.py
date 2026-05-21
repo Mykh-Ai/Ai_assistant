@@ -704,7 +704,7 @@ def test_llm_possible_product_truth_candidate_renders_clarification(monkeypatch)
 
     assert answer is not None
     assert 'neviem ju bezpe\u010dne priradi\u0165' in answer
-    assert 'fakt\u00fary, PDF, kontakty, slu\u017eby' in answer
+    assert 'Bez potvrdenia ni\u010d nemen\u00edm v Product Truth' in answer
 
 
 @pytest.mark.parametrize(
@@ -816,7 +816,8 @@ def test_info_help_triage_business_feature_request() -> None:
     answer = build_info_help_triage_guidance(user_input_text=text)
     assert answer is not None
     assert 'po\u017eiadavka na nov\u00fa biznis funkciu' in answer
-    assert 'ni\u010d neulo\u017eil ani neposlal' in answer
+    assert 'Samotn\u00e1 klasifik\u00e1cia ni\u010d neulo\u017eila ani neposlala spr\u00e1vcovi' in answer
+    assert 'potvrden\u00fd n\u00e1h\u013ead' in answer
 
 
 def test_info_help_triage_out_of_domain_weather() -> None:
@@ -861,7 +862,7 @@ def test_info_help_triage_admin_request_does_not_claim_send_or_save() -> None:
     assert result.triage_class == TRIAGE_ADMIN_REVIEW_CANDIDATE
     answer = build_info_help_triage_guidance(user_input_text=text)
     assert answer is not None
-    assert 'Ni\u010d som neposlal ani neulo\u017eil' in answer
+    assert 'Ni\u010d som neposlal ani neulo\u017eil bez schv\u00e1lenia' in answer
 
 
 def test_multilingual_and_noisy_triage_examples() -> None:
