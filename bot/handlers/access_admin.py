@@ -13,7 +13,16 @@ from bot.config import Config
 from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE
 from bot.services.access_control import ACCESS_STATUS_PENDING, AccessControlService
 from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_admin_telegram_user
-from bot.services.customization_requests import CustomizationRequestRecord, CustomizationRequestService, redact_customization_request_text
+from bot.services.customization_requests import (
+    REVIEW_RESULT_ALREADY_PROCESSED,
+    REVIEW_RESULT_NOT_FOUND,
+    REVIEW_RESULT_UPDATED,
+    STATUS_REVIEWED_ACCEPTED,
+    STATUS_REVIEWED_REJECTED,
+    CustomizationRequestRecord,
+    CustomizationRequestService,
+    redact_customization_request_text,
+)
 
 
 router = Router(name='access_admin')
@@ -60,6 +69,16 @@ async def cmd_customization_requests(message: Message, config: Config) -> None:
 @router.message(Command('customization_request'))
 async def cmd_customization_request_detail(message: Message, config: Config) -> None:
     await _send_customization_request_detail(message, config)
+
+
+@router.message(Command('customization_request_accept'))
+async def cmd_customization_request_accept(message: Message, config: Config) -> None:
+    await _review_customization_request(message, config, decision=STATUS_REVIEWED_ACCEPTED)
+
+
+@router.message(Command('customization_request_reject'))
+async def cmd_customization_request_reject(message: Message, config: Config) -> None:
+    await _review_customization_request(message, config, decision=STATUS_REVIEWED_REJECTED)
 
 
 @router.message(
@@ -123,30 +142,56 @@ async def _send_customization_request_detail(message: Message, config: Config) -
         return
 
     service = CustomizationRequestService(config.db_path)
-    request = service.get_customization_request_by_id_for_admin(request_id=request_id_or_prefix)
-    if request is not None:
-        await message.answer(_format_customization_request_detail(request))
-        return
-
-    if len(request_id_or_prefix) < _CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH:
-        await message.answer(
-            'Po\u017eiadavku som nena\u0161iel. Zadajte cel\u00fd request_id alebo aspo\u0148 '
-            f'{_CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH} znakov za\u010diatku ID.'
-        )
-        return
-
-    matches = service.find_customization_requests_by_id_prefix_for_admin(
-        request_id_prefix=request_id_or_prefix,
-        limit=2,
+    lookup_result, request = _lookup_customization_request_for_admin(
+        service=service,
+        request_id_or_prefix=request_id_or_prefix,
     )
-    if not matches:
+    if lookup_result != 'found' or request is None:
+        await _answer_customization_request_lookup_failure(message, lookup_result)
+        return
+
+    await message.answer(_format_customization_request_detail(request))
+
+
+async def _review_customization_request(message: Message, config: Config, *, decision: str) -> None:
+    if not _is_admin_message(message, config):
+        await message.answer(UNAUTHORIZED_MESSAGE)
+        return
+
+    request_id_or_prefix = _parse_text_arg(message.text or '')
+    if request_id_or_prefix is None:
+        await message.answer(f'Pou\u017eitie: /{_review_command_name(decision)} <request_id>')
+        return
+
+    service = CustomizationRequestService(config.db_path)
+    lookup_result, request = _lookup_customization_request_for_admin(
+        service=service,
+        request_id_or_prefix=request_id_or_prefix,
+    )
+    if lookup_result != 'found' or request is None:
+        await _answer_customization_request_lookup_failure(message, lookup_result)
+        return
+
+    admin_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    result, _ = service.mark_customization_request_reviewed_for_admin(
+        request_id=request.request_id,
+        admin_telegram_id=admin_telegram_id,
+        decision=decision,
+    )
+    if result == REVIEW_RESULT_UPDATED and decision == STATUS_REVIEWED_ACCEPTED:
+        await message.answer('Po\u017eiadavka bola ozna\u010den\u00e1 ako prijat\u00e1 na neskor\u0161iu kontrolu. Neznamen\u00e1 to automatick\u00fa implement\u00e1ciu.')
+        return
+    if result == REVIEW_RESULT_UPDATED and decision == STATUS_REVIEWED_REJECTED:
+        await message.answer('Po\u017eiadavka bola ozna\u010den\u00e1 ako zamietnut\u00e1. Product Truth sa nezmenil.')
+        return
+    if result == REVIEW_RESULT_ALREADY_PROCESSED:
+        await message.answer('Po\u017eiadavka u\u017e bola spracovan\u00e1.')
+        return
+    if result == REVIEW_RESULT_NOT_FOUND:
         await message.answer('Po\u017eiadavku som nena\u0161iel.')
         return
-    if len(matches) > 1:
-        await message.answer('Na\u0161iel som viac po\u017eiadaviek s t\u00fdmto za\u010diatkom ID. Pou\u017eite dlh\u0161\u00ed request_id.')
-        return
 
-    await message.answer(_format_customization_request_detail(matches[0]))
+    await message.answer('Po\u017eiadavku sa nepodarilo spracova\u0165.')
 
 
 @router.message(Command('approve'))
@@ -270,6 +315,48 @@ def _parse_text_arg(text: str) -> str | None:
         return None
     value = parts[1].strip()
     return value or None
+
+
+def _lookup_customization_request_for_admin(
+    *,
+    service: CustomizationRequestService,
+    request_id_or_prefix: str,
+) -> tuple[str, CustomizationRequestRecord | None]:
+    request = service.get_customization_request_by_id_for_admin(request_id=request_id_or_prefix)
+    if request is not None:
+        return 'found', request
+
+    if len(request_id_or_prefix) < _CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH:
+        return 'too_short', None
+
+    matches = service.find_customization_requests_by_id_prefix_for_admin(
+        request_id_prefix=request_id_or_prefix,
+        limit=2,
+    )
+    if not matches:
+        return 'not_found', None
+    if len(matches) > 1:
+        return 'ambiguous', None
+    return 'found', matches[0]
+
+
+async def _answer_customization_request_lookup_failure(message: Message, lookup_result: str) -> None:
+    if lookup_result == 'too_short':
+        await message.answer(
+            'Po\u017eiadavku som nena\u0161iel. Zadajte cel\u00fd request_id alebo aspo\u0148 '
+            f'{_CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH} znakov za\u010diatku ID.'
+        )
+        return
+    if lookup_result == 'ambiguous':
+        await message.answer('Na\u0161iel som viac po\u017eiadaviek s t\u00fdmto za\u010diatkom ID. Pou\u017eite dlh\u0161\u00ed request_id.')
+        return
+    await message.answer('Po\u017eiadavku som nena\u0161iel.')
+
+
+def _review_command_name(decision: str) -> str:
+    if decision == STATUS_REVIEWED_ACCEPTED:
+        return 'customization_request_accept'
+    return 'customization_request_reject'
 
 
 def _normalize_alias(value: str) -> str:

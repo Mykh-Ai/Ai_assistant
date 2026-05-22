@@ -28,8 +28,11 @@ As of Customization Request MVP Phase 2:
   text hash instead of raw unredacted transcripts; save re-applies redaction;
 - admin-only read/list and read-detail commands exist as read-only review
   surfaces;
+- admin-only accept/reject commands can mark a confirmed pending request as
+  `reviewed_accepted` or `reviewed_rejected` for status tracking only;
 - admin notification is not implemented;
-- approve/reject/status transition review decisions are not implemented;
+- review status transitions do not mean implementation approval, Product Truth
+  change, backlog conversion, notification, or code-agent handoff;
 - Product Truth mutation is not implemented;
 - code-agent handoff is not implemented;
 - this is a partial Level 3 MVP slice, not the complete Customization Request
@@ -136,9 +139,11 @@ Target flow:
 11. Optionally convert to a code-agent handoff task after approval.
 
 No side effect may happen at step 5 or 6. Drafting is not saving.
-Current runtime covers only read-only admin list/detail review surfaces for
-confirmed requests; approve/reject decisions and status transitions remain later
-phases.
+Current runtime covers read-only admin list/detail review surfaces and
+status-only admin accept/reject review transitions for confirmed requests.
+Accept/reject changes only the request review status. Product Truth mutation,
+backlog conversion, user/admin notification, code-agent handoff, and
+implementation approval remain later phases.
 
 ## Request Object
 
@@ -335,6 +340,12 @@ Admin/developer review should be able to answer:
 - what risk level applies?
 - should this become a code-agent task?
 - what acceptance criteria must be met?
+
+Current admin review status commands are limited to marking a confirmed pending
+request as `reviewed_accepted` or `reviewed_rejected`. `reviewed_accepted`
+means the request was accepted for later human consideration only. It does not
+approve implementation, mutate Product Truth, convert to backlog, notify users,
+or create a code-agent handoff.
 
 Admin review is required before:
 

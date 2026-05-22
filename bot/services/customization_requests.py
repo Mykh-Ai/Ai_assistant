@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 from pathlib import Path
 import re
@@ -20,6 +20,9 @@ STATUS_CONVERTED_TO_BACKLOG = 'converted_to_backlog'
 STATUS_CANCELLED_BY_USER = 'cancelled_by_user'
 STATUS_EXPIRED_UNCONFIRMED = 'expired_unconfirmed'
 STATUS_DRAFT_UNCONFIRMED = 'draft_unconfirmed'
+REVIEW_RESULT_UPDATED = 'updated'
+REVIEW_RESULT_NOT_FOUND = 'not_found'
+REVIEW_RESULT_ALREADY_PROCESSED = 'already_processed'
 
 ALLOWED_PERSISTED_STATUSES = {
     STATUS_CONFIRMED_PENDING_REVIEW,
@@ -245,6 +248,62 @@ class CustomizationRequestService:
             rows = connection.execute(query, params).fetchall()
         return [_record_from_row(row) for row in rows]
 
+    def mark_customization_request_reviewed_for_admin(
+        self,
+        *,
+        request_id: str,
+        admin_telegram_id: int | None,
+        decision: str,
+    ) -> tuple[str, CustomizationRequestRecord | None]:
+        """Admin/internal status-only review transition; does not create downstream work."""
+        if admin_telegram_id is None or int(admin_telegram_id) <= 0:
+            raise ValueError('admin_telegram_id_required')
+
+        clean_request_id = _clean_optional(request_id)
+        if clean_request_id is None:
+            return REVIEW_RESULT_NOT_FOUND, None
+
+        clean_decision = _normalize_status(decision)
+        if clean_decision not in {STATUS_REVIEWED_ACCEPTED, STATUS_REVIEWED_REJECTED}:
+            raise ValueError('invalid_review_decision')
+
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            existing = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
+                (clean_request_id,),
+            ).fetchone()
+            if existing is None:
+                return REVIEW_RESULT_NOT_FOUND, None
+            if existing['status'] != STATUS_CONFIRMED_PENDING_REVIEW:
+                return REVIEW_RESULT_ALREADY_PROCESSED, _record_from_row(existing)
+
+            now = _utc_timestamp_after(existing['updated_at'])
+            connection.execute(
+                (
+                    'UPDATE customization_requests '
+                    'SET status = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? '
+                    'WHERE request_id = ? AND status = ?'
+                ),
+                (
+                    clean_decision,
+                    int(admin_telegram_id),
+                    now,
+                    now,
+                    clean_request_id,
+                    STATUS_CONFIRMED_PENDING_REVIEW,
+                ),
+            )
+            connection.commit()
+            row = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
+                (clean_request_id,),
+            ).fetchone()
+
+        if row is None:
+            return REVIEW_RESULT_NOT_FOUND, None
+        return REVIEW_RESULT_UPDATED, _record_from_row(row)
+
     def list_customization_requests_for_user(
         self,
         *,
@@ -368,6 +427,27 @@ def _normalize_limit(value: int | None) -> int | None:
 
 def _utc_timestamp() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+
+def _utc_timestamp_after(value: str | None) -> str:
+    now = datetime.now(UTC).replace(microsecond=0)
+    previous = _parse_utc_timestamp(value)
+    if previous is not None and now <= previous:
+        now = previous + timedelta(seconds=1)
+    return now.isoformat().replace('+00:00', 'Z')
+
+
+def _parse_utc_timestamp(value: str | None) -> datetime | None:
+    text = _clean_optional(value)
+    if text is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 _SELECT_CUSTOMIZATION_REQUEST = (

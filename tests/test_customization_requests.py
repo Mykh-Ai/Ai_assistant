@@ -9,8 +9,10 @@ from bot.services import product_truth
 from bot.services.customization_requests import (
     REQUEST_STARTING_TRIAGE_CLASSES,
     STATUS_CONFIRMED_PENDING_REVIEW,
+    STATUS_CONVERTED_TO_BACKLOG,
     STATUS_DRAFT_UNCONFIRMED,
     STATUS_REVIEWED_ACCEPTED,
+    STATUS_REVIEWED_REJECTED,
     CustomizationRequestService,
     hash_raw_text,
     redact_customization_request_text,
@@ -259,6 +261,87 @@ class CustomizationRequestServiceTests(unittest.TestCase):
         self.assertTrue(record.updated_at)
         self.assertTrue(record.confirmed_at)
         self.assertIsNone(record.reviewed_at)
+
+    def test_mark_reviewed_accepts_pending_request_and_sets_audit_fields(self) -> None:
+        service, _, _ = self._service()
+        record = self._create_request(service, request_id='cr_service_accept')
+
+        result, reviewed = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_accept',
+            admin_telegram_id=9001,
+            decision=STATUS_REVIEWED_ACCEPTED,
+        )
+
+        self.assertEqual(result, 'updated')
+        self.assertIsNotNone(reviewed)
+        assert reviewed is not None
+        self.assertEqual(reviewed.status, STATUS_REVIEWED_ACCEPTED)
+        self.assertEqual(reviewed.reviewed_by, 9001)
+        self.assertIsNotNone(reviewed.reviewed_at)
+        self.assertNotEqual(reviewed.updated_at, record.updated_at)
+        self.assertIsNone(reviewed.admin_note)
+
+    def test_mark_reviewed_rejects_pending_request(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_service_reject')
+
+        result, reviewed = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_reject',
+            admin_telegram_id=9001,
+            decision=STATUS_REVIEWED_REJECTED,
+        )
+
+        self.assertEqual(result, 'updated')
+        self.assertIsNotNone(reviewed)
+        assert reviewed is not None
+        self.assertEqual(reviewed.status, STATUS_REVIEWED_REJECTED)
+        self.assertEqual(reviewed.reviewed_by, 9001)
+        self.assertIsNotNone(reviewed.reviewed_at)
+
+    def test_mark_reviewed_is_safe_for_missing_or_non_pending_request(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(
+            service,
+            request_id='cr_service_converted',
+            status=STATUS_CONVERTED_TO_BACKLOG,
+        )
+
+        missing_result, missing_record = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_missing',
+            admin_telegram_id=9001,
+            decision=STATUS_REVIEWED_ACCEPTED,
+        )
+        converted_result, converted_record = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_converted',
+            admin_telegram_id=9001,
+            decision=STATUS_REVIEWED_REJECTED,
+        )
+
+        self.assertEqual(missing_result, 'not_found')
+        self.assertIsNone(missing_record)
+        self.assertEqual(converted_result, 'already_processed')
+        self.assertIsNotNone(converted_record)
+        assert converted_record is not None
+        self.assertEqual(converted_record.status, STATUS_CONVERTED_TO_BACKLOG)
+        self.assertIsNone(converted_record.reviewed_by)
+        self.assertIsNone(converted_record.reviewed_at)
+
+    def test_mark_reviewed_requires_admin_and_allowed_decision(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_service_review_validation')
+
+        with self.assertRaisesRegex(ValueError, 'admin_telegram_id_required'):
+            service.mark_customization_request_reviewed_for_admin(
+                request_id='cr_service_review_validation',
+                admin_telegram_id=None,
+                decision=STATUS_REVIEWED_ACCEPTED,
+            )
+        with self.assertRaisesRegex(ValueError, 'invalid_review_decision'):
+            service.mark_customization_request_reviewed_for_admin(
+                request_id='cr_service_review_validation',
+                admin_telegram_id=9001,
+                decision=STATUS_CONFIRMED_PENDING_REVIEW,
+            )
 
     def test_status_is_limited_to_allowed_persisted_statuses(self) -> None:
         service, _, _ = self._service()

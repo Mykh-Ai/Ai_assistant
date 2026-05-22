@@ -4,7 +4,12 @@ import asyncio
 from pathlib import Path
 
 from bot.config import Config
-from bot.handlers.access_admin import cmd_customization_request_detail, cmd_customization_requests
+from bot.handlers.access_admin import (
+    cmd_customization_request_accept,
+    cmd_customization_request_detail,
+    cmd_customization_request_reject,
+    cmd_customization_requests,
+)
 from bot.services import product_truth
 from bot.services.access_control import AccessControlService, ROLE_ADMIN
 from bot.services.authorization import TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
@@ -13,6 +18,7 @@ from bot.services.customization_requests import (
     STATUS_CONFIRMED_PENDING_REVIEW,
     STATUS_CONVERTED_TO_BACKLOG,
     STATUS_EXPIRED_UNCONFIRMED,
+    STATUS_REVIEWED_ACCEPTED,
     STATUS_REVIEWED_REJECTED,
     CustomizationRequestService,
 )
@@ -479,3 +485,241 @@ def test_customization_request_detail_command_is_read_only(tmp_path: Path) -> No
     assert not hasattr(service, 'notify_admin')
     assert not hasattr(service, 'send_admin_notification')
     assert not hasattr(service, 'create_code_agent_handoff')
+
+
+def test_admin_can_accept_pending_customization_request(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_accept', telegram_id=USER_ID)
+    before = service.get_customization_request_by_id_for_admin(request_id='cr_review_accept')
+    assert before is not None
+    message = _DummyMessage('/customization_request_accept cr_review_accept', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_accept(message, config))
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_review_accept')
+    assert after is not None
+    assert after.status == STATUS_REVIEWED_ACCEPTED
+    assert after.reviewed_by == ADMIN_ID
+    assert after.reviewed_at is not None
+    assert after.updated_at != before.updated_at
+    assert after.admin_note is None
+    assert message.answers == [
+        'Po\u017eiadavka bola ozna\u010den\u00e1 ako prijat\u00e1 na neskor\u0161iu kontrolu. Neznamen\u00e1 to automatick\u00fa implement\u00e1ciu.'
+    ]
+
+
+def test_admin_can_reject_pending_customization_request(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_reject', telegram_id=USER_ID)
+    before = service.get_customization_request_by_id_for_admin(request_id='cr_review_reject')
+    assert before is not None
+    message = _DummyMessage('/customization_request_reject cr_review_reject', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_reject(message, config))
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_review_reject')
+    assert after is not None
+    assert after.status == STATUS_REVIEWED_REJECTED
+    assert after.reviewed_by == ADMIN_ID
+    assert after.reviewed_at is not None
+    assert after.updated_at != before.updated_at
+    assert after.admin_note is None
+    assert message.answers == ['Po\u017eiadavka bola ozna\u010den\u00e1 ako zamietnut\u00e1. Product Truth sa nezmenil.']
+
+
+def test_non_admin_authorized_user_cannot_accept_or_reject_customization_request(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=USER_ID, approved_by=ADMIN_ID)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_denied')
+
+    for handler, text in (
+        (cmd_customization_request_accept, '/customization_request_accept cr_review_denied'),
+        (cmd_customization_request_reject, '/customization_request_reject cr_review_denied'),
+    ):
+        message = _DummyMessage(text, USER_ID)
+        asyncio.run(handler(message, config))
+        after = service.get_customization_request_by_id_for_admin(request_id='cr_review_denied')
+        assert after is not None
+        assert after.status == STATUS_CONFIRMED_PENDING_REVIEW
+        assert message.answers == [UNAUTHORIZED_MESSAGE]
+
+
+def test_unauthorized_user_is_blocked_by_middleware_for_customization_request_review(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    for text in (
+        '/customization_request_accept cr_review_hidden',
+        '/customization_request_reject cr_review_hidden',
+    ):
+        message = _DummyMessage(text, UNKNOWN_ID)
+        state = _DummyState()
+        calls: list[str] = []
+
+        async def _handler(event, data):
+            calls.append('handler-called')
+
+        asyncio.run(
+            TelegramUserAuthorizationMiddleware()(
+                _handler,
+                message,
+                {'config': config, 'state': state},
+            )
+        )
+
+        assert calls == []
+        assert state.cleared is True
+        assert message.answers == [UNAUTHORIZED_MESSAGE]
+
+
+def test_bootstrap_admin_review_commands_pass_middleware_without_user_access(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    for text in (
+        '/customization_request_accept cr_review',
+        '/customization_request_reject cr_review',
+    ):
+        message = _DummyMessage(text, ADMIN_ID)
+        calls: list[str] = []
+
+        async def _handler(event, data):
+            calls.append('handler-called')
+
+        asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config}))
+
+        assert calls == ['handler-called']
+        assert message.answers == []
+
+
+def test_customization_request_review_missing_and_short_prefix_are_safe(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    short_message = _DummyMessage('/customization_request_accept cr_x', ADMIN_ID)
+    missing_message = _DummyMessage('/customization_request_reject cr_missing_long_prefix', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_accept(short_message, config))
+    asyncio.run(cmd_customization_request_reject(missing_message, config))
+
+    assert short_message.answers == [
+        'Po\u017eiadavku som nena\u0161iel. Zadajte cel\u00fd request_id alebo aspo\u0148 8 znakov za\u010diatku ID.'
+    ]
+    assert missing_message.answers == ['Po\u017eiadavku som nena\u0161iel.']
+
+
+def test_customization_request_review_requires_request_id_argument(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    accept_message = _DummyMessage('/customization_request_accept', ADMIN_ID)
+    reject_message = _DummyMessage('/customization_request_reject', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_accept(accept_message, config))
+    asyncio.run(cmd_customization_request_reject(reject_message, config))
+
+    assert accept_message.answers == ['Pou\u017eitie: /customization_request_accept <request_id>']
+    assert reject_message.answers == ['Pou\u017eitie: /customization_request_reject <request_id>']
+
+
+def test_customization_request_review_already_processed_is_safe_and_idempotent(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_once')
+    accept_message = _DummyMessage('/customization_request_accept cr_review_once', ADMIN_ID)
+    reject_message = _DummyMessage('/customization_request_reject cr_review_once', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_accept(accept_message, config))
+    accepted = service.get_customization_request_by_id_for_admin(request_id='cr_review_once')
+    assert accepted is not None
+    asyncio.run(cmd_customization_request_reject(reject_message, config))
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_review_once')
+    assert after is not None
+    assert after.status == STATUS_REVIEWED_ACCEPTED
+    assert after.reviewed_by == ADMIN_ID
+    assert after.reviewed_at == accepted.reviewed_at
+    assert reject_message.answers == ['Po\u017eiadavka u\u017e bola spracovan\u00e1.']
+
+
+def test_admin_can_review_cross_tenant_customization_request(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_other_user', telegram_id=OTHER_USER_ID)
+    message = _DummyMessage('/customization_request_accept cr_review_other_user', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_accept(message, config))
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_review_other_user')
+    assert after is not None
+    assert after.telegram_id == OTHER_USER_ID
+    assert after.status == STATUS_REVIEWED_ACCEPTED
+
+
+def test_customization_request_review_has_no_downstream_side_effects(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_side_effects')
+    before_product_truth = [entry.to_payload() for entry in product_truth.list_capabilities()]
+    bot = _DummyBot()
+    message = _DummyMessage('/customization_request_accept cr_review_side_effects', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_accept(message, config))
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_review_side_effects')
+    assert after is not None
+    assert after.status == STATUS_REVIEWED_ACCEPTED
+    assert [entry.to_payload() for entry in product_truth.list_capabilities()] == before_product_truth
+    assert bot.sent == []
+    assert not hasattr(service, 'convert_to_backlog')
+    assert not hasattr(service, 'convert_to_product_truth_candidate')
+    assert not hasattr(service, 'notify_admin')
+    assert not hasattr(service, 'send_admin_notification')
+    assert not hasattr(service, 'create_code_agent_handoff')
+
+
+def test_reviewed_request_leaves_pending_list_but_remains_visible_in_detail(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_list_detail', title='Reviewed title')
+    accept_message = _DummyMessage('/customization_request_accept cr_review_list_detail', ADMIN_ID)
+    list_message = _DummyMessage('/customization_requests', ADMIN_ID)
+    detail_message = _DummyMessage('/customization_request cr_review_list_detail', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_accept(accept_message, config))
+    asyncio.run(cmd_customization_requests(list_message, config))
+    asyncio.run(cmd_customization_request_detail(detail_message, config))
+
+    assert list_message.answers == ['Moment\u00e1lne nie s\u00fa \u017eiadne po\u017eiadavky \u010dakaj\u00face na kontrolu.']
+    assert 'Reviewed title' in detail_message.answers[-1]
+    assert 'status=reviewed_accepted' in detail_message.answers[-1]
+
+
+def test_customization_request_review_prefix_lookup_is_safe(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_unique_prefix_abcdef', title='Unique review')
+    _create_request(service, request_id='cr_review_ambiguous_one', title='Ambiguous one')
+    _create_request(service, request_id='cr_review_ambiguous_two', title='Ambiguous two')
+    unique_message = _DummyMessage('/customization_request_accept cr_review_unique_prefix', ADMIN_ID)
+    ambiguous_message = _DummyMessage('/customization_request_reject cr_review_ambiguous', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_accept(unique_message, config))
+    asyncio.run(cmd_customization_request_reject(ambiguous_message, config))
+
+    unique = service.get_customization_request_by_id_for_admin(request_id='cr_review_unique_prefix_abcdef')
+    ambiguous_one = service.get_customization_request_by_id_for_admin(request_id='cr_review_ambiguous_one')
+    ambiguous_two = service.get_customization_request_by_id_for_admin(request_id='cr_review_ambiguous_two')
+    assert unique is not None and unique.status == STATUS_REVIEWED_ACCEPTED
+    assert ambiguous_one is not None and ambiguous_one.status == STATUS_CONFIRMED_PENDING_REVIEW
+    assert ambiguous_two is not None and ambiguous_two.status == STATUS_CONFIRMED_PENDING_REVIEW
+    assert ambiguous_message.answers == [
+        'Na\u0161iel som viac po\u017eiadaviek s t\u00fdmto za\u010diatkom ID. Pou\u017eite dlh\u0161\u00ed request_id.'
+    ]

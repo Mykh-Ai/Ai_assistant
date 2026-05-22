@@ -1,5 +1,36 @@
 # PROJECT_LOG
 
+## 2026-05-22 - Session 103 - Admin customization request review statuses
+
+Summary:
+- Added admin-only `/customization_request_accept <request_id>` and
+  `/customization_request_reject <request_id>` commands.
+- Added a status-only review transition in `CustomizationRequestService`:
+  `confirmed_pending_review` can become `reviewed_accepted` or
+  `reviewed_rejected`.
+- Review transitions set `reviewed_by`, `reviewed_at`, and `updated_at`.
+- Re-reviewing an already processed request is safe and does not change the
+  existing reviewed status.
+- Existing pending list now naturally excludes reviewed requests, while detail
+  remains able to show reviewed requests.
+
+Constraints:
+- No Product Truth mutation.
+- No user/admin notification.
+- No backlog conversion.
+- No code-agent handoff.
+- No Product Truth candidate conversion.
+- No self-learning.
+- No free-form LLM review.
+- Still a partial Level 3 MVP slice, not the complete Customization Request
+  Layer.
+
+Verification:
+- `python -m pytest -q tests/test_customization_request_admin.py tests/test_customization_requests.py tests/test_access_request_flow.py`
+  - 77 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1248 passed, 7 subtests passed.
+
 ## 2026-05-21 - Session 102 - Admin-only customization request detail view
 
 Summary:
