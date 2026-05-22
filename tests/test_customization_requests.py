@@ -326,6 +326,69 @@ class CustomizationRequestServiceTests(unittest.TestCase):
         self.assertIsNone(converted_record.reviewed_by)
         self.assertIsNone(converted_record.reviewed_at)
 
+    def test_mark_reviewed_repeat_attempts_preserve_original_audit_fields(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_service_repeat_accept')
+        self._create_request(service, request_id='cr_service_repeat_reject')
+
+        first_accept_result, accepted = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_repeat_accept',
+            admin_telegram_id=9001,
+            decision=STATUS_REVIEWED_ACCEPTED,
+        )
+        repeat_accept_result, repeat_accepted = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_repeat_accept',
+            admin_telegram_id=9002,
+            decision=STATUS_REVIEWED_ACCEPTED,
+        )
+        reject_accepted_result, reject_accepted = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_repeat_accept',
+            admin_telegram_id=9003,
+            decision=STATUS_REVIEWED_REJECTED,
+        )
+
+        first_reject_result, rejected = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_repeat_reject',
+            admin_telegram_id=9011,
+            decision=STATUS_REVIEWED_REJECTED,
+        )
+        repeat_reject_result, repeat_rejected = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_repeat_reject',
+            admin_telegram_id=9012,
+            decision=STATUS_REVIEWED_REJECTED,
+        )
+        accept_rejected_result, accept_rejected = service.mark_customization_request_reviewed_for_admin(
+            request_id='cr_service_repeat_reject',
+            admin_telegram_id=9013,
+            decision=STATUS_REVIEWED_ACCEPTED,
+        )
+
+        self.assertEqual(first_accept_result, 'updated')
+        self.assertEqual(repeat_accept_result, 'already_processed')
+        self.assertEqual(reject_accepted_result, 'already_processed')
+        assert accepted is not None and repeat_accepted is not None and reject_accepted is not None
+        self.assertEqual(repeat_accepted.status, STATUS_REVIEWED_ACCEPTED)
+        self.assertEqual(reject_accepted.status, STATUS_REVIEWED_ACCEPTED)
+        self.assertEqual(repeat_accepted.reviewed_by, accepted.reviewed_by)
+        self.assertEqual(reject_accepted.reviewed_by, accepted.reviewed_by)
+        self.assertEqual(repeat_accepted.reviewed_at, accepted.reviewed_at)
+        self.assertEqual(reject_accepted.reviewed_at, accepted.reviewed_at)
+        self.assertEqual(repeat_accepted.updated_at, accepted.updated_at)
+        self.assertEqual(reject_accepted.updated_at, accepted.updated_at)
+
+        self.assertEqual(first_reject_result, 'updated')
+        self.assertEqual(repeat_reject_result, 'already_processed')
+        self.assertEqual(accept_rejected_result, 'already_processed')
+        assert rejected is not None and repeat_rejected is not None and accept_rejected is not None
+        self.assertEqual(repeat_rejected.status, STATUS_REVIEWED_REJECTED)
+        self.assertEqual(accept_rejected.status, STATUS_REVIEWED_REJECTED)
+        self.assertEqual(repeat_rejected.reviewed_by, rejected.reviewed_by)
+        self.assertEqual(accept_rejected.reviewed_by, rejected.reviewed_by)
+        self.assertEqual(repeat_rejected.reviewed_at, rejected.reviewed_at)
+        self.assertEqual(accept_rejected.reviewed_at, rejected.reviewed_at)
+        self.assertEqual(repeat_rejected.updated_at, rejected.updated_at)
+        self.assertEqual(accept_rejected.updated_at, rejected.updated_at)
+
     def test_mark_reviewed_requires_admin_and_allowed_decision(self) -> None:
         service, _, _ = self._service()
         self._create_request(service, request_id='cr_service_review_validation')

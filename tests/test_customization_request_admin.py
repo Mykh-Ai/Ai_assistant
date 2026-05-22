@@ -630,11 +630,13 @@ def test_customization_request_review_already_processed_is_safe_and_idempotent(t
     service = CustomizationRequestService(config.db_path)
     _create_request(service, request_id='cr_review_once')
     accept_message = _DummyMessage('/customization_request_accept cr_review_once', ADMIN_ID)
+    repeat_accept_message = _DummyMessage('/customization_request_accept cr_review_once', ADMIN_ID)
     reject_message = _DummyMessage('/customization_request_reject cr_review_once', ADMIN_ID)
 
     asyncio.run(cmd_customization_request_accept(accept_message, config))
     accepted = service.get_customization_request_by_id_for_admin(request_id='cr_review_once')
     assert accepted is not None
+    asyncio.run(cmd_customization_request_accept(repeat_accept_message, config))
     asyncio.run(cmd_customization_request_reject(reject_message, config))
 
     after = service.get_customization_request_by_id_for_admin(request_id='cr_review_once')
@@ -642,7 +644,34 @@ def test_customization_request_review_already_processed_is_safe_and_idempotent(t
     assert after.status == STATUS_REVIEWED_ACCEPTED
     assert after.reviewed_by == ADMIN_ID
     assert after.reviewed_at == accepted.reviewed_at
+    assert after.updated_at == accepted.updated_at
+    assert repeat_accept_message.answers == ['Po\u017eiadavka u\u017e bola spracovan\u00e1.']
     assert reject_message.answers == ['Po\u017eiadavka u\u017e bola spracovan\u00e1.']
+
+
+def test_customization_request_accept_already_rejected_is_safe_and_idempotent(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_review_rejected_once')
+    reject_message = _DummyMessage('/customization_request_reject cr_review_rejected_once', ADMIN_ID)
+    repeat_reject_message = _DummyMessage('/customization_request_reject cr_review_rejected_once', ADMIN_ID)
+    accept_message = _DummyMessage('/customization_request_accept cr_review_rejected_once', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_reject(reject_message, config))
+    rejected = service.get_customization_request_by_id_for_admin(request_id='cr_review_rejected_once')
+    assert rejected is not None
+    asyncio.run(cmd_customization_request_reject(repeat_reject_message, config))
+    asyncio.run(cmd_customization_request_accept(accept_message, config))
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_review_rejected_once')
+    assert after is not None
+    assert after.status == STATUS_REVIEWED_REJECTED
+    assert after.reviewed_by == ADMIN_ID
+    assert after.reviewed_at == rejected.reviewed_at
+    assert after.updated_at == rejected.updated_at
+    assert repeat_reject_message.answers == ['Po\u017eiadavka u\u017e bola spracovan\u00e1.']
+    assert accept_message.answers == ['Po\u017eiadavka u\u017e bola spracovan\u00e1.']
 
 
 def test_admin_can_review_cross_tenant_customization_request(tmp_path: Path) -> None:

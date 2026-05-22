@@ -1,5 +1,36 @@
 # PROJECT_LOG
 
+## 2026-05-22 - Session 104 - Customization request review idempotency hardening
+
+Summary:
+- Hardened admin customization request review transitions for repeated or
+  racing review attempts.
+- The service now checks the guarded review `UPDATE` row count and refetches
+  the current row if another review already changed the status.
+- Repeat accept/reject attempts return safe already-processed results and do
+  not overwrite the original `reviewed_by`, `reviewed_at`, or `updated_at`.
+- Added focused regression tests for accept-accepted, reject-rejected,
+  reject-accepted, accept-rejected, audit-field preservation, pending-list
+  exclusion, detail visibility, and no downstream side effects.
+
+Constraints:
+- No new feature surface.
+- No notifications.
+- No Product Truth mutation.
+- No backlog conversion.
+- No Product Truth candidate conversion.
+- No code-agent handoff.
+- No self-learning.
+- No admin notes.
+- Still a partial Level 3 MVP slice, not the complete Customization Request
+  Layer.
+
+Verification:
+- `python -m pytest -q tests/test_customization_request_admin.py tests/test_customization_requests.py`
+  - 61 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1250 passed, 7 subtests passed.
+
 ## 2026-05-22 - Session 103 - Admin customization request review statuses
 
 Summary:

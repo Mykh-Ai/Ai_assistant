@@ -279,7 +279,7 @@ class CustomizationRequestService:
                 return REVIEW_RESULT_ALREADY_PROCESSED, _record_from_row(existing)
 
             now = _utc_timestamp_after(existing['updated_at'])
-            connection.execute(
+            cursor = connection.execute(
                 (
                     'UPDATE customization_requests '
                     'SET status = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? '
@@ -294,6 +294,16 @@ class CustomizationRequestService:
                     STATUS_CONFIRMED_PENDING_REVIEW,
                 ),
             )
+            if cursor.rowcount == 0:
+                connection.commit()
+                current = connection.execute(
+                    _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
+                    (clean_request_id,),
+                ).fetchone()
+                if current is None:
+                    return REVIEW_RESULT_NOT_FOUND, None
+                return REVIEW_RESULT_ALREADY_PROCESSED, _record_from_row(current)
+
             connection.commit()
             row = connection.execute(
                 _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
