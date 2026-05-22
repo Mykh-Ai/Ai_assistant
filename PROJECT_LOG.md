@@ -1,5 +1,34 @@
 # PROJECT_LOG
 
+## 2026-05-22 - Session 105 - Customization request MVP docs and eval checkpoint
+
+Summary:
+- Aligned Customization Request MVP documentation with the current partial
+  Level 3 runtime slice.
+- Clarified user preview/save behavior, tenant-scoped storage, redacted
+  draft/save data, deterministic request IDs, admin list/detail commands, and
+  status-only accept/reject review commands.
+- Tightened runtime-supported status terminology versus reserved/future
+  statuses.
+- Added `docs/evals/customization_request_mvp_smoke.md` with user, admin,
+  privacy, and forbidden-claim smoke scenarios.
+
+Constraints:
+- Docs/evals only.
+- No runtime code changes.
+- No admin notes.
+- No notifications.
+- No Product Truth mutation.
+- No Product Truth candidate conversion.
+- No backlog conversion.
+- No code-agent handoff.
+- No self-learning.
+- Still a partial Level 3 MVP slice, not the complete Customization Request
+  Layer.
+
+Verification:
+- `git diff --check`
+
 ## 2026-05-22 - Session 104 - Customization request review idempotency hardening
 
 Summary:

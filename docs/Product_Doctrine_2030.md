@@ -67,7 +67,9 @@ Current gaps and partial foundations that must not be overstated:
 - Unknown / Discovery / Triage is documented design only unless later code
   proves otherwise;
 - bounded InfoHelp resolver is not complete;
-- Customization Request Layer is not yet implemented;
+- Customization Request Layer has a partial Level 3 MVP slice for
+  confirmation-gated request capture plus admin read/status review, but it is
+  not complete;
 - Code-Agent Handoff Layer is not yet implemented;
 - broad self-learning for topics/capabilities/customization patterns is not yet
   implemented;

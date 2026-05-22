@@ -27,8 +27,12 @@ As of the current logged state:
 - bounded Unknown / Discovery / Triage v1 classification exists for safe
   non-persistent responses;
 - broader bounded InfoHelp resolver coverage is not complete;
-- customization request creation/storage is not implemented unless later code
-  proves otherwise.
+- customization request creation/storage has a partial Level 3 MVP slice:
+  eligible triage candidates can enter a confirmation-gated preview/save flow,
+  and admins can list/detail/accept/reject requests as status-only review;
+- Product Truth mutation, Product Truth candidate conversion, backlog
+  conversion, notifications, self-learning, and code-agent handoff are not
+  implemented by the customization request slice.
 
 Product Truth must be derived from current code, `PROJECT_LOG.md`,
 `docs/TZ_FakturaBot.md`, active contract docs, and focused evidence in tests.

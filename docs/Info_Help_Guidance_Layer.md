@@ -82,8 +82,9 @@ Unless later code proves otherwise:
   confirmation-gated preview/save flow backed by
   `CustomizationRequestService`;
 - this preview/save path is a partial Level 3 MVP slice only;
-- it does not implement admin notification/listing, Product Truth mutation, or
-  code-agent handoff;
+- admin-only list/detail and status-only accept/reject review commands exist,
+  but they do not notify users/admins, mutate Product Truth, convert to
+  backlog, or create code-agent handoff;
 - it does not implement broad self-learning for topics/capability questions;
 
 Agents must not call current fallback or partial fast-path behavior "InfoHelp

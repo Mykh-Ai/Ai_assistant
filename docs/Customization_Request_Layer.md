@@ -24,17 +24,24 @@ As of Customization Request MVP Phase 2:
 - draft previews live only in FSM/temp state before approval;
 - draft previews are owner-bound and carry a deterministic `request_id` so
   duplicate approval attempts do not create duplicate rows;
-- pre-confirmation FSM draft data should keep redacted original text plus a raw
-  text hash instead of raw unredacted transcripts; save re-applies redaction;
-- admin-only read/list and read-detail commands exist as read-only review
-  surfaces;
-- admin-only accept/reject commands can mark a confirmed pending request as
-  `reviewed_accepted` or `reviewed_rejected` for status tracking only;
+- pre-confirmation FSM draft data keeps redacted original text plus a raw text
+  hash instead of raw unredacted transcripts; save re-applies redaction;
+- admin-only `/customization_requests` lists pending confirmed requests;
+- admin-only `/customization_request <id_or_prefix>` shows one request detail;
+- admin-only `/customization_request_accept <id_or_prefix>` and
+  `/customization_request_reject <id_or_prefix>` can mark a confirmed pending
+  request as `reviewed_accepted` or `reviewed_rejected` for status tracking
+  only;
 - admin notification is not implemented;
+- admin notes are not implemented;
 - review status transitions do not mean implementation approval, Product Truth
   change, backlog conversion, notification, or code-agent handoff;
 - Product Truth mutation is not implemented;
+- Product Truth candidate conversion is not implemented;
+- backlog conversion is not implemented;
 - code-agent handoff is not implemented;
+- self-learning from customization requests is not implemented;
+- request expiry/cleanup and rich pagination are not implemented;
 - this is a partial Level 3 MVP slice, not the complete Customization Request
   Layer.
 
@@ -139,11 +146,16 @@ Target flow:
 11. Optionally convert to a code-agent handoff task after approval.
 
 No side effect may happen at step 5 or 6. Drafting is not saving.
-Current runtime covers read-only admin list/detail review surfaces and
-status-only admin accept/reject review transitions for confirmed requests.
+Current runtime covers the user preview/edit/approve/cancel path, read-only
+admin list/detail review surfaces, and status-only admin accept/reject review
+transitions for confirmed requests. Voice can start the preview from an idle
+STT transcript and can approve/cancel through the same controlled decision
+path. Exact title/summary edits remain text-first.
+
 Accept/reject changes only the request review status. Product Truth mutation,
-backlog conversion, user/admin notification, code-agent handoff, and
-implementation approval remain later phases.
+Product Truth candidate conversion, backlog conversion, user/admin
+notification, code-agent handoff, self-learning, and implementation approval
+remain later phases.
 
 ## Request Object
 
@@ -196,18 +208,32 @@ reusable knowledge.
 
 ## Status Model
 
-Request statuses:
+Runtime-supported persisted statuses:
 
-- `draft_shown`: draft prepared for user, not saved as pending work;
-- `pending_confirmation`: waiting for user confirmation;
-- `pending_admin_review`: confirmed by user and awaiting review;
-- `needs_user_input`: admin/developer needs more information;
-- `accepted`: approved for implementation planning;
-- `converted_to_code_agent_task`: converted to a bounded implementation task;
-- `rejected`: declined by admin/developer with reason;
-- `cancelled_by_user`: user cancelled before or after confirmation;
-- `implemented`: delivered and verified;
-- `expired`: stale request closed without action.
+- `confirmed_pending_review`: confirmed by the user and awaiting admin review;
+- `reviewed_accepted`: admin accepted the request for later human
+  consideration only;
+- `reviewed_rejected`: admin rejected the request for status tracking only.
+
+Runtime FSM-only draft states:
+
+- preview draft shown to user, not saved as pending work;
+- waiting for approve/edit/cancel confirmation;
+- waiting for text-only title/summary edit.
+
+Reserved or future persisted statuses present in the service/schema:
+
+- `needs_user_input`: reserved for a future admin/developer clarification flow;
+- `converted_to_product_truth_candidate`: reserved for a future Product Truth
+  candidate conversion flow;
+- `converted_to_backlog`: reserved for a future backlog conversion flow;
+- `cancelled_by_user`: reserved for a future persisted cancellation lifecycle;
+- `expired_unconfirmed`: reserved for a future expiry/cleanup lifecycle.
+
+The legacy terms `pending_admin_review`, `accepted`, `rejected`,
+`converted_to_code_agent_task`, `implemented`, and `expired` describe target
+workflow concepts only. They are not the current runtime status names unless
+runtime code explicitly implements them.
 
 Do not use `implemented` unless runtime behavior, tests/evals, docs, and
 approval prove delivery.
@@ -313,9 +339,22 @@ Handler-level tests must prove that local confirmation parsers are not added.
 
 ## Storage Rules
 
-Runtime storage is future work and must be migration-safe.
+Runtime storage exists for confirmed customization requests through
+`CustomizationRequestService`. It is intentionally narrow:
 
-Before implementing storage:
+- only confirmed requests are persisted by the user-facing flow;
+- no row is created before explicit approve;
+- saved rows are tenant-scoped by `telegram_id`;
+- pre-confirmation drafts remain in FSM/temp state;
+- draft identity is deterministic through preview-created `request_id`;
+- duplicate approve/callback attempts must not create duplicate rows;
+- the FSM draft stores redacted original text plus a raw text hash instead of
+  raw unredacted original text;
+- save re-applies redaction to title, summary, and original text display data;
+- admin/internal reads are explicitly named and must remain admin-only.
+
+Future storage expansion remains migration-safe. Before adding new persisted
+fields, status transitions, retention jobs, or conversion flows:
 
 1. define table/filesystem shape;
 2. define tenant/workspace scoping;
@@ -330,7 +369,7 @@ No request storage may be cross-tenant.
 
 ## Admin Review
 
-Admin/developer review should be able to answer:
+Future admin/developer review should be able to answer:
 
 - is the request clear?
 - is it safe?
@@ -341,11 +380,19 @@ Admin/developer review should be able to answer:
 - should this become a code-agent task?
 - what acceptance criteria must be met?
 
+Current admin review surface:
+
+- `/customization_requests`: read-only list of the newest pending requests;
+- `/customization_request <id_or_prefix>`: read-only detail view;
+- `/customization_request_accept <id_or_prefix>`: status-only accept review;
+- `/customization_request_reject <id_or_prefix>`: status-only reject review.
+
 Current admin review status commands are limited to marking a confirmed pending
 request as `reviewed_accepted` or `reviewed_rejected`. `reviewed_accepted`
 means the request was accepted for later human consideration only. It does not
-approve implementation, mutate Product Truth, convert to backlog, notify users,
-or create a code-agent handoff.
+approve implementation, mutate Product Truth, convert to backlog, notify users
+or admins, or create a code-agent handoff. `reviewed_rejected` records a
+review decision only and does not mutate Product Truth.
 
 Admin review is required before:
 
@@ -443,7 +490,7 @@ rate limits, and no sending without explicit setup.
 
 ## MVP Acceptance Criteria
 
-Customization Request MVP is not complete until:
+The complete Customization Request Layer is not complete until:
 
 - Product Truth check happens before request offer;
 - request draft includes required fields;
@@ -457,6 +504,13 @@ Customization Request MVP is not complete until:
 - tests cover save/cancel/edit and unauthorized user behavior;
 - product UX evals cover plausible business requests;
 - `PROJECT_LOG.md` records the actual maturity level.
+
+The current partial Level 3 MVP slice satisfies only the bounded preview,
+confirmation-gated persistence, tenant scoping, redaction, admin list/detail,
+and status-only review subset documented in Current Status. It does not satisfy
+the complete lifecycle criteria for Product Truth conversion, backlog
+conversion, code-agent handoff, notifications, self-learning, request expiry,
+or implementation delivery.
 
 ## Product UX Evals
 
@@ -481,6 +535,10 @@ Required eval scenarios:
 - high-risk request requires admin approval;
 - request is not saved before confirmation.
 
+The current smoke artifact is
+`docs/evals/customization_request_mvp_smoke.md`. It records scenarios for the
+implemented partial MVP and explicitly lists forbidden claims.
+
 ## No-Go Rules
 
 Do not:
@@ -493,4 +551,9 @@ Do not:
 - bypass admin review for high-risk work;
 - route unsupported requests directly to code agents;
 - call request drafting "implementation";
+- call `reviewed_accepted` an implementation promise;
+- claim admin/user notifications were sent when only DB storage/review status
+  exists;
+- claim Product Truth, backlog, code-agent handoff, or self-learning side
+  effects from request capture or review;
 - mark a request `implemented` without runtime delivery and verification.

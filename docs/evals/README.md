@@ -11,6 +11,6 @@ cross-tenant data in eval artifacts.
 Initial planned eval files:
 
 - `product_truth_infohelp_smoke.md`
-- `customization_request_smoke.md`
+- `customization_request_mvp_smoke.md`
 - `pdf_layout_manual_review.md`
 - `access_tenant_safety_smoke.md`

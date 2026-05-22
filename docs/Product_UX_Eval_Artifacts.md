@@ -26,7 +26,7 @@ Recommended initial files:
 
 ```text
 docs/evals/product_truth_infohelp_smoke.md
-docs/evals/customization_request_smoke.md
+docs/evals/customization_request_mvp_smoke.md
 docs/evals/pdf_layout_manual_review.md
 docs/evals/access_tenant_safety_smoke.md
 ```
