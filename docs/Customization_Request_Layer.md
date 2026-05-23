@@ -531,7 +531,8 @@ Current Admin Response MVP supports:
 - `responded_to_request_status`;
 - `response_updated_at`;
 - `response_id`;
-- duplicate confirm protection for an already sent `response_id`;
+- duplicate confirm protection for an already pending, already sent, or already
+  failed same `response_id`;
 - deterministic `send_failed` status without automatic retry when Telegram
   delivery fails.
 
@@ -572,7 +573,8 @@ Admin Response MVP delivery ordering:
 1. Admin confirms the response preview.
 2. Python persists `admin_response_text`, `response_kind`,
    `response_sent_by`, `responded_to_request_status`, increments
-   `response_attempts`, and sets a delivery status such as `send_pending`.
+   `response_attempts`, and atomically claims a delivery status such as
+   `send_pending`.
 3. Python attempts Telegram delivery.
 4. If delivery succeeds, Python sets `response_delivery_status` to
    `send_succeeded`, sets `response_sent_at`, and clears

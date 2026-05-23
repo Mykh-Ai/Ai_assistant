@@ -1,5 +1,41 @@
 # PROJECT_LOG
 
+## 2026-05-23 - Session 109 - Admin Response delivery idempotency hardening
+
+Summary:
+- Hardened Admin Response to User MVP delivery idempotency before push.
+- The service now atomically claims a response as `send_pending` before any
+  Telegram delivery attempt.
+- Duplicate confirms for the same `response_id` in `send_pending`,
+  `send_succeeded`, or `send_failed` do not trigger another outbound send.
+- The handler now sends to the persisted request row `telegram_id` returned by
+  the service, not a final-send FSM draft target.
+- Added handler/service tests for pending duplicate confirms, already-succeeded
+  duplicate confirms, same-id failed response no-retry behavior, tampered FSM
+  target safety, missing bot failure, Telegram exception failure, outbound
+  redaction, persisted failed response text, attempts behavior, review status
+  separation, and no downstream Product Truth/backlog/code-agent/self-learning
+  effects.
+
+Constraints:
+- No new response kinds.
+- No retry flow.
+- No Product Truth mutation.
+- No backlog conversion.
+- No Product Truth candidate conversion.
+- No code-agent handoff.
+- No self-learning.
+- No automatic accept/reject notifications.
+- No broad routing changes.
+- Still a partial Level 3 MVP slice, not the complete Customization Request
+  Layer or complete human-review loop.
+
+Verification:
+- `python -m pytest -q tests/test_customization_request_admin.py tests/test_customization_requests.py tests/test_decision_callbacks.py tests/test_voice_state_routing.py`
+  - 149 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1303 passed, 7 subtests passed.
+
 ## 2026-05-23 - Session 108 - Admin Response to User MVP
 
 Summary:

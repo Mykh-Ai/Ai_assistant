@@ -295,9 +295,11 @@ side_effect_expectation: `admin_response_text`, `response_sent_at`,
 `response_sent_by`, `response_kind`, `response_delivery_status`,
 `response_attempts`, and `responded_to_request_status` or equivalent fields are
 persisted. Confirmed response text/metadata is persisted before Telegram send;
-delivery status is updated after the send result.
+delivery is claimed as `send_pending` before Telegram send; delivery status is
+updated after the send result.
 forbidden_behavior: Product Truth mutation, implementation promise, backlog
-conversion, code-agent handoff, silent delivery claim without actual send.
+conversion, code-agent handoff, duplicate outbound send, silent delivery claim
+without actual send.
 automation_status: implemented for default `answer`; covered by admin/service
 and callback tests.
 last_result: not_run_manual

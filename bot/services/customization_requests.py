@@ -27,9 +27,12 @@ RESPONSE_KIND_ANSWER = 'answer'
 RESPONSE_DELIVERY_PENDING = 'send_pending'
 RESPONSE_DELIVERY_SUCCEEDED = 'send_succeeded'
 RESPONSE_DELIVERY_FAILED = 'send_failed'
+RESPONSE_RESULT_CLAIMED_FOR_SEND = 'claimed_for_send'
 RESPONSE_RESULT_PREPARED = 'prepared'
 RESPONSE_RESULT_NOT_FOUND = 'not_found'
 RESPONSE_RESULT_ALREADY_SENT = 'already_sent'
+RESPONSE_RESULT_ALREADY_IN_PROGRESS = 'already_in_progress'
+RESPONSE_RESULT_ALREADY_FAILED = 'already_failed'
 
 ALLOWED_PERSISTED_STATUSES = {
     STATUS_CONFIRMED_PENDING_REVIEW,
@@ -374,7 +377,7 @@ class CustomizationRequestService:
         response_text: str,
         response_kind: str = RESPONSE_KIND_ANSWER,
     ) -> tuple[str, CustomizationRequestRecord | None]:
-        """Persist latest confirmed response before outbound Telegram delivery."""
+        """Atomically persist and claim a confirmed response before Telegram delivery."""
         if admin_telegram_id is None or int(admin_telegram_id) <= 0:
             raise ValueError('admin_telegram_id_required')
 
@@ -390,17 +393,38 @@ class CustomizationRequestService:
 
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
+            connection.execute('BEGIN IMMEDIATE')
             existing = connection.execute(
                 _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
                 (clean_request_id,),
             ).fetchone()
             if existing is None:
+                connection.commit()
                 return RESPONSE_RESULT_NOT_FOUND, None
             if (
                 existing['response_id'] == clean_response_id
                 and existing['response_delivery_status'] == RESPONSE_DELIVERY_SUCCEEDED
             ):
+                connection.commit()
                 return RESPONSE_RESULT_ALREADY_SENT, _record_from_row(existing)
+            if (
+                existing['response_id'] == clean_response_id
+                and existing['response_delivery_status'] == RESPONSE_DELIVERY_PENDING
+            ):
+                connection.commit()
+                return RESPONSE_RESULT_ALREADY_IN_PROGRESS, _record_from_row(existing)
+            if (
+                existing['response_id'] == clean_response_id
+                and existing['response_delivery_status'] == RESPONSE_DELIVERY_FAILED
+            ):
+                connection.commit()
+                return RESPONSE_RESULT_ALREADY_FAILED, _record_from_row(existing)
+            if (
+                existing['response_delivery_status'] == RESPONSE_DELIVERY_PENDING
+                and existing['response_id'] != clean_response_id
+            ):
+                connection.commit()
+                return RESPONSE_RESULT_ALREADY_IN_PROGRESS, _record_from_row(existing)
 
             now = _utc_timestamp_after(existing['updated_at'])
             connection.execute(
@@ -432,7 +456,7 @@ class CustomizationRequestService:
 
         if row is None:
             return RESPONSE_RESULT_NOT_FOUND, None
-        return RESPONSE_RESULT_PREPARED, _record_from_row(row)
+        return RESPONSE_RESULT_CLAIMED_FOR_SEND, _record_from_row(row)
 
     def mark_response_delivery_succeeded(
         self,

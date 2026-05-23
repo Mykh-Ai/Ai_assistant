@@ -19,10 +19,11 @@ from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE
 from bot.services.access_control import ACCESS_STATUS_PENDING, AccessControlService
 from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_admin_telegram_user
 from bot.services.customization_requests import (
-    RESPONSE_DELIVERY_FAILED,
-    RESPONSE_DELIVERY_SUCCEEDED,
     RESPONSE_KIND_ANSWER,
+    RESPONSE_RESULT_ALREADY_FAILED,
+    RESPONSE_RESULT_ALREADY_IN_PROGRESS,
     RESPONSE_RESULT_ALREADY_SENT,
+    RESPONSE_RESULT_CLAIMED_FOR_SEND,
     RESPONSE_RESULT_NOT_FOUND,
     RESPONSE_RESULT_PREPARED,
     REVIEW_RESULT_ALREADY_PROCESSED,
@@ -47,7 +48,12 @@ _CUSTOMIZATION_RESPONSE_CONFIRM_CONTEXT = 'customization_request_admin_response_
 _CUSTOMIZATION_RESPONSE_MAX_LENGTH = 1500
 _CUSTOMIZATION_RESPONSE_SENT_MESSAGE = 'Odpoveď bola odoslaná používateľovi.'
 _CUSTOMIZATION_RESPONSE_ALREADY_SENT_MESSAGE = 'Odpoveď už bola odoslaná používateľovi. Neodoslal som ju znova.'
+_CUSTOMIZATION_RESPONSE_IN_PROGRESS_MESSAGE = 'Odpoveď sa už odosiela. Neodoslal som ju znova.'
+_CUSTOMIZATION_RESPONSE_ALREADY_FAILED_MESSAGE = 'Odpoveď už je uložená ako nedoručená. Automaticky ju neposielam znova.'
 _CUSTOMIZATION_RESPONSE_FAILED_MESSAGE = 'Odpoveď som uložil, ale nepodarilo sa ju doručiť používateľovi.'
+_CUSTOMIZATION_RESPONSE_STATUS_UPDATE_FAILED_MESSAGE = (
+    'Odpoveď bola odoslaná používateľovi, ale stav doručenia sa nepodarilo uložiť.'
+)
 
 
 class CustomizationRequestAdminResponseStates(StatesGroup):
@@ -358,8 +364,7 @@ async def _send_customization_request_response(
     response_text = str(draft.get('response_text') or '').strip()
     response_kind = str(draft.get('response_kind') or RESPONSE_KIND_ANSWER)
     admin_telegram_id = _draft_int(draft.get('admin_telegram_id'))
-    target_telegram_id = _draft_int(draft.get('target_telegram_id'))
-    if not request_id or not response_id or not response_text or admin_telegram_id is None or target_telegram_id is None:
+    if not request_id or not response_id or not response_text or admin_telegram_id is None:
         await state.clear()
         await message.answer('Návrh odpovede už nie je platný. Odpoveď nebola odoslaná.')
         return
@@ -375,15 +380,24 @@ async def _send_customization_request_response(
         await state.clear()
         await message.answer(_CUSTOMIZATION_RESPONSE_ALREADY_SENT_MESSAGE)
         return
+    if result == RESPONSE_RESULT_ALREADY_IN_PROGRESS:
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_RESPONSE_IN_PROGRESS_MESSAGE)
+        return
+    if result == RESPONSE_RESULT_ALREADY_FAILED:
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_RESPONSE_ALREADY_FAILED_MESSAGE)
+        return
     if result == RESPONSE_RESULT_NOT_FOUND or record is None:
         await state.clear()
         await message.answer('Požiadavku som nenašiel. Odpoveď nebola odoslaná.')
         return
-    if result != RESPONSE_RESULT_PREPARED:
+    if result != RESPONSE_RESULT_CLAIMED_FOR_SEND:
         await state.clear()
         await message.answer('Odpoveď sa nepodarilo pripraviť na odoslanie.')
         return
 
+    target_telegram_id = record.telegram_id
     delivery_bot = bot or getattr(message, 'bot', None)
     user_text = _format_customization_response_for_user(record.admin_response_text or response_text)
     if delivery_bot is None or not hasattr(delivery_bot, 'send_message'):
@@ -409,7 +423,22 @@ async def _send_customization_request_response(
         await message.answer(_CUSTOMIZATION_RESPONSE_FAILED_MESSAGE)
         return
 
-    service.mark_response_delivery_succeeded(request_id=request_id, response_id=response_id)
+    try:
+        mark_result, _ = service.mark_response_delivery_succeeded(request_id=request_id, response_id=response_id)
+    except Exception:
+        logger.exception('customization_request_response_success_status_update_failed request_id=%s', _short_request_id(request_id))
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_RESPONSE_STATUS_UPDATE_FAILED_MESSAGE)
+        return
+    if mark_result not in {RESPONSE_RESULT_PREPARED, RESPONSE_RESULT_ALREADY_SENT}:
+        logger.error(
+            'customization_request_response_success_status_unexpected request_id=%s result=%s',
+            _short_request_id(request_id),
+            mark_result,
+        )
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_RESPONSE_STATUS_UPDATE_FAILED_MESSAGE)
+        return
     await state.clear()
     await message.answer(_CUSTOMIZATION_RESPONSE_SENT_MESSAGE)
 

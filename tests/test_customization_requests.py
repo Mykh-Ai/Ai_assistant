@@ -12,7 +12,10 @@ from bot.services.customization_requests import (
     RESPONSE_DELIVERY_PENDING,
     RESPONSE_DELIVERY_SUCCEEDED,
     RESPONSE_KIND_ANSWER,
+    RESPONSE_RESULT_ALREADY_FAILED,
+    RESPONSE_RESULT_ALREADY_IN_PROGRESS,
     RESPONSE_RESULT_ALREADY_SENT,
+    RESPONSE_RESULT_CLAIMED_FOR_SEND,
     RESPONSE_RESULT_PREPARED,
     STATUS_CONFIRMED_PENDING_REVIEW,
     STATUS_CONVERTED_TO_BACKLOG,
@@ -428,7 +431,7 @@ class CustomizationRequestServiceTests(unittest.TestCase):
             response_kind=RESPONSE_KIND_ANSWER,
         )
 
-        self.assertEqual(result, RESPONSE_RESULT_PREPARED)
+        self.assertEqual(result, RESPONSE_RESULT_CLAIMED_FOR_SEND)
         assert prepared is not None
         self.assertEqual(prepared.admin_response_text, 'Tu je odpoved pre pouzivatela.')
         self.assertEqual(prepared.response_kind, RESPONSE_KIND_ANSWER)
@@ -439,6 +442,60 @@ class CustomizationRequestServiceTests(unittest.TestCase):
         self.assertIsNone(prepared.response_failed_reason)
         self.assertEqual(prepared.responded_to_request_status, STATUS_CONFIRMED_PENDING_REVIEW)
         self.assertEqual(prepared.response_id, 'crr_response_attempt')
+
+    def test_response_claim_is_idempotent_while_send_pending(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_response_pending')
+        first_result, first = service.persist_customization_request_response_attempt(
+            request_id='cr_response_pending',
+            admin_telegram_id=9001,
+            response_id='crr_response_pending',
+            response_text='Odpoved.',
+            response_kind=RESPONSE_KIND_ANSWER,
+        )
+        duplicate_result, duplicate = service.persist_customization_request_response_attempt(
+            request_id='cr_response_pending',
+            admin_telegram_id=9001,
+            response_id='crr_response_pending',
+            response_text='Odpoved.',
+            response_kind=RESPONSE_KIND_ANSWER,
+        )
+
+        self.assertEqual(first_result, RESPONSE_RESULT_CLAIMED_FOR_SEND)
+        assert first is not None
+        self.assertEqual(first.response_attempts, 1)
+        self.assertEqual(duplicate_result, RESPONSE_RESULT_ALREADY_IN_PROGRESS)
+        assert duplicate is not None
+        self.assertEqual(duplicate.response_delivery_status, RESPONSE_DELIVERY_PENDING)
+        self.assertEqual(duplicate.response_attempts, 1)
+
+    def test_response_claim_does_not_auto_retry_same_failed_response_id(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_response_no_retry')
+        service.persist_customization_request_response_attempt(
+            request_id='cr_response_no_retry',
+            admin_telegram_id=9001,
+            response_id='crr_response_no_retry',
+            response_text='Odpoved.',
+            response_kind=RESPONSE_KIND_ANSWER,
+        )
+        service.mark_response_delivery_failed(
+            request_id='cr_response_no_retry',
+            response_id='crr_response_no_retry',
+        )
+
+        retry_result, retry_record = service.persist_customization_request_response_attempt(
+            request_id='cr_response_no_retry',
+            admin_telegram_id=9001,
+            response_id='crr_response_no_retry',
+            response_text='Odpoved.',
+            response_kind=RESPONSE_KIND_ANSWER,
+        )
+
+        self.assertEqual(retry_result, RESPONSE_RESULT_ALREADY_FAILED)
+        assert retry_record is not None
+        self.assertEqual(retry_record.response_delivery_status, RESPONSE_DELIVERY_FAILED)
+        self.assertEqual(retry_record.response_attempts, 1)
 
     def test_response_delivery_success_and_duplicate_confirm_are_idempotent(self) -> None:
         service, _, _ = self._service()

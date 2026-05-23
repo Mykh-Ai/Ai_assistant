@@ -760,6 +760,180 @@ def test_admin_reply_confirm_persists_before_send_and_marks_success(tmp_path: Pa
     assert duplicate_message.answers == ['Odpoveď už bola odoslaná používateľovi. Neodoslal som ju znova.']
 
 
+def test_admin_reply_pending_duplicate_does_not_send_twice(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_reply_pending_duplicate', telegram_id=USER_ID)
+    state = _DummyState()
+    asyncio.run(
+        cmd_customization_request_reply(
+            _DummyMessage('/customization_request_reply cr_reply_pending_duplicate', ADMIN_ID),
+            config,
+            state,
+        )
+    )
+    asyncio.run(customization_request_response_text(_DummyMessage('Odpoveď.', ADMIN_ID), state))
+    draft = dict(state.data['customization_request_admin_response_draft'])
+    service.persist_customization_request_response_attempt(
+        request_id=draft['request_id'],
+        admin_telegram_id=ADMIN_ID,
+        response_id=draft['response_id'],
+        response_text=draft['response_text'],
+        response_kind=draft['response_kind'],
+    )
+    bot = _DummyBot()
+    duplicate_message = _DummyMessage('odoslat', ADMIN_ID)
+
+    asyncio.run(
+        customization_request_response_preview_decision(
+            duplicate_message,
+            state,
+            config,
+            bot=bot,
+            canonical_decision='approve',
+        )
+    )
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_reply_pending_duplicate')
+    assert after is not None
+    assert after.response_delivery_status == RESPONSE_DELIVERY_PENDING
+    assert after.response_attempts == 1
+    assert bot.sent == []
+    assert duplicate_message.answers == ['Odpoveď sa už odosiela. Neodoslal som ju znova.']
+
+
+def test_admin_reply_failed_response_id_does_not_auto_retry(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_reply_no_retry', telegram_id=USER_ID)
+    state = _DummyState()
+    asyncio.run(cmd_customization_request_reply(_DummyMessage('/customization_request_reply cr_reply_no_retry', ADMIN_ID), config, state))
+    asyncio.run(customization_request_response_text(_DummyMessage('Odpoveď.', ADMIN_ID), state))
+    draft = dict(state.data['customization_request_admin_response_draft'])
+    service.persist_customization_request_response_attempt(
+        request_id=draft['request_id'],
+        admin_telegram_id=ADMIN_ID,
+        response_id=draft['response_id'],
+        response_text=draft['response_text'],
+        response_kind=draft['response_kind'],
+    )
+    service.mark_response_delivery_failed(request_id=draft['request_id'], response_id=draft['response_id'])
+    bot = _DummyBot()
+    retry_message = _DummyMessage('odoslat', ADMIN_ID)
+
+    asyncio.run(
+        customization_request_response_preview_decision(
+            retry_message,
+            state,
+            config,
+            bot=bot,
+            canonical_decision='approve',
+        )
+    )
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_reply_no_retry')
+    assert after is not None
+    assert after.response_delivery_status == RESPONSE_DELIVERY_FAILED
+    assert after.response_attempts == 1
+    assert bot.sent == []
+    assert retry_message.answers == ['Odpoveď už je uložená ako nedoručená. Automaticky ju neposielam znova.']
+
+
+def test_admin_reply_tampered_draft_target_cannot_redirect_delivery(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_reply_tampered_target', telegram_id=USER_ID)
+    state = _DummyState()
+    asyncio.run(cmd_customization_request_reply(_DummyMessage('/customization_request_reply cr_reply_tampered_target', ADMIN_ID), config, state))
+    asyncio.run(customization_request_response_text(_DummyMessage('Odpoveď ide pôvodnému používateľovi.', ADMIN_ID), state))
+    draft = dict(state.data['customization_request_admin_response_draft'])
+    draft['target_telegram_id'] = OTHER_USER_ID
+    awaitable = state.update_data(customization_request_admin_response_draft=draft)
+    asyncio.run(awaitable)
+    bot = _DummyBot()
+
+    asyncio.run(
+        customization_request_response_preview_decision(
+            _DummyMessage('odoslat', ADMIN_ID),
+            state,
+            config,
+            bot=bot,
+            canonical_decision='approve',
+        )
+    )
+
+    assert bot.sent == [(USER_ID, 'Odpoveď správcu k vašej požiadavke:\n\nOdpoveď ide pôvodnému používateľovi.')]
+
+
+def test_admin_reply_missing_bot_records_send_failed_missing_bot(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_reply_missing_bot', telegram_id=USER_ID)
+    state = _DummyState()
+    asyncio.run(cmd_customization_request_reply(_DummyMessage('/customization_request_reply cr_reply_missing_bot', ADMIN_ID), config, state))
+    asyncio.run(customization_request_response_text(_DummyMessage('Odpoveď bez bot objektu.', ADMIN_ID), state))
+
+    asyncio.run(
+        customization_request_response_preview_decision(
+            _DummyMessage('odoslat', ADMIN_ID),
+            state,
+            config,
+            bot=None,
+            canonical_decision='approve',
+        )
+    )
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_reply_missing_bot')
+    assert after is not None
+    assert after.response_delivery_status == RESPONSE_DELIVERY_FAILED
+    assert after.response_failed_reason == 'missing_bot'
+    assert after.response_attempts == 1
+    assert after.admin_response_text == 'Odpoveď bez bot objektu.'
+
+
+def test_admin_reply_final_outbound_message_is_redacted(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_reply_redacted', telegram_id=USER_ID)
+    state = _DummyState()
+    asyncio.run(cmd_customization_request_reply(_DummyMessage('/customization_request_reply cr_reply_redacted', ADMIN_ID), config, state))
+    asyncio.run(
+        customization_request_response_text(
+            _DummyMessage(
+                'password=supersecret token sk-secretTOKEN123 email person@example.com '
+                'IBAN SK7700000000000000000000 phone +421 900 123 456',
+                ADMIN_ID,
+            ),
+            state,
+        )
+    )
+    bot = _DummyBot()
+
+    asyncio.run(
+        customization_request_response_preview_decision(
+            _DummyMessage('odoslat', ADMIN_ID),
+            state,
+            config,
+            bot=bot,
+            canonical_decision='approve',
+        )
+    )
+
+    assert len(bot.sent) == 1
+    sent_text = bot.sent[0][1]
+    assert '[REDACTED]' in sent_text
+    assert 'supersecret' not in sent_text
+    assert 'sk-secretTOKEN123' not in sent_text
+    assert 'person@example.com' not in sent_text
+    assert 'SK7700000000000000000000' not in sent_text
+    assert '+421 900 123 456' not in sent_text
+
+
 def test_admin_reply_failed_send_persists_safe_failure_without_retry(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
