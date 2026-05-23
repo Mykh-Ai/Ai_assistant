@@ -1,5 +1,36 @@
 # PROJECT_LOG
 
+## 2026-05-23 - Session 106 - Document admin response loop for customization requests
+
+Summary:
+- Broadened Customization Request documentation into an Admin Response / Human
+  Review Loop concept.
+- Clarified that current `customization_requests` rows may conceptually cover
+  feature/customization requests, unanswered product/support/troubleshooting
+  questions, possible Product Truth gaps, and admin-review candidates.
+- Documented the current runtime limitation: capture, confirmed save, admin
+  list/detail, and status-only accept/reject review exist; admin response to
+  user, answer text storage, response delivery metadata, user notifications,
+  `needs_user_input` delivery, and Product Truth mutation are not implemented.
+- Extended eval artifacts with future/next-slice scenarios for admin answers,
+  rejection explanations, clarification requests, out-of-domain/spam safety,
+  and Product Truth gap non-mutation.
+
+Constraints:
+- Docs/evals only.
+- No runtime code changes.
+- No admin replies.
+- No user notifications.
+- No Product Truth mutation.
+- No backlog conversion.
+- No code-agent handoff.
+- No self-learning.
+- Still a partial Level 3 MVP slice, not the complete Customization Request
+  Layer or closed human-review loop.
+
+Verification:
+- `git diff --check`
+
 ## 2026-05-22 - Session 105 - Customization request MVP docs and eval checkpoint
 
 Summary:

@@ -24,7 +24,7 @@ This document is a mandatory-read contract for work touching:
 - fallback guidance;
 - active-FSM confusion handling;
 - Product Truth responses;
-- customization request handoff from user questions;
+- customization request / human-review handoff from user questions;
 - InfoHelp topic aliases or self-learning.
 
 This document is subordinate to the bounded Python-to-LLM contracts in
@@ -85,6 +85,8 @@ Unless later code proves otherwise:
 - admin-only list/detail and status-only accept/reject review commands exist,
   but they do not notify users/admins, mutate Product Truth, convert to
   backlog, or create code-agent handoff;
+- admin response-to-user, answer text storage, response delivery metadata, and
+  clarification delivery are not implemented;
 - it does not implement broad self-learning for topics/capability questions;
 
 Agents must not call current fallback or partial fast-path behavior "InfoHelp
@@ -169,15 +171,16 @@ These classes do not change Product Truth. They help choose a safe response:
 - politely reject or redirect out-of-domain questions;
 - ignore/block spam or abusive noise safely;
 - answer smalltalk briefly and return to business workflow scope;
-- offer to prepare a feature/customization/admin request only when the flow is
-  implemented and confirmation-gated.
+- offer to prepare a feature/customization/admin review item only when the flow
+  is implemented and confirmation-gated.
 
 Current status: Product Truth MVP exists, deterministic Product
 Truth-backed InfoHelp fast-paths exist for selected topics, and bounded
-Unknown / Discovery / Triage v1 classification exists for safe
-non-persistent responses. Bounded InfoHelp resolver coverage is still not
-complete. Customization Request storage is not implemented. InfoHelp Level 2
-is not complete.
+Unknown / Discovery / Triage v1 classification exists. Eligible
+customization/admin/product-truth-gap candidates can enter the implemented
+confirmation-gated preview/save flow. Bounded InfoHelp resolver coverage is
+still not complete, and admin response-to-user is not implemented. InfoHelp
+Level 2 is not complete.
 
 ## Response Contract
 
@@ -187,7 +190,8 @@ Every InfoHelp answer must include:
 2. current Product Truth primary status plus relevant flags/context;
 3. plain-language limitation or setup condition;
 4. safe next step;
-5. customization request offer when useful and supported by the request layer.
+5. customization request or human-review offer when useful and supported by the
+   request layer.
 
 InfoHelp must not:
 
@@ -344,6 +348,7 @@ InfoHelp response modes are Python-owned rendering decisions:
 - `dangerous_operation_notice`;
 - `offer_linked_action`;
 - `offer_customization_request`;
+- `offer_human_review`;
 - `state_guidance`;
 - `offer_reset`;
 - `bounded_fallback`.
@@ -354,10 +359,13 @@ The LLM must not choose these modes authoritatively. If examples include a
 response-mode-like field, it is only an optional hint for Python to validate or
 ignore.
 
-## Customization Request Handoff
+## Customization Request / Human Review Handoff
 
 When a user asks for a feature that is unsupported, partial, planned, or
 account-specific, InfoHelp should offer a customization request when safe.
+When the user asks a product/support/how-to/troubleshooting question that the
+bot cannot answer reliably from Product Truth and current runtime state,
+InfoHelp may offer a human-review item when the confirmed request layer exists.
 
 Example:
 
@@ -376,6 +384,11 @@ InfoHelp may draft a request only when the runtime Customization Request Layer
 exists. Until then, it may say that the feature is a future/requestable product
 direction only if the wording does not imply storage happened. Otherwise it
 must not pretend a request was created.
+
+Current runtime can save confirmed review items through the customization
+request flow and can expose admin list/detail/status review. It cannot send an
+admin answer to the user, store answer text, store response delivery metadata,
+or notify the user that review status changed.
 
 ## Self-Learning Hooks
 
@@ -424,6 +437,9 @@ linked_action
 linked_target
 customization_offered
 customization_confirmed
+human_review_offered
+human_review_confirmed
+admin_response_sent
 reset_offered
 reset_confirmed
 model_used
@@ -465,6 +481,24 @@ Expected target outcome:
 No known capability_id. Classify as `new_business_feature_request`.
 Explain that this is not confirmed as supported, and offer to prepare a
 future request/admin note only through a confirmation-gated flow.
+```
+
+### Unanswered Product Question
+
+User:
+
+```text
+Viete prepojit faktury s mojim konkretnym uctovnym systemom?
+```
+
+Expected target outcome:
+
+```text
+If no Product Truth capability answers this reliably, classify as
+`admin_review_candidate` or `possible_product_truth_candidate`. Explain that
+support cannot be confirmed from current Product Truth and offer to submit the
+question for admin review only through a confirmation-gated flow. Do not claim
+an admin will answer unless response delivery is implemented.
 ```
 
 ### Out Of Domain
@@ -649,6 +683,11 @@ Required eval scenarios:
 - active FSM user sends confused text;
 - unauthorized user asks a capability question;
 - unsupported request offers customization only when request storage exists;
+- unknown product/support/how-to question offers human review only when request
+  storage exists;
+- future admin response scenarios prove answer/reject/clarification delivery
+  before claiming a closed loop;
+- Product Truth gap candidates do not auto-mutate Product Truth;
 - no hidden invoice/contact/document side effects occur.
 - unknown but plausible business feature request does not fall to only static
   menu fallback;
@@ -708,6 +747,7 @@ Do not:
 - let LLM invent Product Truth;
 - create side effects from informational questions;
 - store unsupported requests without confirmation;
+- claim admin response delivery when only request storage/status review exists;
 - learn raw sensitive transcripts as aliases;
 - allow learned aliases to create canonical actions;
 - expose internal debug data to users;

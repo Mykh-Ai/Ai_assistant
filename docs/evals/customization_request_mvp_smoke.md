@@ -1,8 +1,8 @@
-# Customization Request MVP Smoke
+# Customization Request / Human Review MVP Smoke
 
 ## Scope
 
-feature_or_layer: Customization Request MVP
+feature_or_layer: Customization Request MVP / Admin Response Human Review Loop
 declared_maturity_level: partial Level 3
 runtime_status: partial
 artifact_status: scenario catalog, not a completed manual run log
@@ -21,8 +21,21 @@ slice:
 - admins can list, detail, accept, and reject requests;
 - admin accept/reject is status review only.
 
+Conceptually, current rows may represent broader review items such as
+`feature_request`, `customization_request`, `unanswered_product_question`,
+`support_question`, `troubleshooting_question`, `possible_product_truth_gap`,
+or `admin_review_candidate`. A dedicated persisted `request_kind` /
+`request_type` field is not implemented yet.
+
 Out of scope for this MVP slice:
 
+- admin response sent to user;
+- answer text storage;
+- `response_sent_at`;
+- `response_sent_by`;
+- `response_kind`;
+- user notification on review decision;
+- `needs_user_input` delivery to user;
 - admin notes;
 - user/admin notifications;
 - Product Truth mutation;
@@ -42,15 +55,22 @@ Runtime-supported persisted statuses:
 - `reviewed_accepted`
 - `reviewed_rejected`
 
-Reserved/future persisted statuses:
+Reserved/future persisted statuses or lifecycle concepts:
 
 - `needs_user_input`
+- `answered`
+- `response_sent`
+- `closed_no_answer`
 - `converted_to_product_truth_candidate`
 - `converted_to_backlog`
 - `cancelled_by_user`
 - `expired_unconfirmed`
 
 FSM-only draft states are not persisted as customization request rows.
+
+Existing `reviewed_accepted` / `reviewed_rejected` statuses are review
+decisions only. They are not answer delivery statuses and do not mean
+implementation, Product Truth mutation, notification, or code-agent handoff.
 
 ## User Smoke Scenarios
 
@@ -66,6 +86,22 @@ forbidden_behavior: direct implementation promise, admin notification, Product
 Truth mutation, backlog conversion, code-agent handoff.
 automation_status: covered by handler/service tests; manual smoke not recorded
 in this artifact.
+last_result: not_run_manual
+
+### CR-MVP-USER-001B - Unanswered Product Question Review Preview
+
+account_state: authorized user, idle FSM
+input_channel: text
+user_input: product/support/how-to question that Product Truth cannot answer
+reliably
+expected_response_behavior: show human-review/customization request preview
+only if triage class is eligible and safe; copy says the bot cannot confirm the
+answer from current Product Truth and asks for confirmation before save.
+side_effect_expectation: no DB row before approve.
+forbidden_behavior: claiming support, claiming Product Truth was updated,
+claiming admin will definitely answer, admin notification, code-agent handoff.
+automation_status: future/next slice for full human-review semantics; current
+preview/save mechanics are covered for eligible triage classes.
 last_result: not_run_manual
 
 ### CR-MVP-USER-002 - Approve Saves Pending Review
@@ -128,6 +164,23 @@ expected_response_behavior: safe no-request path.
 side_effect_expectation: no draft, no DB row.
 forbidden_behavior: customization preview, saved request, notification.
 automation_status: covered by tests where triage class is exercised.
+last_result: not_run_manual
+
+### CR-MVP-USER-006B - Product Truth Gap Does Not Mutate Truth
+
+account_state: authorized user, idle FSM
+input_channel: text
+user_input: plausible product question that maps to
+`possible_product_truth_candidate`
+expected_response_behavior: bot may offer confirmation-gated review capture,
+but states Product Truth support cannot be confirmed.
+side_effect_expectation: approve may save one review item; Product Truth
+registry is unchanged.
+forbidden_behavior: creating/updating Product Truth, saying feature is
+supported, saying a Product Truth candidate was created unless that conversion
+flow exists.
+automation_status: current no-mutation behavior covered by tests; admin
+response/Product Truth review remains future.
 last_result: not_run_manual
 
 ### CR-MVP-USER-007 - Direct Invoice Action Still Wins
@@ -222,6 +275,45 @@ code-agent handoff.
 automation_status: covered by admin/service tests.
 last_result: not_run_manual
 
+### CR-MVP-ADMIN-013B - Send Answer To User
+
+account_state: authorized admin and existing confirmed review item
+input_channel: Telegram command or future admin UI
+user_input: admin answer text
+expected_response_behavior: user receives admin answer through the bot and
+response metadata is stored.
+side_effect_expectation: `admin_response_text`, `response_sent_at`,
+`response_sent_by`, and `response_kind` or equivalent fields are persisted.
+forbidden_behavior: Product Truth mutation, implementation promise, backlog
+conversion, code-agent handoff, silent delivery claim without actual send.
+automation_status: future/next slice; not implemented in current runtime.
+last_result: not_run_manual
+
+### CR-MVP-ADMIN-013C - Reject With Reason Sent To User
+
+account_state: authorized admin and existing confirmed review item
+input_channel: Telegram command or future admin UI
+user_input: rejection reason
+expected_response_behavior: user receives rejection/explanation through the bot.
+side_effect_expectation: response delivery metadata is stored.
+forbidden_behavior: Product Truth mutation, saying the feature is now
+unsupported because of the review, code-agent handoff.
+automation_status: future/next slice; not implemented in current runtime.
+last_result: not_run_manual
+
+### CR-MVP-ADMIN-013D - Ask User For Clarification
+
+account_state: authorized admin and existing confirmed review item
+input_channel: Telegram command or future admin UI
+user_input: clarification request
+expected_response_behavior: user receives clarification request through the bot
+and the item is marked `needs_user_input` or equivalent.
+side_effect_expectation: clarification delivery metadata is stored.
+forbidden_behavior: Product Truth mutation, pretending clarification was sent
+when no delivery happened.
+automation_status: future/next slice; not implemented in current runtime.
+last_result: not_run_manual
+
 ### CR-MVP-ADMIN-014 - Repeated Review Is Already Processed
 
 account_state: authorized admin
@@ -290,7 +382,12 @@ last_result: not_run_manual
 Do not claim:
 
 - "This feature will be implemented."
+- "Admin will implement this."
+- "You will definitely receive an answer."
+- "Admin was notified" unless actual notification exists.
 - "The request was sent to admin" when only DB storage/review status exists.
+- "The admin response was sent" when only status review exists.
+- "This feature is now supported."
 - "Product Truth was updated."
 - "A Product Truth candidate was created."
 - "A backlog item was created."
@@ -298,6 +395,7 @@ Do not claim:
 - "The complete customization layer is available."
 - "The bot learns automatically from this request."
 - "`reviewed_accepted` means implementation approval."
+- "`answered` means Product Truth changed."
 - "`reviewed_rejected` changes Product Truth."
 
 ## Evidence
@@ -317,4 +415,3 @@ Last recorded full-suite evidence in `PROJECT_LOG.md` for this slice:
 Manual product UX smoke run:
 
 - not recorded in this artifact yet.
-

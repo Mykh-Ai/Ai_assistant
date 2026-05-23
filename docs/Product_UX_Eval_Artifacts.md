@@ -82,11 +82,22 @@ For customization request MVP:
 
 - draft request for Google Drive storage;
 - draft request for old PDF template;
+- submit unanswered product question for admin review;
 - cancel before save;
 - edit draft;
 - approve draft;
 - high-risk request requires admin review;
 - credentials/secrets pasted into chat are rejected.
+
+For Admin Response / Human Review Loop next slice:
+
+- bot cannot answer product question and asks to submit for admin review;
+- user confirms and the review item is saved;
+- admin sends answer and user receives it;
+- admin rejects with reason and user receives the explanation;
+- admin asks for clarification and user receives the clarification request;
+- out-of-domain/spam do not create a human-review item;
+- possible Product Truth gap does not auto-mutate Product Truth.
 
 For PDF/layout:
 

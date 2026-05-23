@@ -3,13 +3,14 @@
 ## Purpose
 
 This document defines how OfficeFlow/FakturaBot should handle non-standard,
-unsupported, partial, planned, or account-specific business requests.
+unsupported, partial, planned, or account-specific business requests and
+human-review items.
 
 The product must not answer a real business need with only "I do not
 understand" or `/menu`. It also must not pretend that an unsupported feature is
 available. The correct behavior is to classify the need against Product Truth,
-draft a controlled request, ask for confirmation, and save it only when the
-request layer actually exists.
+draft a controlled request or review item, ask for confirmation, and save it
+only when the request/review layer actually exists.
 
 ## Current Status
 
@@ -32,7 +33,17 @@ As of Customization Request MVP Phase 2:
   `/customization_request_reject <id_or_prefix>` can mark a confirmed pending
   request as `reviewed_accepted` or `reviewed_rejected` for status tracking
   only;
+- current persisted rows do not yet have a dedicated `request_kind` or
+  `request_type` field;
+- current rows may conceptually represent a broader review item only through
+  their source triage class and text fields;
 - admin notification is not implemented;
+- admin response-to-user is not implemented;
+- admin answer text storage is not implemented;
+- `response_sent_at`, `response_sent_by`, and `response_kind` are not
+  implemented;
+- `needs_user_input` delivery to the user is not implemented;
+- user notification on review decision is not implemented;
 - admin notes are not implemented;
 - review status transitions do not mean implementation approval, Product Truth
   change, backlog conversion, notification, or code-agent handoff;
@@ -51,11 +62,13 @@ This is a mandatory-read contract for work touching:
 
 - unsupported/partial/planned feature handling;
 - InfoHelp customization offers;
+- unanswered product/support/how-to/troubleshooting questions that may require
+  human review;
 - request drafting;
 - admin/developer review workflows;
 - future code-agent handoff;
 - account-specific workflow preferences;
-- storage for user business requests.
+- storage for user business requests and human-review items.
 
 Companion docs:
 
@@ -71,10 +84,27 @@ Companion docs:
 
 ## Product Role
 
-The Customization Request Layer turns user intent into a structured product
-signal.
+The Customization Request Layer is part of a broader Admin Response / Human
+Review Loop. It turns user intent into a structured product/support signal that
+can be reviewed by a human without pretending the bot already knows the answer
+or that a feature is already available.
 
-It is for requests such as:
+The current `customization_requests` storage/flow may represent these broader
+item types conceptually:
+
+- `feature_request`;
+- `customization_request`;
+- `unanswered_product_question`;
+- `support_question`;
+- `troubleshooting_question`;
+- `possible_product_truth_gap`;
+- `admin_review_candidate`.
+
+A dedicated persisted `request_kind` / `request_type` field is not implemented
+yet. Adding one is a planned/next implementation requirement and must be
+migration-safe.
+
+It is for requests or review items such as:
 
 - "I want invoices stored on Google Drive."
 - "I want invoices sent to my accountant."
@@ -84,13 +114,17 @@ It is for requests such as:
 - "I want accounting software export."
 - "I want an extra VAT row."
 - "I want receipts categorized differently."
+- "I asked whether the bot can do X and the bot cannot answer reliably."
+- "I need help with a supported workflow but the guidance is not enough."
+- "The bot says this is unknown; can an admin check?"
 
 It is not:
 
 - immediate implementation;
 - deployment approval;
 - a replacement for deterministic runtime actions;
-- a support-ticket claim if no ticket/request storage exists;
+- a support-ticket or admin-response claim if no confirmed storage/response
+  delivery exists;
 - a way to bypass Product Truth.
 
 ## Trigger Conditions
@@ -101,6 +135,8 @@ A customization request may be offered when:
 - the user asks for account-specific behavior;
 - the user asks for a new workflow or integration;
 - the user asks for a different PDF/layout/business output;
+- the user asks a product, support, how-to, or troubleshooting question that
+  the bot cannot answer reliably from Product Truth and current runtime state;
 - repeated InfoHelp questions indicate an unmet business need;
 - the request is safe to capture.
 
@@ -129,7 +165,7 @@ customization requests by default.
 
 ## Required Flow
 
-Target flow:
+Current implemented flow:
 
 1. Receive user text/voice after authorization.
 2. Resolve direct supported actions first when the user clearly wants action
@@ -142,8 +178,6 @@ Target flow:
 7. Show the draft to the user.
 8. Ask explicit confirmation.
 9. Save a pending request only after confirmation.
-10. Route to admin/developer review.
-11. Optionally convert to a code-agent handoff task after approval.
 
 No side effect may happen at step 5 or 6. Drafting is not saving.
 Current runtime covers the user preview/edit/approve/cancel path, read-only
@@ -156,6 +190,22 @@ Accept/reject changes only the request review status. Product Truth mutation,
 Product Truth candidate conversion, backlog conversion, user/admin
 notification, code-agent handoff, self-learning, and implementation approval
 remain later phases.
+
+Target closed loop:
+
+1. User asks an unsupported/unknown product question, support/how-to question,
+   troubleshooting question, or submits a feature/customization need.
+2. Bot checks Product Truth and current runtime state.
+3. If the bot cannot answer reliably or the need is unsupported/partial/planned
+   and safe to capture, it asks whether to submit the item for human review.
+4. User confirms.
+5. Python saves a tenant-scoped review item.
+6. Admin reviews the item.
+7. Admin sends an answer, reason, or clarification request through the bot.
+8. User receives the response.
+9. System stores response metadata.
+
+Steps 7-9 are not implemented in the current runtime.
 
 ## Request Object
 
@@ -184,6 +234,7 @@ updated_at
 Recommended additional fields:
 
 ```text
+request_kind
 source_channel
 source_message_id
 language
@@ -199,6 +250,10 @@ code_agent_ready
 code_agent_task_id
 reviewed_by
 reviewed_at
+admin_response_text
+response_sent_at
+response_sent_by
+response_kind
 expires_at
 ```
 
@@ -208,12 +263,18 @@ reusable knowledge.
 
 ## Status Model
 
+Review statuses and answer/delivery statuses must remain distinct.
+
 Runtime-supported persisted statuses:
 
 - `confirmed_pending_review`: confirmed by the user and awaiting admin review;
 - `reviewed_accepted`: admin accepted the request for later human
   consideration only;
 - `reviewed_rejected`: admin rejected the request for status tracking only.
+
+`reviewed_accepted` and `reviewed_rejected` are status-only review decisions.
+They do not mean that a user received an answer, that implementation was
+promised, or that Product Truth changed.
 
 Runtime FSM-only draft states:
 
@@ -235,8 +296,37 @@ The legacy terms `pending_admin_review`, `accepted`, `rejected`,
 workflow concepts only. They are not the current runtime status names unless
 runtime code explicitly implements them.
 
+Future/next answer and delivery lifecycle concepts may be represented either
+as statuses or separate fields:
+
+- `answered`;
+- `response_sent`;
+- `needs_user_input`;
+- `closed_no_answer`;
+- `admin_response_text`;
+- `response_sent_at`;
+- `response_sent_by`;
+- `response_kind`.
+
+`answered` must not mutate Product Truth automatically. `response_sent` must
+mean an actual user-facing delivery path exists and succeeded.
+
 Do not use `implemented` unless runtime behavior, tests/evals, docs, and
 approval prove delivery.
+
+## Product Truth Boundary
+
+Human-reviewed questions can reveal a possible Product Truth gap, but they do
+not change Product Truth by themselves.
+
+Rules:
+
+- admin answers do not make a capability `supported`;
+- `reviewed_accepted` does not mean Product Truth was updated;
+- `answered` does not automatically create or mutate a Product Truth entry;
+- possible Product Truth updates remain manual/future review work;
+- runtime support claims still require code/docs/tests/log evidence under
+  `docs/Product_Truth_Layer.md`.
 
 ## Risk Levels
 
@@ -367,7 +457,7 @@ fields, status transitions, retention jobs, or conversion flows:
 
 No request storage may be cross-tenant.
 
-## Admin Review
+## Admin Review And Response
 
 Future admin/developer review should be able to answer:
 
@@ -377,6 +467,8 @@ Future admin/developer review should be able to answer:
 - is it duplicate?
 - what inputs are missing?
 - what risk level applies?
+- should the user receive an answer, rejection reason, or clarification
+  request?
 - should this become a code-agent task?
 - what acceptance criteria must be met?
 
@@ -393,6 +485,27 @@ means the request was accepted for later human consideration only. It does not
 approve implementation, mutate Product Truth, convert to backlog, notify users
 or admins, or create a code-agent handoff. `reviewed_rejected` records a
 review decision only and does not mutate Product Truth.
+
+Current runtime does not support:
+
+- admin response text sent to the user;
+- answer text persistence;
+- `response_sent_at`;
+- `response_sent_by`;
+- `response_kind`;
+- user notification on accept/reject;
+- clarification request delivery through `needs_user_input`;
+- Product Truth mutation from answered questions.
+
+Target admin response behavior:
+
+- admin can provide an answer, reason, or clarification request;
+- Python sends the response through the bot only after an implemented delivery
+  path exists;
+- delivery result and response metadata are stored;
+- the response copy states whether this is guidance, a rejection/explanation,
+  or a clarification request;
+- the response must not promise implementation or claim Product Truth changed.
 
 Admin review is required before:
 
@@ -505,6 +618,17 @@ The complete Customization Request Layer is not complete until:
 - product UX evals cover plausible business requests;
 - `PROJECT_LOG.md` records the actual maturity level.
 
+The broader Admin Response / Human Review Loop is not complete until:
+
+- unanswered product/support/how-to/troubleshooting questions can be submitted
+  only after confirmation;
+- a persisted kind/type or equivalent explicit classification exists;
+- admin can answer, reject with reason, or ask for clarification;
+- user receives the admin response through the bot;
+- response metadata is stored;
+- Product Truth is not mutated automatically;
+- evals prove the closed loop.
+
 The current partial Level 3 MVP slice satisfies only the bounded preview,
 confirmation-gated persistence, tenant scoping, redaction, admin list/detail,
 and status-only review subset documented in Current Status. It does not satisfy
@@ -533,17 +657,28 @@ Required eval scenarios:
 - unauthorized user asks for customization;
 - user tries to paste credentials/secrets;
 - high-risk request requires admin approval;
-- request is not saved before confirmation.
+- request is not saved before confirmation;
+- bot cannot answer product question and asks to submit for admin review;
+- user confirms an unanswered product/support question and it is saved;
+- admin sends answer and user receives it;
+- admin rejects with reason and user receives the explanation;
+- admin asks for clarification and user receives the clarification request;
+- out-of-domain/spam do not create a human-review item;
+- possible Product Truth gap does not auto-mutate Product Truth.
 
 The current smoke artifact is
 `docs/evals/customization_request_mvp_smoke.md`. It records scenarios for the
-implemented partial MVP and explicitly lists forbidden claims.
+implemented partial MVP, marks admin response scenarios as future/next slice,
+and explicitly lists forbidden claims.
 
 ## No-Go Rules
 
 Do not:
 
 - promise implementation;
+- say "Admin will implement this";
+- say "This feature is now supported" unless Product Truth and runtime evidence
+  prove it;
 - create a request without confirmation;
 - store raw sensitive transcripts as reusable knowledge;
 - accept credentials/secrets in ordinary chat;
@@ -554,6 +689,13 @@ Do not:
 - call `reviewed_accepted` an implementation promise;
 - claim admin/user notifications were sent when only DB storage/review status
   exists;
+- say "Admin was notified" unless actual notification exists;
+- say "You will definitely receive an answer" unless the response loop
+  guarantees delivery;
+- claim an admin response was sent when only status review exists;
 - claim Product Truth, backlog, code-agent handoff, or self-learning side
   effects from request capture or review;
+- say "A code agent task was created" unless that handoff exists;
+- say "The bot learned this automatically";
+- claim Product Truth changed because an admin answered a question;
 - mark a request `implemented` without runtime delivery and verification.

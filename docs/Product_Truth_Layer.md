@@ -30,6 +30,9 @@ As of the current logged state:
 - customization request creation/storage has a partial Level 3 MVP slice:
   eligible triage candidates can enter a confirmation-gated preview/save flow,
   and admins can list/detail/accept/reject requests as status-only review;
+- that customization request slice is now documented as part of a broader
+  Admin Response / Human Review Loop, but admin response-to-user is not
+  implemented;
 - Product Truth mutation, Product Truth candidate conversion, backlog
   conversion, notifications, self-learning, and code-agent handoff are not
   implemented by the customization request slice.
@@ -113,13 +116,14 @@ Triage classes are not Product Truth statuses. They must never mark anything
 as `supported`, create new capability IDs, or imply runtime support. They only
 decide the safe next response path: render known Product Truth, ask a
 clarifying question, politely reject out-of-domain input, ignore/block
-spam/noise safely, or offer to prepare a future request under the
-Customization Request Layer.
+spam/noise safely, or offer to prepare a future request / human-review item
+under the Customization Request Layer.
 
 The current Unknown / Discovery / Triage runtime is a bounded v1 foundation
-only: it may classify and render safe non-persistent responses, but it must
-not save requests, notify admins, create Product Truth entries, or claim
-complete Level 2 InfoHelp.
+only: it may classify inputs and, for eligible customization/admin/product
+truth gap candidates, enter the confirmation-gated preview/save flow. It must
+not notify admins, send admin responses to users, create Product Truth entries,
+or claim complete Level 2 InfoHelp.
 
 ## Capability Status Model
 
@@ -405,6 +409,8 @@ The registry must explicitly block claims such as:
   implemented;
 - "I can send SMS reminders" unless provider, consent, and sending flow exist;
 - "I created a support request" unless request storage and confirmation exist;
+- "Admin will answer you" unless response delivery is guaranteed by runtime;
+- "Product Truth was updated" because an admin answered a question;
 - "I changed your accounting export" unless deterministic execution happened;
 - "I will deploy this change" without human approval.
 
@@ -462,13 +468,13 @@ Correct order:
 
 Python-controlled outcomes include rendering a known Product Truth answer,
 asking clarification, politely rejecting out-of-domain input, safely ignoring
-spam/abuse, offering to prepare a feature/customization request, or saving /
-sending an admin note only after explicit confirmation in a future implemented
-flow.
+spam/abuse, offering to prepare a feature/customization/human-review item, or
+saving/sending an admin response only after explicit confirmation in an
+implemented flow.
 
-## Interaction With Customization Requests
+## Interaction With Customization Requests And Human Review
 
-Customization requests are allowed when:
+Customization requests and human-review items are allowed when:
 
 - the capability is `unsupported`, `partial`, `planned`, `unknown`, or
   account-specific;
@@ -477,13 +483,18 @@ Customization requests are allowed when:
 - the user confirms the draft;
 - storage/admin review path exists.
 
-Customization requests are not allowed when:
+They are not allowed when:
 
 - the user asks for a destructive confirmation alias;
 - the request would bypass access control;
 - the request needs secrets/credentials that the bot cannot safely collect;
 - the product has no implemented request storage/admin review path but the bot
   would imply one exists.
+
+Answered user questions may reveal a possible Product Truth gap, but Product
+Truth is not mutated automatically. An admin answer does not make a capability
+supported. Product Truth updates remain manual/future review work and still
+require evidence plus a log entry.
 
 ## Registry Lifecycle
 
@@ -511,6 +522,8 @@ The Product Truth Layer is not runtime-complete until:
 - dangerous/setup/admin/external-credential flags are represented;
 - unknown does not execute side effects;
 - customization offers depend on request-layer availability;
+- human-review offers depend on request-layer availability;
+- admin answers do not mutate Product Truth automatically;
 - product UX evals prove real business questions are answered honestly.
 
 ## Evaluation Scenarios
@@ -534,7 +547,10 @@ Required smoke/eval cases:
 - spam/noise does not create an admin request;
 - smalltalk does not trigger business action;
 - direct action still wins when clear;
-- voice transcript follows the same state-aware path.
+- voice transcript follows the same state-aware path;
+- unanswered product/support question can be submitted for human review only
+  after confirmation;
+- future admin response delivery does not mutate Product Truth.
 
 ## Current Known Truth Examples
 
@@ -551,8 +567,10 @@ current code before runtime claims:
 - SMS sending: unsupported unless later runtime code proves otherwise;
 - real outbound invoice email sending: unsupported unless later runtime code
   proves otherwise;
-- customization request creation: not implemented unless later runtime code
-  proves otherwise;
+- customization request creation/storage: partial Level 3 MVP slice for
+  confirmation-gated capture plus admin list/detail/status review;
+- admin response-to-user from bot runtime: not implemented unless later runtime
+  code proves otherwise;
 - code-agent handoff from bot runtime: not implemented unless later runtime
   code proves otherwise.
 
@@ -567,5 +585,6 @@ Do not:
 - ignore account setup state;
 - skip dangerous/admin/external-credential flags;
 - offer customization request storage if it does not exist;
+- claim admin response-to-user if only status review exists;
 - update Product Truth without evidence and log entry;
 - let learned aliases bypass Product Truth.

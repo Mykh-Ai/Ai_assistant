@@ -25,7 +25,8 @@ OfficeFlow/FakturaBot is:
 - a bounded AI interpreter over Python-owned business logic;
 - a product-truth aware support concierge;
 - a safe document/invoice/accounting intake layer;
-- a future customization request and code-agent handoff system;
+- a future admin response / human-review loop, customization request, and
+  code-agent handoff system;
 - a controlled self-learning system for confirmed aliases and patterns.
 
 OfficeFlow/FakturaBot is not:
@@ -70,6 +71,8 @@ Current gaps and partial foundations that must not be overstated:
 - Customization Request Layer has a partial Level 3 MVP slice for
   confirmation-gated request capture plus admin read/status review, but it is
   not complete;
+- admin response-to-user, answer text storage, response delivery metadata, and
+  clarification delivery are not implemented;
 - Code-Agent Handoff Layer is not yet implemented;
 - broad self-learning for topics/capabilities/customization patterns is not yet
   implemented;
@@ -192,21 +195,26 @@ implementation, create requests, notify admins, or write DB/storage without a
 later implemented and confirmed flow. Its job is to keep unknown business
 needs visible while keeping every side effect behind Python-owned gates.
 
-### 5. Customization Request Layer
+### 5. Admin Response / Human Review Loop
 
-When a user asks for a non-standard feature, the product should not fake
-support and should not stop at "nerozumiem".
+When a user asks for a non-standard feature, or asks a product/support/how-to
+question that the bot cannot answer reliably from Product Truth, the product
+should not fake support and should not stop at "nerozumiem".
 
 The target behavior:
 
-1. detect the business need;
-2. classify current capability status;
-3. draft a customization request;
+1. detect the business need or unanswered product/support question;
+2. classify current capability status from Product Truth where possible;
+3. draft a customization request or human-review item;
 4. ask confirmation;
-5. save a pending request after confirmation;
-6. route it to admin/developer/code-agent workflow when approved.
+5. save a pending review item after confirmation;
+6. route it to admin review;
+7. allow admin to answer, reject with reason, or ask for clarification through
+   the bot in a future implemented response loop.
 
-The bot must not promise implementation or deployment without approval.
+The bot must not promise implementation, deployment, admin response delivery,
+Product Truth mutation, or code-agent handoff without implemented runtime
+evidence and approval.
 
 Detailed customization request rules are governed by
 `docs/Customization_Request_Layer.md`.
@@ -340,10 +348,11 @@ The documentation and architecture should move in this order:
 3. Product Truth Registry.
 4. Capability-aware InfoHelp.
 5. Customization Request MVP.
-6. Self-learning topic/action/capability aliases.
-7. Code-agent task handoff.
-8. UX evaluation suite.
-9. Account-specific adaptive workflows.
+6. Admin Response / Human Review Loop response delivery.
+7. Self-learning topic/action/capability aliases.
+8. Code-agent task handoff.
+9. UX evaluation suite.
+10. Account-specific adaptive workflows.
 
 Runtime implementation should follow these documents, not replace them with
 static fallbacks.
