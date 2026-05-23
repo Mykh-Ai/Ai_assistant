@@ -28,7 +28,8 @@ As of Admin Response to User MVP:
 - pre-confirmation FSM draft data keeps redacted original text plus a raw text
   hash instead of raw unredacted transcripts; save re-applies redaction;
 - admin-only `/customization_requests` lists pending confirmed requests;
-- admin-only `/customization_request <id_or_prefix>` shows one request detail;
+- admin-only `/customization_request <id_or_prefix>` shows one request detail,
+  including latest admin response delivery observability;
 - admin-only `/customization_request_accept <id_or_prefix>` and
   `/customization_request_reject <id_or_prefix>` can mark a confirmed pending
   request as `reviewed_accepted` or `reviewed_rejected` for status tracking
@@ -531,6 +532,8 @@ Current Admin Response MVP supports:
 - `responded_to_request_status`;
 - `response_updated_at`;
 - `response_id`;
+- admin detail delivery observability for `not_started`, `send_pending`,
+  `send_succeeded`, and `send_failed`;
 - duplicate confirm protection for an already pending, already sent, or already
   failed same `response_id`;
 - deterministic `send_failed` status without automatic retry when Telegram
@@ -542,7 +545,9 @@ Current runtime still does not support:
 - automatic user notification on accept/reject;
 - clarification request delivery through `needs_user_input`;
 - structured user reply thread after admin response;
+- recovery command for stuck `send_pending`;
 - manual retry command for failed sends;
+- `delivery_unknown` manual marking;
 - Product Truth mutation from answered questions.
 
 Target admin response behavior:
@@ -589,6 +594,23 @@ Failed-send recovery:
 - failed responses remain persisted with `send_failed`;
 - a future manual retry flow may reuse the persisted response text/metadata;
 - retries must be explicit, admin-only, confirmation-gated, and idempotent.
+
+Delivery observability:
+
+- `/customization_request <id_or_prefix>` shows the latest response delivery
+  state using existing `customization_requests` fields only;
+- if no response metadata exists, admin detail displays computed
+  `not_started`;
+- `send_pending` means a response was persisted and claimed before Telegram
+  delivery, but the final delivery result is unknown or still in progress;
+- `send_pending` must not be described as failed or delivered;
+- `send_pending` is flagged for manual investigation when it is older than 15
+  minutes, `response_attempts > 0`, and `response_sent_at` is empty;
+- the stuck-pending warning does not retry, mark failure, mark success, notify
+  the user, or change request review status;
+- `send_failed` means a send attempt failed and only a bounded
+  `response_failed_reason` is shown;
+- `delivery_unknown` and manual recovery commands are future scope.
 
 MVP response kinds:
 

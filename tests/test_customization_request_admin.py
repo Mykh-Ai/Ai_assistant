@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+import sqlite3
 
 from bot.config import Config
 from bot.handlers.access_admin import (
@@ -150,6 +152,18 @@ def _create_request(
         status=status,
         privacy_redaction_flags=privacy_redaction_flags,
     )
+
+
+def _force_response_updated_at(db_path: Path, *, request_id: str, response_updated_at: str) -> None:
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(
+            'UPDATE customization_requests SET response_updated_at = ?, updated_at = ? WHERE request_id = ?',
+            (response_updated_at, response_updated_at, request_id),
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def test_admin_can_list_pending_customization_requests(tmp_path: Path) -> None:
@@ -377,6 +391,13 @@ def test_admin_can_view_customization_request_detail_by_full_id(tmp_path: Path) 
     assert 'n\u00e1zov=Mesa\u010dn\u00fd report' in output
     assert 'zhrnutie=Pou\u017e\u00edvate\u013e chce mesa\u010dn\u00fd report tr\u017eieb.' in output
     assert 'redacted_original_text=Pou\u017e\u00edvate\u013e chce mesa\u010dn\u00fd report tr\u017eieb.' in output
+    assert 'Doru\u010denie odpovede:' in output
+    assert 'response_delivery_status=not_started' in output
+    assert 'response_kind=-' in output
+    assert 'response_sent_at=-' in output
+    assert 'response_sent_by=-' in output
+    assert 'response_attempts=0' in output
+    assert 'response_id=-' in output
 
 
 def test_admin_can_view_customization_request_detail_by_unique_prefix(tmp_path: Path) -> None:
@@ -510,6 +531,154 @@ def test_customization_request_detail_omits_hash_and_redacts_sensitive_values(tm
     assert '[REDACTED]' in output
 
 
+def test_customization_request_detail_shows_send_pending_without_terminal_claim(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_detail_pending', telegram_id=USER_ID)
+    service.persist_customization_request_response_attempt(
+        request_id='cr_detail_pending',
+        admin_telegram_id=ADMIN_ID,
+        response_id='crr_pending',
+        response_text='Odpoveď čaká na výsledok doručenia.',
+    )
+    message = _DummyMessage('/customization_request cr_detail_pending', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert 'response_delivery_status=send_pending' in output
+    assert 'response_attempts=1' in output
+    assert 'response_sent_at=-' in output
+    assert 'response_sent_by=960001' in output
+    assert 'response_id=crr_pending' in output
+    assert 'admin_response_text_preview=Odpoveď čaká na výsledok doručenia.' in output
+    assert 'response_failed_reason=' not in output
+    assert 'send_failed' not in output
+    assert 'send_succeeded' not in output
+    assert 'response_delivery_warning=' not in output
+
+
+def test_customization_request_detail_warns_about_stuck_send_pending(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_detail_stuck_pending', telegram_id=USER_ID)
+    service.persist_customization_request_response_attempt(
+        request_id='cr_detail_stuck_pending',
+        admin_telegram_id=ADMIN_ID,
+        response_id='crr_stuck',
+        response_text='Odpoveď má neznámy výsledok doručenia.',
+    )
+    old_timestamp = (datetime.now(UTC) - timedelta(minutes=16)).isoformat(timespec='seconds').replace('+00:00', 'Z')
+    _force_response_updated_at(
+        config.db_path,
+        request_id='cr_detail_stuck_pending',
+        response_updated_at=old_timestamp,
+    )
+    message = _DummyMessage('/customization_request cr_detail_stuck_pending', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert 'response_delivery_status=send_pending' in output
+    assert 'response_delivery_warning=send_pending je starý viac ako 15 minút' in output
+    assert 'výsledok doručenia je neznámy' in output
+    assert 'manuálnu kontrolu' in output
+    assert 'send_failed' not in output
+    assert 'send_succeeded' not in output
+
+
+def test_customization_request_detail_shows_send_succeeded_metadata(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_detail_succeeded', telegram_id=USER_ID)
+    service.persist_customization_request_response_attempt(
+        request_id='cr_detail_succeeded',
+        admin_telegram_id=ADMIN_ID,
+        response_id='crr_succeeded',
+        response_text='Odoslaná odpoveď.',
+    )
+    service.mark_response_delivery_succeeded(
+        request_id='cr_detail_succeeded',
+        response_id='crr_succeeded',
+    )
+    message = _DummyMessage('/customization_request cr_detail_succeeded', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert 'response_delivery_status=send_succeeded' in output
+    assert 'response_sent_at=-' not in output
+    assert 'response_sent_by=960001' in output
+    assert 'response_attempts=1' in output
+    assert 'response_failed_reason=' not in output
+    assert 'response_delivery_warning=' not in output
+
+
+def test_customization_request_detail_shows_send_failed_reason(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_detail_failed', telegram_id=USER_ID)
+    service.persist_customization_request_response_attempt(
+        request_id='cr_detail_failed',
+        admin_telegram_id=ADMIN_ID,
+        response_id='crr_failed',
+        response_text='Nedoručená odpoveď.',
+    )
+    service.mark_response_delivery_failed(
+        request_id='cr_detail_failed',
+        response_id='crr_failed',
+        failed_reason='raw exception text must not be shown',
+    )
+    message = _DummyMessage('/customization_request cr_detail_failed', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert 'response_delivery_status=send_failed' in output
+    assert 'response_failed_reason=telegram_send_failed' in output
+    assert 'raw exception text' not in output
+    assert 'response_sent_at=-' in output
+    assert 'response_attempts=1' in output
+
+
+def test_customization_request_detail_redacts_and_truncates_response_preview(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    _create_request(service, request_id='cr_detail_response_sensitive', telegram_id=USER_ID)
+    long_response = (
+        'Začiatok odpovede. '
+        + 'password=supersecret token sk-secretTOKEN123 email person@example.com '
+        + 'IBAN SK7700000000000000000000 phone +421 900 123 456 '
+        + ('dlhý text ' * 90)
+    )
+    service.persist_customization_request_response_attempt(
+        request_id='cr_detail_response_sensitive',
+        admin_telegram_id=ADMIN_ID,
+        response_id='crr_response_sensitive',
+        response_text=long_response,
+    )
+    message = _DummyMessage('/customization_request cr_detail_response_sensitive', ADMIN_ID)
+
+    asyncio.run(cmd_customization_request_detail(message, config))
+
+    output = message.answers[-1]
+    assert 'admin_response_text_preview=Začiatok odpovede.' in output
+    assert '[REDACTED]' in output
+    assert 'supersecret' not in output
+    assert 'sk-secretTOKEN123' not in output
+    assert 'person@example.com' not in output
+    assert '+421 900 123 456' not in output
+    assert 'SK7700000000000000000000' not in output
+    preview = output.split('admin_response_text_preview=', maxsplit=1)[1]
+    assert len(preview) < 700
+    assert '…' in preview
+
+
 def test_customization_request_detail_command_is_read_only(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
@@ -527,6 +696,8 @@ def test_customization_request_detail_command_is_read_only(tmp_path: Path) -> No
     )
     assert after is not None
     assert after.status == STATUS_CONFIRMED_PENDING_REVIEW
+    assert after.response_delivery_status is None
+    assert after.admin_response_text is None
     assert [entry.to_payload() for entry in product_truth.list_capabilities()] == before_product_truth
     assert bot.sent == []
     assert not hasattr(service, 'notify_admin')

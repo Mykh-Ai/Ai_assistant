@@ -24,7 +24,10 @@ slice:
   confirmation-gated `answer` response to the original requester;
 - latest admin response metadata/text persists on `customization_requests`
   before Telegram delivery attempt, and delivery status updates after the send
-  result.
+  result;
+- admin detail shows latest response delivery observability, including
+  `not_started`, `send_pending`, `send_succeeded`, `send_failed`, and stuck
+  `send_pending` warnings.
 
 Conceptually, current rows may represent broader review items such as
 `feature_request`, `customization_request`, `unanswered_product_question`,
@@ -37,7 +40,9 @@ Out of scope for this MVP slice:
 - response kind selection beyond default `answer`;
 - rejection-reason response kind;
 - clarification-request response kind or structured reply thread;
+- recovery command for stuck `send_pending`;
 - manual retry command for failed response sends;
+- `delivery_unknown` manual marking;
 - multi-response/threaded conversation history;
 - user notification on review decision;
 - `needs_user_input` delivery to user;
@@ -363,6 +368,27 @@ response-history table/thread model exists.
 forbidden_behavior: presenting overwritten latest-response fields as a full
 conversation history.
 automation_status: implemented as storage scope; no history table exists in MVP.
+last_result: not_run_manual
+
+### CR-MVP-ADMIN-013G - Admin Detail Shows Delivery Observability
+
+account_state: authorized admin and existing confirmed review item with latest
+response metadata
+input_channel: Telegram command
+user_input: `/customization_request <request_id_or_prefix>`
+expected_response_behavior: admin detail shows response delivery state and
+metadata using existing fields only. When no response exists, it shows
+`not_started`. For `send_pending`, it does not claim failure or delivery. For
+stuck `send_pending` older than 15 minutes with attempts and no `response_sent_at`,
+it shows a manual-check warning. For `send_succeeded`, it shows sent timestamp
+and sender. For `send_failed`, it shows bounded failure reason.
+side_effect_expectation: read-only detail view does not send Telegram messages,
+does not retry, does not mutate review status, and does not mutate Product
+Truth, backlog, code-agent, or self-learning state.
+forbidden_behavior: exposing raw hash/secrets, exposing raw exception text,
+calling `send_pending` failed or delivered, offering retry/recovery command,
+notification claim, Product Truth mutation.
+automation_status: implemented for admin detail view; covered by admin tests.
 last_result: not_run_manual
 
 ### CR-MVP-ADMIN-014 - Repeated Review Is Already Processed

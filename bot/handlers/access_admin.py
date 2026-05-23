@@ -19,6 +19,9 @@ from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE
 from bot.services.access_control import ACCESS_STATUS_PENDING, AccessControlService
 from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_admin_telegram_user
 from bot.services.customization_requests import (
+    RESPONSE_DELIVERY_FAILED,
+    RESPONSE_DELIVERY_PENDING,
+    RESPONSE_DELIVERY_SUCCEEDED,
     RESPONSE_KIND_ANSWER,
     RESPONSE_RESULT_ALREADY_FAILED,
     RESPONSE_RESULT_ALREADY_IN_PROGRESS,
@@ -43,6 +46,7 @@ logger = logging.getLogger(__name__)
 _CUSTOMIZATION_REQUEST_ADMIN_LIMIT = 10
 _CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH = 8
 _CUSTOMIZATION_REQUEST_DETAIL_MAX_MESSAGE_LENGTH = 3500
+_CUSTOMIZATION_RESPONSE_PENDING_STUCK_MINUTES = 15
 _CUSTOMIZATION_RESPONSE_DRAFT_KEY = 'customization_request_admin_response_draft'
 _CUSTOMIZATION_RESPONSE_CONFIRM_CONTEXT = 'customization_request_admin_response_preview'
 _CUSTOMIZATION_RESPONSE_MAX_LENGTH = 1500
@@ -649,6 +653,7 @@ def _format_customization_request_lines(request: CustomizationRequestRecord) -> 
 
 
 def _format_customization_request_detail(request: CustomizationRequestRecord) -> str:
+    response_delivery_state = _customization_response_delivery_state(request)
     lines = [
         'Detail po\u017eiadavky:',
         f'request_id={_safe_display_text(request.request_id, max_length=96)}',
@@ -667,6 +672,31 @@ def _format_customization_request_detail(request: CustomizationRequestRecord) ->
     ]
     if request.redacted_original_text:
         lines.append(f'redacted_original_text={_safe_display_text(request.redacted_original_text, max_length=900)}')
+    lines.extend(
+        [
+            '',
+            'Doru\u010denie odpovede:',
+            f'response_delivery_status={_safe_display_text(response_delivery_state, max_length=40)}',
+            f'response_kind={_safe_display_text(request.response_kind or "-", max_length=40)}',
+            f'response_sent_at={_safe_display_text(request.response_sent_at or "-", max_length=32)}',
+            f'response_sent_by={_safe_display_text(request.response_sent_by or "-", max_length=32)}',
+            f'response_attempts={request.response_attempts}',
+            f'responded_to_request_status={_safe_display_text(request.responded_to_request_status or "-", max_length=40)}',
+            f'response_updated_at={_safe_display_text(request.response_updated_at or "-", max_length=32)}',
+            f'response_id={_short_request_id(request.response_id) if request.response_id else "-"}',
+        ]
+    )
+    if request.response_failed_reason:
+        lines.append(
+            f'response_failed_reason={_safe_display_text(request.response_failed_reason, max_length=80)}'
+        )
+    if _is_customization_response_send_pending_stuck(request):
+        lines.append('response_delivery_warning=send_pending je star\u00fd viac ako 15 min\u00fat; v\u00fdsledok doru\u010denia je nezn\u00e1my a treba manu\u00e1lnu kontrolu.')
+    if request.admin_response_text:
+        lines.append(
+            'admin_response_text_preview='
+            f'{_safe_display_text(request.admin_response_text, max_length=500)}'
+        )
 
     text = '\n'.join(lines)
     if len(text) <= _CUSTOMIZATION_REQUEST_DETAIL_MAX_MESSAGE_LENGTH:
@@ -698,6 +728,44 @@ def _clean_response_text(value: str) -> str | None:
     if text is None:
         return None
     return text.strip() or None
+
+
+def _customization_response_delivery_state(request: CustomizationRequestRecord) -> str:
+    if not request.response_delivery_status and not request.response_id:
+        return 'not_started'
+    if request.response_delivery_status in {
+        RESPONSE_DELIVERY_PENDING,
+        RESPONSE_DELIVERY_SUCCEEDED,
+        RESPONSE_DELIVERY_FAILED,
+    }:
+        return request.response_delivery_status
+    return request.response_delivery_status or 'unknown'
+
+
+def _is_customization_response_send_pending_stuck(request: CustomizationRequestRecord) -> bool:
+    if request.response_delivery_status != RESPONSE_DELIVERY_PENDING:
+        return False
+    if request.response_attempts <= 0:
+        return False
+    if request.response_sent_at:
+        return False
+    updated_at = _parse_utc_timestamp(request.response_updated_at)
+    if updated_at is None:
+        return False
+    age = datetime.now(UTC) - updated_at
+    return age.total_seconds() >= _CUSTOMIZATION_RESPONSE_PENDING_STUCK_MINUTES * 60
+
+
+def _parse_utc_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _draft_int(value: object | None) -> int | None:

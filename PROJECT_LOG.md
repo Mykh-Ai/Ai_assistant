@@ -1,5 +1,40 @@
 # PROJECT_LOG
 
+## 2026-05-23 - Session 110 - Admin response delivery observability
+
+Summary:
+- Added admin detail observability for the latest Admin Response delivery state.
+- `/customization_request <id_or_prefix>` now shows computed `not_started`,
+  `send_pending`, `send_succeeded`, and `send_failed` response delivery states
+  using existing `customization_requests` fields.
+- Added a stuck `send_pending` warning for pending responses older than 15
+  minutes with attempts and no `response_sent_at`; this marks the result as
+  unknown/manual-check-needed only.
+- Detail output shows bounded response metadata and a redacted/truncated
+  admin response preview without exposing `raw_text_hash`.
+- Updated the Customization Request contract and MVP smoke eval catalog.
+
+Constraints:
+- Observability-only slice.
+- No schema change.
+- No retry or auto retry.
+- No recovery command or `delivery_unknown` marking.
+- No Product Truth mutation.
+- No request review status mutation.
+- No backlog conversion.
+- No Product Truth candidate conversion.
+- No code-agent handoff.
+- No self-learning.
+- No notifications.
+- Still a partial Level 3 MVP slice, not the complete Customization Request
+  Layer or complete human-review loop.
+
+Verification:
+- `python -m pytest -q tests/test_customization_request_admin.py tests/test_customization_requests.py`
+  - 87 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1308 passed, 7 subtests passed.
+
 ## 2026-05-23 - Session 109 - Admin Response delivery idempotency hardening
 
 Summary:
