@@ -16,7 +16,7 @@ only when the request/review layer actually exists.
 
 This document is an active contract with a partial runtime foundation.
 
-As of Customization Request MVP Phase 2:
+As of Admin Response to User MVP:
 
 - confirmed customization request storage exists through
   `CustomizationRequestService`;
@@ -33,15 +33,20 @@ As of Customization Request MVP Phase 2:
   `/customization_request_reject <id_or_prefix>` can mark a confirmed pending
   request as `reviewed_accepted` or `reviewed_rejected` for status tracking
   only;
+- admin-only `/customization_request_reply <id_or_prefix>` can send one
+  confirmation-gated `answer` response to the original requester through
+  Telegram;
+- the response flow persists latest response text/metadata before attempting
+  Telegram delivery, then records `send_succeeded` or `send_failed`;
+- latest response metadata is stored on `customization_requests`; multi-response
+  or threaded conversation history is not implemented;
 - current persisted rows do not yet have a dedicated `request_kind` or
   `request_type` field;
 - current rows may conceptually represent a broader review item only through
   their source triage class and text fields;
 - admin notification is not implemented;
-- admin response-to-user is not implemented;
-- admin answer text storage is not implemented;
-- `response_sent_at`, `response_sent_by`, and `response_kind` are not
-  implemented;
+- admin response kind selection is not implemented; MVP response kind is
+  `answer` only;
 - `needs_user_input` delivery to the user is not implemented;
 - user notification on review decision is not implemented;
 - admin notes are not implemented;
@@ -184,12 +189,16 @@ Current runtime covers the user preview/edit/approve/cancel path, read-only
 admin list/detail review surfaces, and status-only admin accept/reject review
 transitions for confirmed requests. Voice can start the preview from an idle
 STT transcript and can approve/cancel through the same controlled decision
-path. Exact title/summary edits remain text-first.
+path. Exact title/summary edits remain text-first. Current runtime also covers
+an explicit admin reply path for one latest `answer` response to the original
+requester: admin enters text, previews it, and sends only after explicit
+confirmation.
 
 Accept/reject changes only the request review status. Product Truth mutation,
 Product Truth candidate conversion, backlog conversion, user/admin
 notification, code-agent handoff, self-learning, and implementation approval
-remain later phases.
+remain later phases. Admin reply does not change review status and does not
+create an automatic notification on accept/reject.
 
 Target closed loop:
 
@@ -205,7 +214,10 @@ Target closed loop:
 8. User receives the response.
 9. System stores response metadata.
 
-Steps 7-9 are not implemented in the current runtime.
+Steps 7-9 are implemented only for the bounded Admin Response MVP `answer`
+flow. Rejection-reason response kinds, clarification requests, structured
+follow-up threads, manual retry, Product Truth candidate conversion, backlog
+conversion, and code-agent handoff remain future scope.
 
 ## Request Object
 
@@ -449,7 +461,13 @@ Runtime storage exists for confirmed customization requests through
 - the FSM draft stores redacted original text plus a raw text hash instead of
   raw unredacted original text;
 - save re-applies redaction to title, summary, and original text display data;
-- admin/internal reads are explicitly named and must remain admin-only.
+- admin/internal reads are explicitly named and must remain admin-only;
+- the Admin Response MVP stores only the latest response text/metadata on the
+  existing request row;
+- response text/metadata are persisted before Telegram send attempt;
+- `response_attempts` increments for each confirmed send attempt;
+- failed sends remain persisted as `send_failed` with a bounded failure reason;
+- no automatic retry or response history table exists in MVP.
 
 Future storage expansion remains migration-safe. Before adding new persisted
 fields, status transitions, retention jobs, or conversion flows:
@@ -485,7 +503,9 @@ Current admin review surface:
 - `/customization_requests`: read-only list of the newest pending requests;
 - `/customization_request <id_or_prefix>`: read-only detail view;
 - `/customization_request_accept <id_or_prefix>`: status-only accept review;
-- `/customization_request_reject <id_or_prefix>`: status-only reject review.
+- `/customization_request_reject <id_or_prefix>`: status-only reject review;
+- `/customization_request_reply <id_or_prefix>`: confirmation-gated admin
+  `answer` response to the original requester.
 
 Current admin review status commands are limited to marking a confirmed pending
 request as `reviewed_accepted` or `reviewed_rejected`. `reviewed_accepted`
@@ -494,19 +514,34 @@ approve implementation, mutate Product Truth, convert to backlog, notify users
 or admins, or create a code-agent handoff. `reviewed_rejected` records a
 review decision only and does not mutate Product Truth.
 
-Current runtime does not support:
+Current Admin Response MVP supports:
 
-- admin response text sent to the user;
-- answer text persistence;
+- `answer` response kind only;
+- text-only admin response body entry;
+- admin preview with send/edit/cancel confirmation;
+- persistence before Telegram delivery attempt;
+- user-facing Telegram send to the original requester only;
+- `admin_response_text`;
+- `response_kind`;
 - `response_sent_at`;
 - `response_sent_by`;
-- `response_kind`;
 - `response_delivery_status`;
 - `response_attempts`;
 - `response_failed_reason`;
 - `responded_to_request_status`;
-- user notification on accept/reject;
+- `response_updated_at`;
+- `response_id`;
+- duplicate confirm protection for an already sent `response_id`;
+- deterministic `send_failed` status without automatic retry when Telegram
+  delivery fails.
+
+Current runtime still does not support:
+
+- response kind selection beyond `answer`;
+- automatic user notification on accept/reject;
 - clarification request delivery through `needs_user_input`;
+- structured user reply thread after admin response;
+- manual retry command for failed sends;
 - Product Truth mutation from answered questions.
 
 Target admin response behavior:
@@ -555,17 +590,20 @@ Failed-send recovery:
 
 MVP response kinds:
 
-- `answer`: supported in the planned Admin Response MVP;
-- `rejection_reason`: supported in the planned Admin Response MVP;
-- `informational_followup`: supported in the planned Admin Response MVP.
+- `answer`: runtime-supported in the Admin Response MVP.
 
 Future or constrained response kinds:
 
+- `rejection_reason`: future unless explicit command/kind selection and tests
+  are implemented;
+- `informational_followup`: future unless explicit command/kind selection and
+  tests are implemented;
 - `accepted_for_review_note`: future unless explicit product copy and command
   behavior are implemented;
-- `clarification_request`: one-way outbound only if included in the MVP. It
-  does not reopen a structured workflow, does not set up a user reply thread,
-  and does not automatically move the request to `needs_user_input`.
+- `clarification_request`: future unless implemented as one-way outbound copy.
+  If later included, it must not reopen a structured workflow, set up a user
+  reply thread, or automatically move the request to `needs_user_input` unless
+  that workflow is explicitly designed and tested.
 
 Admin review is required before:
 
@@ -692,12 +730,13 @@ The broader Admin Response / Human Review Loop is not complete until:
 - Product Truth is not mutated automatically;
 - evals prove the closed loop.
 
-The current partial Level 3 MVP slice satisfies only the bounded preview,
+The current partial Level 3 MVP slice satisfies the bounded preview,
 confirmation-gated persistence, tenant scoping, redaction, admin list/detail,
-and status-only review subset documented in Current Status. It does not satisfy
-the complete lifecycle criteria for Product Truth conversion, backlog
-conversion, code-agent handoff, notifications, self-learning, request expiry,
-or implementation delivery.
+status-only review, and one-way admin `answer` delivery subset documented in
+Current Status. It does not satisfy the complete lifecycle criteria for Product
+Truth conversion, backlog conversion, code-agent handoff, accept/reject
+notifications, response kind selection, clarification threading, self-learning,
+request expiry, retry, or implementation delivery.
 
 ## Product UX Evals
 
@@ -731,8 +770,9 @@ Required eval scenarios:
 
 The current smoke artifact is
 `docs/evals/customization_request_mvp_smoke.md`. It records scenarios for the
-implemented partial MVP, marks admin response scenarios as future/next slice,
-and explicitly lists forbidden claims.
+implemented partial MVP, marks the `answer` admin response send as implemented,
+keeps rejection-reason/clarification scenarios future, and explicitly lists
+forbidden claims.
 
 ## No-Go Rules
 

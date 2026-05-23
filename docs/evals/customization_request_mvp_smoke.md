@@ -19,7 +19,12 @@ slice:
   controlled path;
 - exact title/summary edits remain text-first;
 - admins can list, detail, accept, and reject requests;
-- admin accept/reject is status review only.
+- admin accept/reject is status review only;
+- admins can use `/customization_request_reply <id_or_prefix>` to send one
+  confirmation-gated `answer` response to the original requester;
+- latest admin response metadata/text persists on `customization_requests`
+  before Telegram delivery attempt, and delivery status updates after the send
+  result.
 
 Conceptually, current rows may represent broader review items such as
 `feature_request`, `customization_request`, `unanswered_product_question`,
@@ -29,15 +34,11 @@ or `admin_review_candidate`. A dedicated persisted `request_kind` /
 
 Out of scope for this MVP slice:
 
-- admin response sent to user;
-- answer text storage;
-- `response_sent_at`;
-- `response_sent_by`;
-- `response_kind`;
-- `response_delivery_status`;
-- `response_attempts`;
-- `response_failed_reason`;
-- `responded_to_request_status`;
+- response kind selection beyond default `answer`;
+- rejection-reason response kind;
+- clarification-request response kind or structured reply thread;
+- manual retry command for failed response sends;
+- multi-response/threaded conversation history;
 - user notification on review decision;
 - `needs_user_input` delivery to user;
 - admin notes;
@@ -75,6 +76,9 @@ FSM-only draft states are not persisted as customization request rows.
 Existing `reviewed_accepted` / `reviewed_rejected` statuses are review
 decisions only. They are not answer delivery statuses and do not mean
 implementation, Product Truth mutation, notification, or code-agent handoff.
+Admin answer delivery uses separate response metadata such as
+`response_delivery_status=send_pending|send_succeeded|send_failed` and does not
+mutate the request review status.
 
 ## User Smoke Scenarios
 
@@ -282,10 +286,11 @@ last_result: not_run_manual
 ### CR-MVP-ADMIN-013B - Send Answer To User
 
 account_state: authorized admin and existing confirmed review item
-input_channel: Telegram command or future admin UI
-user_input: admin answer text
+input_channel: Telegram command
+user_input: `/customization_request_reply <request_id_or_prefix>`, answer text,
+then send confirmation
 expected_response_behavior: user receives admin answer through the bot and
-response metadata is stored.
+response metadata is stored. Admin sees a preview before sending.
 side_effect_expectation: `admin_response_text`, `response_sent_at`,
 `response_sent_by`, `response_kind`, `response_delivery_status`,
 `response_attempts`, and `responded_to_request_status` or equivalent fields are
@@ -293,7 +298,8 @@ persisted. Confirmed response text/metadata is persisted before Telegram send;
 delivery status is updated after the send result.
 forbidden_behavior: Product Truth mutation, implementation promise, backlog
 conversion, code-agent handoff, silent delivery claim without actual send.
-automation_status: future/next slice; not implemented in current runtime.
+automation_status: implemented for default `answer`; covered by admin/service
+and callback tests.
 last_result: not_run_manual
 
 ### CR-MVP-ADMIN-013C - Reject With Reason Sent To User
@@ -339,7 +345,8 @@ side_effect_expectation: response text and metadata remain persisted with
 safe bounded `response_failed_reason`. No automatic retry happens.
 forbidden_behavior: dropping confirmed response text, claiming delivery,
 automatic retry loop, Product Truth mutation, notification claim.
-automation_status: future/next slice; not implemented in current runtime.
+automation_status: implemented for default `answer`; covered by admin/service
+tests.
 last_result: not_run_manual
 
 ### CR-MVP-ADMIN-013F - Latest Response Only In MVP
@@ -353,7 +360,7 @@ side_effect_expectation: no threaded history is implied unless a future
 response-history table/thread model exists.
 forbidden_behavior: presenting overwritten latest-response fields as a full
 conversation history.
-automation_status: future/next slice; not implemented in current runtime.
+automation_status: implemented as storage scope; no history table exists in MVP.
 last_result: not_run_manual
 
 ### CR-MVP-ADMIN-014 - Repeated Review Is Already Processed
@@ -373,10 +380,11 @@ last_result: not_run_manual
 
 account_state: authorized non-admin user
 input_channel: Telegram command
-user_input: admin list/detail/accept/reject command
+user_input: admin list/detail/accept/reject/reply command
 expected_response_behavior: safe Slovak denial.
-side_effect_expectation: no read disclosure, no status change.
-forbidden_behavior: exposing tenant-wide request data, reviewing request.
+side_effect_expectation: no read disclosure, no status change, no response send.
+forbidden_behavior: exposing tenant-wide request data, reviewing request,
+sending response.
 automation_status: covered by admin/access tests.
 last_result: not_run_manual
 
@@ -384,11 +392,12 @@ last_result: not_run_manual
 
 account_state: unauthorized Telegram user
 input_channel: Telegram command
-user_input: admin list/detail/accept/reject command
+user_input: admin list/detail/accept/reject/reply command
 expected_response_behavior: existing access middleware blocks the command.
 side_effect_expectation: no DB read/write side effect from the command
 handler.
-forbidden_behavior: request listing, detail disclosure, status change.
+forbidden_behavior: request listing, detail disclosure, status change, response
+send.
 automation_status: covered by access/admin tests.
 last_result: not_run_manual
 
@@ -428,7 +437,8 @@ Do not claim:
 - "You will definitely receive an answer."
 - "Admin was notified" unless actual notification exists.
 - "The request was sent to admin" when only DB storage/review status exists.
-- "The admin response was sent" when only status review exists.
+- "The admin response was sent" when only status review exists, or when a
+  response is only persisted with `send_failed`.
 - "This feature is now supported."
 - "Product Truth was updated."
 - "A Product Truth candidate was created."
@@ -446,13 +456,14 @@ Relevant automated tests:
 
 - `tests/test_customization_requests.py`
 - `tests/test_customization_request_admin.py`
+- `tests/test_decision_callbacks.py`
 - `tests/test_info_help.py`
 - `tests/test_invoice_intent_prerouter.py`
 - `tests/test_voice_state_routing.py`
 
 Last recorded full-suite evidence in `PROJECT_LOG.md` for this slice:
 
-- Session 104, `python -m pytest -q`: 1250 passed, 7 subtests passed.
+- Session 108, focused admin response suite: 142 passed, 7 subtests passed.
 
 Manual product UX smoke run:
 

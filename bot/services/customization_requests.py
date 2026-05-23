@@ -23,6 +23,13 @@ STATUS_DRAFT_UNCONFIRMED = 'draft_unconfirmed'
 REVIEW_RESULT_UPDATED = 'updated'
 REVIEW_RESULT_NOT_FOUND = 'not_found'
 REVIEW_RESULT_ALREADY_PROCESSED = 'already_processed'
+RESPONSE_KIND_ANSWER = 'answer'
+RESPONSE_DELIVERY_PENDING = 'send_pending'
+RESPONSE_DELIVERY_SUCCEEDED = 'send_succeeded'
+RESPONSE_DELIVERY_FAILED = 'send_failed'
+RESPONSE_RESULT_PREPARED = 'prepared'
+RESPONSE_RESULT_NOT_FOUND = 'not_found'
+RESPONSE_RESULT_ALREADY_SENT = 'already_sent'
 
 ALLOWED_PERSISTED_STATUSES = {
     STATUS_CONFIRMED_PENDING_REVIEW,
@@ -43,6 +50,7 @@ REQUEST_STARTING_TRIAGE_CLASSES = {
 }
 
 _VALID_SOURCE_CHANNELS = {'text', 'voice'}
+_VALID_RESPONSE_KINDS = {RESPONSE_KIND_ANSWER}
 _DEFAULT_RISK_LEVEL = 'medium'
 _DEFAULT_SCHEMA_VERSION = 1
 _SECRET_MARKER = '[REDACTED]'
@@ -75,6 +83,16 @@ class CustomizationRequestRecord:
     updated_at: str
     confirmed_at: str | None
     reviewed_at: str | None
+    admin_response_text: str | None
+    response_kind: str | None
+    response_sent_at: str | None
+    response_sent_by: int | None
+    response_delivery_status: str | None
+    response_attempts: int
+    response_failed_reason: str | None
+    responded_to_request_status: str | None
+    response_updated_at: str | None
+    response_id: str | None
     schema_version: int
 
 
@@ -347,6 +365,175 @@ class CustomizationRequestService:
             rows = connection.execute(query, params).fetchall()
         return [_record_from_row(row) for row in rows]
 
+    def persist_customization_request_response_attempt(
+        self,
+        *,
+        request_id: str,
+        admin_telegram_id: int | None,
+        response_id: str,
+        response_text: str,
+        response_kind: str = RESPONSE_KIND_ANSWER,
+    ) -> tuple[str, CustomizationRequestRecord | None]:
+        """Persist latest confirmed response before outbound Telegram delivery."""
+        if admin_telegram_id is None or int(admin_telegram_id) <= 0:
+            raise ValueError('admin_telegram_id_required')
+
+        clean_request_id = _clean_optional(request_id)
+        clean_response_id = _required_text(response_id, 'response_id_required')
+        clean_response_kind = _normalize_response_kind(response_kind)
+        clean_response_text = redact_customization_request_text(response_text)
+        if clean_response_text is None:
+            raise ValueError('admin_response_text_required')
+
+        if clean_request_id is None:
+            return RESPONSE_RESULT_NOT_FOUND, None
+
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            existing = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
+                (clean_request_id,),
+            ).fetchone()
+            if existing is None:
+                return RESPONSE_RESULT_NOT_FOUND, None
+            if (
+                existing['response_id'] == clean_response_id
+                and existing['response_delivery_status'] == RESPONSE_DELIVERY_SUCCEEDED
+            ):
+                return RESPONSE_RESULT_ALREADY_SENT, _record_from_row(existing)
+
+            now = _utc_timestamp_after(existing['updated_at'])
+            connection.execute(
+                (
+                    'UPDATE customization_requests '
+                    'SET admin_response_text = ?, response_kind = ?, response_sent_by = ?, '
+                    'response_delivery_status = ?, response_attempts = COALESCE(response_attempts, 0) + 1, '
+                    'response_failed_reason = NULL, responded_to_request_status = ?, response_updated_at = ?, '
+                    'response_id = ?, updated_at = ? '
+                    'WHERE request_id = ?'
+                ),
+                (
+                    clean_response_text,
+                    clean_response_kind,
+                    int(admin_telegram_id),
+                    RESPONSE_DELIVERY_PENDING,
+                    existing['status'],
+                    now,
+                    clean_response_id,
+                    now,
+                    clean_request_id,
+                ),
+            )
+            connection.commit()
+            row = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
+                (clean_request_id,),
+            ).fetchone()
+
+        if row is None:
+            return RESPONSE_RESULT_NOT_FOUND, None
+        return RESPONSE_RESULT_PREPARED, _record_from_row(row)
+
+    def mark_response_delivery_succeeded(
+        self,
+        *,
+        request_id: str,
+        response_id: str,
+    ) -> tuple[str, CustomizationRequestRecord | None]:
+        clean_request_id = _clean_optional(request_id)
+        clean_response_id = _clean_optional(response_id)
+        if clean_request_id is None or clean_response_id is None:
+            return RESPONSE_RESULT_NOT_FOUND, None
+
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            existing = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ? AND response_id = ?',
+                (clean_request_id, clean_response_id),
+            ).fetchone()
+            if existing is None:
+                return RESPONSE_RESULT_NOT_FOUND, None
+            if existing['response_delivery_status'] == RESPONSE_DELIVERY_SUCCEEDED:
+                return RESPONSE_RESULT_ALREADY_SENT, _record_from_row(existing)
+
+            now = _utc_timestamp_after(existing['response_updated_at'] or existing['updated_at'])
+            connection.execute(
+                (
+                    'UPDATE customization_requests '
+                    'SET response_delivery_status = ?, response_sent_at = ?, response_failed_reason = NULL, '
+                    'response_updated_at = ?, updated_at = ? '
+                    'WHERE request_id = ? AND response_id = ?'
+                ),
+                (
+                    RESPONSE_DELIVERY_SUCCEEDED,
+                    now,
+                    now,
+                    now,
+                    clean_request_id,
+                    clean_response_id,
+                ),
+            )
+            connection.commit()
+            row = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
+                (clean_request_id,),
+            ).fetchone()
+
+        if row is None:
+            return RESPONSE_RESULT_NOT_FOUND, None
+        return RESPONSE_RESULT_PREPARED, _record_from_row(row)
+
+    def mark_response_delivery_failed(
+        self,
+        *,
+        request_id: str,
+        response_id: str,
+        failed_reason: str = 'telegram_send_failed',
+    ) -> tuple[str, CustomizationRequestRecord | None]:
+        clean_request_id = _clean_optional(request_id)
+        clean_response_id = _clean_optional(response_id)
+        if clean_request_id is None or clean_response_id is None:
+            return RESPONSE_RESULT_NOT_FOUND, None
+
+        safe_reason = _safe_failed_reason(failed_reason)
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            existing = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ? AND response_id = ?',
+                (clean_request_id, clean_response_id),
+            ).fetchone()
+            if existing is None:
+                return RESPONSE_RESULT_NOT_FOUND, None
+            if existing['response_delivery_status'] == RESPONSE_DELIVERY_SUCCEEDED:
+                return RESPONSE_RESULT_ALREADY_SENT, _record_from_row(existing)
+
+            now = _utc_timestamp_after(existing['response_updated_at'] or existing['updated_at'])
+            connection.execute(
+                (
+                    'UPDATE customization_requests '
+                    'SET response_delivery_status = ?, response_failed_reason = ?, '
+                    'response_updated_at = ?, updated_at = ? '
+                    'WHERE request_id = ? AND response_id = ?'
+                ),
+                (
+                    RESPONSE_DELIVERY_FAILED,
+                    safe_reason,
+                    now,
+                    now,
+                    clean_request_id,
+                    clean_response_id,
+                ),
+            )
+            connection.commit()
+            row = connection.execute(
+                _SELECT_CUSTOMIZATION_REQUEST + ' WHERE request_id = ?',
+                (clean_request_id,),
+            ).fetchone()
+
+        if row is None:
+            return RESPONSE_RESULT_NOT_FOUND, None
+        return RESPONSE_RESULT_PREPARED, _record_from_row(row)
+
 
 def redact_customization_request_text(value: str | None) -> str | None:
     text = _clean_optional(value)
@@ -411,6 +598,20 @@ def _normalize_status(value: str) -> str:
     return status
 
 
+def _normalize_response_kind(value: str) -> str:
+    kind = _required_text(value, 'response_kind_required')
+    if kind not in _VALID_RESPONSE_KINDS:
+        raise ValueError('invalid_response_kind')
+    return kind
+
+
+def _safe_failed_reason(value: str) -> str:
+    reason = _clean_optional(value) or 'telegram_send_failed'
+    if reason not in {'telegram_send_failed', 'missing_bot'}:
+        return 'telegram_send_failed'
+    return reason
+
+
 def _required_text(value: str | None, error: str) -> str:
     text = _clean_optional(value)
     if text is None:
@@ -465,7 +666,10 @@ _SELECT_CUSTOMIZATION_REQUEST = (
     'source_triage_class, source_capability_id, source_topic_id, normalized_title, '
     'normalized_summary, redacted_original_text, raw_text_hash, language_hint, confidence, '
     'status, risk_level, requires_human_approval, product_truth_relation, privacy_redaction_flags, '
-    'admin_note, reviewed_by, created_at, updated_at, confirmed_at, reviewed_at, schema_version '
+    'admin_note, reviewed_by, created_at, updated_at, confirmed_at, reviewed_at, '
+    'admin_response_text, response_kind, response_sent_at, response_sent_by, response_delivery_status, '
+    'response_attempts, response_failed_reason, responded_to_request_status, response_updated_at, response_id, '
+    'schema_version '
     'FROM customization_requests'
 )
 
@@ -497,5 +701,15 @@ def _record_from_row(row: sqlite3.Row) -> CustomizationRequestRecord:
         updated_at=row['updated_at'],
         confirmed_at=row['confirmed_at'],
         reviewed_at=row['reviewed_at'],
+        admin_response_text=row['admin_response_text'],
+        response_kind=row['response_kind'],
+        response_sent_at=row['response_sent_at'],
+        response_sent_by=row['response_sent_by'],
+        response_delivery_status=row['response_delivery_status'],
+        response_attempts=int(row['response_attempts'] or 0),
+        response_failed_reason=row['response_failed_reason'],
+        responded_to_request_status=row['responded_to_request_status'],
+        response_updated_at=row['response_updated_at'],
+        response_id=row['response_id'],
         schema_version=int(row['schema_version']),
     )

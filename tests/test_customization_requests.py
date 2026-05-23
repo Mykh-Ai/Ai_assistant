@@ -8,6 +8,12 @@ import unittest
 from bot.services import product_truth
 from bot.services.customization_requests import (
     REQUEST_STARTING_TRIAGE_CLASSES,
+    RESPONSE_DELIVERY_FAILED,
+    RESPONSE_DELIVERY_PENDING,
+    RESPONSE_DELIVERY_SUCCEEDED,
+    RESPONSE_KIND_ANSWER,
+    RESPONSE_RESULT_ALREADY_SENT,
+    RESPONSE_RESULT_PREPARED,
     STATUS_CONFIRMED_PENDING_REVIEW,
     STATUS_CONVERTED_TO_BACKLOG,
     STATUS_DRAFT_UNCONFIRMED,
@@ -59,6 +65,10 @@ class CustomizationRequestServiceTests(unittest.TestCase):
 
         self.assertIn('request_id', columns)
         self.assertIn('telegram_id', columns)
+        self.assertIn('admin_response_text', columns)
+        self.assertIn('response_delivery_status', columns)
+        self.assertIn('response_attempts', columns)
+        self.assertIn('response_id', columns)
         self.assertIn('idx_customization_requests_user_status_created', indexes)
         self.assertIn('idx_customization_requests_supplier_status_created', indexes)
         self.assertIn('idx_customization_requests_status_created', indexes)
@@ -405,6 +415,139 @@ class CustomizationRequestServiceTests(unittest.TestCase):
                 admin_telegram_id=9001,
                 decision=STATUS_CONFIRMED_PENDING_REVIEW,
             )
+
+    def test_response_attempt_persists_latest_metadata_before_delivery(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_response_attempt')
+
+        result, prepared = service.persist_customization_request_response_attempt(
+            request_id='cr_response_attempt',
+            admin_telegram_id=9001,
+            response_id='crr_response_attempt',
+            response_text='Tu je odpoved pre pouzivatela.',
+            response_kind=RESPONSE_KIND_ANSWER,
+        )
+
+        self.assertEqual(result, RESPONSE_RESULT_PREPARED)
+        assert prepared is not None
+        self.assertEqual(prepared.admin_response_text, 'Tu je odpoved pre pouzivatela.')
+        self.assertEqual(prepared.response_kind, RESPONSE_KIND_ANSWER)
+        self.assertEqual(prepared.response_delivery_status, RESPONSE_DELIVERY_PENDING)
+        self.assertEqual(prepared.response_attempts, 1)
+        self.assertEqual(prepared.response_sent_by, 9001)
+        self.assertIsNone(prepared.response_sent_at)
+        self.assertIsNone(prepared.response_failed_reason)
+        self.assertEqual(prepared.responded_to_request_status, STATUS_CONFIRMED_PENDING_REVIEW)
+        self.assertEqual(prepared.response_id, 'crr_response_attempt')
+
+    def test_response_delivery_success_and_duplicate_confirm_are_idempotent(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_response_success')
+        service.persist_customization_request_response_attempt(
+            request_id='cr_response_success',
+            admin_telegram_id=9001,
+            response_id='crr_response_success',
+            response_text='Odpoved.',
+        )
+
+        result, sent = service.mark_response_delivery_succeeded(
+            request_id='cr_response_success',
+            response_id='crr_response_success',
+        )
+        duplicate_result, duplicate = service.persist_customization_request_response_attempt(
+            request_id='cr_response_success',
+            admin_telegram_id=9002,
+            response_id='crr_response_success',
+            response_text='Toto sa nema znova odoslat.',
+        )
+
+        self.assertEqual(result, RESPONSE_RESULT_PREPARED)
+        assert sent is not None
+        self.assertEqual(sent.response_delivery_status, RESPONSE_DELIVERY_SUCCEEDED)
+        self.assertIsNotNone(sent.response_sent_at)
+        self.assertEqual(sent.response_attempts, 1)
+        self.assertEqual(sent.response_sent_by, 9001)
+        self.assertEqual(duplicate_result, RESPONSE_RESULT_ALREADY_SENT)
+        assert duplicate is not None
+        self.assertEqual(duplicate.admin_response_text, 'Odpoved.')
+        self.assertEqual(duplicate.response_attempts, 1)
+        self.assertEqual(duplicate.response_sent_by, 9001)
+
+    def test_response_delivery_failed_keeps_response_and_safe_reason(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_response_failed')
+        service.persist_customization_request_response_attempt(
+            request_id='cr_response_failed',
+            admin_telegram_id=9001,
+            response_id='crr_response_failed',
+            response_text='Kontakt email person@example.com token sk-secretTOKEN123',
+        )
+
+        result, failed = service.mark_response_delivery_failed(
+            request_id='cr_response_failed',
+            response_id='crr_response_failed',
+            failed_reason='raw exception with stack trace',
+        )
+
+        self.assertEqual(result, RESPONSE_RESULT_PREPARED)
+        assert failed is not None
+        self.assertEqual(failed.response_delivery_status, RESPONSE_DELIVERY_FAILED)
+        self.assertEqual(failed.response_failed_reason, 'telegram_send_failed')
+        self.assertEqual(failed.response_attempts, 1)
+        self.assertIn('[REDACTED]', failed.admin_response_text or '')
+        self.assertNotIn('person@example.com', failed.admin_response_text or '')
+        self.assertNotIn('sk-secretTOKEN123', failed.admin_response_text or '')
+        self.assertIsNone(failed.response_sent_at)
+
+    def test_response_attempt_requires_admin_response_kind_and_text(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_response_validation')
+
+        with self.assertRaisesRegex(ValueError, 'admin_telegram_id_required'):
+            service.persist_customization_request_response_attempt(
+                request_id='cr_response_validation',
+                admin_telegram_id=None,
+                response_id='crr_validation',
+                response_text='Odpoved.',
+            )
+        with self.assertRaisesRegex(ValueError, 'invalid_response_kind'):
+            service.persist_customization_request_response_attempt(
+                request_id='cr_response_validation',
+                admin_telegram_id=9001,
+                response_id='crr_validation',
+                response_text='Odpoved.',
+                response_kind='clarification_request',
+            )
+        with self.assertRaisesRegex(ValueError, 'admin_response_text_required'):
+            service.persist_customization_request_response_attempt(
+                request_id='cr_response_validation',
+                admin_telegram_id=9001,
+                response_id='crr_validation',
+                response_text='   ',
+            )
+
+    def test_response_attempt_does_not_mutate_review_or_downstream_state(self) -> None:
+        service, _, _ = self._service()
+        self._create_request(service, request_id='cr_response_side_effects')
+        before_product_truth = [entry.to_payload() for entry in product_truth.list_capabilities()]
+
+        service.persist_customization_request_response_attempt(
+            request_id='cr_response_side_effects',
+            admin_telegram_id=9001,
+            response_id='crr_side_effects',
+            response_text='Odpoved pre pouzivatela.',
+        )
+        after = service.get_customization_request_by_id_for_admin(request_id='cr_response_side_effects')
+
+        assert after is not None
+        self.assertEqual(after.status, STATUS_CONFIRMED_PENDING_REVIEW)
+        self.assertIsNone(after.reviewed_by)
+        self.assertIsNone(after.reviewed_at)
+        self.assertEqual([entry.to_payload() for entry in product_truth.list_capabilities()], before_product_truth)
+        self.assertFalse(hasattr(service, 'convert_to_backlog'))
+        self.assertFalse(hasattr(service, 'convert_to_product_truth_candidate'))
+        self.assertFalse(hasattr(service, 'create_code_agent_handoff'))
+        self.assertFalse(hasattr(service, 'learn_from_admin_response'))
 
     def test_status_is_limited_to_allowed_persisted_statuses(self) -> None:
         service, _, _ = self._service()

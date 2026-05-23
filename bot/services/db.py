@@ -171,6 +171,16 @@ CREATE TABLE IF NOT EXISTS customization_requests (
     updated_at TEXT NOT NULL,
     confirmed_at TEXT,
     reviewed_at TEXT,
+    admin_response_text TEXT,
+    response_kind TEXT,
+    response_sent_at TEXT,
+    response_sent_by INTEGER,
+    response_delivery_status TEXT,
+    response_attempts INTEGER NOT NULL DEFAULT 0,
+    response_failed_reason TEXT,
+    responded_to_request_status TEXT,
+    response_updated_at TEXT,
+    response_id TEXT,
     schema_version INTEGER NOT NULL DEFAULT 1
 );
 """
@@ -316,7 +326,30 @@ CUSTOMIZATION_REQUEST_EXPECTED_COLUMNS = {
     'updated_at': 'TEXT NOT NULL',
     'confirmed_at': 'TEXT',
     'reviewed_at': 'TEXT',
+    'admin_response_text': 'TEXT',
+    'response_kind': 'TEXT',
+    'response_sent_at': 'TEXT',
+    'response_sent_by': 'INTEGER',
+    'response_delivery_status': 'TEXT',
+    'response_attempts': 'INTEGER NOT NULL',
+    'response_failed_reason': 'TEXT',
+    'responded_to_request_status': 'TEXT',
+    'response_updated_at': 'TEXT',
+    'response_id': 'TEXT',
     'schema_version': 'INTEGER NOT NULL',
+}
+
+_CUSTOMIZATION_REQUEST_ADDITIVE_COLUMNS = {
+    'admin_response_text': 'TEXT',
+    'response_kind': 'TEXT',
+    'response_sent_at': 'TEXT',
+    'response_sent_by': 'INTEGER',
+    'response_delivery_status': 'TEXT',
+    'response_attempts': 'INTEGER NOT NULL DEFAULT 0',
+    'response_failed_reason': 'TEXT',
+    'responded_to_request_status': 'TEXT',
+    'response_updated_at': 'TEXT',
+    'response_id': 'TEXT',
 }
 
 
@@ -574,7 +607,21 @@ def _bootstrap_customization_request_table(connection: sqlite3.Connection) -> No
         _ensure_customization_request_indexes(connection)
         return
 
-    if set(existing_columns.keys()) == set(CUSTOMIZATION_REQUEST_EXPECTED_COLUMNS.keys()):
+    existing_keys = set(existing_columns.keys())
+    expected_keys = set(CUSTOMIZATION_REQUEST_EXPECTED_COLUMNS.keys())
+    if existing_keys == expected_keys:
+        _ensure_customization_request_indexes(connection)
+        return
+
+    missing_keys = expected_keys - existing_keys
+    extra_keys = existing_keys - expected_keys
+    if not extra_keys and missing_keys and missing_keys <= set(_CUSTOMIZATION_REQUEST_ADDITIVE_COLUMNS.keys()):
+        for column_name in CUSTOMIZATION_REQUEST_EXPECTED_COLUMNS:
+            if column_name in missing_keys:
+                connection.execute(
+                    f'ALTER TABLE customization_requests ADD COLUMN {column_name} '
+                    f'{_CUSTOMIZATION_REQUEST_ADDITIVE_COLUMNS[column_name]}'
+                )
         _ensure_customization_request_indexes(connection)
         return
 

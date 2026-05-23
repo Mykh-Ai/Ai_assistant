@@ -29,6 +29,7 @@ ADMIN_COMMANDS = {
     '/customization_request',
     '/customization_request_accept',
     '/customization_request_reject',
+    '/customization_request_reply',
     '/approve',
     '/reject',
     '/block',

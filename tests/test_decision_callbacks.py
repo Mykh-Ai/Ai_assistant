@@ -6,6 +6,7 @@ from pathlib import Path
 from aiogram.types import CallbackQuery, User
 
 from bot.config import Config
+from bot.handlers.access_admin import CustomizationRequestAdminResponseStates
 from bot.handlers.contacts import ContactStates
 from bot.handlers.decision_callbacks import _dispatch_decision_token, decision_callback
 from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
@@ -40,6 +41,14 @@ class _DummyMessage:
 
     async def answer_document(self, document, caption: str | None = None, **kwargs) -> None:
         self.documents.append(caption or '')
+
+
+class _DummyBot:
+    def __init__(self) -> None:
+        self.sent: list[tuple[int, str]] = []
+
+    async def send_message(self, telegram_id: int, text: str) -> None:
+        self.sent.append((telegram_id, text))
 
 
 class _DummyState:
@@ -454,6 +463,130 @@ def test_stale_duplicate_customization_button_approve_does_not_save_twice(tmp_pa
     assert first is True
     assert duplicate is True
     assert len(records) == 1
+
+
+def test_button_approve_on_admin_response_preview_sends_one_response(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    service.create_confirmed_customization_request(
+        request_id='cr_callback_admin_response',
+        telegram_id=AUTHORIZED_ID,
+        supplier_telegram_id=AUTHORIZED_ID,
+        workspace_id=f'telegram:{AUTHORIZED_ID}',
+        source_channel='text',
+        source_triage_class='customization_request_candidate',
+        normalized_title='Mesačný report',
+        normalized_summary='Používateľ chce report.',
+    )
+    draft = {
+        'response_id': 'crr_callback_admin_response',
+        'request_id': 'cr_callback_admin_response',
+        'target_telegram_id': AUTHORIZED_ID,
+        'target_workspace_id': f'telegram:{AUTHORIZED_ID}',
+        'admin_telegram_id': ADMIN_ID,
+        'response_kind': 'answer',
+        'response_text': 'Tu je odpoveď správcu.',
+        'request_status_at_draft': 'confirmed_pending_review',
+        'request_title_preview': 'Mesačný report',
+        'created_at': '2026-05-23T00:00:00Z',
+    }
+    message = _DummyMessage(user_id=ADMIN_ID)
+    state = _DummyState(
+        {'customization_request_admin_response_draft': draft},
+        CustomizationRequestAdminResponseStates.waiting_response_preview_decision.state,
+    )
+    bot = _DummyBot()
+
+    handled = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_APPROVE,
+            current_state=CustomizationRequestAdminResponseStates.waiting_response_preview_decision.state,
+            message=message,
+            state=state,
+            config=config,
+            bot=bot,
+        )
+    )
+
+    after = service.get_customization_request_by_id_for_admin(request_id='cr_callback_admin_response')
+    assert handled is True
+    assert bot.sent == [(AUTHORIZED_ID, 'Odpoveď správcu k vašej požiadavke:\n\nTu je odpoveď správcu.')]
+    assert after is not None
+    assert after.response_delivery_status == 'send_succeeded'
+    assert after.response_attempts == 1
+    assert state.cleared is True
+
+
+def test_stale_duplicate_admin_response_button_does_not_send_twice(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = CustomizationRequestService(config.db_path)
+    service.create_confirmed_customization_request(
+        request_id='cr_callback_admin_response_duplicate',
+        telegram_id=AUTHORIZED_ID,
+        supplier_telegram_id=AUTHORIZED_ID,
+        workspace_id=f'telegram:{AUTHORIZED_ID}',
+        source_channel='text',
+        source_triage_class='customization_request_candidate',
+        normalized_title='Mesačný report',
+        normalized_summary='Používateľ chce report.',
+    )
+    draft = {
+        'response_id': 'crr_callback_admin_response_duplicate',
+        'request_id': 'cr_callback_admin_response_duplicate',
+        'target_telegram_id': AUTHORIZED_ID,
+        'target_workspace_id': f'telegram:{AUTHORIZED_ID}',
+        'admin_telegram_id': ADMIN_ID,
+        'response_kind': 'answer',
+        'response_text': 'Jedna odpoveď.',
+        'request_status_at_draft': 'confirmed_pending_review',
+        'request_title_preview': 'Mesačný report',
+        'created_at': '2026-05-23T00:00:00Z',
+    }
+    first_state = _DummyState(
+        {'customization_request_admin_response_draft': dict(draft)},
+        CustomizationRequestAdminResponseStates.waiting_response_preview_decision.state,
+    )
+    duplicate_state = _DummyState(
+        {'customization_request_admin_response_draft': dict(draft)},
+        CustomizationRequestAdminResponseStates.waiting_response_preview_decision.state,
+    )
+    first_bot = _DummyBot()
+    duplicate_bot = _DummyBot()
+
+    first = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_APPROVE,
+            current_state=CustomizationRequestAdminResponseStates.waiting_response_preview_decision.state,
+            message=_DummyMessage(user_id=ADMIN_ID),
+            state=first_state,
+            config=config,
+            bot=first_bot,
+        )
+    )
+    duplicate_message = _DummyMessage(user_id=ADMIN_ID)
+    duplicate = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_APPROVE,
+            current_state=CustomizationRequestAdminResponseStates.waiting_response_preview_decision.state,
+            message=duplicate_message,
+            state=duplicate_state,
+            config=config,
+            bot=duplicate_bot,
+        )
+    )
+
+    after = service.get_customization_request_by_id_for_admin(
+        request_id='cr_callback_admin_response_duplicate'
+    )
+    assert first is True
+    assert duplicate is True
+    assert first_bot.sent == [(AUTHORIZED_ID, 'Odpoveď správcu k vašej požiadavke:\n\nJedna odpoveď.')]
+    assert duplicate_bot.sent == []
+    assert duplicate_message.answers == ['Odpoveď už bola odoslaná používateľovi. Neodoslal som ju znova.']
+    assert after is not None
+    assert after.response_attempts == 1
 
 
 def test_alias_confirmation_buttons_yes_and_no(tmp_path: Path, monkeypatch) -> None:

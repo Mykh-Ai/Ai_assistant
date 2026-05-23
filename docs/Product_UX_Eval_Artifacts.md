@@ -89,11 +89,11 @@ For customization request MVP:
 - high-risk request requires admin review;
 - credentials/secrets pasted into chat are rejected.
 
-For Admin Response / Human Review Loop next slice:
+For Admin Response / Human Review Loop:
 
 - bot cannot answer product question and asks to submit for admin review;
 - user confirms and the review item is saved;
-- admin sends answer and user receives it;
+- admin sends an `answer` response and user receives it;
 - admin rejects with reason and user receives the explanation;
 - admin asks for clarification and user receives it as one-way outbound copy,
   without an automatic structured reply-thread workflow;
@@ -105,6 +105,10 @@ For Admin Response / Human Review Loop next slice:
   conversation history;
 - out-of-domain/spam do not create a human-review item;
 - possible Product Truth gap does not auto-mutate Product Truth.
+
+Current Admin Response MVP implements only the explicit admin `answer` send
+path. Rejection-reason and clarification-request response kinds remain future
+eval scenarios until command/runtime support exists.
 
 For PDF/layout:
 

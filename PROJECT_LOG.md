@@ -1,5 +1,46 @@
 # PROJECT_LOG
 
+## 2026-05-23 - Session 108 - Admin Response to User MVP
+
+Summary:
+- Implemented explicit admin response delivery for customization/human-review
+  requests.
+- Added admin-only `/customization_request_reply <id_or_prefix>`.
+- Added a confirmation-gated admin response FSM: text entry, preview,
+  send/edit/cancel, and shared DecisionResolver callback/voice preview routing.
+- Added latest-response metadata fields on `customization_requests`:
+  `admin_response_text`, `response_kind`, `response_sent_at`,
+  `response_sent_by`, `response_delivery_status`, `response_attempts`,
+  `response_failed_reason`, `responded_to_request_status`,
+  `response_updated_at`, and `response_id`.
+- Persisted confirmed response metadata/text before Telegram send attempt;
+  delivery result then records `send_succeeded` or `send_failed`.
+- Duplicate confirm for an already sent `response_id` does not send again.
+- Failed send keeps the response persisted with a safe bounded failure reason
+  and no automatic retry.
+- Updated docs/evals to mark only default `answer` response delivery as
+  implemented.
+
+Constraints:
+- No Product Truth mutation.
+- No backlog conversion.
+- No Product Truth candidate conversion.
+- No code-agent handoff.
+- No self-learning.
+- No automatic notifications on accept/reject.
+- No automatic retry.
+- No threaded/multi-response conversation history.
+- Still a partial Level 3 MVP slice, not the complete Customization Request
+  Layer or complete human-review loop.
+
+Verification:
+- `python -m pytest -q tests/test_customization_request_admin.py tests/test_customization_requests.py tests/test_decision_callbacks.py tests/test_voice_state_routing.py`
+  - 142 passed, 7 subtests passed.
+- `python -m pytest -q tests/test_decision_resolver.py tests/test_customization_request_admin.py tests/test_customization_requests.py tests/test_decision_callbacks.py tests/test_voice_state_routing.py`
+  - 658 passed, 7 subtests passed.
+- `python -m pytest -q`
+  - 1296 passed, 7 subtests passed.
+
 ## 2026-05-23 - Session 107 - Refine admin response MVP delivery semantics
 
 Summary:

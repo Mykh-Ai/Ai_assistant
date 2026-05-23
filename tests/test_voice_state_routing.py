@@ -9,6 +9,7 @@ import pytest
 
 from bot.config import Config
 from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
+from bot.handlers.access_admin import CustomizationRequestAdminResponseStates
 from bot.handlers.contacts import ContactStates
 from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
 from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
@@ -1046,6 +1047,51 @@ def test_voice_customization_edit_text_is_text_first(monkeypatch, tmp_path: Path
     assert state.current_state == CustomizationRequestStates.waiting_edit_text.state
     assert state.data['customization_request_draft'] == original_draft
     assert 'textom' in message.answers[-1]
+
+
+def test_voice_admin_response_text_state_requires_typed_text(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'odpoveď cez hlas'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    message = _DummyMessage()
+    state = _DummyState(CustomizationRequestAdminResponseStates.waiting_response_text.state)
+    state.data = {
+        'customization_request_admin_response_draft': {
+            'response_text': None,
+            'request_id': 'cr_voice_admin_response',
+        }
+    }
+
+    asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), state))
+
+    assert state.current_state == CustomizationRequestAdminResponseStates.waiting_response_text.state
+    assert state.data['customization_request_admin_response_draft']['response_text'] is None
+    assert message.answers[-1] == 'Odpoveď pre používateľa prosím napíšte textom.'
+
+
+def test_voice_admin_response_preview_routes_to_shared_decision_handler(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'odoslať'
+
+    calls: list[str] = []
+
+    async def _response_preview(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.customization_request_response_preview_decision', _response_preview)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(CustomizationRequestAdminResponseStates.waiting_response_preview_decision.state),
+        )
+    )
+
+    assert calls == ['odoslať']
 
 
 def test_voice_idle_transcript_can_use_llm_info_help_triage_without_side_effects(

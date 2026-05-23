@@ -1,19 +1,30 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import logging
 import re
 import unicodedata
+from uuid import uuid4
 
 from aiogram import Bot
 from aiogram import Router
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message
 
 from bot.config import Config
+from bot.keyboards.decision import answer_with_decision_keyboard, approve_edit_cancel_keyboard
 from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE
 from bot.services.access_control import ACCESS_STATUS_PENDING, AccessControlService
 from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_admin_telegram_user
 from bot.services.customization_requests import (
+    RESPONSE_DELIVERY_FAILED,
+    RESPONSE_DELIVERY_SUCCEEDED,
+    RESPONSE_KIND_ANSWER,
+    RESPONSE_RESULT_ALREADY_SENT,
+    RESPONSE_RESULT_NOT_FOUND,
+    RESPONSE_RESULT_PREPARED,
     REVIEW_RESULT_ALREADY_PROCESSED,
     REVIEW_RESULT_NOT_FOUND,
     REVIEW_RESULT_UPDATED,
@@ -23,6 +34,7 @@ from bot.services.customization_requests import (
     CustomizationRequestService,
     redact_customization_request_text,
 )
+from bot.services.decision_resolver import resolve_approve_edit_cancel
 
 
 router = Router(name='access_admin')
@@ -30,6 +42,17 @@ logger = logging.getLogger(__name__)
 _CUSTOMIZATION_REQUEST_ADMIN_LIMIT = 10
 _CUSTOMIZATION_REQUEST_DETAIL_PREFIX_MIN_LENGTH = 8
 _CUSTOMIZATION_REQUEST_DETAIL_MAX_MESSAGE_LENGTH = 3500
+_CUSTOMIZATION_RESPONSE_DRAFT_KEY = 'customization_request_admin_response_draft'
+_CUSTOMIZATION_RESPONSE_CONFIRM_CONTEXT = 'customization_request_admin_response_preview'
+_CUSTOMIZATION_RESPONSE_MAX_LENGTH = 1500
+_CUSTOMIZATION_RESPONSE_SENT_MESSAGE = 'Odpoveď bola odoslaná používateľovi.'
+_CUSTOMIZATION_RESPONSE_ALREADY_SENT_MESSAGE = 'Odpoveď už bola odoslaná používateľovi. Neodoslal som ju znova.'
+_CUSTOMIZATION_RESPONSE_FAILED_MESSAGE = 'Odpoveď som uložil, ale nepodarilo sa ju doručiť používateľovi.'
+
+
+class CustomizationRequestAdminResponseStates(StatesGroup):
+    waiting_response_text = State()
+    waiting_response_preview_decision = State()
 
 
 _ACCESS_REQUESTS_ALIASES = {
@@ -79,6 +102,90 @@ async def cmd_customization_request_accept(message: Message, config: Config) -> 
 @router.message(Command('customization_request_reject'))
 async def cmd_customization_request_reject(message: Message, config: Config) -> None:
     await _review_customization_request(message, config, decision=STATUS_REVIEWED_REJECTED)
+
+
+@router.message(Command('customization_request_reply'))
+async def cmd_customization_request_reply(message: Message, config: Config, state: FSMContext) -> None:
+    await _start_customization_request_reply(message=message, config=config, state=state)
+
+
+@router.message(CustomizationRequestAdminResponseStates.waiting_response_text)
+async def customization_request_response_text(message: Message, state: FSMContext) -> None:
+    response_text = _clean_response_text(message.text or '')
+    if response_text is None:
+        await message.answer('Napíšte odpoveď pre používateľa textom.')
+        return
+    if len(response_text) > _CUSTOMIZATION_RESPONSE_MAX_LENGTH:
+        await message.answer(f'Odpoveď je príliš dlhá. Skráťte ju na najviac {_CUSTOMIZATION_RESPONSE_MAX_LENGTH} znakov.')
+        return
+
+    state_data = await state.get_data()
+    draft = state_data.get(_CUSTOMIZATION_RESPONSE_DRAFT_KEY)
+    if not isinstance(draft, dict):
+        await state.clear()
+        await message.answer('Návrh odpovede už nie je dostupný. Odpoveď nebola odoslaná.')
+        return
+
+    updated_draft = dict(draft)
+    updated_draft['response_text'] = response_text
+    await state.update_data(**{_CUSTOMIZATION_RESPONSE_DRAFT_KEY: updated_draft})
+    await state.set_state(CustomizationRequestAdminResponseStates.waiting_response_preview_decision)
+    await answer_with_decision_keyboard(
+        message,
+        _format_customization_response_preview(updated_draft),
+        approve_edit_cancel_keyboard(),
+    )
+
+
+@router.message(CustomizationRequestAdminResponseStates.waiting_response_preview_decision)
+async def customization_request_response_preview_decision(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    bot: Bot | None = None,
+    canonical_decision: str | None = None,
+) -> None:
+    state_data = await state.get_data()
+    draft = state_data.get(_CUSTOMIZATION_RESPONSE_DRAFT_KEY)
+    if not isinstance(draft, dict):
+        await state.clear()
+        await message.answer('Návrh odpovede už nie je dostupný. Odpoveď nebola odoslaná.')
+        return
+
+    if not _is_response_draft_owner(message, draft):
+        await state.clear()
+        await message.answer('Tento návrh odpovede patrí inému správcovi. Odpoveď nebola odoslaná.')
+        return
+
+    if canonical_decision is None:
+        decision = await resolve_approve_edit_cancel(
+            context_name=_CUSTOMIZATION_RESPONSE_CONFIRM_CONTEXT,
+            user_input_text=(message.text or ''),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    else:
+        decision = canonical_decision if canonical_decision in {'approve', 'edit', 'cancel', 'unknown'} else 'unknown'
+
+    if decision == 'unknown':
+        await message.answer('Prosím, odpovedzte: odoslať, upraviť alebo zrušiť.')
+        return
+    if decision == 'cancel':
+        await state.clear()
+        await message.answer('Zrušené. Odpoveď nebola odoslaná.')
+        return
+    if decision == 'edit':
+        await state.set_state(CustomizationRequestAdminResponseStates.waiting_response_text)
+        await message.answer('Napíšte upravenú odpoveď pre používateľa textom.')
+        return
+
+    await _send_customization_request_response(
+        message=message,
+        state=state,
+        config=config,
+        draft=draft,
+        bot=bot,
+    )
 
 
 @router.message(
@@ -192,6 +299,119 @@ async def _review_customization_request(message: Message, config: Config, *, dec
         return
 
     await message.answer('Po\u017eiadavku sa nepodarilo spracova\u0165.')
+
+
+async def _start_customization_request_reply(message: Message, config: Config, state: FSMContext) -> None:
+    if not _is_admin_message(message, config):
+        await message.answer(UNAUTHORIZED_MESSAGE)
+        return
+
+    request_id_or_prefix = _parse_text_arg(message.text or '')
+    if request_id_or_prefix is None:
+        await message.answer('Použitie: /customization_request_reply <request_id>')
+        return
+
+    service = CustomizationRequestService(config.db_path)
+    lookup_result, request = _lookup_customization_request_for_admin(
+        service=service,
+        request_id_or_prefix=request_id_or_prefix,
+    )
+    if lookup_result != 'found' or request is None:
+        await _answer_customization_request_lookup_failure(message, lookup_result)
+        return
+
+    admin_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    if admin_telegram_id is None:
+        await message.answer('Nepodarilo sa identifikovať správcu. Odpoveď nebola odoslaná.')
+        return
+
+    draft = {
+        'response_id': f'crr_{uuid4().hex}',
+        'request_id': request.request_id,
+        'target_telegram_id': request.telegram_id,
+        'target_workspace_id': request.workspace_id,
+        'admin_telegram_id': int(admin_telegram_id),
+        'response_kind': RESPONSE_KIND_ANSWER,
+        'response_text': None,
+        'request_status_at_draft': request.status,
+        'request_title_preview': _safe_display_text(request.normalized_title, max_length=120),
+        'created_at': _utc_timestamp(),
+    }
+    await state.update_data(**{_CUSTOMIZATION_RESPONSE_DRAFT_KEY: draft})
+    await state.set_state(CustomizationRequestAdminResponseStates.waiting_response_text)
+    await message.answer(
+        'Napíšte odpoveď pre používateľa. Nepíšte interné poznámky, tajné údaje ani sľuby implementácie.'
+    )
+
+
+async def _send_customization_request_response(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    draft: dict,
+    bot: Bot | None,
+) -> None:
+    service = CustomizationRequestService(config.db_path)
+    request_id = str(draft.get('request_id') or '').strip()
+    response_id = str(draft.get('response_id') or '').strip()
+    response_text = str(draft.get('response_text') or '').strip()
+    response_kind = str(draft.get('response_kind') or RESPONSE_KIND_ANSWER)
+    admin_telegram_id = _draft_int(draft.get('admin_telegram_id'))
+    target_telegram_id = _draft_int(draft.get('target_telegram_id'))
+    if not request_id or not response_id or not response_text or admin_telegram_id is None or target_telegram_id is None:
+        await state.clear()
+        await message.answer('Návrh odpovede už nie je platný. Odpoveď nebola odoslaná.')
+        return
+
+    result, record = service.persist_customization_request_response_attempt(
+        request_id=request_id,
+        admin_telegram_id=admin_telegram_id,
+        response_id=response_id,
+        response_text=response_text,
+        response_kind=response_kind,
+    )
+    if result == RESPONSE_RESULT_ALREADY_SENT:
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_RESPONSE_ALREADY_SENT_MESSAGE)
+        return
+    if result == RESPONSE_RESULT_NOT_FOUND or record is None:
+        await state.clear()
+        await message.answer('Požiadavku som nenašiel. Odpoveď nebola odoslaná.')
+        return
+    if result != RESPONSE_RESULT_PREPARED:
+        await state.clear()
+        await message.answer('Odpoveď sa nepodarilo pripraviť na odoslanie.')
+        return
+
+    delivery_bot = bot or getattr(message, 'bot', None)
+    user_text = _format_customization_response_for_user(record.admin_response_text or response_text)
+    if delivery_bot is None or not hasattr(delivery_bot, 'send_message'):
+        service.mark_response_delivery_failed(
+            request_id=request_id,
+            response_id=response_id,
+            failed_reason='missing_bot',
+        )
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_RESPONSE_FAILED_MESSAGE)
+        return
+
+    try:
+        await delivery_bot.send_message(target_telegram_id, user_text)
+    except Exception:
+        logger.exception('customization_request_response_delivery_failed request_id=%s', _short_request_id(request_id))
+        service.mark_response_delivery_failed(
+            request_id=request_id,
+            response_id=response_id,
+            failed_reason='telegram_send_failed',
+        )
+        await state.clear()
+        await message.answer(_CUSTOMIZATION_RESPONSE_FAILED_MESSAGE)
+        return
+
+    service.mark_response_delivery_succeeded(request_id=request_id, response_id=response_id)
+    await state.clear()
+    await message.answer(_CUSTOMIZATION_RESPONSE_SENT_MESSAGE)
 
 
 @router.message(Command('approve'))
@@ -423,6 +643,50 @@ def _format_customization_request_detail(request: CustomizationRequestRecord) ->
     if len(text) <= _CUSTOMIZATION_REQUEST_DETAIL_MAX_MESSAGE_LENGTH:
         return text
     return text[: _CUSTOMIZATION_REQUEST_DETAIL_MAX_MESSAGE_LENGTH - 1].rstrip() + '\u2026'
+
+
+def _format_customization_response_preview(draft: dict) -> str:
+    request_id = _safe_display_text(draft.get('request_id'), max_length=96)
+    target_telegram_id = _safe_display_text(draft.get('target_telegram_id'), max_length=32)
+    response_text = _safe_display_text(draft.get('response_text'), max_length=1500)
+    return (
+        'Náhľad odpovede používateľovi\n\n'
+        f'Požiadavka: {request_id}\n'
+        f'Používateľ: {target_telegram_id}\n'
+        'Typ odpovede: odpoveď\n\n'
+        'Správa:\n'
+        f'{response_text}\n\n'
+        'Odoslať / Upraviť / Zrušiť'
+    )
+
+
+def _format_customization_response_for_user(response_text: str) -> str:
+    return f'Odpoveď správcu k vašej požiadavke:\n\n{response_text}'
+
+
+def _clean_response_text(value: str) -> str | None:
+    text = redact_customization_request_text(value)
+    if text is None:
+        return None
+    return text.strip() or None
+
+
+def _draft_int(value: object | None) -> int | None:
+    try:
+        integer = int(value) if value is not None else 0
+    except (TypeError, ValueError):
+        return None
+    return integer if integer > 0 else None
+
+
+def _is_response_draft_owner(message: Message, draft: dict) -> bool:
+    current_admin_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    draft_admin_id = _draft_int(draft.get('admin_telegram_id'))
+    return current_admin_id is not None and draft_admin_id == int(current_admin_id)
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat(timespec='seconds').replace('+00:00', 'Z')
 
 
 def _short_request_id(request_id: str) -> str:

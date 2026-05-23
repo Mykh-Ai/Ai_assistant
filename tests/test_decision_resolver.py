@@ -42,6 +42,7 @@ APPROVE_EDIT_CANCEL_CONTEXTS = (
     'invoice_postpdf_decision',
     'accounting_document_intake_preview',
     'customization_request_preview',
+    'customization_request_admin_response_preview',
 )
 
 GLOBAL_CANCEL_CONTEXTS = (

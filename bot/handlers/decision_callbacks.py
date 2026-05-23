@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
+from aiogram import Bot
 from aiogram.types import CallbackQuery
 
 from bot.config import Config
+from bot.handlers.access_admin import (
+    CustomizationRequestAdminResponseStates,
+    customization_request_response_preview_decision,
+)
 from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm
 from bot.handlers.invoice import (
     CustomizationRequestStates,
@@ -59,7 +64,7 @@ class _CallbackMessageAdapter:
 
 
 @router.callback_query(F.data.startswith(DECISION_CALLBACK_PREFIX))
-async def decision_callback(callback: CallbackQuery, state: FSMContext, config: Config) -> None:
+async def decision_callback(callback: CallbackQuery, state: FSMContext, config: Config, bot: Bot | None = None) -> None:
     token = _parse_decision_token(callback.data)
     current_state = _state_name(await state.get_state())
     if token is None:
@@ -73,6 +78,7 @@ async def decision_callback(callback: CallbackQuery, state: FSMContext, config: 
         message=adapter,
         state=state,
         config=config,
+        bot=bot,
     )
     if not handled:
         await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
@@ -104,6 +110,7 @@ async def _dispatch_decision_token(
     message,
     state: FSMContext,
     config: Config,
+    bot: Bot | None = None,
 ) -> bool:
     if current_state == InvoiceStates.waiting_confirm.state and token in {
         DECISION_APPROVE,
@@ -128,6 +135,20 @@ async def _dispatch_decision_token(
             message=message,
             state=state,
             config=config,
+            canonical_decision=token,
+        )
+        return True
+
+    if current_state == CustomizationRequestAdminResponseStates.waiting_response_preview_decision.state and token in {
+        DECISION_APPROVE,
+        DECISION_EDIT,
+        DECISION_CANCEL,
+    }:
+        await customization_request_response_preview_decision(
+            message=message,
+            state=state,
+            config=config,
+            bot=bot,
             canonical_decision=token,
         )
         return True
