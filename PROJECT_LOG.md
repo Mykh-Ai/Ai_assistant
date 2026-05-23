@@ -1,5 +1,39 @@
 # PROJECT_LOG
 
+## 2026-05-23 - Session 107 - Refine admin response MVP delivery semantics
+
+Summary:
+- Refined the docs-only Admin Response MVP design before runtime
+  implementation.
+- Clarified that confirmed admin response text/metadata must persist before the
+  Telegram send attempt, and delivery status/timestamps/failure reason are
+  updated after the send result.
+- Clarified that MVP stores only latest response metadata on
+  `customization_requests`; multi-response or threaded conversation history is
+  future scope.
+- Defined `clarification_request` as one-way outbound communication if included
+  in MVP; it does not reopen a structured workflow or automatically move the
+  request to `needs_user_input`.
+- Clarified failed-send recovery: failed responses remain persisted with
+  `send_failed`, no automatic retry happens, and a future manual retry may
+  reuse persisted response data.
+
+Constraints:
+- Docs/evals only.
+- No runtime code changes.
+- No admin replies implemented.
+- No user notifications implemented.
+- No Product Truth mutation.
+- No backlog conversion.
+- No Product Truth candidate conversion.
+- No code-agent handoff.
+- No self-learning.
+- Still a partial Level 3 MVP design, not the complete Customization Request
+  Layer or complete human-review loop.
+
+Verification:
+- `git diff --check`
+
 ## 2026-05-23 - Session 106 - Document admin response loop for customization requests
 
 Summary:

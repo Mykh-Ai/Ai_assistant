@@ -254,6 +254,10 @@ admin_response_text
 response_sent_at
 response_sent_by
 response_kind
+response_delivery_status
+response_attempts
+response_failed_reason
+responded_to_request_status
 expires_at
 ```
 
@@ -306,7 +310,11 @@ as statuses or separate fields:
 - `admin_response_text`;
 - `response_sent_at`;
 - `response_sent_by`;
-- `response_kind`.
+- `response_kind`;
+- `response_delivery_status`;
+- `response_attempts`;
+- `response_failed_reason`;
+- `responded_to_request_status`.
 
 `answered` must not mutate Product Truth automatically. `response_sent` must
 mean an actual user-facing delivery path exists and succeeded.
@@ -493,6 +501,10 @@ Current runtime does not support:
 - `response_sent_at`;
 - `response_sent_by`;
 - `response_kind`;
+- `response_delivery_status`;
+- `response_attempts`;
+- `response_failed_reason`;
+- `responded_to_request_status`;
 - user notification on accept/reject;
 - clarification request delivery through `needs_user_input`;
 - Product Truth mutation from answered questions.
@@ -500,12 +512,60 @@ Current runtime does not support:
 Target admin response behavior:
 
 - admin can provide an answer, reason, or clarification request;
-- Python sends the response through the bot only after an implemented delivery
-  path exists;
-- delivery result and response metadata are stored;
+- Python sends the response through the bot only after an implemented,
+  confirmation-gated delivery path exists;
+- confirmed response text and metadata are persisted before the Telegram send
+  attempt;
+- delivery result fields are updated after the send attempt succeeds or fails;
 - the response copy states whether this is guidance, a rejection/explanation,
   or a clarification request;
 - the response must not promise implementation or claim Product Truth changed.
+
+Admin Response MVP persistence scope:
+
+- `customization_requests` stores only the latest admin response metadata/text
+  in MVP;
+- multi-response history, threaded conversations, and structured reply chains
+  are future scope;
+- a later response may replace the latest-response fields only through another
+  explicit admin confirmation-gated send flow;
+- response history must not be inferred from overwritten latest-response
+  fields.
+
+Admin Response MVP delivery ordering:
+
+1. Admin confirms the response preview.
+2. Python persists `admin_response_text`, `response_kind`,
+   `response_sent_by`, `responded_to_request_status`, increments
+   `response_attempts`, and sets a delivery status such as `send_pending`.
+3. Python attempts Telegram delivery.
+4. If delivery succeeds, Python sets `response_delivery_status` to
+   `send_succeeded`, sets `response_sent_at`, and clears
+   `response_failed_reason`.
+5. If delivery fails, Python keeps the response text/metadata persisted, sets
+   `response_delivery_status` to `send_failed`, stores a safe bounded failure
+   reason, and does not claim user delivery.
+
+Failed-send recovery:
+
+- no automatic retry happens in MVP;
+- failed responses remain persisted with `send_failed`;
+- a future manual retry flow may reuse the persisted response text/metadata;
+- retries must be explicit, admin-only, confirmation-gated, and idempotent.
+
+MVP response kinds:
+
+- `answer`: supported in the planned Admin Response MVP;
+- `rejection_reason`: supported in the planned Admin Response MVP;
+- `informational_followup`: supported in the planned Admin Response MVP.
+
+Future or constrained response kinds:
+
+- `accepted_for_review_note`: future unless explicit product copy and command
+  behavior are implemented;
+- `clarification_request`: one-way outbound only if included in the MVP. It
+  does not reopen a structured workflow, does not set up a user reply thread,
+  and does not automatically move the request to `needs_user_input`.
 
 Admin review is required before:
 
@@ -625,7 +685,10 @@ The broader Admin Response / Human Review Loop is not complete until:
 - a persisted kind/type or equivalent explicit classification exists;
 - admin can answer, reject with reason, or ask for clarification;
 - user receives the admin response through the bot;
-- response metadata is stored;
+- response metadata/text is persisted before send attempt and delivery result
+  is updated after the attempt;
+- MVP storage explicitly limits itself to latest-response metadata unless a
+  separate history table/thread model is implemented;
 - Product Truth is not mutated automatically;
 - evals prove the closed loop.
 

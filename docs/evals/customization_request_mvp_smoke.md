@@ -34,6 +34,10 @@ Out of scope for this MVP slice:
 - `response_sent_at`;
 - `response_sent_by`;
 - `response_kind`;
+- `response_delivery_status`;
+- `response_attempts`;
+- `response_failed_reason`;
+- `responded_to_request_status`;
 - user notification on review decision;
 - `needs_user_input` delivery to user;
 - admin notes;
@@ -283,7 +287,10 @@ user_input: admin answer text
 expected_response_behavior: user receives admin answer through the bot and
 response metadata is stored.
 side_effect_expectation: `admin_response_text`, `response_sent_at`,
-`response_sent_by`, and `response_kind` or equivalent fields are persisted.
+`response_sent_by`, `response_kind`, `response_delivery_status`,
+`response_attempts`, and `responded_to_request_status` or equivalent fields are
+persisted. Confirmed response text/metadata is persisted before Telegram send;
+delivery status is updated after the send result.
 forbidden_behavior: Product Truth mutation, implementation promise, backlog
 conversion, code-agent handoff, silent delivery claim without actual send.
 automation_status: future/next slice; not implemented in current runtime.
@@ -295,7 +302,9 @@ account_state: authorized admin and existing confirmed review item
 input_channel: Telegram command or future admin UI
 user_input: rejection reason
 expected_response_behavior: user receives rejection/explanation through the bot.
-side_effect_expectation: response delivery metadata is stored.
+side_effect_expectation: latest response text/metadata is persisted before send
+attempt; delivery result is updated after send. MVP stores only latest response
+metadata on `customization_requests`, not threaded response history.
 forbidden_behavior: Product Truth mutation, saying the feature is now
 unsupported because of the review, code-agent handoff.
 automation_status: future/next slice; not implemented in current runtime.
@@ -307,10 +316,43 @@ account_state: authorized admin and existing confirmed review item
 input_channel: Telegram command or future admin UI
 user_input: clarification request
 expected_response_behavior: user receives clarification request through the bot
-and the item is marked `needs_user_input` or equivalent.
-side_effect_expectation: clarification delivery metadata is stored.
+as one-way outbound communication only.
+side_effect_expectation: clarification response text/metadata is persisted
+before send attempt; delivery result is updated after send. MVP does not reopen
+a structured workflow, does not create a reply thread, and does not
+automatically move the request to `needs_user_input`.
 forbidden_behavior: Product Truth mutation, pretending clarification was sent
-when no delivery happened.
+when no delivery happened, implying the bot is waiting in a structured
+clarification workflow.
+automation_status: future/next slice; not implemented in current runtime.
+last_result: not_run_manual
+
+### CR-MVP-ADMIN-013E - Failed Send Persists Response
+
+account_state: authorized admin and existing confirmed review item
+input_channel: Telegram command or future admin UI
+user_input: confirmed admin response while Telegram delivery fails
+expected_response_behavior: admin sees safe failed-delivery message and no user
+delivery is claimed.
+side_effect_expectation: response text and metadata remain persisted with
+`response_delivery_status=send_failed`, incremented `response_attempts`, and a
+safe bounded `response_failed_reason`. No automatic retry happens.
+forbidden_behavior: dropping confirmed response text, claiming delivery,
+automatic retry loop, Product Truth mutation, notification claim.
+automation_status: future/next slice; not implemented in current runtime.
+last_result: not_run_manual
+
+### CR-MVP-ADMIN-013F - Latest Response Only In MVP
+
+account_state: authorized admin and existing confirmed review item
+input_channel: Telegram command or future admin UI
+user_input: second confirmed response after a previous response exists
+expected_response_behavior: MVP treats `customization_requests` response fields
+as latest-response metadata only.
+side_effect_expectation: no threaded history is implied unless a future
+response-history table/thread model exists.
+forbidden_behavior: presenting overwritten latest-response fields as a full
+conversation history.
 automation_status: future/next slice; not implemented in current runtime.
 last_result: not_run_manual
 

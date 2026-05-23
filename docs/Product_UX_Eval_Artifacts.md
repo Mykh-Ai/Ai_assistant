@@ -95,7 +95,14 @@ For Admin Response / Human Review Loop next slice:
 - user confirms and the review item is saved;
 - admin sends answer and user receives it;
 - admin rejects with reason and user receives the explanation;
-- admin asks for clarification and user receives the clarification request;
+- admin asks for clarification and user receives it as one-way outbound copy,
+  without an automatic structured reply-thread workflow;
+- confirmed response metadata/text persists before Telegram send attempt and
+  delivery status updates after the send result;
+- failed send keeps the response persisted with `send_failed` and no automatic
+  retry;
+- MVP stores only latest response metadata, not multi-response/threaded
+  conversation history;
 - out-of-domain/spam do not create a human-review item;
 - possible Product Truth gap does not auto-mutate Product Truth.
 
