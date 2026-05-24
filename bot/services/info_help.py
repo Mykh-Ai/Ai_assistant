@@ -61,9 +61,9 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'send_invoice_email': {
         'title': 'Odosielanie faktúr emailom',
-        'summary': 'Reálne odosielanie faktúr emailom nie je v aktuálnej verzii implementované.',
+        'summary': 'Automatické odosielanie faktúr emailom priamo z bota nie je v aktuálnej verzii implementované.',
         'limitation': 'Emailové údaje môžu existovať v kontaktoch, ale neexistuje podporovaný odosielací tok.',
-        'safe_next': 'Faktúru si môžete zobraziť alebo stiahnuť cez existujúce Telegram toky, kde sú dostupné.',
+        'safe_next': 'PDF môžete v Telegrame manuálne preposlať cez „Preposlať“. Ak ho chcete poslať emailom, použite „Zdieľať“ alebo „Stiahnuť“ a priložte PDF ručne vo vlastnej emailovej aplikácii; adresu príjemcu aj text emailu vypĺňate ručne.',
     },
     'google_drive_invoice_storage': {
         'title': 'Ukladanie faktúr na Google Drive',
@@ -91,9 +91,9 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'customization_requests': {
         'title': 'Požiadavky na úpravu',
-        'summary': 'Požiadavku alebo otázku na ľudskú kontrolu viem uložiť iba cez potvrdený náhľad.',
+        'summary': 'Požiadavku alebo otázku na ľudskú kontrolu viem pripraviť na kontrolu správcom.',
         'limitation': 'Uloženie neznamená automatickú implementáciu, zmenu Product Truth, backlog ani úlohu pre code agenta.',
-        'safe_next': 'Ak bot nevie spoľahlivo odpovedať alebo ide o vlastnú potrebu, musí najprv ukázať náhľad a počkať na vaše potvrdenie.',
+        'safe_next': 'Ak chcete, môžem z toho pripraviť požiadavku na kontrolu správcom. Uloží sa iba vtedy, keď ju potvrdíte.',
     },
     'admin_customization_review': {
         'title': 'Posúdenie požiadavky správcom',
@@ -491,20 +491,21 @@ def _render_info_help_triage_result(
         return (
             'Toto vyzer\u00e1 ako po\u017eiadavka na nov\u00fa biznis funkciu. '
             'V aktu\u00e1lnom runtime ju neviem potvrdi\u0165 ako podporovan\u00fa.\n\n'
-            'Samotn\u00e1 klasifik\u00e1cia ni\u010d neulo\u017eila ani neposlala spr\u00e1vcovi. '
-            'Ulo\u017eenie po\u017eiadavky je mo\u017en\u00e9 iba cez samostatn\u00fd potvrden\u00fd n\u00e1h\u013ead.'
+            'Ak chcete, m\u00f4\u017eem z toho pripravi\u0165 po\u017eiadavku na kontrolu spr\u00e1vcom. '
+            'Ulo\u017e\u00ed sa iba vtedy, ke\u010f ju potvrd\u00edte.'
         )
     if result.triage_class == TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE:
         return (
             'Toto vyzer\u00e1 ako po\u017eiadavka na \u00fapravu alebo prisp\u00f4sobenie. '
-            'Ulo\u017eenie takejto po\u017eiadavky mus\u00ed prejs\u0165 potvrden\u00fdm n\u00e1h\u013eadom.\n\n'
-            'Ni\u010d som neulo\u017eil bez schv\u00e1lenia. Ak chcete, pop\u00ed\u0161te presne, ak\u00fd biznis v\u00fdsledok potrebujete.'
+            'Ak chcete, m\u00f4\u017eem z toho pripravi\u0165 po\u017eiadavku na kontrolu spr\u00e1vcom. '
+            'Ulo\u017e\u00ed sa iba vtedy, ke\u010f ju potvrd\u00edte.'
         )
     if result.triage_class == TRIAGE_ADMIN_REVIEW_CANDIDATE:
         return (
             'Toto vyzer\u00e1 ako po\u017eiadavka pre spr\u00e1vcu alebo v\u00fdvoj\u00e1ra. '
             'Automatick\u00e9 odoslanie spr\u00e1vcovi nie je zapnut\u00e9.\n\n'
-            'Ni\u010d som neposlal ani neulo\u017eil bez schv\u00e1lenia. Ulo\u017eenie je mo\u017en\u00e9 iba ako potvrden\u00e1 po\u017eiadavka na neskor\u0161iu kontrolu.'
+            'Ak chcete, m\u00f4\u017eem z toho pripravi\u0165 po\u017eiadavku na kontrolu spr\u00e1vcom. '
+            'Ulo\u017e\u00ed sa iba vtedy, ke\u010f ju potvrd\u00edte.'
         )
     if result.triage_class == TRIAGE_OUT_OF_DOMAIN:
         return (
@@ -523,7 +524,8 @@ def _render_info_help_triage_result(
     if result.triage_class == TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE:
         return (
             'Toto m\u00f4\u017ee by\u0165 ot\u00e1zka na schopnos\u0165 produktu, ale neviem ju bezpe\u010dne priradi\u0165 ku konkr\u00e9tnej Product Truth polo\u017eke.\n\n'
-            'Bez potvrdenia ni\u010d nemen\u00edm v Product Truth ani neuklad\u00e1m ako podporovan\u00fa funkciu.'
+            'Ak chcete, m\u00f4\u017eem z toho pripravi\u0165 po\u017eiadavku na kontrolu spr\u00e1vcom. '
+            'Ulo\u017e\u00ed sa iba vtedy, ke\u010f ju potvrd\u00edte. Product Truth sa t\u00fdm automaticky nemen\u00ed.'
         )
     return None
 
@@ -623,12 +625,30 @@ def _render_product_truth_payload(payload: Mapping[str, Any]) -> str:
         lines.append('Chýba nastavenie: ' + ', '.join(missing_setup_keys) + '.')
     if safe_next:
         lines.append('Bezpečný ďalší krok: ' + safe_next)
-    if payload.get('customization_allowed'):
-        lines.append(
-            'Ak ide o nepodporovanú alebo nejasnú potrebu, uloženie je možné iba cez samostatný potvrdený náhľad; samotná odpoveď nič neukladá.'
-        )
+    review_offer = _human_review_offer_for_payload(payload)
+    if review_offer:
+        lines.append(review_offer)
 
     return '\n\n'.join(lines)
+
+
+def _human_review_offer_for_payload(payload: Mapping[str, Any]) -> str | None:
+    if not payload.get('customization_allowed'):
+        return None
+    product_status = str(payload.get('product_status') or 'unknown')
+    if product_status == 'supported':
+        return None
+    capability_id = str(payload.get('capability_id') or '')
+    if capability_id == 'send_invoice_email':
+        return (
+            'Ak chcete automatické odosielanie faktúr emailom priamo z bota, '
+            'môžem z toho pripraviť požiadavku na kontrolu správcom. '
+            'Uloží sa iba vtedy, keď ju potvrdíte.'
+        )
+    return (
+        'Ak chcete, môžem z toho pripraviť požiadavku na kontrolu správcom. '
+        'Uloží sa iba vtedy, keď ju potvrdíte.'
+    )
 
 
 def _build_capability_overview() -> str:

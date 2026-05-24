@@ -80,7 +80,15 @@ def test_email_capability_question_renders_unsupported_product_truth_guidance() 
     assert answer is not None
     assert 'Odosielanie faktúr emailom' in answer
     assert 'nepodporované' in answer
+    assert 'Automatické odosielanie faktúr emailom priamo z bota' in answer
     assert 'externé prístupy' in answer
+    assert 'Preposlať' in answer
+    assert 'Zdieľať' in answer or 'Stiahnuť' in answer
+    assert 'adresu príjemcu aj text emailu vypĺňate ručne' in answer
+    assert 'Ak chcete automatické odosielanie faktúr emailom priamo z bota' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
+    assert 'samostatný potvrdený náhľad' not in answer
     assert 'I emailed the invoice.' not in answer
 
 
@@ -108,7 +116,9 @@ def test_custom_pdf_template_question_renders_safe_customization_guidance() -> N
     assert answer is not None
     assert 'Vlastná PDF šablóna faktúry' in answer
     assert 'nepodporované' in answer
-    assert 'samostatný potvrdený náhľad' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
+    assert 'samostatný potvrdený náhľad' not in answer
     assert 'Your custom invoice template is already active.' not in answer
 
 
@@ -129,6 +139,8 @@ def test_create_invoice_how_to_renders_supported_guidance() -> None:
     assert 'Vytvorenie faktúry' in answer
     assert 'podporované' in answer
     assert '/invoice' in answer
+    assert 'nepodporovanú alebo nejasnú potrebu' not in answer
+    assert 'požiadavku na kontrolu správcom' not in answer
 
 
 def test_add_receipt_how_to_renders_partial_guidance() -> None:
@@ -138,6 +150,8 @@ def test_add_receipt_how_to_renders_partial_guidance() -> None:
     assert 'Pridanie bločku alebo prijatej faktúry' in answer
     assert 'čiastočné' in answer
     assert 'fotka alebo PDF' in answer
+    assert 'nepodporovanú alebo nejasnú potrebu' not in answer
+    assert 'požiadavku na kontrolu správcom' not in answer
 
 
 def test_voice_limitation_question_renders_partial_text_first_guidance() -> None:
@@ -182,7 +196,8 @@ def test_custom_pdf_template_smoke_phrase_renders_product_truth_guidance() -> No
     assert answer is not None
     assert 'Vlastná PDF šablóna faktúry' in answer
     assert 'nepodporované' in answer
-    assert 'samostatný potvrdený náhľad' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'samostatný potvrdený náhľad' not in answer
 
 
 def test_custom_function_smoke_phrase_renders_product_truth_guidance() -> None:
@@ -192,7 +207,8 @@ def test_custom_function_smoke_phrase_renders_product_truth_guidance() -> None:
     assert answer is not None
     assert 'Požiadavky na úpravu' in answer
     assert 'čiastočné' in answer
-    assert 'potvrdený náhľad' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
     assert 'automatickú implementáciu' in answer
     assert 'Complete Level 3' not in answer
 
@@ -203,7 +219,8 @@ def test_info_help_answers_human_review_request_lifecycle() -> None:
     assert answer is not None
     assert 'Požiadavky na úpravu' in answer
     assert 'čiastočné' in answer
-    assert 'potvrdený náhľad' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
     assert 'automatickú implementáciu' in answer
 
 
@@ -235,8 +252,10 @@ def test_info_help_explains_unknown_question_can_use_confirmed_admin_review_flow
 
     assert answer is not None
     assert admin_question is not None
-    assert 'potvrdený náhľad' in answer
-    assert 'potvrdený náhľad' in admin_question
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'požiadavku na kontrolu správcom' in admin_question
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
+    assert 'samostatný potvrdený náhľad' not in answer
     assert 'nič neukladá' not in answer
     assert 'automatickú implementáciu' in admin_question
 
@@ -264,6 +283,19 @@ def test_info_help_answers_existing_runtime_how_tos() -> None:
         answer = build_product_truth_guidance(user_input_text=question)
         assert answer is not None, question
         assert expected_title in answer
+        assert 'nepodporovanú alebo nejasnú potrebu' not in answer
+        assert 'požiadavku na kontrolu správcom' not in answer
+
+
+def test_unsupported_capability_uses_user_friendly_admin_review_offer() -> None:
+    answer = build_product_truth_guidance(user_input_text='Viete posielať SMS pripomienky?')
+
+    assert answer is not None
+    assert 'SMS pripomienky' in answer
+    assert 'nepodporované' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
+    assert 'samostatný potvrdený náhľad' not in answer
 
 
 def test_code_agent_handoff_smoke_phrase_renders_product_truth_guidance() -> None:
@@ -774,7 +806,9 @@ def test_llm_possible_product_truth_candidate_renders_clarification(monkeypatch)
 
     assert answer is not None
     assert 'neviem ju bezpe\u010dne priradi\u0165' in answer
-    assert 'Bez potvrdenia ni\u010d nemen\u00edm v Product Truth' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
+    assert 'Product Truth sa tým automaticky nemení' in answer
 
 
 @pytest.mark.parametrize(
@@ -886,8 +920,8 @@ def test_info_help_triage_business_feature_request() -> None:
     answer = build_info_help_triage_guidance(user_input_text=text)
     assert answer is not None
     assert 'po\u017eiadavka na nov\u00fa biznis funkciu' in answer
-    assert 'Samotn\u00e1 klasifik\u00e1cia ni\u010d neulo\u017eila ani neposlala spr\u00e1vcovi' in answer
-    assert 'potvrden\u00fd n\u00e1h\u013ead' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
 
 
 def test_info_help_triage_out_of_domain_weather() -> None:
@@ -932,7 +966,9 @@ def test_info_help_triage_admin_request_does_not_claim_send_or_save() -> None:
     assert result.triage_class == TRIAGE_ADMIN_REVIEW_CANDIDATE
     answer = build_info_help_triage_guidance(user_input_text=text)
     assert answer is not None
-    assert 'Ni\u010d som neposlal ani neulo\u017eil bez schv\u00e1lenia' in answer
+    assert 'Automatické odoslanie správcovi nie je zapnuté' in answer
+    assert 'požiadavku na kontrolu správcom' in answer
+    assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
 
 
 def test_multilingual_and_noisy_triage_examples() -> None:

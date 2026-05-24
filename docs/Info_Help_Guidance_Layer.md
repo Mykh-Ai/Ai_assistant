@@ -197,6 +197,22 @@ Every InfoHelp answer must include:
 5. customization request or human-review offer when useful and supported by the
    request layer.
 
+Human-review offers are contextual, not global boilerplate. Add them when the
+question is about an unsupported capability, missing requested behavior in a
+partial or planned capability, an unknown product/support/how-to topic, or an
+explicit user request that the bot cannot satisfy. Supported how-to answers
+should stay direct and must not end with unrelated escalation text.
+
+Preferred user-facing offer copy:
+
+```text
+Ak chcete, môžem z toho pripraviť požiadavku na kontrolu správcom. Uloží sa iba vtedy, keď ju potvrdíte.
+```
+
+Do not expose internal architecture wording such as "samostatný potvrdený
+náhľad" unless the conversation is explicitly about the confirmation step and
+the wording is natural for the user.
+
 InfoHelp must not:
 
 - hide behind `/menu` for a real capability question;
@@ -409,11 +425,11 @@ InfoHelp may offer a human-review item when the confirmed request layer exists.
 Example:
 
 ```text
-Momentane Google Disk nie je podporovany. Faktury sa teraz ukladaju v systeme
-bota a mozete si ich zobrazit alebo stiahnut cez Telegram.
+Momentálne Google Disk nie je podporovaný. Faktúry sa teraz ukladajú v systéme
+bota a môžete si ich zobraziť alebo stiahnuť cez Telegram.
 
-Ak potrebujete ukladanie na Google Disk, mozem pripravit poziadavku na upravu.
-Pred ulozenim vam ukazem navrh a poziadam o potvrdenie.
+Ak chcete, môžem z toho pripraviť požiadavku na kontrolu správcom. Uloží sa iba
+vtedy, keď ju potvrdíte.
 ```
 
 Customization request rules are governed by

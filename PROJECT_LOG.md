@@ -1,5 +1,29 @@
 # PROJECT_LOG
 
+## 2026-05-24 - Session 113 - InfoHelp human-review offer wording
+
+Summary:
+- Cleaned InfoHelp human-review offer rendering so escalation copy is
+  contextual rather than appended as global boilerplate.
+- Replaced internal-sounding "samostatný potvrdený náhľad" wording with
+  user-facing Slovak copy that says a request is saved only after confirmation.
+- Improved unsupported invoice email guidance: automatic email sending remains
+  unsupported, while users can manually forward the PDF in Telegram or
+  share/download it and attach it in their own email app with recipient and
+  message filled manually.
+
+Scope:
+- InfoHelp rendering, InfoHelp docs, and tests only.
+- No email sending implementation.
+- No human-review storage or delivery flow changes.
+- No Product Truth status changes.
+
+Verification:
+- `python -m pytest -q tests/test_info_help.py tests/test_product_truth.py`
+  - 84 passed.
+- `python -m pytest -q`
+  - 1318 passed, 7 subtests passed.
+
 ## 2026-05-24 - Session 112 - Capability completion documentation gate
 
 Summary:
