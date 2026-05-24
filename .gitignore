@@ -25,6 +25,10 @@ docs/local-only/*
 !docs/local-only/README.md
 !docs/local-only/*.example.md
 
+# Server/runtime data mount. Keep databases, backups, uploaded originals,
+# generated PDFs, and other live storage out of Git.
+/data/
+
 storage/uploads/*
 storage/invoices/*
 storage/contracts/*
