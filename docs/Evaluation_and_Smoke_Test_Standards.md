@@ -375,6 +375,30 @@ Forbidden:
 - "Google Drive supported" when no runtime integration/credentials exist.
 - "Phase complete" when product UX evals are missing.
 
+## Capability Smoke Tests
+
+Every new or changed user-facing capability must have smoke coverage that
+checks both behavior and truthful explanation.
+
+Capability smoke tests must verify:
+
+- Product Truth answer and status;
+- InfoHelp answer and safe next step;
+- runtime behavior for the supported happy path;
+- setup/admin/external-credential behavior where applicable;
+- no stale unsupported wording after implementation;
+- no false supported wording for partial or unsupported scope;
+- no side effects from informational questions;
+- forbidden claims are absent from user-facing copy;
+- direct executable actions still route before InfoHelp when the user clearly
+  asks to act;
+- active FSM state still wins over top-level routing.
+
+If the feature is an integration, include overclaim tests for automatic sync,
+credential assumptions, unsupported document types, hidden sends, and delivery
+guarantees. If the feature is not implemented, the eval must prove that
+InfoHelp says so and offers human review only when that flow exists.
+
 ## Test Command Standard
 
 Default full test command from repo root:

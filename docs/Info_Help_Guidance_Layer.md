@@ -207,6 +207,41 @@ InfoHelp must not:
   debug logs;
 - let the LLM invent actions, product status, or setup state.
 
+## InfoHelp Answer Obligation For Implemented Capabilities
+
+Every user-facing capability that exists in runtime must be explainable through
+InfoHelp within the evidence available in Product Truth. This applies to
+top-level actions, admin commands, integrations, workflow slices, partial
+features, and support/human-review surfaces.
+
+For each implemented or changed capability, InfoHelp should cover:
+
+- what it does;
+- how to start or use it;
+- setup, credential, authorization, or admin requirements;
+- limitations and partial-scope boundaries;
+- dangerous or sensitive warnings;
+- what it does not do;
+- what to do when the user needs unsupported behavior;
+- whether human-review escalation is available and whether it requires
+  confirmation.
+
+Common question templates that should be considered when adding a capability:
+
+- `Čo vieš?`
+- `Ako zapnem/použijem <feature>?`
+- `Vieš <capability>?`
+- `Prečo to nefunguje?`
+- `Čo sa stane po potvrdení?`
+- `Vieš to urobiť hlasom?`
+- `Je to automatické?`
+- `Posiela sa to správcovi?`
+- `Dá sa to upraviť?`
+
+Do not add runtime support and leave only action routing. A user who asks about
+the capability must get a truthful answer instead of stale unsupported wording
+or a menu fallback.
+
 ## Routing Contract
 
 Routing must respect this order:

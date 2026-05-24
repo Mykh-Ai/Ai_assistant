@@ -349,6 +349,12 @@ Rules:
 - runtime support claims still require code/docs/tests/log evidence under
   `docs/Product_Truth_Layer.md`.
 
+If an unsupported or human-reviewed request later becomes implemented, update
+Product Truth, InfoHelp, eval/smoke artifacts, tests, forbidden claims, and
+`PROJECT_LOG.md` in the implementation patch. Future users should get a direct
+truthful answer for the implemented capability instead of unnecessary
+human-review escalation.
+
 ## Risk Levels
 
 Risk levels:

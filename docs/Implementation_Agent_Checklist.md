@@ -34,6 +34,47 @@ Do not use this guide to skip the top-level action checklist. If the change
 adds or upgrades a canonical top-level action, read and apply
 `docs/llm/New_Action_Design_Checklist.md` too.
 
+## User-Facing Capability / Top-Level Action Completion Checklist
+
+Any user-facing runtime change must close the product truth and guidance loop
+in the same implementation slice. Runtime code alone is not enough.
+
+For every new or changed capability, top-level action, admin command,
+integration, workflow, support path, or user-visible limitation, verify:
+
+- canonical action registry and `allowed_actions` are updated when the change
+  adds or changes a top-level executable intent;
+- bounded resolver examples and action hints describe product meaning, not just
+  literal aliases;
+- Product Truth has a `capability_id` for the changed surface;
+- Product Truth status is correct: `supported`, `partial`, `planned`,
+  `unsupported`, or `unknown`;
+- flags/context are correct: `dangerous`, `requires_setup`, `requires_admin`,
+  and `requires_external_credentials`;
+- safe next steps are accurate for the current runtime;
+- limitations are explicit, especially for partial integrations or workflows;
+- forbidden claims cover overpromises, hidden side effects, automatic learning,
+  implementation promises, unsupported integrations, and delivery guarantees;
+- InfoHelp can answer what the capability does, how to use it, setup
+  requirements, limitations, and what it does not do;
+- eval/smoke artifacts include the new happy path and overclaim boundaries;
+- tests cover Product Truth, InfoHelp, runtime behavior, authorization, setup
+  state, and no hidden side effects where applicable;
+- `PROJECT_LOG.md` records the implemented maturity level and what remains out
+  of scope.
+
+If a feature is implemented only partly, Product Truth must say `partial` and
+InfoHelp must explain the subset. If a feature is removed, disabled, or blocked
+by missing credentials/setup, Product Truth and InfoHelp must be downgraded in
+the same patch.
+
+Example: future Google Drive invoice storage cannot be closed by adding an
+upload helper alone. The implementation must also update Product Truth status
+and limitations, InfoHelp answers for "Vieš ukladať faktúry na Google Drive?"
+and "Ako zapnem Google Drive?", eval smoke, tests, `PROJECT_LOG.md`, and
+forbidden claims such as "all documents sync automatically" unless that is
+actually implemented.
+
 ## Required Starting Inputs
 
 The agent must not begin implementation from a vague request.
@@ -388,6 +429,8 @@ The implementation agent must report:
 - tests run and results;
 - tests/evals not run and why;
 - Product Truth status after change;
+- InfoHelp answer coverage after change;
+- forbidden claims checked;
 - docs updated;
 - migration/rollback notes if relevant;
 - remaining gaps or follow-up tasks.
@@ -403,6 +446,8 @@ Do not:
 - call docs-only work runtime implementation;
 - call partial behavior supported;
 - bypass Product Truth;
+- leave InfoHelp unable to explain a new user-facing capability;
+- add a user-facing action or integration without eval/smoke coverage;
 - bypass DecisionResolver;
 - bypass access/tenant gates;
 - let AI own side effects;

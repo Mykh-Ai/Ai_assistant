@@ -340,6 +340,18 @@ intelligence layer by themselves.
 Exact cancel bypassing LLM is correct architecture hygiene. It is not an AI
 product leap by itself.
 
+## AI Product Memory Must Follow Runtime Truth
+
+The bot's knowledge of its own capabilities is a product surface. A feature is
+not done until users can ask about it and receive a truthful Product Truth /
+InfoHelp answer.
+
+Runtime code, canonical actions, Product Truth, InfoHelp, evals, tests,
+forbidden claims, and `PROJECT_LOG.md` must move together. A working handler
+with stale unsupported wording is still an incomplete product change. A
+Product Truth entry without runtime evidence is still only planned or
+unsupported.
+
 ## Roadmap Direction
 
 The documentation and architecture should move in this order:

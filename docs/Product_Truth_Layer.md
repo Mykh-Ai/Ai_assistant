@@ -577,6 +577,53 @@ current code before runtime claims:
 - code-agent handoff from bot runtime: not implemented unless later runtime
   code proves otherwise.
 
+## Product Truth Synchronization Required For Runtime Changes
+
+Every user-facing runtime change must update Product Truth in the same patch.
+This includes top-level actions, admin commands, integrations, support
+surfaces, human-review flows, setup-dependent features, and removed/disabled
+features.
+
+Rules:
+
+- if a feature becomes implemented, update its status from `unsupported`,
+  `planned`, or `unknown` to `supported` or `partial` according to evidence;
+- if only part of a feature is implemented, use `partial` and list the exact
+  supported subset and current limitations;
+- if setup, credentials, dangerous behavior, or admin action is required, set
+  the corresponding flags/context (`requires_setup`, `requires_admin`,
+  `requires_external_credentials`, `dangerous`);
+- if a feature is removed, disabled, or blocked by a rollout decision, downgrade
+  Product Truth in the same patch;
+- every integration must have forbidden claims for common overstatements,
+  hidden side effects, automatic sync, guaranteed delivery, and credential
+  assumptions;
+- InfoHelp, eval artifacts, tests, and `PROJECT_LOG.md` must be synchronized
+  with the Product Truth record.
+
+Example: Google Drive invoice storage.
+
+Before implementation:
+
+- status: `unsupported` or `planned`;
+- limitations: no runtime Drive sync/storage;
+- flags: external credentials required if future integration would need them;
+- forbidden claims: "Google Drive sync is active", "I saved this invoice to
+  Drive".
+
+After a minimal implementation:
+
+- status: `partial`;
+- limitations: for example, "only confirmed invoice PDFs sync", "no receipt
+  sync", "no folder picker", or "manual credential setup required" unless those
+  behaviors are actually implemented;
+- flags: `requires_external_credentials` and `requires_setup` stay true until
+  runtime setup is proven;
+- InfoHelp must explain "Vieš ukladať faktúry na Google Drive?" and "Ako
+  zapnem Google Drive?";
+- evals/tests must prove the supported path and that unsupported sync claims
+  are refused.
+
 ## No-Go Rules
 
 Do not:

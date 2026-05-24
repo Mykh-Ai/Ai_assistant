@@ -20,6 +20,30 @@ Do not use this guide to invent architecture. If the runtime, registry, TZ, and 
 
 ---
 
+## 0. Capability truth gate
+
+Every new top-level action, alias, command, or user-visible workflow must first
+answer:
+
+- Is this an executable action or an informational capability?
+- Does it require a Product Truth record or update?
+- What should InfoHelp say when the user asks whether the bot can do this?
+- What should InfoHelp say when the user asks how to use it?
+- What unsupported, partial, setup-required, or credential-required questions
+  may users ask about it?
+- Which claims are forbidden?
+- What happens if the user asks about it before setup is complete?
+- Is voice/STT allowed to start it, control it, or fill values?
+- Which active FSM states must win over this top-level action?
+- Which tests and eval/smoke cases prove runtime behavior and truthful
+  explanation?
+
+Do not add top-level aliases that only route an action while leaving the bot
+unable to explain the capability. If the user can execute it, the user can ask
+about it, and Product Truth / InfoHelp must answer within current evidence.
+
+---
+
 ## 1. Source-of-truth reading order
 
 Before touching code for top-level actions, in-action decisions, LLM routing, voice/text routing, FSM controls, confirmations, OfficeFlow intake, storage, DB, or access, read the relevant contracts first.
@@ -326,6 +350,8 @@ Before code changes, the implementation agent must be able to answer:
 - [ ] What tenant/user scope is enforced?
 - [ ] What is the Product Truth status after this change?
 - [ ] How will InfoHelp answer "can you do this?" and "how do I use this?" for this action?
+- [ ] Which unsupported or partial claims must InfoHelp refuse?
+- [ ] Which setup/admin/external-credential state changes the answer?
 - [ ] What tests prove the route, voice behavior, authorization, wrong-state safety, exact-value safety, and docs/runtime synchronization?
 - [ ] What product UX eval proves the user can discover and understand the new capability?
 - [ ] Which docs are updated in the same patch?

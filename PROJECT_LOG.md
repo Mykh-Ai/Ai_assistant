@@ -1,5 +1,30 @@
 # PROJECT_LOG
 
+## 2026-05-24 - Session 112 - Capability completion documentation gate
+
+Summary:
+- Added a docs-only capability completion gate across agent instructions,
+  implementation checklists, action design guidance, Product Truth, InfoHelp,
+  eval standards, and product doctrine.
+- Clarified that user-facing runtime changes are incomplete when Product Truth,
+  InfoHelp, eval/smoke artifacts, tests, forbidden claims, or `PROJECT_LOG.md`
+  are stale.
+- Added a concrete future Google Drive invoice storage example: runtime
+  integration must be accompanied by Product Truth status/limitations, InfoHelp
+  answers for "Vieš ukladať faktúry na Google Drive?" and "Ako zapnem Google
+  Drive?", eval smoke, tests, log entry, and forbidden claims.
+
+Constraints:
+- Docs/evals only.
+- No runtime code changes.
+- No handler, DB/schema, Product Truth runtime data, integration, retry,
+  backlog, code-agent, or self-learning changes.
+- No complete InfoHelp Level 2 or complete Level 3 claim.
+
+Verification:
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-24 - Session 111 - Align Product Truth with human review runtime
 
 Summary:

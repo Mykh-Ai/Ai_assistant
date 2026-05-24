@@ -418,6 +418,29 @@ docs, and tests loop is complete:
 - `PROJECT_LOG.md` and `CHANGELOG.md` are updated when required;
 - product UX evals prove the actual user journey, not just unit branches.
 
+## Capability Completion Rule
+
+A user-facing capability, top-level action, admin command, integration,
+workflow, or support surface is not complete if Product Truth, InfoHelp, tests,
+evals, forbidden claims, or the project log are stale.
+
+Before the final report for any user-facing feature, the agent must check and
+report:
+
+- Runtime changed?
+- Canonical action / resolver updated, if applicable?
+- Product Truth updated?
+- InfoHelp updated?
+- UX/eval smoke updated?
+- Tests added or updated?
+- Forbidden claims checked?
+- `PROJECT_LOG.md` updated?
+- Docs maturity label updated?
+
+If a runtime change is intentionally not user-facing, say why. If Product Truth
+or InfoHelp is intentionally not changed, explain why the user cannot ask about
+that behavior as a capability.
+
 ## Voice Rules
 
 Voice may:
@@ -636,6 +659,9 @@ A task is not done if:
 - code changed but the decision was not logged;
 - concept changed but product docs were not updated;
 - a new flow exists but docs/contracts do not mention it;
+- a user-facing capability exists but Product Truth or InfoHelp cannot explain
+  it truthfully;
+- eval/smoke artifacts do not cover the changed capability surface;
 - MVP scope changed but no source-of-truth doc records it;
 - AI layer level is overstated;
 - only unit tests pass but the relevant user journey is not evaluated;

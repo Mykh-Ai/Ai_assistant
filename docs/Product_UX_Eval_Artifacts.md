@@ -121,6 +121,28 @@ For PDF/layout:
 - footer placement;
 - optional custom block if implemented.
 
+## Capability Smoke Requirement
+
+Any new or changed user-facing capability needs at least a small UX smoke
+section in this document or a focused artifact under `docs/evals/`.
+
+Minimum coverage:
+
+- supported happy path;
+- Product Truth answer for "can you do this?";
+- InfoHelp answer for "how do I use this?";
+- unsupported overclaim test;
+- setup/admin/external-credential required test when applicable;
+- voice/noisy phrasing if the capability is reachable by voice or natural
+  language;
+- human-review fallback when the requested behavior remains unsupported;
+- forbidden claim checks;
+- no side effects from informational questions.
+
+The smoke section must name the current maturity label: `supported`, `partial`,
+`planned`, `unsupported`, or `unknown`. Do not mark a phase complete when users
+cannot ask about the feature and receive a truthful answer.
+
 ## Result Policy
 
 Do not call a layer complete unless the relevant eval result is recorded.
