@@ -94,9 +94,10 @@ For Admin Response / Human Review Loop:
 - bot cannot answer product question and asks to submit for admin review;
 - user confirms and the review item is saved;
 - admin sends an `answer` response and user receives it;
-- admin rejects with reason and user receives the explanation;
-- admin asks for clarification and user receives it as one-way outbound copy,
-  without an automatic structured reply-thread workflow;
+- future/next slice: admin rejects with reason and user receives the
+  explanation;
+- future/next slice: admin asks for clarification and user receives it as
+  one-way outbound copy, without an automatic structured reply-thread workflow;
 - confirmed response metadata/text persists before Telegram send attempt and
   delivery status updates after the send result;
 - failed send keeps the response persisted with `send_failed` and no automatic

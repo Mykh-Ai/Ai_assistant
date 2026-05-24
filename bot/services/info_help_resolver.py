@@ -43,7 +43,7 @@ def build_info_help_triage_payload(
         ],
         'allowed_topic_ids': list(ALLOWED_INFO_HELP_TOPIC_IDS),
         'allowed_triage_classes': list(ALLOWED_INFO_HELP_TRIAGE_CLASSES),
-        'request_storage_available': False,
+        'request_storage_available': True,
         'admin_notification_available': False,
         'expected_output': {
             'capability_id': 'known capability_id or unknown',

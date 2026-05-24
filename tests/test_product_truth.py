@@ -28,6 +28,11 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'voice_invoice_intake',
     'delete_user_database',
     'customization_requests',
+    'admin_customization_review',
+    'admin_response_to_user',
+    'admin_response_delivery_observability',
+    'access_request_approval',
+    'invoice_draft_edit_flow',
     'code_agent_handoff',
     'self_learning_aliases',
     'info_help',
@@ -39,7 +44,6 @@ NOT_SUPPORTED_CAPABILITY_IDS = {
     'sms_reminders',
     'accounting_export',
     'invoice_pdf_custom_template',
-    'customization_requests',
     'code_agent_handoff',
 }
 
@@ -131,14 +135,67 @@ def test_info_help_record_matches_partial_product_truth_runtime() -> None:
     assert 'broader bounded InfoHelp resolver coverage' in entry.current_limitations[1]
     assert 'voice/STT parity' in entry.current_limitations[1]
     assert 'account-context-aware runtime evidence' in entry.current_limitations[1]
-    assert 'Customization request drafting/storage' in entry.current_limitations[2]
+    assert 'does not itself save requests' in entry.current_limitations[2]
     assert 'build_product_truth_guidance' in (entry.runtime_owner or '')
     assert 'build_info_help_triage_guidance' in (entry.runtime_owner or '')
     assert 'tests/test_info_help.py' in entry.test_refs
     assert 'I answered from Product Truth in the live bot.' not in entry.forbidden_claims
     assert 'InfoHelp Level 2 is complete.' in entry.forbidden_claims
     assert 'I can answer any product capability question.' in entry.forbidden_claims
-    assert 'Customization requests are saved.' in entry.forbidden_claims
+    assert 'InfoHelp saved your customization request.' in entry.forbidden_claims
+    assert 'InfoHelp sent an admin response.' in entry.forbidden_claims
+
+
+def test_customization_requests_record_matches_partial_human_review_runtime() -> None:
+    entry = _registry_by_id()['customization_requests']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert 'confirmation-gated capture' in entry.summary_for_user
+    assert 'admin list/detail' in entry.current_limitations[0]
+    assert 'answer-only admin response-to-user' in entry.current_limitations[0]
+    assert 'No automatic implementation' in entry.current_limitations[1]
+    assert 'Product Truth mutation' in entry.current_limitations[1]
+    assert 'code-agent handoff' in entry.current_limitations[1]
+    assert 'auto retry' in entry.current_limitations[1]
+    assert '/customization_request_reply' in entry.commands
+    assert 'tests/test_customization_request_admin.py' in entry.test_refs
+    assert 'This feature will be implemented.' in entry.forbidden_claims
+    assert 'Product Truth was updated.' in entry.forbidden_claims
+    assert 'A code-agent task was created.' in entry.forbidden_claims
+    assert 'Complete Level 3 customization layer is available.' in entry.forbidden_claims
+
+
+def test_admin_response_records_exist_with_honest_partial_limits() -> None:
+    entries = _registry_by_id()
+    response = entries['admin_response_to_user']
+    observability = entries['admin_response_delivery_observability']
+
+    assert response.status == ProductTruthStatus.PARTIAL
+    assert 'answer-kind response' in response.summary_for_user
+    assert 'answer kind only' in response.current_limitations[0]
+    assert 'no threaded history' in response.current_limitations[0]
+    assert 'no auto retry' in response.current_limitations[0]
+    assert 'Admin replies are guaranteed to arrive.' in response.forbidden_claims
+    assert 'The answer makes the feature supported.' in response.forbidden_claims
+
+    assert observability.status == ProductTruthStatus.PARTIAL
+    assert 'not_started' in observability.summary_for_user
+    assert 'send_pending' in observability.summary_for_user
+    assert 'send_failed' in observability.summary_for_user
+    assert 'no retry command' in observability.current_limitations[0]
+    assert 'The bot will retry automatically.' in observability.forbidden_claims
+
+
+def test_access_request_and_invoice_draft_records_exist() -> None:
+    entries = _registry_by_id()
+
+    assert entries['access_request_approval'].status == ProductTruthStatus.SUPPORTED
+    assert entries['access_request_approval'].requires_admin is True
+    assert 'Pending access means business access is active.' in entries['access_request_approval'].forbidden_claims
+
+    assert entries['invoice_draft_edit_flow'].status == ProductTruthStatus.SUPPORTED
+    assert 'edit/approve/cancel' in entries['invoice_draft_edit_flow'].summary_for_user
+    assert 'tests/test_decision_callbacks.py' in entries['invoice_draft_edit_flow'].test_refs
 
 
 def test_create_invoice_returns_supported_with_account_setup_requirement() -> None:

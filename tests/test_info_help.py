@@ -108,7 +108,7 @@ def test_custom_pdf_template_question_renders_safe_customization_guidance() -> N
     assert answer is not None
     assert 'Vlastná PDF šablóna faktúry' in answer
     assert 'nepodporované' in answer
-    assert 'nevytvorím uloženú požiadavku' in answer
+    assert 'samostatný potvrdený náhľad' in answer
     assert 'Your custom invoice template is already active.' not in answer
 
 
@@ -182,7 +182,7 @@ def test_custom_pdf_template_smoke_phrase_renders_product_truth_guidance() -> No
     assert answer is not None
     assert 'Vlastná PDF šablóna faktúry' in answer
     assert 'nepodporované' in answer
-    assert 'nevytvorím uloženú požiadavku' in answer
+    assert 'samostatný potvrdený náhľad' in answer
 
 
 def test_custom_function_smoke_phrase_renders_product_truth_guidance() -> None:
@@ -191,9 +191,79 @@ def test_custom_function_smoke_phrase_renders_product_truth_guidance() -> None:
 
     assert answer is not None
     assert 'Požiadavky na úpravu' in answer
-    assert 'nepodporované' in answer
-    assert 'nevytvorím uloženú požiadavku' not in answer
-    assert 'požiadavku vytvoril alebo uložil' in answer
+    assert 'čiastočné' in answer
+    assert 'potvrdený náhľad' in answer
+    assert 'automatickú implementáciu' in answer
+    assert 'Complete Level 3' not in answer
+
+
+def test_info_help_answers_human_review_request_lifecycle() -> None:
+    answer = build_product_truth_guidance(user_input_text='Ako funguje moja požiadavka?')
+
+    assert answer is not None
+    assert 'Požiadavky na úpravu' in answer
+    assert 'čiastočné' in answer
+    assert 'potvrdený náhľad' in answer
+    assert 'automatickú implementáciu' in answer
+
+
+def test_info_help_answers_admin_response_to_user() -> None:
+    answer = build_product_truth_guidance(user_input_text='Ako mi odpovie správca?')
+
+    assert answer is not None
+    assert 'Odpoveď správcu používateľovi' in answer
+    assert 'jednu odpoveď' in answer
+    assert 'nemení Product Truth' in answer
+    assert 'garantované' not in answer.lower()
+
+
+def test_info_help_explains_accepted_rejected_request_status_only() -> None:
+    accepted = build_product_truth_guidance(user_input_text='Čo znamená prijatá požiadavka?')
+    rejected = build_product_truth_guidance(user_input_text='Čo znamená zamietnutá požiadavka?')
+
+    assert accepted is not None
+    assert rejected is not None
+    for answer in (accepted, rejected):
+        assert 'Posúdenie požiadavky správcom' in answer
+        assert 'nie je sľub implementácie' in answer
+        assert 'zmenu schopností produktu' in answer
+
+
+def test_info_help_explains_unknown_question_can_use_confirmed_admin_review_flow() -> None:
+    answer = build_product_truth_guidance(user_input_text='Čo sa stane, keď bot nevie odpovedať?')
+    admin_question = build_product_truth_guidance(user_input_text='Môžem poslať otázku správcovi?')
+
+    assert answer is not None
+    assert admin_question is not None
+    assert 'potvrdený náhľad' in answer
+    assert 'potvrdený náhľad' in admin_question
+    assert 'nič neukladá' not in answer
+    assert 'automatickú implementáciu' in admin_question
+
+
+def test_info_help_explains_delivery_observability_is_admin_facing() -> None:
+    answer = build_product_truth_guidance(user_input_text='Ako zistím, či bola odpoveď správcu doručená?')
+
+    assert answer is not None
+    assert 'Stav doručenia odpovede správcu' in answer
+    assert 'admin-facing' in answer
+    assert 'automatické opakovanie' in answer
+
+
+def test_info_help_answers_existing_runtime_how_tos() -> None:
+    examples = {
+        'Ako zobrazím posledné bločky?': 'Posledné bločky a účtovné doklady',
+        'Ako pridám kontakt?': 'Kontakty',
+        'Ako pridám službu?': 'Služby a položky',
+        'Ako upravím existujúcu faktúru?': 'Úprava existujúcej faktúry',
+        'Ako vymažem jednu faktúru?': 'Vymazanie jednej faktúry',
+        'Môžem diktovať hlasom?': 'Hlasové zadanie faktúry',
+    }
+
+    for question, expected_title in examples.items():
+        answer = build_product_truth_guidance(user_input_text=question)
+        assert answer is not None, question
+        assert expected_title in answer
 
 
 def test_code_agent_handoff_smoke_phrase_renders_product_truth_guidance() -> None:
@@ -232,7 +302,7 @@ def test_info_help_llm_payload_contains_only_classification_fields() -> None:
 
     assert payload['context_name'] == 'info_help_triage'
     assert payload['input_channel'] == 'voice'
-    assert payload['request_storage_available'] is False
+    assert payload['request_storage_available'] is True
     assert payload['admin_notification_available'] is False
     assert set(payload['expected_output']) == {
         'capability_id',

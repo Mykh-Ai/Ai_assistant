@@ -69,10 +69,11 @@ Current gaps and partial foundations that must not be overstated:
   proves otherwise;
 - bounded InfoHelp resolver is not complete;
 - Customization Request Layer has a partial Level 3 MVP slice for
-  confirmation-gated request capture plus admin read/status review, but it is
-  not complete;
-- admin response-to-user, answer text storage, response delivery metadata, and
-  clarification delivery are not implemented;
+  confirmation-gated request capture, admin read/status review, answer-only
+  admin response-to-user, and admin-facing delivery observability, but it is not
+  complete;
+- clarification delivery, retry/recovery commands, threaded conversation
+  history, and response kinds beyond default `answer` are not implemented;
 - Code-Agent Handoff Layer is not yet implemented;
 - broad self-learning for topics/capabilities/customization patterns is not yet
   implemented;

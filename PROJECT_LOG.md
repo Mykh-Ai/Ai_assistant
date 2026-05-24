@@ -1,5 +1,41 @@
 # PROJECT_LOG
 
+## 2026-05-24 - Session 111 - Align Product Truth with human review runtime
+
+Summary:
+- Updated Product Truth to describe `customization_requests` as partial
+  human-review runtime support instead of unsupported storage.
+- Added Product Truth records for admin status review, answer-only admin
+  response-to-user, admin-facing response delivery observability, access
+  request approval, and invoice draft edit flow.
+- Expanded InfoHelp Slovak answers for request lifecycle, admin answer
+  delivery, accepted/rejected status meaning, confirmed admin-review submission,
+  admin-facing delivery observability, recent bločky, contacts, services,
+  existing invoice edit/delete, and generic voice usage.
+- Updated InfoHelp triage payload truth so confirmed request storage is marked
+  available while admin notification remains unavailable.
+- Updated Product Truth/InfoHelp/customization eval/doctrine docs to reflect
+  answer-only admin response delivery and observability without overstating
+  maturity.
+
+Constraints:
+- Truth/docs/tests alignment only.
+- No new runtime feature, admin command, retry/recovery command, notification,
+  backlog conversion, Product Truth candidate conversion, code-agent handoff, or
+  self-learning.
+- No dynamic runtime Product Truth mutation.
+- Still a partial Level 3 human-review slice, not the complete Customization
+  Request Layer.
+- Still partial InfoHelp, not complete Level 2.
+
+Verification:
+- `python -m pytest -q tests/test_product_truth.py tests/test_info_help.py tests/test_customization_request_admin.py`
+  - 135 passed.
+- `python -m pytest -q tests/test_product_truth.py tests/test_info_help.py tests/test_customization_request_admin.py tests/test_invoice_intent_prerouter.py`
+  - 282 passed.
+- `python -m pytest -q`
+  - 1317 passed, 7 subtests passed.
+
 ## 2026-05-23 - Session 110 - Admin response delivery observability
 
 Summary:

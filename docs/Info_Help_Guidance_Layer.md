@@ -85,8 +85,11 @@ Unless later code proves otherwise:
 - admin-only list/detail and status-only accept/reject review commands exist,
   but they do not notify users/admins, mutate Product Truth, convert to
   backlog, or create code-agent handoff;
-- admin response-to-user, answer text storage, response delivery metadata, and
-  clarification delivery are not implemented;
+- answer-only admin response-to-user exists through a separate
+  confirmation-gated admin flow with latest response metadata and admin-facing
+  delivery observability;
+- clarification delivery, response kind selection beyond `answer`, retry,
+  recovery commands, and threaded conversation history are not implemented;
 - it does not implement broad self-learning for topics/capability questions;
 
 Agents must not call current fallback or partial fast-path behavior "InfoHelp
@@ -179,8 +182,9 @@ Truth-backed InfoHelp fast-paths exist for selected topics, and bounded
 Unknown / Discovery / Triage v1 classification exists. Eligible
 customization/admin/product-truth-gap candidates can enter the implemented
 confirmation-gated preview/save flow. Bounded InfoHelp resolver coverage is
-still not complete, and admin response-to-user is not implemented. InfoHelp
-Level 2 is not complete.
+still not complete. Admin answer-only response-to-user exists as a separate
+admin-confirmed runtime flow, but InfoHelp itself does not send responses.
+InfoHelp Level 2 is not complete.
 
 ## Response Contract
 
@@ -386,9 +390,11 @@ direction only if the wording does not imply storage happened. Otherwise it
 must not pretend a request was created.
 
 Current runtime can save confirmed review items through the customization
-request flow and can expose admin list/detail/status review. It cannot send an
-admin answer to the user, store answer text, store response delivery metadata,
-or notify the user that review status changed.
+request flow, expose admin list/detail/status review, and support a separate
+answer-only admin response-to-user flow with latest response metadata and
+delivery observability. It cannot send clarification requests as a structured
+reply thread, retry failed sends automatically, or notify the user that review
+status changed.
 
 ## Self-Learning Hooks
 
@@ -498,7 +504,7 @@ If no Product Truth capability answers this reliably, classify as
 `admin_review_candidate` or `possible_product_truth_candidate`. Explain that
 support cannot be confirmed from current Product Truth and offer to submit the
 question for admin review only through a confirmation-gated flow. Do not claim
-an admin will answer unless response delivery is implemented.
+an admin will definitely answer or that delivery is guaranteed.
 ```
 
 ### Out Of Domain
@@ -685,8 +691,8 @@ Required eval scenarios:
 - unsupported request offers customization only when request storage exists;
 - unknown product/support/how-to question offers human review only when request
   storage exists;
-- future admin response scenarios prove answer/reject/clarification delivery
-  before claiming a closed loop;
+- admin response scenarios distinguish implemented `answer` delivery from
+  future rejection-reason and clarification-request response kinds;
 - Product Truth gap candidates do not auto-mutate Product Truth;
 - no hidden invoice/contact/document side effects occur.
 - unknown but plausible business feature request does not fall to only static

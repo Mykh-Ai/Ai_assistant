@@ -1904,7 +1904,7 @@ def test_delete_database_question_uses_safety_guidance_not_delete_flow(tmp_path:
     [
         ('Vieš exportovať podklady pre účtovníctvo?', 'Export do účtovníctva', 'nepodporovan'),
         ('Môžem si upraviť PDF šablónu?', 'Vlastná PDF šablóna faktúry', 'nepodporovan'),
-        ('Chcem vlastnú funkciu', 'Požiadavky na úpravu', 'nepodporovan'),
+        ('Chcem vlastnú funkciu', 'Požiadavky na úpravu', 'čiastoč'),
         ('Vieš odovzdať úlohu code agentovi?', 'Odovzdanie úlohy kódovaciemu agentovi', 'nepodporovan'),
         ('Ako vymažem databázu?', 'Vymazanie používateľskej databázy', 'citliv'),
     ],

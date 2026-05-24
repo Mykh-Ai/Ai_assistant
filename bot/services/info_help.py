@@ -17,7 +17,14 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'invoice_pdf_generation',
     'add_receipt_or_incoming_invoice',
     'show_recent_accounting_documents',
+    'contacts',
+    'service_aliases',
     'voice_invoice_intake',
+    'customization_requests',
+    'admin_customization_review',
+    'admin_response_to_user',
+    'admin_response_delivery_observability',
+    'access_request_approval',
     'send_invoice_email',
     'google_drive_invoice_storage',
     'sms_reminders',
@@ -84,9 +91,63 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'customization_requests': {
         'title': 'Požiadavky na úpravu',
-        'summary': 'Ukladanie požiadaviek na úpravu z Telegram bota zatiaľ nie je implementované.',
-        'limitation': 'Bot nesmie tvrdiť, že požiadavku vytvoril alebo uložil.',
-        'safe_next': 'Zatiaľ môžem iba pravdivo pomenovať, že ide o budúcu alebo samostatnú úpravu.',
+        'summary': 'Požiadavku alebo otázku na ľudskú kontrolu viem uložiť iba cez potvrdený náhľad.',
+        'limitation': 'Uloženie neznamená automatickú implementáciu, zmenu Product Truth, backlog ani úlohu pre code agenta.',
+        'safe_next': 'Ak bot nevie spoľahlivo odpovedať alebo ide o vlastnú potrebu, musí najprv ukázať náhľad a počkať na vaše potvrdenie.',
+    },
+    'admin_customization_review': {
+        'title': 'Posúdenie požiadavky správcom',
+        'summary': 'Správca vie požiadavku vidieť v zozname/detaili a označiť ju ako prijatú alebo zamietnutú na úrovni stavu.',
+        'limitation': 'Prijatá požiadavka nie je sľub implementácie. Zamietnutá požiadavka neznamená automatickú notifikáciu, ak správca neposlal samostatnú odpoveď.',
+        'safe_next': 'Stav prijatá/zamietnutá berte ako výsledok posúdenia, nie ako zmenu schopností produktu.',
+    },
+    'admin_response_to_user': {
+        'title': 'Odpoveď správcu používateľovi',
+        'summary': 'Správca vie cez potvrdený admin tok poslať používateľovi jednu odpoveď k pôvodnej požiadavke.',
+        'limitation': 'MVP podporuje iba odpoveď typu answer, bez vlákna, automatického retry, SLA alebo sľubu doručenia.',
+        'safe_next': 'Ak správca odpoveď odošle, príde vám ako správa bota. Samotná odpoveď nemení Product Truth ani nepodporuje novú funkciu.',
+    },
+    'admin_response_delivery_observability': {
+        'title': 'Stav doručenia odpovede správcu',
+        'summary': 'Správca v detaile požiadavky vidí stav doručenia odpovede, pokusy, čas a bezpečne orezaný náhľad.',
+        'limitation': 'Tieto interné doručovacie údaje sú admin-facing. Používateľovi sa nezobrazuje kompletná doručovacia diagnostika.',
+        'safe_next': 'Ak odpoveď nedorazila, treba to riešiť ručne so správcom; bot v MVP neskúša automatické opakovanie.',
+    },
+    'access_request_approval': {
+        'title': 'Žiadosť o prístup a schválenie',
+        'summary': 'Neznámy používateľ môže požiadať o prístup a správca ho musí schváliť pred biznis tokmi.',
+        'limitation': 'Čakajúca žiadosť ešte nie je aktívny účet, profil dodávateľa ani oprávnenie vytvárať dáta.',
+        'safe_next': 'Požiadajte o prístup a počkajte na schválenie správcom.',
+    },
+    'contacts': {
+        'title': 'Kontakty',
+        'summary': 'Kontakty sú podporované čiastočne cez manuálny alebo kontrolovaný AI-assisted tok s potvrdením.',
+        'limitation': 'Bot nevytvára kontakty automaticky z bločkov, prijatých faktúr, fotiek ani ľubovoľných príloh.',
+        'safe_next': 'Na pridanie kontaktu použite existujúci kontaktový tok a potvrďte náhľad pred uložením.',
+    },
+    'service_aliases': {
+        'title': 'Služby a položky',
+        'summary': 'Službu alebo položku pre faktúry môžete uložiť ako dodávateľský alias.',
+        'limitation': 'Presný názov aliasu a zobrazovaný text sú textové kroky; hlas ich nemá vypĺňať ako finálne presné hodnoty.',
+        'safe_next': 'Použite /sluzbu alebo napíšte, že chcete pridať službu/položku, a pokračujte cez potvrdený tok.',
+    },
+    'show_recent_accounting_documents': {
+        'title': 'Posledné bločky a účtovné doklady',
+        'summary': 'Nedávne potvrdené bločky a prijaté faktúry sa dajú zobraziť v read-only prehľade.',
+        'limitation': 'Nie je to plný dokumentový vyhľadávač, editor, mazanie ani Google Drive synchronizácia.',
+        'safe_next': 'Použite /blocek alebo /blocky na zobrazenie posledných uložených dokladov.',
+    },
+    'edit_existing_invoice': {
+        'title': 'Úprava existujúcej faktúry',
+        'summary': 'Existujúcu odoslanú faktúru možno upraviť cez ohraničený tok po vyhľadaní konkrétnej faktúry.',
+        'limitation': 'Číslo faktúry a presné upravované hodnoty sú citlivé na presnosť a patria do textu.',
+        'safe_next': 'Napíšte, ktorú faktúru chcete upraviť, a pokračujte cez existujúci edit flow.',
+    },
+    'delete_existing_invoice': {
+        'title': 'Vymazanie jednej faktúry',
+        'summary': 'Jednu uloženú faktúru možno vymazať len po vyhľadaní a explicitnom potvrdení.',
+        'limitation': 'Vymazanie je deštruktívne; hlas môže tok spustiť, ale potvrdenie zostáva bezpečnostne ohraničené.',
+        'safe_next': 'Napíšte, ktorú faktúru chcete vymazať, a potvrďte až po kontrole náhľadu.',
     },
     'code_agent_handoff': {
         'title': 'Odovzdanie úlohy kódovaciemu agentovi',
@@ -121,7 +182,14 @@ _SLOVAK_OVERVIEW_TITLES = {
     'invoice_pdf_generation': 'generovanie PDF faktúry',
     'add_receipt_or_incoming_invoice': 'pridanie bločku alebo prijatej faktúry',
     'show_recent_accounting_documents': 'prehľad nedávnych účtovných dokladov',
+    'contacts': 'kontakty',
+    'service_aliases': 'služby a položky',
     'voice_invoice_intake': 'hlasové zadanie faktúry',
+    'customization_requests': 'požiadavky na úpravu a ľudskú kontrolu',
+    'admin_customization_review': 'posúdenie požiadavky správcom',
+    'admin_response_to_user': 'odpoveď správcu používateľovi',
+    'admin_response_delivery_observability': 'stav doručenia odpovede správcu',
+    'access_request_approval': 'žiadosť o prístup a schválenie',
     'send_invoice_email': 'odosielanie faktúr emailom',
     'google_drive_invoice_storage': 'ukladanie faktúr na Google Drive',
     'sms_reminders': 'SMS pripomienky',
@@ -488,14 +556,34 @@ def classify_info_help_capability(
         return 'accounting_export'
     if _mentions_custom_pdf_template(normalized, tokens):
         return 'invoice_pdf_custom_template'
+    if _mentions_admin_response_delivery_observability(normalized, tokens):
+        return 'admin_response_delivery_observability'
+    if _mentions_admin_response_to_user(normalized, tokens):
+        return 'admin_response_to_user'
+    if _mentions_admin_review_status(normalized, tokens):
+        return 'admin_customization_review'
+    if _mentions_human_review_request_lifecycle(normalized, tokens):
+        return 'customization_requests'
     if _mentions_customization_request(normalized, tokens):
         return 'customization_requests'
+    if _mentions_access_request_approval(normalized, tokens):
+        return 'access_request_approval'
     if _mentions_code_agent_handoff(normalized, tokens):
         return 'code_agent_handoff'
     if _mentions_voice_limit(normalized, tokens):
         return 'voice_invoice_intake'
     if _mentions_delete_database_safety(normalized, tokens):
         return 'delete_user_database'
+    if _mentions_delete_existing_invoice_how_to(normalized, tokens):
+        return 'delete_existing_invoice'
+    if _mentions_edit_existing_invoice_how_to(normalized, tokens):
+        return 'edit_existing_invoice'
+    if _mentions_service_alias_how_to(normalized, tokens):
+        return 'service_aliases'
+    if _mentions_contact_how_to(normalized, tokens):
+        return 'contacts'
+    if _mentions_recent_accounting_how_to(normalized, tokens):
+        return 'show_recent_accounting_documents'
     if _mentions_receipt_how_to(normalized, tokens):
         return 'add_receipt_or_incoming_invoice'
     if _mentions_invoice_how_to(normalized, tokens):
@@ -536,7 +624,9 @@ def _render_product_truth_payload(payload: Mapping[str, Any]) -> str:
     if safe_next:
         lines.append('Bezpečný ďalší krok: ' + safe_next)
     if payload.get('customization_allowed'):
-        lines.append('Môžem to pomenovať ako budúcu úpravu, ale v tomto chate teraz nevytvorím uloženú požiadavku.')
+        lines.append(
+            'Ak ide o nepodporovanú alebo nejasnú potrebu, uloženie je možné iba cez samostatný potvrdený náhľad; samotná odpoveď nič neukladá.'
+        )
 
     return '\n\n'.join(lines)
 
@@ -617,8 +707,44 @@ def _mentions_customization_request(normalized: str, tokens: set[str]) -> bool:
     return bool(
         tokens.intersection({'upravu', 'customizaciu', 'customization', 'poziadavku', 'poziadavka', 'vlastnu'})
     ) and bool(
-        tokens.intersection({'funkciu', 'feature', 'zmenu', 'request'})
+        tokens.intersection({'funkciu', 'feature', 'zmenu', 'request', 'otazku', 'spravcovi', 'kontrolu'})
     )
+
+
+def _mentions_human_review_request_lifecycle(normalized: str, tokens: set[str]) -> bool:
+    mentions_request = bool(tokens.intersection({'poziadavka', 'poziadavku', 'otazka', 'otazku', 'request'}))
+    mentions_review = bool(tokens.intersection({'kontrolu', 'review', 'spravcovi', 'spravca', 'adminovi', 'admin'}))
+    unknown_question = 'nevie odpovedat' in normalized or 'nevies odpovedat' in normalized or 'nemoze odpovedat' in normalized
+    send_to_admin_question = mentions_request and mentions_review and bool(tokens.intersection({'mozem', 'da', 'poslat', 'ulozit', 'ako'}))
+    return (
+        ('ako funguje' in normalized and mentions_request)
+        or unknown_question
+        or send_to_admin_question
+    )
+
+
+def _mentions_admin_response_to_user(normalized: str, tokens: set[str]) -> bool:
+    mentions_admin = bool(tokens.intersection({'spravca', 'spravcu', 'admin', 'admina'}))
+    mentions_answer = bool(tokens.intersection({'odpovie', 'odpoved', 'odpoveda', 'odpovedat', 'response'}))
+    return mentions_admin and mentions_answer
+
+
+def _mentions_admin_review_status(normalized: str, tokens: set[str]) -> bool:
+    mentions_request = bool(tokens.intersection({'poziadavka', 'poziadavku', 'request'}))
+    mentions_status = bool(tokens.intersection({'prijata', 'prijatu', 'zamietnuta', 'zamietnutu', 'accepted', 'rejected'}))
+    return mentions_request and mentions_status and bool(tokens.intersection({'co', 'znamena', 'ako', 'status'}))
+
+
+def _mentions_admin_response_delivery_observability(normalized: str, tokens: set[str]) -> bool:
+    mentions_delivery = bool(tokens.intersection({'dorucena', 'dorucenie', 'dorucit', 'dosla', 'prisla', 'delivery'}))
+    mentions_answer = bool(tokens.intersection({'odpoved', 'odpovedi', 'spravcu', 'admina'}))
+    return mentions_delivery and mentions_answer and bool(tokens.intersection({'ako', 'zistim', 'vidim', 'stav'}))
+
+
+def _mentions_access_request_approval(normalized: str, tokens: set[str]) -> bool:
+    mentions_access = bool(tokens.intersection({'pristup', 'access', 'schvalenie', 'schvalit', 'povolit'}))
+    mentions_admin = bool(tokens.intersection({'spravca', 'admin', 'adminom'}))
+    return mentions_access and (mentions_admin or bool(tokens.intersection({'ziadost', 'poziadat', 'ako'})))
 
 
 def _mentions_code_agent_handoff(normalized: str, tokens: set[str]) -> bool:
@@ -631,9 +757,11 @@ def _mentions_code_agent_handoff(normalized: str, tokens: set[str]) -> bool:
 
 
 def _mentions_voice_limit(normalized: str, tokens: set[str]) -> bool:
-    return bool(tokens.intersection({'hlasom', 'voice', 'audio', 'nahovorim', 'diktovat'})) and bool(
-        tokens.intersection({'fakturu', 'faktura', 'invoice', 'iban', 'email', 'cislo', 'suma', 'presne'})
-    )
+    if not bool(tokens.intersection({'hlasom', 'voice', 'audio', 'nahovorim', 'diktovat'})):
+        return False
+    if tokens.intersection({'fakturu', 'faktura', 'invoice', 'iban', 'email', 'cislo', 'suma', 'presne'}):
+        return True
+    return bool(tokens.intersection({'mozem', 'da', 'ako', 'vies', 'viete'}))
 
 
 def _mentions_delete_database_safety(normalized: str, tokens: set[str]) -> bool:
@@ -648,6 +776,36 @@ def _mentions_receipt_how_to(normalized: str, tokens: set[str]) -> bool:
     if not bool(tokens.intersection({'blocek', 'blocky', 'doklad', 'receipt', 'prijatu'})):
         return False
     return bool(tokens.intersection({'ako', 'how', 'pridam', 'nahrat', 'nahram', 'upload'}))
+
+
+def _mentions_recent_accounting_how_to(normalized: str, tokens: set[str]) -> bool:
+    mentions_docs = bool(tokens.intersection({'blocek', 'blocky', 'blockov', 'doklady', 'dokladov', 'uctovne'}))
+    mentions_recent = bool(tokens.intersection({'posledne', 'nedavne', 'recent', 'zobrazim', 'ukazem', 'ako'}))
+    return mentions_docs and mentions_recent and not tokens.intersection({'pridam', 'nahrat', 'nahram', 'upload'})
+
+
+def _mentions_contact_how_to(normalized: str, tokens: set[str]) -> bool:
+    return bool(tokens.intersection({'kontakt', 'contact', 'odberatela', 'zakaznika'})) and bool(
+        tokens.intersection({'ako', 'pridam', 'vytvorim', 'ulozim'})
+    )
+
+
+def _mentions_service_alias_how_to(normalized: str, tokens: set[str]) -> bool:
+    return bool(tokens.intersection({'sluzbu', 'sluzba', 'polozku', 'polozka', 'alias'})) and bool(
+        tokens.intersection({'ako', 'pridam', 'vytvorim', 'ulozim'})
+    )
+
+
+def _mentions_edit_existing_invoice_how_to(normalized: str, tokens: set[str]) -> bool:
+    mentions_invoice = bool(tokens.intersection({'fakturu', 'faktura', 'invoice'}))
+    mentions_edit = bool(tokens.intersection({'upravim', 'upravit', 'edit', 'zmenim', 'zmenit'}))
+    return mentions_invoice and mentions_edit and bool(tokens.intersection({'ako', 'mozem', 'da'}))
+
+
+def _mentions_delete_existing_invoice_how_to(normalized: str, tokens: set[str]) -> bool:
+    mentions_invoice = bool(tokens.intersection({'fakturu', 'faktura', 'invoice'}))
+    mentions_delete = bool(tokens.intersection({'vymazem', 'vymazat', 'zmazem', 'zmazat', 'delete', 'odstranit'}))
+    return mentions_invoice and mentions_delete and bool(tokens.intersection({'ako', 'mozem', 'da'}))
 
 
 def _mentions_invoice_how_to(normalized: str, tokens: set[str]) -> bool:

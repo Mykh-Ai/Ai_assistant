@@ -27,7 +27,9 @@ slice:
   result;
 - admin detail shows latest response delivery observability, including
   `not_started`, `send_pending`, `send_succeeded`, `send_failed`, and stuck
-  `send_pending` warnings.
+  `send_pending` warnings;
+- Product Truth and InfoHelp now describe this runtime as partial human-review
+  support, including answer-only admin response delivery and observability.
 
 Conceptually, current rows may represent broader review items such as
 `feature_request`, `customization_request`, `unanswered_product_question`,
@@ -56,6 +58,15 @@ Out of scope for this MVP slice:
 - complete Level 3 lifecycle;
 - request expiry/cleanup;
 - rich pagination.
+
+InfoHelp/Product Truth alignment scope:
+
+- `customization_requests` is partial, not unsupported;
+- admin list/detail/accept/reject is status-only review;
+- admin response-to-user is implemented only for default `answer`;
+- delivery observability is admin-facing;
+- no runtime Product Truth mutation, backlog conversion, code-agent handoff,
+  self-learning, auto retry, recovery command, or complete Level 3 claim.
 
 ## Runtime Statuses
 

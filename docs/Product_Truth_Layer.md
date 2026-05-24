@@ -31,11 +31,11 @@ As of the current logged state:
   eligible triage candidates can enter a confirmation-gated preview/save flow,
   and admins can list/detail/accept/reject requests as status-only review;
 - that customization request slice is now documented as part of a broader
-  Admin Response / Human Review Loop, but admin response-to-user is not
-  implemented;
+  Admin Response / Human Review Loop; answer-only admin response-to-user and
+  admin-facing delivery observability are implemented as partial MVP slices;
 - Product Truth mutation, Product Truth candidate conversion, backlog
-  conversion, notifications, self-learning, and code-agent handoff are not
-  implemented by the customization request slice.
+  conversion, notifications, retry/recovery commands, self-learning, and
+  code-agent handoff are not implemented by the customization request slice.
 
 Product Truth must be derived from current code, `PROJECT_LOG.md`,
 `docs/TZ_FakturaBot.md`, active contract docs, and focused evidence in tests.
@@ -569,8 +569,11 @@ current code before runtime claims:
   proves otherwise;
 - customization request creation/storage: partial Level 3 MVP slice for
   confirmation-gated capture plus admin list/detail/status review;
-- admin response-to-user from bot runtime: not implemented unless later runtime
-  code proves otherwise;
+- admin response-to-user from bot runtime: partial answer-only MVP with
+  confirmation-gated delivery and latest response metadata;
+- admin response delivery observability: partial admin detail view for
+  `not_started`, `send_pending`, `send_succeeded`, and `send_failed`, with no
+  retry/recovery command;
 - code-agent handoff from bot runtime: not implemented unless later runtime
   code proves otherwise.
 
@@ -586,5 +589,6 @@ Do not:
 - skip dangerous/admin/external-credential flags;
 - offer customization request storage if it does not exist;
 - claim admin response-to-user if only status review exists;
+- claim guaranteed admin response delivery or automatic retry;
 - update Product Truth without evidence and log entry;
 - let learned aliases bypass Product Truth.
