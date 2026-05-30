@@ -1,5 +1,37 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 118 - Fake archive worker lifecycle
+
+Summary:
+- Added a provider-injected local archive worker for accounting document archive
+  jobs.
+- The worker claims one runnable job via the archive outbox lease API, returns
+  a no-op result when nothing is runnable, and updates archive job/state rows on
+  success, retryable failure, permanent failure, max attempts, and missing
+  mirrored state.
+- Added bounded provider failure classes and bounded worker error codes:
+  `upload_transient_failed`, `upload_permanent_failed`,
+  `provider_unavailable`, and `upload_unexpected_failed`.
+- Added fake-provider tests for pending and due retry uploads, retry timing,
+  active/expired leases, terminal job exclusion, max attempts, missing state,
+  local file preservation, bounded logs, and no Google/network imports.
+
+Constraints:
+- Phase 1C fake/local worker lifecycle only.
+- No Google OAuth, Google API calls, real Drive adapter, external network
+  upload, user notifications, recent-docs UI change, local cleanup/deletion,
+  invoice lifecycle/reminders, or outgoing invoice PDF archive.
+- Product Truth/InfoHelp remain unchanged and must not claim active Google
+  Drive archiving.
+
+Verification:
+- `python -m pytest -q tests/test_archive_worker.py tests/test_archive_job_service.py tests/test_accounting_document_archive_service.py`
+  - 57 passed.
+- `python -m pytest -q`
+  - 1382 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warning only.
+
 ## 2026-05-30 - Session 117 - Archive enqueue failure logging hardening
 
 Summary:
