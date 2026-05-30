@@ -248,17 +248,21 @@ def test_mark_methods_fail_safely_when_archive_state_is_missing(tmp_path: Path) 
     assert jobs.get_job(job.job_id).status == ARCHIVE_STATUS_PENDING
 
 
-def test_accounting_handlers_do_not_import_archive_services() -> None:
+def test_accounting_handlers_do_not_call_google_or_archive_worker() -> None:
     handler_paths = [
         Path('bot/handlers/accounting_document_intake.py'),
         Path('bot/handlers/accounting_documents.py'),
     ]
     forbidden = (
-        'ArchiveJobService',
-        'AccountingDocumentArchiveService',
         'archive_job_service',
-        'accounting_document_archive_service',
-        'enqueue_confirmed_document',
+        'claim_next_runnable_job',
+        'mark_uploading',
+        'mark_uploaded',
+        'googleapiclient',
+        'google.auth',
+        'requests',
+        'httpx',
+        'aiohttp',
     )
 
     for handler_path in handler_paths:

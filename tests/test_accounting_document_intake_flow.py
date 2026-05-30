@@ -4,18 +4,21 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
+import sqlite3
 
 import pytest
 
 from bot.config import Config
 from bot.handlers.accounting_document_intake import (
     AccountingDocumentIntakeStates,
+    _enqueue_archive_after_confirmed_save,
     accounting_document_duplicate_decision,
     accounting_document_preview_decision,
     accounting_document_upload,
     accounting_document_waiting_upload,
     cmd_accounting_document_intake,
 )
+from bot.services.accounting_document_storage import AccountingDocumentSaveResult, workspace_key_for_supplier
 from bot.handlers.voice import handle_voice
 from bot.services.accounting_document_classifier import AccountingDocumentClassification
 from bot.services.accounting_document_models import (
@@ -23,6 +26,8 @@ from bot.services.accounting_document_models import (
     AccountingDocumentQuality,
     AccountingDocumentSource,
 )
+from bot.services.accounting_document_archive_service import AccountingDocumentArchiveService
+from bot.services.archive_job_service import ARCHIVE_JOB_PENDING
 from bot.services.decision_resolver import resolve_approve_edit_cancel
 from bot.services.temp_intake_session import build_intake_session_metadata
 
@@ -52,6 +57,11 @@ class _DummyVoice:
         self.file_id = file_id
 
 
+class _DummyUser:
+    def __init__(self, telegram_id: int) -> None:
+        self.id = telegram_id
+
+
 class _DummyMessage:
     def __init__(
         self,
@@ -60,6 +70,7 @@ class _DummyMessage:
         photo: list[_DummyPhoto] | None = None,
         document: _DummyDocument | None = None,
         voice: _DummyVoice | None = None,
+        from_user_id: int | None = None,
     ) -> None:
         self.text = text
         self.photo = photo or []
@@ -67,6 +78,8 @@ class _DummyMessage:
         self.voice = voice
         self.answers: list[str] = []
         self.message_id = 77
+        if from_user_id is not None:
+            self.from_user = _DummyUser(from_user_id)
 
     async def answer(self, text: str) -> None:
         self.answers.append(text)
@@ -212,6 +225,24 @@ def _receipt_candidate() -> AccountingDocumentCandidate:
     )
 
 
+def _incoming_invoice_candidate() -> AccountingDocumentCandidate:
+    return AccountingDocumentCandidate(
+        document_type='incoming_invoice',
+        vendor_name='Dodavatel s.r.o.',
+        document_number='INV-2026-001',
+        issue_date='2026-05-02',
+        due_date='2026-05-16',
+        total_amount='120.50',
+        currency='EUR',
+        iban='SK0000000000000000000000',
+        variable_symbol='2026001',
+        payment_method='bank_transfer',
+        purchase_subject='Material',
+        quality=AccountingDocumentQuality(readability='good'),
+        source=AccountingDocumentSource(input_type='pdf', original_filename='invoice.pdf'),
+    )
+
+
 async def _fake_classify(**kwargs) -> AccountingDocumentClassification:
     return AccountingDocumentClassification(
         document_type='receipt',
@@ -222,6 +253,10 @@ async def _fake_classify(**kwargs) -> AccountingDocumentClassification:
 
 async def _fake_extract(**kwargs) -> AccountingDocumentCandidate:
     return _receipt_candidate()
+
+
+async def _fake_extract_incoming_invoice(**kwargs) -> AccountingDocumentCandidate:
+    return _incoming_invoice_candidate()
 
 
 def test_doklad_starts_intake_fsm_and_asks_for_upload() -> None:
@@ -442,6 +477,237 @@ def test_schvalit_approves_via_shared_resolver_and_confirmed_saves(monkeypatch, 
     assert 'category_candidate' not in metadata['business']
     assert not (tmp_path / 'uploads' / 'accounting_intake' / 'PHOTO123').exists()
     assert not (tmp_path / 'invoices').exists()
+    assert not config.db_path.exists()
+
+
+def test_confirmed_receipt_save_enqueues_one_pending_archive_job(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(
+        accounting_document_upload(
+            _DummyMessage(photo=[_DummyPhoto()], from_user_id=111001),
+            state,
+            config,
+            _DummyBot(),
+        )
+    )
+
+    async def _resolver(**kwargs) -> str:
+        return 'approve'
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
+
+    metadata_files = list((tmp_path / 'workspaces').rglob('*.json'))
+    original_files = list((tmp_path / 'workspaces').rglob('*.jpg'))
+    assert len(metadata_files) == 1
+    assert len(original_files) == 1
+    with sqlite3.connect(config.db_path) as connection:
+        job_row = connection.execute('SELECT * FROM archive_jobs').fetchone()
+        state_row = connection.execute('SELECT * FROM accounting_document_archive_state').fetchone()
+        job_count = connection.execute('SELECT COUNT(*) FROM archive_jobs').fetchone()[0]
+
+    assert job_count == 1
+    assert job_row[1] == workspace_key_for_supplier(111001)
+    assert job_row[2] == 111001
+    assert job_row[3] == metadata_files[0].stem
+    assert job_row[4] == 'receipt'
+    assert job_row[5] == str(original_files[0])
+    assert job_row[6] == str(metadata_files[0])
+    assert job_row[9] == ARCHIVE_JOB_PENDING
+    assert state_row[0] == metadata_files[0].stem
+    assert state_row[6] == ARCHIVE_JOB_PENDING
+    assert state_row[7] == job_row[0]
+
+
+def test_confirmed_incoming_invoice_save_enqueues_one_pending_archive_job(monkeypatch, tmp_path: Path) -> None:
+    async def _classify(**kwargs) -> AccountingDocumentClassification:
+        return AccountingDocumentClassification(
+            document_type='incoming_invoice',
+            confidence='high',
+            reason='invoice layout',
+        )
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _classify)
+    monkeypatch.setattr(
+        'bot.handlers.accounting_document_intake.extract_accounting_document_metadata',
+        _fake_extract_incoming_invoice,
+    )
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(
+        accounting_document_upload(
+            _DummyMessage(document=_DummyDocument(), from_user_id=111001),
+            state,
+            config,
+            _DummyBot(),
+        )
+    )
+
+    async def _resolver(**kwargs) -> str:
+        return 'approve'
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
+
+    metadata_files = list((tmp_path / 'workspaces').rglob('incoming_invoices/metadata/*.json'))
+    original_files = list((tmp_path / 'workspaces').rglob('incoming_invoices/originals/*.pdf'))
+    assert len(metadata_files) == 1
+    assert len(original_files) == 1
+    service = AccountingDocumentArchiveService(config.db_path)
+    state_record = service.get_state(
+        workspace_id=workspace_key_for_supplier(111001),
+        document_id=metadata_files[0].stem,
+    )
+
+    assert state_record is not None
+    assert state_record.archive_status == ARCHIVE_JOB_PENDING
+    assert state_record.document_type == 'incoming_invoice'
+    assert state_record.local_file_path == str(original_files[0])
+    assert state_record.metadata_path == str(metadata_files[0])
+
+
+def test_preview_state_does_not_enqueue_archive_job_before_confirmation(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(
+        accounting_document_upload(
+            _DummyMessage(photo=[_DummyPhoto()], from_user_id=111001),
+            state,
+            config,
+            _DummyBot(),
+        )
+    )
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert not config.db_path.exists()
+
+
+def test_preview_cancel_does_not_enqueue_archive_job(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(
+        accounting_document_upload(
+            _DummyMessage(photo=[_DummyPhoto()], from_user_id=111001),
+            state,
+            config,
+            _DummyBot(),
+        )
+    )
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='zrušiť', from_user_id=111001), state, config))
+
+    assert state.current_state is None
+    assert not (tmp_path / 'workspaces').exists()
+    assert not config.db_path.exists()
+
+
+def test_failed_confirmed_save_does_not_enqueue_archive_job(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(
+        accounting_document_upload(
+            _DummyMessage(photo=[_DummyPhoto()], from_user_id=111001),
+            state,
+            config,
+            _DummyBot(),
+        )
+    )
+
+    async def _resolver(**kwargs) -> str:
+        return 'approve'
+
+    def _failing_save(**kwargs):
+        raise OSError('disk full')
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.save_confirmed_accounting_document', _failing_save)
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
+
+    assert not config.db_path.exists()
+    assert not (tmp_path / 'workspaces').exists()
+
+
+def test_repeated_archive_enqueue_for_confirmed_document_is_idempotent(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(
+        accounting_document_upload(
+            _DummyMessage(photo=[_DummyPhoto()], from_user_id=111001),
+            state,
+            config,
+            _DummyBot(),
+        )
+    )
+
+    async def _resolver(**kwargs) -> str:
+        return 'approve'
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
+
+    metadata_path = next((tmp_path / 'workspaces').rglob('*.json'))
+    original_path = next((tmp_path / 'workspaces').rglob('*.jpg'))
+    _enqueue_archive_after_confirmed_save(
+        db_path=config.db_path,
+        result=AccountingDocumentSaveResult(original_path=original_path, metadata_path=metadata_path),
+        candidate=_receipt_candidate(),
+        supplier_telegram_id=111001,
+    )
+
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute('SELECT COUNT(*) FROM archive_jobs').fetchone()[0] == 1
+
+
+def test_archive_enqueue_failure_keeps_confirmed_document_without_google_or_cleanup(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(
+        accounting_document_upload(
+            _DummyMessage(photo=[_DummyPhoto()], from_user_id=111001),
+            state,
+            config,
+            _DummyBot(),
+        )
+    )
+
+    async def _resolver(**kwargs) -> str:
+        return 'approve'
+
+    def _failing_enqueue(self, **kwargs):
+        raise RuntimeError('archive unavailable')
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr(
+        'bot.handlers.accounting_document_intake.AccountingDocumentArchiveService.enqueue_confirmed_document',
+        _failing_enqueue,
+    )
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
+
+    original_path = next((tmp_path / 'workspaces').rglob('*.jpg'))
+    assert original_path.exists()
+    assert not (tmp_path / 'uploads' / 'accounting_intake' / '111001' / 'PHOTO123').exists()
     assert not config.db_path.exists()
 
 

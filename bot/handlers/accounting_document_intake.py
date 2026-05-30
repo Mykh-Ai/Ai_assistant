@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -27,19 +28,23 @@ from bot.services.accounting_document_models import (
     candidate_to_metadata_dict,
 )
 from bot.services.accounting_document_storage import (
+    AccountingDocumentSaveResult,
     AccountingDocumentStorageError,
+    WORKSPACE_KEY,
     cleanup_temp_staging_path,
     save_confirmed_accounting_document,
     stage_original_file,
     temp_staging_dir,
     workspace_key_for_supplier,
 )
+from bot.services.accounting_document_archive_service import AccountingDocumentArchiveService
 from bot.services.accounting_document_validation import validate_accounting_document_candidate
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.temp_intake_session import build_intake_session_metadata, ensure_intake_session_active
 
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 _DECISION_CONTEXT = 'accounting_document_intake_preview'
 _STATE_CANDIDATE_KEY = 'accounting_document_candidate'
@@ -335,6 +340,12 @@ async def handle_accounting_document_preview_decision_text(
         await message.answer('Doklad sa nepodarilo uložiť. Skúste /doklad znova.')
         return
 
+    _enqueue_archive_after_confirmed_save(
+        db_path=config.db_path,
+        result=result,
+        candidate=_candidate_from_state_payload(candidate_payload),
+        supplier_telegram_id=supplier_telegram_id,
+    )
     _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
     await state.clear()
     await message.answer(f'Doklad bol uložený.\nMetadata: {result.metadata_path}')
@@ -545,6 +556,35 @@ def _with_upload_source(candidate: AccountingDocumentCandidate, attachment: dict
             upload_date=candidate.source.upload_date,
         ),
     )
+
+
+def _enqueue_archive_after_confirmed_save(
+    *,
+    db_path: Path,
+    result: AccountingDocumentSaveResult,
+    candidate: AccountingDocumentCandidate,
+    supplier_telegram_id: int | None,
+) -> None:
+    workspace_id = (
+        workspace_key_for_supplier(supplier_telegram_id)
+        if supplier_telegram_id is not None
+        else WORKSPACE_KEY
+    )
+    try:
+        AccountingDocumentArchiveService(db_path).enqueue_confirmed_document(
+            workspace_id=workspace_id,
+            telegram_id=supplier_telegram_id or 0,
+            document_id=result.metadata_path.stem,
+            document_type=candidate.document_type,
+            local_file_path=result.original_path,
+            metadata_path=result.metadata_path,
+        )
+    except Exception:
+        logger.exception(
+            'accounting_document_archive_enqueue_failed workspace_id=%s document_id=%s',
+            workspace_id,
+            result.metadata_path.stem,
+        )
 
 
 def _format_accounting_document_preview(candidate: AccountingDocumentCandidate) -> str:

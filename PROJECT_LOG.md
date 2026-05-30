@@ -1,5 +1,42 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 116 - Confirmed accounting document archive enqueue
+
+Summary:
+- Wired the accounting document intake confirmation path to enqueue a local
+  Google Drive archive outbox job after `save_confirmed_accounting_document(...)`
+  succeeds.
+- The hook derives `document_id` from the confirmed metadata filename stem and
+  uses the confirmed original and metadata paths; no temporary upload path is
+  archived.
+- Archive enqueue failures are logged with a bounded diagnostic and do not roll
+  back the already-confirmed local accounting document save.
+- Added handler-flow tests for confirmed receipt and incoming-invoice enqueue,
+  no enqueue before preview approval, no enqueue on cancel, no enqueue on save
+  failure, idempotent duplicate enqueue, confirmed path/state mirroring, and
+  archive enqueue failure preserving the confirmed original.
+
+Constraints:
+- Phase 1B only: enqueue archive state/job after confirmed accounting document
+  save.
+- No Google OAuth, Google API calls, real Drive adapter, worker run, upload,
+  local cleanup/deletion of confirmed originals, invoice lifecycle/reminders,
+  outgoing invoice PDF archive, or recent-docs UI change.
+- Product Truth/InfoHelp remain unchanged and must not claim active Google
+  Drive archiving.
+
+Verification:
+- `python -m pytest -q tests/test_accounting_document_intake_flow.py tests/test_accounting_document_archive_service.py tests/test_archive_job_service.py`
+  - 80 passed.
+- `python -m pytest -q tests/test_accounting_document_registry.py tests/test_accounting_documents_handler.py`
+  - 18 passed.
+- `python -m pytest -q tests/test_archive_job_service.py tests/test_accounting_document_archive_service.py`
+  - 43 passed.
+- `python -m pytest -q`
+  - 1368 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-30 - Session 115 - Google Drive archive outbox transition hardening
 
 Summary:
