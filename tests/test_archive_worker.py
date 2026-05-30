@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import inspect
+import os
 import sqlite3
 from pathlib import Path
 
@@ -14,12 +15,14 @@ from bot.services.accounting_document_archive_service import (
 from bot.services.archive_job_service import (
     ARCHIVE_JOB_ABANDONED,
     ARCHIVE_JOB_FAILED,
+    ARCHIVE_JOB_PENDING,
     ARCHIVE_JOB_RETRY_WAIT,
     ARCHIVE_JOB_UPLOADED,
     ArchiveJobService,
 )
 from bot.services.archive_worker import (
     ARCHIVE_ERROR_PERMANENT,
+    ARCHIVE_ERROR_PROVIDER_UNAVAILABLE,
     ARCHIVE_ERROR_TRANSIENT,
     ARCHIVE_ERROR_UNEXPECTED,
     ARCHIVE_WORKER_NOOP,
@@ -123,7 +126,7 @@ def _job(db_path: Path, job_id: str):
         row = conn.execute(
             """
             SELECT status, attempts, max_attempts, local_file_path, drive_file_id,
-                   drive_folder_id, error_code, lease_until
+                   drive_folder_id, error_code, lease_until, uploaded_at
             FROM archive_jobs
             WHERE job_id = ?
             """,
@@ -163,6 +166,7 @@ def test_worker_claims_pending_and_uploads_updates_job_and_state(tmp_path: Path)
     assert job[4] == f"fake-drive-{record.job.document_id}"
     assert job[5] == "fake-folder-2026-05"
     assert job[7] is None
+    assert job[8] == NOW.isoformat()
     state = AccountingDocumentArchiveService(db_path).get_state(
         workspace_id=WORKSPACE_ID,
         document_id=record.job.document_id,
@@ -170,8 +174,35 @@ def test_worker_claims_pending_and_uploads_updates_job_and_state(tmp_path: Path)
     assert state is not None
     assert state.archive_status == ARCHIVE_JOB_UPLOADED
     assert state.drive_file_id == f"fake-drive-{record.job.document_id}"
+    assert state.drive_folder_id == "fake-folder-2026-05"
+    assert state.uploaded_at == NOW.isoformat()
     assert Path(original_path).exists()
     assert provider.calls[0]["local_file_path"] == Path(original_path)
+
+
+def test_worker_processes_exactly_one_runnable_job(tmp_path: Path) -> None:
+    db_path = _db_path(tmp_path)
+    _database, first, _first_original, _first_metadata = _enqueue_document(
+        tmp_path,
+        db_path=db_path,
+        document_id="receipt-001",
+    )
+    _database, second, _second_original, _second_metadata = _enqueue_document(
+        tmp_path,
+        db_path=db_path,
+        document_id="receipt-002",
+    )
+    provider = FakeArchiveProvider()
+
+    result = ArchiveWorker(db_path, provider).process_one(now=NOW)
+
+    assert result.status == ARCHIVE_JOB_UPLOADED
+    assert len(provider.calls) == 1
+    statuses = {
+        first.job.job_id: _job(db_path, first.job.job_id)[0],
+        second.job.job_id: _job(db_path, second.job.job_id)[0],
+    }
+    assert sorted(statuses.values()) == [ARCHIVE_JOB_PENDING, ARCHIVE_JOB_UPLOADED]
 
 
 def test_worker_claims_due_retry_wait_job(tmp_path: Path) -> None:
@@ -231,6 +262,28 @@ def test_transient_failure_sets_retry_wait_and_preserves_local_file(tmp_path: Pa
     assert state.archive_status == ARCHIVE_JOB_RETRY_WAIT
 
 
+def test_missing_provider_sets_provider_unavailable_safely(tmp_path: Path) -> None:
+    db_path, record, original_path, _metadata_path = _enqueue_document(tmp_path)
+
+    result = ArchiveWorker(db_path, None).process_one(now=NOW)
+
+    job = _job(db_path, record.job.job_id)
+    assert result.status == ARCHIVE_JOB_RETRY_WAIT
+    assert result.error_code == ARCHIVE_ERROR_PROVIDER_UNAVAILABLE
+    assert job[0] == ARCHIVE_JOB_RETRY_WAIT
+    assert job[1] == 1
+    assert job[3] == original_path
+    assert job[6] == ARCHIVE_ERROR_PROVIDER_UNAVAILABLE
+    assert Path(original_path).exists()
+    state = AccountingDocumentArchiveService(db_path).get_state(
+        workspace_id=WORKSPACE_ID,
+        document_id=record.job.document_id,
+    )
+    assert state is not None
+    assert state.archive_status == ARCHIVE_JOB_RETRY_WAIT
+    assert state.last_error_code == ARCHIVE_ERROR_PROVIDER_UNAVAILABLE
+
+
 def test_permanent_failure_sets_failed_and_preserves_local_file(tmp_path: Path) -> None:
     db_path, record, original_path, _metadata_path = _enqueue_document(tmp_path)
 
@@ -243,6 +296,33 @@ def test_permanent_failure_sets_failed_and_preserves_local_file(tmp_path: Path) 
     assert job[3] == original_path
     assert job[6] == ARCHIVE_ERROR_PERMANENT
     assert Path(original_path).exists()
+    state = AccountingDocumentArchiveService(db_path).get_state(
+        workspace_id=WORKSPACE_ID,
+        document_id=record.job.document_id,
+    )
+    assert state is not None
+    assert state.archive_status == ARCHIVE_JOB_FAILED
+    assert state.last_error_code == ARCHIVE_ERROR_PERMANENT
+    assert state.local_file_path == original_path
+
+
+def test_worker_does_not_delete_local_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path, _record, original_path, metadata_path = _enqueue_document(tmp_path)
+
+    def fail_delete(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("archive worker must not delete local files")
+
+    monkeypatch.setattr(Path, "unlink", fail_delete)
+    monkeypatch.setattr(os, "remove", fail_delete)
+
+    result = ArchiveWorker(db_path, FakeArchiveProvider()).process_one(now=NOW)
+
+    assert result.status == ARCHIVE_JOB_UPLOADED
+    assert Path(original_path).exists()
+    assert Path(metadata_path).exists()
 
 
 def test_max_attempts_transient_failure_becomes_failed(tmp_path: Path) -> None:

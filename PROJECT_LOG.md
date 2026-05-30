@@ -1,5 +1,28 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 119 - Fake archive worker regression hardening
+
+Summary:
+- Hardened fake archive worker regression tests before recent-docs archive
+  status display work.
+- Added coverage for uploaded timestamps on both archive job and archive state,
+  one-job-only worker processing, missing provider handling, permanent failure
+  state consistency, and local deletion tripwires.
+
+Constraints:
+- Tests/log update only unless a small bug is exposed.
+- No Google OAuth/API, real Drive adapter, external network integration,
+  Telegram handler change, recent-docs status display, cleanup/deletion, or
+  Product Truth/InfoHelp status change.
+
+Verification:
+- `python -m pytest -q tests/test_archive_worker.py tests/test_archive_job_service.py tests/test_accounting_document_archive_service.py`
+  - 60 passed.
+- `python -m pytest -q`
+  - 1385 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-30 - Session 118 - Fake archive worker lifecycle
 
 Summary:
