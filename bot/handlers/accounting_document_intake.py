@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -580,11 +581,19 @@ def _enqueue_archive_after_confirmed_save(
             metadata_path=result.metadata_path,
         )
     except Exception:
-        logger.exception(
-            'accounting_document_archive_enqueue_failed workspace_id=%s document_id=%s',
-            workspace_id,
-            result.metadata_path.stem,
+        logger.warning(
+            'archive_enqueue_failed workspace_ref=%s document_ref=%s error_category=%s',
+            _safe_log_ref(workspace_id),
+            _safe_log_ref(result.metadata_path.stem),
+            'archive_enqueue_failed',
         )
+
+
+def _safe_log_ref(value: object, *, length: int = 12) -> str:
+    text = str(value).strip()
+    if not text:
+        return 'missing'
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()[:length]
 
 
 def _format_accounting_document_preview(candidate: AccountingDocumentCandidate) -> str:

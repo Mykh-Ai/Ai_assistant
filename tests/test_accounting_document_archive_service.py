@@ -19,6 +19,7 @@ from bot.services.accounting_document_archive_service import (
 )
 from bot.services.accounting_document_storage import workspace_key_for_supplier
 from bot.services.archive_job_service import ArchiveJobService
+from bot.services.info_help import build_product_truth_guidance
 from bot.services.product_truth import ProductTruthStatus, get_capability
 
 
@@ -272,10 +273,14 @@ def test_accounting_handlers_do_not_call_google_or_archive_worker() -> None:
 
 def test_google_drive_product_truth_stays_unsupported() -> None:
     result = get_capability('google_drive_invoice_storage')
+    answer = build_product_truth_guidance(user_input_text='Vie bot ukladať faktúry na Google Drive?')
 
     assert result.capability is not None
     assert result.capability.status == ProductTruthStatus.UNSUPPORTED
     assert result.capability.runtime_owner is None
+    assert answer is not None
+    assert 'nepodporované' in answer
+    assert 'nie je v aktuálnej verzii implementovaná' in answer
 
 
 def test_accounting_archive_service_has_no_google_or_network_imports() -> None:

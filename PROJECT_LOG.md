@@ -1,5 +1,35 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 117 - Archive enqueue failure logging hardening
+
+Summary:
+- Hardened the confirmed accounting document archive enqueue failure log to use
+  bounded fields only.
+- Replaced exception traceback logging at the handler boundary with a fixed
+  `archive_enqueue_failed` category and hashed workspace/document references.
+- Kept confirmed accounting document save success behavior unchanged when
+  archive enqueue fails.
+- Added tests proving enqueue failure still preserves the confirmed document,
+  logs the bounded category, omits confirmed original/metadata paths, omits the
+  full filename-derived document id, and does not include raw exception
+  path/token-like text.
+- Extended the Google Drive Product Truth/InfoHelp regression to keep Drive
+  storage unsupported/not implemented.
+
+Constraints:
+- Logging hardening and tests only.
+- No worker, Google OAuth/API, upload, extra handler wiring, confirmed local
+  file deletion, cleanup implementation, or Product Truth/InfoHelp status
+  change.
+
+Verification:
+- `python -m pytest -q tests/test_accounting_document_intake_flow.py tests/test_accounting_document_archive_service.py tests/test_archive_job_service.py`
+  - 80 passed.
+- `python -m pytest -q`
+  - 1368 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-30 - Session 116 - Confirmed accounting document archive enqueue
 
 Summary:

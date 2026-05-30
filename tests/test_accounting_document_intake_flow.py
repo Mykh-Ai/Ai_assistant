@@ -682,6 +682,7 @@ def test_archive_enqueue_failure_keeps_confirmed_document_without_google_or_clea
     monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
     state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
     config = _config(tmp_path)
+    log_calls: list[tuple[str, tuple, dict]] = []
 
     asyncio.run(
         accounting_document_upload(
@@ -696,19 +697,38 @@ def test_archive_enqueue_failure_keeps_confirmed_document_without_google_or_clea
         return 'approve'
 
     def _failing_enqueue(self, **kwargs):
-        raise RuntimeError('archive unavailable')
+        raise RuntimeError(f'archive unavailable at {tmp_path / "secret-path"} with sk-test-token')
+
+    def _capture_warning(message: str, *args, **kwargs) -> None:
+        log_calls.append((message, args, kwargs))
 
     monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
     monkeypatch.setattr(
         'bot.handlers.accounting_document_intake.AccountingDocumentArchiveService.enqueue_confirmed_document',
         _failing_enqueue,
     )
-    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.logger.warning', _capture_warning)
+    decision_message = _DummyMessage(text='schváliť', from_user_id=111001)
+    asyncio.run(accounting_document_preview_decision(decision_message, state, config))
 
     original_path = next((tmp_path / 'workspaces').rglob('*.jpg'))
+    metadata_path = next((tmp_path / 'workspaces').rglob('*.json'))
+    assert log_calls
+    rendered_log = log_calls[0][0] % log_calls[0][1]
+
     assert original_path.exists()
     assert not (tmp_path / 'uploads' / 'accounting_intake' / '111001' / 'PHOTO123').exists()
     assert not config.db_path.exists()
+    assert state.current_state is None
+    assert 'Doklad bol uložený.' in decision_message.answers[-1]
+    assert 'archive_enqueue_failed' in rendered_log
+    assert str(original_path) not in rendered_log
+    assert str(metadata_path) not in rendered_log
+    assert metadata_path.stem not in rendered_log
+    assert 'secret-path' not in rendered_log
+    assert 'sk-test-token' not in rendered_log
+    assert 'archive unavailable' not in rendered_log
+    assert not log_calls[0][2].get('exc_info')
 
 
 def test_zrusit_cancels_without_confirmed_save(monkeypatch, tmp_path: Path) -> None:
