@@ -9,6 +9,8 @@ import pytest
 
 from bot.services import google_drive_connection_service
 from bot.services.google_drive_connection_service import (
+    ALLOWED_GOOGLE_DRIVE_CONNECTION_ERROR_CODES,
+    GOOGLE_DRIVE_ERROR_UNKNOWN,
     GOOGLE_DRIVE_PROVIDER,
     GOOGLE_DRIVE_STATUS_CONNECTED,
     GOOGLE_DRIVE_STATUS_DISCONNECTED,
@@ -172,6 +174,58 @@ def test_mark_needs_reauth_updates_status_and_error_safely(tmp_path: Path) -> No
     assert record.last_error_code == 'drive_auth_revoked'
     assert record.updated_at == now.isoformat()
     assert 'refresh-token-secret' not in repr(record)
+
+
+@pytest.mark.parametrize('error_code', ALLOWED_GOOGLE_DRIVE_CONNECTION_ERROR_CODES)
+def test_mark_needs_reauth_stores_allowed_bounded_error_codes(
+    tmp_path: Path,
+    error_code: str,
+) -> None:
+    service = _service(tmp_path)
+    _create_connection(service)
+
+    record = service.mark_needs_reauth(
+        workspace_id='telegram-111001',
+        error_code=error_code,
+    )
+
+    assert record.status == GOOGLE_DRIVE_STATUS_NEEDS_REAUTH
+    assert record.last_error_code == error_code
+
+
+@pytest.mark.parametrize(
+    'raw_error_code',
+    [
+        'invalid_grant: Token has been expired or revoked',
+        'ya29.a0AfH6SMB-token-like-access-token',
+        '4/0AfJohXn-auth-code-like-value',
+        'https://accounts.google.com/o/oauth2/v2/auth?code=secret&client_id=client',
+        '{"error":"invalid_grant","error_description":"Bad Request"}',
+        'refresh_token=1//0gRawProviderToken',
+    ],
+)
+def test_mark_needs_reauth_normalizes_raw_provider_errors(
+    tmp_path: Path,
+    raw_error_code: str,
+) -> None:
+    service = _service(tmp_path)
+    _create_connection(service)
+
+    record = service.mark_needs_reauth(
+        workspace_id='telegram-111001',
+        error_code=raw_error_code,
+    )
+
+    with sqlite3.connect(_db_path(tmp_path)) as connection:
+        stored_error = connection.execute(
+            'SELECT last_error_code FROM google_drive_connections WHERE workspace_id = ?',
+            ('telegram-111001',),
+        ).fetchone()[0]
+
+    assert record.status == GOOGLE_DRIVE_STATUS_NEEDS_REAUTH
+    assert record.last_error_code == GOOGLE_DRIVE_ERROR_UNKNOWN
+    assert stored_error == GOOGLE_DRIVE_ERROR_UNKNOWN
+    assert raw_error_code not in repr(record)
 
 
 def test_mark_disconnected_updates_status_and_revoked_at(tmp_path: Path) -> None:

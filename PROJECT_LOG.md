@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 124 - Google Drive connection error-code hardening
+
+Summary:
+- Hardened `GoogleDriveConnectionService.mark_needs_reauth(...)` so persisted
+  connection error codes are bounded before OAuth wiring.
+- Added the allowed Google Drive connection error-code set:
+  `drive_auth_revoked`, `drive_needs_reauth`,
+  `drive_insufficient_permissions`, `drive_token_refresh_failed`,
+  `drive_connection_error`, `drive_unknown_error`,
+  `drive_oauth_state_invalid`, `drive_scope_missing`, and
+  `drive_not_configured`.
+- Unknown/raw provider errors, token-like strings, OAuth auth-code-like
+  strings, provider JSON, and OAuth/provider URLs are normalized to
+  `drive_unknown_error` before DB persistence.
+- Added tests proving allowed codes persist, raw sensitive-looking errors do
+  not persist, `needs_reauth` and disconnect behavior remains intact, token
+  plaintext still does not appear in DB/repr output, and no Google/network
+  imports were introduced.
+
+Constraints:
+- Service hardening and tests only.
+- No OAuth flow, Google API calls, real Drive adapter, Telegram handlers or
+  commands, uploads, or Product Truth/InfoHelp status change.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_connection_service.py tests/test_token_crypto.py`
+  - 36 passed.
+
 ## 2026-05-30 - Session 123 - Google Drive connection schema and token crypto foundation
 
 Summary:

@@ -18,12 +18,34 @@ GOOGLE_DRIVE_STATUS_REVOKED = 'revoked'
 GOOGLE_DRIVE_STATUS_ERROR = 'error'
 GOOGLE_DRIVE_STATUS_NEEDS_REAUTH = 'needs_reauth'
 
+GOOGLE_DRIVE_ERROR_AUTH_REVOKED = 'drive_auth_revoked'
+GOOGLE_DRIVE_ERROR_NEEDS_REAUTH = 'drive_needs_reauth'
+GOOGLE_DRIVE_ERROR_INSUFFICIENT_PERMISSIONS = 'drive_insufficient_permissions'
+GOOGLE_DRIVE_ERROR_TOKEN_REFRESH_FAILED = 'drive_token_refresh_failed'
+GOOGLE_DRIVE_ERROR_CONNECTION = 'drive_connection_error'
+GOOGLE_DRIVE_ERROR_UNKNOWN = 'drive_unknown_error'
+GOOGLE_DRIVE_ERROR_OAUTH_STATE_INVALID = 'drive_oauth_state_invalid'
+GOOGLE_DRIVE_ERROR_SCOPE_MISSING = 'drive_scope_missing'
+GOOGLE_DRIVE_ERROR_NOT_CONFIGURED = 'drive_not_configured'
+
 ALLOWED_GOOGLE_DRIVE_CONNECTION_STATUSES = (
     GOOGLE_DRIVE_STATUS_CONNECTED,
     GOOGLE_DRIVE_STATUS_DISCONNECTED,
     GOOGLE_DRIVE_STATUS_REVOKED,
     GOOGLE_DRIVE_STATUS_ERROR,
     GOOGLE_DRIVE_STATUS_NEEDS_REAUTH,
+)
+
+ALLOWED_GOOGLE_DRIVE_CONNECTION_ERROR_CODES = (
+    GOOGLE_DRIVE_ERROR_AUTH_REVOKED,
+    GOOGLE_DRIVE_ERROR_NEEDS_REAUTH,
+    GOOGLE_DRIVE_ERROR_INSUFFICIENT_PERMISSIONS,
+    GOOGLE_DRIVE_ERROR_TOKEN_REFRESH_FAILED,
+    GOOGLE_DRIVE_ERROR_CONNECTION,
+    GOOGLE_DRIVE_ERROR_UNKNOWN,
+    GOOGLE_DRIVE_ERROR_OAUTH_STATE_INVALID,
+    GOOGLE_DRIVE_ERROR_SCOPE_MISSING,
+    GOOGLE_DRIVE_ERROR_NOT_CONFIGURED,
 )
 
 
@@ -339,7 +361,7 @@ class GoogleDriveConnectionService:
     ) -> GoogleDriveConnectionRecord:
         workspace_id = _required_text(workspace_id, 'workspace_id')
         status = _validate_status(status)
-        last_error_code = _optional_text(last_error_code)
+        last_error_code = _normalize_connection_error_code(last_error_code)
         timestamp = _format_timestamp(now)
         with managed_connection(self._db_path) as connection:
             ensure_google_drive_connection_schema(connection)
@@ -430,6 +452,15 @@ def _validate_provider(provider: str) -> str:
     if provider != GOOGLE_DRIVE_PROVIDER:
         raise GoogleDriveConnectionServiceError('unsupported_provider')
     return provider
+
+
+def _normalize_connection_error_code(error_code: str | None) -> str | None:
+    text = _optional_text(error_code)
+    if text is None:
+        return None
+    if text in ALLOWED_GOOGLE_DRIVE_CONNECTION_ERROR_CODES:
+        return text
+    return GOOGLE_DRIVE_ERROR_UNKNOWN
 
 
 def _normalize_scopes(scopes: str | list[str] | tuple[str, ...]) -> str:
