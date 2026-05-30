@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 120 - Recent accounting archive status display
+
+Summary:
+- Added read-only archive/outbox status display to the recent accounting
+  documents view (`/blocky` / `/blocek`).
+- The view derives `document_id` from the confirmed metadata filename stem and
+  reads archive state by workspace/document id without creating archive jobs,
+  running a worker, uploading files, or mutating archive state.
+- Added Slovak user-safe labels for `not_configured`, `pending`, `uploading`,
+  `uploaded`, `retry_wait`, `failed`, and `abandoned`.
+- Added handler tests for every displayed archive status and read-only guards
+  against job creation, state mutation, worker/provider usage, and
+  Google/network imports.
+
+Constraints:
+- Recent-docs status display only.
+- No Google OAuth/API, real Drive adapter, worker run from handler, upload,
+  user notifications, accounting document save-flow change, local
+  cleanup/deletion, or Product Truth/InfoHelp active Google Drive claim.
+
+Verification:
+- `python -m pytest -q tests/test_accounting_documents_handler.py tests/test_accounting_document_registry.py tests/test_accounting_document_archive_service.py`
+  - 45 passed.
+- `python -m pytest -q`
+  - 1395 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-30 - Session 119 - Fake archive worker regression hardening
 
 Summary:

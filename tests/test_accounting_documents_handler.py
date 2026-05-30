@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
+import inspect
 import json
 from pathlib import Path
 
+import pytest
+
 from bot.config import Config
 from bot.handlers import routers
+from bot.handlers import accounting_documents
 from bot.handlers.accounting_documents import cmd_blocky, recent_accounting_documents_alias, router as accounting_documents_router
 from bot.handlers.invoice import router as invoice_router
+from bot.services.accounting_document_archive_service import AccountingDocumentArchiveService
+from bot.services.archive_job_service import ARCHIVE_JOB_PENDING
 
 
 class _DummyMessage:
@@ -51,7 +58,7 @@ def _write_metadata(
     currency: str | None = 'EUR',
     purchase_subject: str | None = '1-dnova dialnicna znamka Rakusko - osobne vozidlo',
     upload_date: str = '2026-03-14',
-) -> None:
+) -> Path:
     metadata_dir = storage_dir / 'workspaces' / 'mykhailo-szco' / 'years' / '2026' / 'expenses' / '03' / folder / 'metadata'
     metadata_dir.mkdir(parents=True, exist_ok=True)
     metadata_path = metadata_dir / f'{stem}.json'
@@ -73,6 +80,63 @@ def _write_metadata(
         ),
         encoding='utf-8',
     )
+    return metadata_path
+
+
+def _create_archive_state(
+    storage_dir: Path,
+    db_path: Path,
+    *,
+    stem: str,
+    status: str,
+) -> None:
+    metadata_path = storage_dir / 'workspaces' / 'mykhailo-szco' / 'years' / '2026' / 'expenses' / '03' / 'receipts' / 'metadata' / f'{stem}.json'
+    original_path = metadata_path.parent.parent / 'originals' / f'{stem}.jpg'
+    service = AccountingDocumentArchiveService(db_path)
+    result = service.enqueue_confirmed_document(
+        workspace_id='mykhailo-szco',
+        telegram_id=111001,
+        document_id=stem,
+        document_type='receipt',
+        local_file_path=original_path,
+        metadata_path=metadata_path,
+    )
+    if status == 'pending':
+        return
+    service.mark_uploading(result.job.job_id, now=datetime(2026, 5, 30, 10, 0, tzinfo=UTC))
+    if status == 'uploading':
+        return
+    if status == 'uploaded':
+        service.mark_uploaded(
+            result.job.job_id,
+            drive_file_id='fake-drive-file',
+            drive_folder_id='fake-folder',
+            uploaded_at=datetime(2026, 5, 30, 10, 1, tzinfo=UTC),
+        )
+        return
+    if status == 'retry_wait':
+        service.mark_retry_wait(
+            result.job.job_id,
+            error_code='upload_transient_failed',
+            next_attempt_at=datetime(2026, 5, 30, 10, 15, tzinfo=UTC),
+            now=datetime(2026, 5, 30, 10, 2, tzinfo=UTC),
+        )
+        return
+    if status == 'failed':
+        service.mark_failed(
+            result.job.job_id,
+            error_code='upload_permanent_failed',
+            now=datetime(2026, 5, 30, 10, 2, tzinfo=UTC),
+        )
+        return
+    if status == 'abandoned':
+        service.mark_abandoned(
+            result.job.job_id,
+            error_code='manual_stop',
+            now=datetime(2026, 5, 30, 10, 2, tzinfo=UTC),
+        )
+        return
+    raise AssertionError(f'Unsupported test archive status: {status}')
 
 
 def test_blocky_command_shows_last_5_documents(tmp_path: Path) -> None:
@@ -147,6 +211,85 @@ def test_blocky_output_displays_missing_fields_as_nezistene(tmp_path: Path) -> N
 
     assert '1. nezistené — nezistené — nezistené' in message.answers[-1]
     assert 'Predmet nákupu: nezistené' in message.answers[-1]
+
+
+def test_blocky_output_shows_not_configured_without_archive_state(tmp_path: Path) -> None:
+    _write_metadata(tmp_path, stem='receipt', vendor_name='ASFINAG')
+    config = _config(tmp_path)
+    message = _DummyMessage('/blocky')
+
+    asyncio.run(cmd_blocky(message, config))
+
+    assert 'Archív: Google Drive archív zatiaľ nie je pripojený' in message.answers[-1]
+    assert not config.db_path.exists()
+
+
+def test_blocky_read_view_does_not_create_archive_job(tmp_path: Path) -> None:
+    _write_metadata(tmp_path, stem='receipt', vendor_name='ASFINAG')
+    config = _config(tmp_path)
+    message = _DummyMessage('/blocky')
+
+    asyncio.run(cmd_blocky(message, config))
+
+    assert 'ASFINAG' in message.answers[-1]
+    assert not config.db_path.exists()
+
+
+@pytest.mark.parametrize(
+    ('archive_status', 'expected_label'),
+    [
+        ('pending', 'Archív: čaká na spracovanie'),
+        ('uploading', 'Archív: spracúva sa'),
+        ('uploaded', 'Archív: pripravené v archíve / nahraté podľa evidencie'),
+        ('retry_wait', 'Archív: čaká na opakovanie'),
+        ('failed', 'Archív: zlyhalo'),
+        ('abandoned', 'Archív: zastavené'),
+    ],
+)
+def test_blocky_output_displays_archive_statuses(
+    tmp_path: Path,
+    archive_status: str,
+    expected_label: str,
+) -> None:
+    _write_metadata(tmp_path, stem='receipt', vendor_name='ASFINAG')
+    config = _config(tmp_path)
+    _create_archive_state(tmp_path, config.db_path, stem='receipt', status=archive_status)
+    message = _DummyMessage('/blocky')
+
+    asyncio.run(cmd_blocky(message, config))
+
+    assert expected_label in message.answers[-1]
+
+
+def test_blocky_read_view_does_not_mutate_archive_state(tmp_path: Path) -> None:
+    _write_metadata(tmp_path, stem='receipt', vendor_name='ASFINAG')
+    config = _config(tmp_path)
+    _create_archive_state(tmp_path, config.db_path, stem='receipt', status=ARCHIVE_JOB_PENDING)
+    service = AccountingDocumentArchiveService(config.db_path)
+    before = service.get_state(workspace_id='mykhailo-szco', document_id='receipt')
+    message = _DummyMessage('/blocky')
+
+    asyncio.run(cmd_blocky(message, config))
+
+    after = service.get_state(workspace_id='mykhailo-szco', document_id='receipt')
+    assert before == after
+
+
+def test_blocky_read_view_does_not_import_worker_or_network_clients() -> None:
+    source = inspect.getsource(accounting_documents)
+
+    forbidden = [
+        'ArchiveWorker',
+        'archive_worker',
+        'upload_file',
+        'googleapiclient',
+        'google.auth',
+        'requests',
+        'httpx',
+        'aiohttp',
+        'socket',
+    ]
+    assert all(token not in source for token in forbidden)
 
 
 def test_blocky_deterministic_aliases_work(tmp_path: Path) -> None:

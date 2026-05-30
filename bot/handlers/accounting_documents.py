@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from pathlib import Path
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -10,8 +11,17 @@ from aiogram.types import Message
 
 from bot.config import Config
 from bot.services.accounting_document_models import DOCUMENT_TYPE_INCOMING_INVOICE, DOCUMENT_TYPE_RECEIPT
+from bot.services.accounting_document_archive_service import (
+    ARCHIVE_STATUS_ABANDONED,
+    ARCHIVE_STATUS_FAILED,
+    ARCHIVE_STATUS_PENDING,
+    ARCHIVE_STATUS_RETRY_WAIT,
+    ARCHIVE_STATUS_UPLOADED,
+    ARCHIVE_STATUS_UPLOADING,
+    AccountingDocumentArchiveService,
+)
 from bot.services.accounting_document_registry import AccountingDocumentSummary, list_recent_accounting_documents
-from bot.services.accounting_document_storage import workspace_key_for_supplier
+from bot.services.accounting_document_storage import WORKSPACE_KEY, workspace_key_for_supplier
 
 
 router = Router()
@@ -53,24 +63,32 @@ async def _send_recent_accounting_documents(*, message: Message, config: Config)
         return
     supplier_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
     if supplier_telegram_id is None:
+        workspace_key = WORKSPACE_KEY
         summaries = list_recent_accounting_documents(storage_dir=config.storage_dir, limit=5)
     else:
+        workspace_key = workspace_key_for_supplier(supplier_telegram_id)
         summaries = list_recent_accounting_documents(
             storage_dir=config.storage_dir,
-            workspace_key=workspace_key_for_supplier(supplier_telegram_id),
+            workspace_key=workspace_key,
             limit=5,
         )
     if not summaries:
         await message.answer('Zatiaľ nemáte uložené žiadne bločky ani prijaté doklady.')
         return
 
+    archive_service = AccountingDocumentArchiveService(config.db_path)
     lines = ['Posledné bločky a prijaté doklady:']
     for index, summary in enumerate(summaries, start=1):
-        lines.extend(_format_summary(index, summary))
+        archive_status = _archive_status_for_summary(
+            archive_service=archive_service,
+            workspace_key=workspace_key,
+            summary=summary,
+        )
+        lines.extend(_format_summary(index, summary, archive_status=archive_status))
     await message.answer('\n'.join(lines))
 
 
-def _format_summary(index: int, summary: AccountingDocumentSummary) -> list[str]:
+def _format_summary(index: int, summary: AccountingDocumentSummary, *, archive_status: str = 'not_configured') -> list[str]:
     issue_date = _display(summary.issue_date)
     vendor = _display(summary.vendor_name)
     amount = _format_amount(summary.total_amount, summary.currency)
@@ -81,7 +99,39 @@ def _format_summary(index: int, summary: AccountingDocumentSummary) -> list[str]
         f'{index}. {issue_date} — {vendor} — {amount}',
         f'   Predmet nákupu: {purchase_subject}',
         f'   Typ: {document_type}',
+        f'   {_archive_status_label(archive_status)}',
     ]
+
+
+def _archive_status_for_summary(
+    *,
+    archive_service: AccountingDocumentArchiveService,
+    workspace_key: str,
+    summary: AccountingDocumentSummary,
+) -> str:
+    document_id = Path(summary.metadata_path).stem
+    if not document_id:
+        return 'not_configured'
+    state = archive_service.get_state_read_only(
+        workspace_id=workspace_key,
+        document_id=document_id,
+    )
+    if state is None:
+        return 'not_configured'
+    return state.archive_status
+
+
+def _archive_status_label(status: str) -> str:
+    labels = {
+        'not_configured': 'Archív: Google Drive archív zatiaľ nie je pripojený',
+        ARCHIVE_STATUS_PENDING: 'Archív: čaká na spracovanie',
+        ARCHIVE_STATUS_UPLOADING: 'Archív: spracúva sa',
+        ARCHIVE_STATUS_UPLOADED: 'Archív: pripravené v archíve / nahraté podľa evidencie',
+        ARCHIVE_STATUS_RETRY_WAIT: 'Archív: čaká na opakovanie',
+        ARCHIVE_STATUS_FAILED: 'Archív: zlyhalo',
+        ARCHIVE_STATUS_ABANDONED: 'Archív: zastavené',
+    }
+    return labels.get(status, labels['not_configured'])
 
 
 def _format_amount(total_amount: str | None, currency: str | None) -> str:

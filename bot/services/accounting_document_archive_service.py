@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import sqlite3
+from urllib.parse import quote
 
 from bot.services.archive_job_service import (
     ARCHIVE_JOB_ABANDONED,
@@ -115,6 +116,24 @@ class AccountingDocumentArchiveService:
                 ),
                 (workspace_id, document_id),
             ).fetchone()
+        return _state_from_row(row) if row is not None else None
+
+    def get_state_read_only(self, *, workspace_id: str, document_id: str) -> AccountingDocumentArchiveState | None:
+        if not self._db_path.exists():
+            return None
+        db_uri = f"file:{quote(self._db_path.resolve().as_posix(), safe='/:')}?mode=ro"
+        try:
+            with sqlite3.connect(db_uri, uri=True) as connection:
+                connection.row_factory = sqlite3.Row
+                row = connection.execute(
+                    (
+                        'SELECT * FROM accounting_document_archive_state '
+                        'WHERE workspace_id = ? AND document_id = ?'
+                    ),
+                    (workspace_id, document_id),
+                ).fetchone()
+        except sqlite3.OperationalError:
+            return None
         return _state_from_row(row) if row is not None else None
 
     def mark_uploading(self, job_id: str, *, now: datetime | None = None) -> AccountingDocumentArchiveState:
