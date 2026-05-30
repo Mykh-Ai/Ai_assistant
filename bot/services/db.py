@@ -185,6 +185,50 @@ CREATE TABLE IF NOT EXISTS customization_requests (
 );
 """
 
+ARCHIVE_JOB_SCHEMA = """
+CREATE TABLE IF NOT EXISTS archive_jobs (
+    job_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    telegram_id INTEGER NOT NULL,
+    document_id TEXT NOT NULL,
+    document_type TEXT NOT NULL,
+    local_file_path TEXT NOT NULL,
+    metadata_path TEXT,
+    provider TEXT NOT NULL DEFAULT 'google_drive',
+    target_folder_path TEXT,
+    status TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    next_attempt_at TEXT,
+    drive_file_id TEXT,
+    drive_folder_id TEXT,
+    error_code TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    uploaded_at TEXT
+);
+"""
+
+ACCOUNTING_DOCUMENT_ARCHIVE_STATE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS accounting_document_archive_state (
+    document_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    telegram_id INTEGER NOT NULL,
+    document_type TEXT NOT NULL,
+    metadata_path TEXT,
+    local_file_path TEXT NOT NULL,
+    archive_status TEXT NOT NULL,
+    latest_job_id TEXT,
+    drive_file_id TEXT,
+    drive_folder_id TEXT,
+    uploaded_at TEXT,
+    last_error_code TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, document_id)
+);
+"""
+
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'telegram_id': 'INTEGER NOT NULL UNIQUE',
@@ -650,6 +694,27 @@ def _ensure_customization_request_indexes(connection: sqlite3.Connection) -> Non
     )
 
 
+def ensure_archive_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(ARCHIVE_JOB_SCHEMA)
+    connection.execute(ACCOUNTING_DOCUMENT_ARCHIVE_STATE_SCHEMA)
+    _ensure_archive_indexes(connection)
+
+
+def _ensure_archive_indexes(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_archive_jobs_runnable '
+        'ON archive_jobs (provider, status, next_attempt_at, created_at)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_archive_jobs_document '
+        'ON archive_jobs (workspace_id, document_id, provider, status)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_accounting_archive_state_status '
+        'ON accounting_document_archive_state (workspace_id, archive_status, updated_at)'
+    )
+
+
 @contextmanager
 def managed_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(db_path)
@@ -673,4 +738,5 @@ def init_db(db_path: Path) -> None:
         _bootstrap_invoice_number_settings_table(connection)
         _bootstrap_confirmed_semantic_alias_table(connection)
         _bootstrap_customization_request_table(connection)
+        ensure_archive_schema(connection)
         connection.commit()

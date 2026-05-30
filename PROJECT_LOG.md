@@ -1,5 +1,53 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 114 - Google Drive accounting archive outbox foundation
+
+Summary:
+- Added the tracked design source
+  `docs/Google_Drive_Faktury_Bloceky_Storage_Policy.md` after checking it for
+  obvious secrets/credentials.
+- Added additive SQLite archive foundation tables:
+  `archive_jobs` and `accounting_document_archive_state`.
+- Added `bot/services/archive_job_service.py` for local outbox job creation,
+  idempotent active-job enqueue, runnable job listing, and status transitions.
+- Added `bot/services/accounting_document_archive_service.py` to mirror archive
+  state for confirmed accounting documents by workspace/document id.
+- Added service tests for schema bootstrap, enqueue idempotency, runnable jobs,
+  upload/retry/failure/abandoned status updates, local-file retention, no
+  Google/network imports, and Product Truth non-overclaim.
+
+Constraints extracted:
+- Phase 1A only: DB/outbox services and tests.
+- No Google OAuth, Google API calls, external credentials, real upload, Drive
+  delete/archive, notifications, local cleanup, invoice lifecycle/reminders, or
+  outgoing invoice PDF archive.
+- Existing accounting document naming/storage remains canonical; new archive
+  state references existing `metadata_path` and `original_path`.
+- Telegram handlers are not wired to enqueue or upload in this slice.
+- Product Truth/InfoHelp still must not claim active Google Drive archive.
+
+Touched scopes:
+- DB schema: yes, additive tables only;
+- storage: references only, no file moves/deletes;
+- accounting document services: archive foundation only;
+- Telegram handlers/FSM/routing/LLM/STT/LMM/access/server: no behavior changes.
+
+Current implementation status:
+- Google Drive accounting archive: partial foundation only, no runtime upload.
+- Google Drive integration/OAuth: unsupported / requires external credentials.
+- AI maturity: not an AI-layer change; Product Truth remains the source for user
+  capability claims.
+
+Verification:
+- `python -m pytest -q tests/test_archive_job_service.py tests/test_accounting_document_archive_service.py`
+  - 27 passed.
+- `python -m pytest -q tests/test_accounting_document_registry.py tests/test_accounting_documents_handler.py`
+  - 18 passed.
+- `python -m pytest -q tests/test_product_truth.py tests/test_info_help.py`
+  - 84 passed.
+- `python -m pytest -q`
+  - 1345 passed, 7 subtests passed.
+
 ## 2026-05-24 - Session 113 - InfoHelp human-review offer wording
 
 Summary:
