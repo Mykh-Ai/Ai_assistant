@@ -118,6 +118,7 @@ class AccountingDocumentArchiveService:
         return _state_from_row(row) if row is not None else None
 
     def mark_uploading(self, job_id: str, *, now: datetime | None = None) -> AccountingDocumentArchiveState:
+        self._require_existing_state(job_id)
         job = self._jobs.mark_uploading(job_id, now=now)
         return self._update_state_from_job(job, archive_status=ARCHIVE_STATUS_UPLOADING)
 
@@ -129,6 +130,7 @@ class AccountingDocumentArchiveService:
         drive_folder_id: str | None = None,
         uploaded_at: datetime | None = None,
     ) -> AccountingDocumentArchiveState:
+        self._require_existing_state(job_id)
         job = self._jobs.mark_uploaded(
             job_id,
             drive_file_id=drive_file_id,
@@ -152,6 +154,7 @@ class AccountingDocumentArchiveService:
         next_attempt_at: datetime | None = None,
         now: datetime | None = None,
     ) -> AccountingDocumentArchiveState:
+        self._require_existing_state(job_id)
         job = self._jobs.mark_retry_wait(
             job_id,
             error_code=error_code,
@@ -171,6 +174,7 @@ class AccountingDocumentArchiveService:
         error_code: str,
         now: datetime | None = None,
     ) -> AccountingDocumentArchiveState:
+        self._require_existing_state(job_id)
         job = self._jobs.mark_failed(job_id, error_code=error_code, now=now)
         return self._update_state_from_job(
             job,
@@ -185,6 +189,7 @@ class AccountingDocumentArchiveService:
         error_code: str,
         now: datetime | None = None,
     ) -> AccountingDocumentArchiveState:
+        self._require_existing_state(job_id)
         job = self._jobs.mark_abandoned(job_id, error_code=error_code, now=now)
         return self._update_state_from_job(
             job,
@@ -217,7 +222,7 @@ class AccountingDocumentArchiveService:
                         '(document_id, workspace_id, telegram_id, document_type, metadata_path, local_file_path, '
                         'archive_status, latest_job_id, drive_file_id, drive_folder_id, uploaded_at, '
                         'last_error_code, created_at, updated_at) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)'
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                     ),
                     (
                         job.document_id,
@@ -228,6 +233,9 @@ class AccountingDocumentArchiveService:
                         job.local_file_path,
                         archive_status,
                         job.job_id,
+                        job.drive_file_id,
+                        job.drive_folder_id,
+                        job.uploaded_at,
                         last_error_code,
                         now_text,
                         now_text,
@@ -238,7 +246,8 @@ class AccountingDocumentArchiveService:
                     (
                         'UPDATE accounting_document_archive_state SET telegram_id = ?, document_type = ?, '
                         'metadata_path = ?, local_file_path = ?, archive_status = ?, latest_job_id = ?, '
-                        'last_error_code = ?, updated_at = ? WHERE workspace_id = ? AND document_id = ?'
+                        'drive_file_id = ?, drive_folder_id = ?, uploaded_at = ?, last_error_code = ?, '
+                        'updated_at = ? WHERE workspace_id = ? AND document_id = ?'
                     ),
                     (
                         job.telegram_id,
@@ -247,6 +256,9 @@ class AccountingDocumentArchiveService:
                         job.local_file_path,
                         archive_status,
                         job.job_id,
+                        job.drive_file_id,
+                        job.drive_folder_id,
+                        job.uploaded_at,
                         last_error_code,
                         now_text,
                         job.workspace_id,
@@ -307,6 +319,15 @@ class AccountingDocumentArchiveService:
             if row is None:
                 raise AccountingDocumentArchiveServiceError('state_not_found')
             return _state_from_row(row)
+
+    def _require_existing_state(self, job_id: str) -> AccountingDocumentArchiveState:
+        job = self._jobs.get_job(job_id)
+        if job is None:
+            raise AccountingDocumentArchiveServiceError('job_not_found')
+        state = self.get_state(workspace_id=job.workspace_id, document_id=job.document_id)
+        if state is None:
+            raise AccountingDocumentArchiveServiceError('archive_state_missing')
+        return state
 
 
 def _state_status_for_job_status(status: str) -> str:

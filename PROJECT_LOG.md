@@ -1,5 +1,45 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 115 - Google Drive archive outbox transition hardening
+
+Summary:
+- Hardened `ArchiveJobService` with explicit bounded transitions for
+  `pending`, `uploading`, `uploaded`, `retry_wait`, `failed`, and `abandoned`.
+- Added additive worker lease columns on `archive_jobs`: `locked_by` and
+  `lease_until`.
+- Added atomic runnable job claiming for pending jobs, due retry jobs, and
+  expired uploading leases.
+- Clarified terminal enqueue policy: an existing `uploaded`, `failed`, or
+  `abandoned` job for the same workspace/document/provider blocks automatic
+  duplicate enqueue and is returned as-is.
+- Tightened archive input validation to accepted accounting document originals
+  under `workspaces/<workspace>/years/<year>/expenses/<month>/<receipts|incoming_invoices>/originals/`.
+- Hardened `AccountingDocumentArchiveService` so mark operations require an
+  existing archive state and fail safely before mutating a direct job-service
+  job without mirrored state.
+- Added static handler-boundary coverage proving accounting handlers still do
+  not import or call archive services in this slice.
+
+Constraints:
+- Service hardening and tests only.
+- No Telegram handler wiring or archive job creation from accounting document
+  confirmation.
+- No Google OAuth, Google API calls, real Drive adapter, external credentials,
+  upload, notification, local cleanup/deletion, invoice lifecycle/reminders, or
+  outgoing invoice PDF archive.
+- Product Truth/InfoHelp remain unchanged and must not claim active Google
+  Drive archiving.
+
+Verification:
+- `python -m pytest -q tests/test_archive_job_service.py tests/test_accounting_document_archive_service.py`
+  - 43 passed.
+- `python -m pytest -q tests/test_accounting_document_registry.py tests/test_accounting_documents_handler.py`
+  - 18 passed.
+- `python -m pytest -q`
+  - 1361 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-30 - Session 114 - Google Drive accounting archive outbox foundation
 
 Summary:

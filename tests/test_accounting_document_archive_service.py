@@ -18,6 +18,7 @@ from bot.services.accounting_document_archive_service import (
     AccountingDocumentArchiveServiceError,
 )
 from bot.services.accounting_document_storage import workspace_key_for_supplier
+from bot.services.archive_job_service import ArchiveJobService
 from bot.services.product_truth import ProductTruthStatus, get_capability
 
 
@@ -169,13 +170,23 @@ def test_retry_wait_and_failed_states_keep_local_file(tmp_path: Path) -> None:
     result = _enqueue(service, tmp_path)
     now = datetime(2026, 5, 30, 12, 0, tzinfo=UTC)
 
+    service.mark_uploading(result.job.job_id, now=now)
     retry = service.mark_retry_wait(
         result.job.job_id,
         error_code='temporary_error',
         next_attempt_at=now + timedelta(minutes=15),
         now=now,
     )
-    failed = service.mark_failed(result.job.job_id, error_code='manual_stop', now=now)
+    failed_result = service.enqueue_confirmed_document(
+        workspace_id=workspace_key_for_supplier(111001),
+        telegram_id=111001,
+        document_id='20260530_receipt_shop_12-30_FILE456',
+        document_type='receipt',
+        local_file_path=original_path,
+        metadata_path=_confirmed_document_paths(tmp_path)[1],
+    )
+    service.mark_uploading(failed_result.job.job_id, now=now)
+    failed = service.mark_failed(failed_result.job.job_id, error_code='manual_stop', now=now)
 
     assert retry.archive_status == ARCHIVE_STATUS_RETRY_WAIT
     assert retry.last_error_code == 'temporary_error'
@@ -189,11 +200,70 @@ def test_abandoned_state_keeps_local_file(tmp_path: Path) -> None:
     original_path, _ = _confirmed_document_paths(tmp_path)
     result = _enqueue(service, tmp_path)
 
+    service.mark_uploading(result.job.job_id)
     abandoned = service.mark_abandoned(result.job.job_id, error_code='permission_denied')
 
     assert abandoned.archive_status == ARCHIVE_STATUS_ABANDONED
     assert abandoned.last_error_code == 'permission_denied'
     assert original_path.exists()
+
+
+def test_enqueue_confirmed_document_after_uploaded_terminal_keeps_existing_state(tmp_path: Path) -> None:
+    service = AccountingDocumentArchiveService(_db_path(tmp_path))
+    result = _enqueue(service, tmp_path)
+    uploaded_at = datetime(2026, 5, 30, 12, 0, tzinfo=UTC)
+    service.mark_uploading(result.job.job_id, now=uploaded_at)
+    service.mark_uploaded(
+        result.job.job_id,
+        drive_file_id='fake-drive-file-id',
+        drive_folder_id='fake-folder-id',
+        uploaded_at=uploaded_at,
+    )
+
+    second = _enqueue(service, tmp_path)
+
+    assert second.job.job_id == result.job.job_id
+    assert second.state.archive_status == ARCHIVE_STATUS_UPLOADED
+    assert second.state.drive_file_id == 'fake-drive-file-id'
+    assert second.state.uploaded_at == uploaded_at.isoformat()
+
+
+def test_mark_methods_fail_safely_when_archive_state_is_missing(tmp_path: Path) -> None:
+    db_path = _db_path(tmp_path)
+    jobs = ArchiveJobService(db_path)
+    service = AccountingDocumentArchiveService(db_path)
+    original_path, metadata_path = _confirmed_document_paths(tmp_path)
+    job = jobs.enqueue_job(
+        workspace_id=workspace_key_for_supplier(111001),
+        telegram_id=111001,
+        document_id='20260530_receipt_shop_12-30_FILE123',
+        document_type='receipt',
+        local_file_path=original_path,
+        metadata_path=metadata_path,
+    )
+
+    with pytest.raises(AccountingDocumentArchiveServiceError, match='archive_state_missing'):
+        service.mark_uploading(job.job_id)
+
+    assert jobs.get_job(job.job_id).status == ARCHIVE_STATUS_PENDING
+
+
+def test_accounting_handlers_do_not_import_archive_services() -> None:
+    handler_paths = [
+        Path('bot/handlers/accounting_document_intake.py'),
+        Path('bot/handlers/accounting_documents.py'),
+    ]
+    forbidden = (
+        'ArchiveJobService',
+        'AccountingDocumentArchiveService',
+        'archive_job_service',
+        'accounting_document_archive_service',
+        'enqueue_confirmed_document',
+    )
+
+    for handler_path in handler_paths:
+        source = handler_path.read_text(encoding='utf-8')
+        assert not any(token in source for token in forbidden), handler_path
 
 
 def test_google_drive_product_truth_stays_unsupported() -> None:

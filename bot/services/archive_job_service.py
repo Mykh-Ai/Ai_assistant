@@ -23,6 +23,13 @@ ACTIVE_ARCHIVE_JOB_STATUSES = (
     ARCHIVE_JOB_UPLOADING,
     ARCHIVE_JOB_RETRY_WAIT,
 )
+TERMINAL_ARCHIVE_JOB_STATUSES = (
+    ARCHIVE_JOB_UPLOADED,
+    ARCHIVE_JOB_FAILED,
+    ARCHIVE_JOB_ABANDONED,
+)
+ALLOWED_ARCHIVE_JOB_STATUSES = ACTIVE_ARCHIVE_JOB_STATUSES + TERMINAL_ARCHIVE_JOB_STATUSES
+ACCOUNTING_ORIGINAL_FOLDERS = {'receipts', 'incoming_invoices'}
 
 
 class ArchiveJobServiceError(ValueError):
@@ -50,6 +57,8 @@ class ArchiveJobRecord:
     created_at: str
     updated_at: str
     uploaded_at: str | None
+    locked_by: str | None
+    lease_until: str | None
 
 
 class ArchiveJobService:
@@ -82,6 +91,19 @@ class ArchiveJobService:
         provider = _required_text(provider, 'provider')
         local_file_path_text = _required_text(str(local_file_path), 'local_file_path')
         metadata_path_text = _optional_text(metadata_path)
+        _validate_confirmed_accounting_path(
+            local_file_path_text,
+            workspace_id=workspace_id,
+            expected_leaf='originals',
+            field_name='local_file_path',
+        )
+        if metadata_path_text is not None:
+            _validate_confirmed_accounting_path(
+                metadata_path_text,
+                workspace_id=workspace_id,
+                expected_leaf='metadata',
+                field_name='metadata_path',
+            )
         if telegram_id <= 0:
             raise ArchiveJobServiceError('telegram_id_required')
         if max_attempts <= 0:
@@ -91,7 +113,7 @@ class ArchiveJobService:
         with managed_connection(self._db_path) as connection:
             ensure_archive_schema(connection)
             connection.row_factory = sqlite3.Row
-            existing = self._get_active_job_row(
+            existing = self._get_document_job_row(
                 connection,
                 workspace_id=workspace_id,
                 document_id=document_id,
@@ -106,8 +128,9 @@ class ArchiveJobService:
                     'INSERT INTO archive_jobs '
                     '(job_id, workspace_id, telegram_id, document_id, document_type, local_file_path, '
                     'metadata_path, provider, target_folder_path, status, attempts, max_attempts, '
-                    'next_attempt_at, drive_file_id, drive_folder_id, error_code, created_at, updated_at, uploaded_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, NULL, NULL, ?, ?, NULL)'
+                    'next_attempt_at, drive_file_id, drive_folder_id, error_code, created_at, updated_at, '
+                    'uploaded_at, locked_by, lease_until) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL, NULL)'
                 ),
                 (
                     job_id,
@@ -161,14 +184,97 @@ class ArchiveJobService:
             ).fetchall()
         return [_job_from_row(row) for row in rows]
 
-    def mark_uploading(self, job_id: str, *, now: datetime | None = None) -> ArchiveJobRecord:
-        return self._update_status(
-            job_id,
-            status=ARCHIVE_JOB_UPLOADING,
-            now=now,
-            clear_next_attempt=True,
-            clear_error=True,
-        )
+    def claim_next_runnable_job(
+        self,
+        *,
+        worker_id: str,
+        provider: str = ARCHIVE_PROVIDER_GOOGLE_DRIVE,
+        lease_seconds: int = 300,
+        now: datetime | None = None,
+    ) -> ArchiveJobRecord | None:
+        worker_id = _required_text(worker_id, 'worker_id')
+        if lease_seconds <= 0:
+            raise ArchiveJobServiceError('lease_seconds_must_be_positive')
+        current_dt = _utc_now(now)
+        current = current_dt.isoformat()
+        lease_until = (current_dt + timedelta(seconds=lease_seconds)).isoformat()
+        with managed_connection(self._db_path) as connection:
+            ensure_archive_schema(connection)
+            connection.row_factory = sqlite3.Row
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute(
+                (
+                    'SELECT * FROM archive_jobs '
+                    'WHERE provider = ? AND ('
+                    'status = ? OR '
+                    '(status = ? AND (next_attempt_at IS NULL OR next_attempt_at <= ?)) OR '
+                    '(status = ? AND lease_until IS NOT NULL AND lease_until <= ?)'
+                    ') ORDER BY created_at ASC LIMIT 1'
+                ),
+                (
+                    provider,
+                    ARCHIVE_JOB_PENDING,
+                    ARCHIVE_JOB_RETRY_WAIT,
+                    current,
+                    ARCHIVE_JOB_UPLOADING,
+                    current,
+                ),
+            ).fetchone()
+            if row is None:
+                connection.commit()
+                return None
+            connection.execute(
+                (
+                    'UPDATE archive_jobs SET status = ?, locked_by = ?, lease_until = ?, '
+                    'next_attempt_at = NULL, error_code = NULL, updated_at = ? '
+                    'WHERE job_id = ?'
+                ),
+                (ARCHIVE_JOB_UPLOADING, worker_id, lease_until, current, row['job_id']),
+            )
+            connection.commit()
+            updated = self._get_job_row(connection, row['job_id'])
+            if updated is None:
+                raise ArchiveJobServiceError('job_not_found')
+            return _job_from_row(updated)
+
+    def mark_uploading(
+        self,
+        job_id: str,
+        *,
+        now: datetime | None = None,
+        worker_id: str | None = None,
+        lease_seconds: int | None = None,
+    ) -> ArchiveJobRecord:
+        if lease_seconds is not None and lease_seconds <= 0:
+            raise ArchiveJobServiceError('lease_seconds_must_be_positive')
+        timestamp = _format_timestamp(now)
+        lease_until = None
+        if worker_id is not None:
+            worker_id = _required_text(worker_id, 'worker_id')
+            lease_until = (_utc_now(now) + timedelta(seconds=lease_seconds or 300)).isoformat()
+        with managed_connection(self._db_path) as connection:
+            ensure_archive_schema(connection)
+            connection.row_factory = sqlite3.Row
+            row = self._get_job_row(connection, job_id)
+            if row is None:
+                raise ArchiveJobServiceError('job_not_found')
+            _ensure_transition(
+                current_status=row['status'],
+                target_status=ARCHIVE_JOB_UPLOADING,
+                allowed_from=(ARCHIVE_JOB_PENDING, ARCHIVE_JOB_RETRY_WAIT),
+            )
+            connection.execute(
+                (
+                    'UPDATE archive_jobs SET status = ?, locked_by = ?, lease_until = ?, '
+                    'next_attempt_at = NULL, error_code = NULL, updated_at = ? WHERE job_id = ?'
+                ),
+                (ARCHIVE_JOB_UPLOADING, worker_id, lease_until, timestamp, job_id),
+            )
+            connection.commit()
+            updated = self._get_job_row(connection, job_id)
+            if updated is None:
+                raise ArchiveJobServiceError('job_not_found')
+            return _job_from_row(updated)
 
     def mark_uploaded(
         self,
@@ -183,19 +289,27 @@ class ArchiveJobService:
         with managed_connection(self._db_path) as connection:
             ensure_archive_schema(connection)
             connection.row_factory = sqlite3.Row
+            row = self._get_job_row(connection, job_id)
+            if row is None:
+                raise ArchiveJobServiceError('job_not_found')
+            _ensure_transition(
+                current_status=row['status'],
+                target_status=ARCHIVE_JOB_UPLOADED,
+                allowed_from=(ARCHIVE_JOB_UPLOADING,),
+            )
             connection.execute(
                 (
                     'UPDATE archive_jobs SET status = ?, drive_file_id = ?, drive_folder_id = ?, '
-                    'uploaded_at = ?, error_code = NULL, next_attempt_at = NULL, updated_at = ? '
-                    'WHERE job_id = ?'
+                    'uploaded_at = ?, error_code = NULL, next_attempt_at = NULL, locked_by = NULL, '
+                    'lease_until = NULL, updated_at = ? WHERE job_id = ?'
                 ),
                 (ARCHIVE_JOB_UPLOADED, drive_file_id, drive_folder_id, timestamp, timestamp, job_id),
             )
             connection.commit()
-            row = self._get_job_row(connection, job_id)
-            if row is None:
+            updated = self._get_job_row(connection, job_id)
+            if updated is None:
                 raise ArchiveJobServiceError('job_not_found')
-            return _job_from_row(row)
+            return _job_from_row(updated)
 
     def mark_retry_wait(
         self,
@@ -216,12 +330,24 @@ class ArchiveJobService:
                 raise ArchiveJobServiceError('job_not_found')
             attempts = int(row['attempts']) + 1
             status = ARCHIVE_JOB_FAILED if attempts >= int(row['max_attempts']) else ARCHIVE_JOB_RETRY_WAIT
+            _ensure_transition(
+                current_status=row['status'],
+                target_status=status,
+                allowed_from=(ARCHIVE_JOB_UPLOADING,),
+            )
             connection.execute(
                 (
-                    'UPDATE archive_jobs SET status = ?, attempts = ?, error_code = ?, '
-                    'next_attempt_at = ?, updated_at = ? WHERE job_id = ?'
+                    'UPDATE archive_jobs SET status = ?, attempts = ?, error_code = ?, next_attempt_at = ?, '
+                    'locked_by = NULL, lease_until = NULL, updated_at = ? WHERE job_id = ?'
                 ),
-                (status, attempts, error_code, retry_at if status == ARCHIVE_JOB_RETRY_WAIT else None, timestamp, job_id),
+                (
+                    status,
+                    attempts,
+                    error_code,
+                    retry_at if status == ARCHIVE_JOB_RETRY_WAIT else None,
+                    timestamp,
+                    job_id,
+                ),
             )
             connection.commit()
             updated = self._get_job_row(connection, job_id)
@@ -230,40 +356,60 @@ class ArchiveJobService:
             return _job_from_row(updated)
 
     def mark_failed(self, job_id: str, *, error_code: str, now: datetime | None = None) -> ArchiveJobRecord:
-        return self._update_status(job_id, status=ARCHIVE_JOB_FAILED, error_code=error_code, now=now)
+        return self._update_status(
+            job_id,
+            status=ARCHIVE_JOB_FAILED,
+            allowed_from=(ARCHIVE_JOB_UPLOADING,),
+            error_code=error_code,
+            now=now,
+        )
 
     def mark_abandoned(self, job_id: str, *, error_code: str, now: datetime | None = None) -> ArchiveJobRecord:
-        return self._update_status(job_id, status=ARCHIVE_JOB_ABANDONED, error_code=error_code, now=now)
+        return self._update_status(
+            job_id,
+            status=ARCHIVE_JOB_ABANDONED,
+            allowed_from=(ARCHIVE_JOB_UPLOADING, ARCHIVE_JOB_RETRY_WAIT),
+            error_code=error_code,
+            now=now,
+        )
 
     def _update_status(
         self,
         job_id: str,
         *,
         status: str,
+        allowed_from: tuple[str, ...],
         error_code: str | None = None,
         now: datetime | None = None,
-        clear_next_attempt: bool = True,
-        clear_error: bool = False,
     ) -> ArchiveJobRecord:
         timestamp = _format_timestamp(now)
+        if error_code is not None:
+            error_code = _required_text(error_code, 'error_code')
         with managed_connection(self._db_path) as connection:
             ensure_archive_schema(connection)
             connection.row_factory = sqlite3.Row
-            connection.execute(
-                (
-                    'UPDATE archive_jobs SET status = ?, error_code = ?, '
-                    'next_attempt_at = CASE WHEN ? THEN NULL ELSE next_attempt_at END, updated_at = ? '
-                    'WHERE job_id = ?'
-                ),
-                (status, None if clear_error else error_code, 1 if clear_next_attempt else 0, timestamp, job_id),
-            )
-            connection.commit()
             row = self._get_job_row(connection, job_id)
             if row is None:
                 raise ArchiveJobServiceError('job_not_found')
-            return _job_from_row(row)
+            _ensure_transition(
+                current_status=row['status'],
+                target_status=status,
+                allowed_from=allowed_from,
+            )
+            connection.execute(
+                (
+                    'UPDATE archive_jobs SET status = ?, error_code = ?, next_attempt_at = NULL, '
+                    'locked_by = NULL, lease_until = NULL, updated_at = ? WHERE job_id = ?'
+                ),
+                (status, error_code, timestamp, job_id),
+            )
+            connection.commit()
+            updated = self._get_job_row(connection, job_id)
+            if updated is None:
+                raise ArchiveJobServiceError('job_not_found')
+            return _job_from_row(updated)
 
-    def _get_active_job_row(
+    def _get_document_job_row(
         self,
         connection: sqlite3.Connection,
         *,
@@ -275,9 +421,21 @@ class ArchiveJobService:
             (
                 'SELECT * FROM archive_jobs '
                 'WHERE workspace_id = ? AND document_id = ? AND provider = ? '
-                'AND status IN (?, ?, ?) ORDER BY created_at ASC LIMIT 1'
+                'ORDER BY CASE status '
+                'WHEN ? THEN 0 WHEN ? THEN 1 WHEN ? THEN 2 WHEN ? THEN 3 '
+                'WHEN ? THEN 4 WHEN ? THEN 5 ELSE 6 END, created_at ASC LIMIT 1'
             ),
-            (workspace_id, document_id, provider, *ACTIVE_ARCHIVE_JOB_STATUSES),
+            (
+                workspace_id,
+                document_id,
+                provider,
+                ARCHIVE_JOB_PENDING,
+                ARCHIVE_JOB_UPLOADING,
+                ARCHIVE_JOB_RETRY_WAIT,
+                ARCHIVE_JOB_UPLOADED,
+                ARCHIVE_JOB_FAILED,
+                ARCHIVE_JOB_ABANDONED,
+            ),
         ).fetchone()
 
     def _get_job_row(self, connection: sqlite3.Connection, job_id: str) -> sqlite3.Row | None:
@@ -305,7 +463,69 @@ def _job_from_row(row: sqlite3.Row) -> ArchiveJobRecord:
         created_at=row['created_at'],
         updated_at=row['updated_at'],
         uploaded_at=row['uploaded_at'],
+        locked_by=row['locked_by'],
+        lease_until=row['lease_until'],
     )
+
+
+def _ensure_transition(
+    *,
+    current_status: str,
+    target_status: str,
+    allowed_from: tuple[str, ...],
+) -> None:
+    if current_status not in ALLOWED_ARCHIVE_JOB_STATUSES:
+        raise ArchiveJobServiceError('unsupported_job_status')
+    if target_status not in ALLOWED_ARCHIVE_JOB_STATUSES:
+        raise ArchiveJobServiceError('unsupported_job_status')
+    if current_status in TERMINAL_ARCHIVE_JOB_STATUSES:
+        raise ArchiveJobServiceError('terminal_job_transition_rejected')
+    if current_status not in allowed_from:
+        raise ArchiveJobServiceError('invalid_job_status_transition')
+
+
+def _validate_confirmed_accounting_path(
+    path_text: str,
+    *,
+    workspace_id: str,
+    expected_leaf: str,
+    field_name: str,
+) -> None:
+    path = Path(path_text)
+    parts = path.parts
+    if not parts or any(part == '..' for part in parts):
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
+    if any(part.lower() == 'invoices' for part in parts):
+        raise ArchiveJobServiceError(f'{field_name}_invoice_path_rejected')
+
+    lower_parts = [part.lower() for part in parts]
+    try:
+        index = lower_parts.index('workspaces')
+    except ValueError as exc:
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path') from exc
+
+    relative = parts[index:]
+    if len(relative) != 9:
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
+    if relative[1] != workspace_id:
+        raise ArchiveJobServiceError(f'{field_name}_workspace_mismatch')
+    if (
+        relative[0].lower() != 'workspaces'
+        or relative[2].lower() != 'years'
+        or relative[4].lower() != 'expenses'
+        or relative[7].lower() != expected_leaf
+    ):
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
+    if not (relative[3].isdigit() and len(relative[3]) == 4):
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
+    if not (relative[5].isdigit() and len(relative[5]) == 2):
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
+    if relative[6] not in ACCOUNTING_ORIGINAL_FOLDERS:
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
+    if not relative[8]:
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
+    if expected_leaf == 'metadata' and Path(relative[8]).suffix.lower() != '.json':
+        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
 
 
 def _required_text(value: object, field_name: str) -> str:

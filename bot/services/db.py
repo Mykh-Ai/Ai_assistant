@@ -205,7 +205,9 @@ CREATE TABLE IF NOT EXISTS archive_jobs (
     error_code TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    uploaded_at TEXT
+    uploaded_at TEXT,
+    locked_by TEXT,
+    lease_until TEXT
 );
 """
 
@@ -394,6 +396,11 @@ _CUSTOMIZATION_REQUEST_ADDITIVE_COLUMNS = {
     'responded_to_request_status': 'TEXT',
     'response_updated_at': 'TEXT',
     'response_id': 'TEXT',
+}
+
+_ARCHIVE_JOB_ADDITIVE_COLUMNS = {
+    'locked_by': 'TEXT',
+    'lease_until': 'TEXT',
 }
 
 
@@ -697,13 +704,29 @@ def _ensure_customization_request_indexes(connection: sqlite3.Connection) -> Non
 def ensure_archive_schema(connection: sqlite3.Connection) -> None:
     connection.execute(ARCHIVE_JOB_SCHEMA)
     connection.execute(ACCOUNTING_DOCUMENT_ARCHIVE_STATE_SCHEMA)
+    _ensure_archive_job_additive_columns(connection)
     _ensure_archive_indexes(connection)
+
+
+def _ensure_archive_job_additive_columns(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1] for row in connection.execute('PRAGMA table_info(archive_jobs)').fetchall()
+    }
+    for column_name, column_definition in _ARCHIVE_JOB_ADDITIVE_COLUMNS.items():
+        if column_name not in existing_columns:
+            connection.execute(
+                f'ALTER TABLE archive_jobs ADD COLUMN {column_name} {column_definition}'
+            )
 
 
 def _ensure_archive_indexes(connection: sqlite3.Connection) -> None:
     connection.execute(
         'CREATE INDEX IF NOT EXISTS idx_archive_jobs_runnable '
         'ON archive_jobs (provider, status, next_attempt_at, created_at)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_archive_jobs_claim '
+        'ON archive_jobs (provider, status, next_attempt_at, lease_until, created_at)'
     )
     connection.execute(
         'CREATE INDEX IF NOT EXISTS idx_archive_jobs_document '
