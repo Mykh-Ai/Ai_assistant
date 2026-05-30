@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 122 - Accounting original cleanup dry-run
+
+Summary:
+- Added a dry-run service for local retention planning of confirmed accounting
+  document originals after successful archive upload.
+- The dry-run reads archive state, validates strict confirmed-original paths,
+  groups by `(workspace_id, document_type)`, keeps the latest 5 uploaded
+  originals per group, and reports `keep`, `would_delete`, or `exclude` with a
+  bounded reason.
+- Added tests for grouping, tenant isolation, status exclusions, missing Drive
+  IDs, missing upload timestamps, invalid/excluded paths, missing local files,
+  deterministic ordering, summary counts, no file deletion calls, no DB
+  mutation, and no Google/network imports.
+
+Constraints:
+- Dry-run only.
+- No file deletion, apply-delete, scheduler, admin cleanup command, DB row
+  mutation, Google API/network call, `/blocek` or document-save behavior change,
+  or Product Truth/InfoHelp active cleanup claim.
+
+Verification:
+- `python -m pytest -q tests/test_accounting_original_cleanup_service.py tests/test_accounting_document_archive_service.py tests/test_archive_job_service.py`
+  - 70 passed.
+- `python -m pytest -q`
+  - 1424 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warning only.
+
 ## 2026-05-30 - Session 121 - Archive status read-only boundary hardening
 
 Summary:
