@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 import inspect
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from bot.handlers.accounting_documents import cmd_blocky, recent_accounting_docu
 from bot.handlers.invoice import router as invoice_router
 from bot.services.accounting_document_archive_service import AccountingDocumentArchiveService
 from bot.services.archive_job_service import ARCHIVE_JOB_PENDING
+from bot.services.accounting_document_storage import workspace_key_for_supplier
 
 
 class _DummyMessage:
@@ -89,12 +91,15 @@ def _create_archive_state(
     *,
     stem: str,
     status: str,
+    workspace_id: str = 'mykhailo-szco',
 ) -> None:
-    metadata_path = storage_dir / 'workspaces' / 'mykhailo-szco' / 'years' / '2026' / 'expenses' / '03' / 'receipts' / 'metadata' / f'{stem}.json'
+    metadata_path = storage_dir / 'workspaces' / workspace_id / 'years' / '2026' / 'expenses' / '03' / 'receipts' / 'metadata' / f'{stem}.json'
     original_path = metadata_path.parent.parent / 'originals' / f'{stem}.jpg'
+    original_path.parent.mkdir(parents=True, exist_ok=True)
+    original_path.write_bytes(b'document')
     service = AccountingDocumentArchiveService(db_path)
     result = service.enqueue_confirmed_document(
-        workspace_id='mykhailo-szco',
+        workspace_id=workspace_id,
         telegram_id=111001,
         document_id=stem,
         document_type='receipt',
@@ -259,6 +264,46 @@ def test_blocky_output_displays_archive_statuses(
     asyncio.run(cmd_blocky(message, config))
 
     assert expected_label in message.answers[-1]
+
+
+def test_blocky_unknown_archive_status_falls_back_to_not_configured(tmp_path: Path) -> None:
+    _write_metadata(tmp_path, stem='receipt', vendor_name='ASFINAG')
+    config = _config(tmp_path)
+    _create_archive_state(tmp_path, config.db_path, stem='receipt', status=ARCHIVE_JOB_PENDING)
+    with sqlite3.connect(config.db_path) as connection:
+        connection.execute(
+            (
+                'UPDATE accounting_document_archive_state SET archive_status = ? '
+                'WHERE workspace_id = ? AND document_id = ?'
+            ),
+            ('unexpected_status', 'mykhailo-szco', 'receipt'),
+        )
+    message = _DummyMessage('/blocky')
+
+    asyncio.run(cmd_blocky(message, config))
+
+    answer = message.answers[-1]
+    assert 'Archív: Google Drive archív zatiaľ nie je pripojený' in answer
+    assert 'unexpected_status' not in answer
+
+
+def test_blocky_does_not_display_archive_state_from_another_workspace(tmp_path: Path) -> None:
+    _write_metadata(tmp_path, stem='receipt', vendor_name='ASFINAG')
+    config = _config(tmp_path)
+    _create_archive_state(
+        tmp_path,
+        config.db_path,
+        stem='receipt',
+        status=ARCHIVE_JOB_PENDING,
+        workspace_id=workspace_key_for_supplier(222002),
+    )
+    message = _DummyMessage('/blocky')
+
+    asyncio.run(cmd_blocky(message, config))
+
+    answer = message.answers[-1]
+    assert 'Archív: Google Drive archív zatiaľ nie je pripojený' in answer
+    assert 'Archív: čaká na spracovanie' not in answer
 
 
 def test_blocky_read_view_does_not_mutate_archive_state(tmp_path: Path) -> None:

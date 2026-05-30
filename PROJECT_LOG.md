@@ -1,5 +1,30 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 121 - Archive status read-only boundary hardening
+
+Summary:
+- Hardened archive status read-only boundary tests before any cleanup or real
+  Drive adapter work.
+- Added coverage proving `get_state_read_only(...)` does not create a missing
+  DB file, malformed archive statuses fall back to safe display, and archive
+  state from another workspace is not shown in `/blocky` / `/blocek`.
+- Reconfirmed read-view guards for no archive job creation and no archive state
+  mutation.
+
+Constraints:
+- Tests/log update only unless a small bug is exposed.
+- No Google OAuth/API, real Drive adapter, worker execution from handler,
+  cleanup/deletion, user-facing wording change, or Product Truth/InfoHelp
+  status change.
+
+Verification:
+- `python -m pytest -q tests/test_accounting_documents_handler.py tests/test_accounting_document_archive_service.py`
+  - 39 passed.
+- `python -m pytest -q`
+  - 1398 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-30 - Session 120 - Recent accounting archive status display
 
 Summary:

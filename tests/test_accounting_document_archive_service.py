@@ -144,6 +144,19 @@ def test_archive_state_can_be_read_by_workspace_and_document_id(tmp_path: Path) 
     assert service.get_state(workspace_id=workspace_key_for_supplier(222002), document_id=result.state.document_id) is None
 
 
+def test_archive_state_read_only_does_not_create_missing_db_file(tmp_path: Path) -> None:
+    db_path = _db_path(tmp_path)
+    service = AccountingDocumentArchiveService(db_path)
+
+    state = service.get_state_read_only(
+        workspace_id=workspace_key_for_supplier(111001),
+        document_id='missing',
+    )
+
+    assert state is None
+    assert not db_path.exists()
+
+
 def test_mark_uploading_and_uploaded_updates_archive_state(tmp_path: Path) -> None:
     service = AccountingDocumentArchiveService(_db_path(tmp_path))
     result = _enqueue(service, tmp_path)
