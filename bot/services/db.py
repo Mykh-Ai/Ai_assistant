@@ -231,6 +231,42 @@ CREATE TABLE IF NOT EXISTS accounting_document_archive_state (
 );
 """
 
+GOOGLE_DRIVE_CONNECTION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS google_drive_connections (
+    connection_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL UNIQUE,
+    telegram_id INTEGER NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'google_drive',
+    status TEXT NOT NULL,
+    google_subject TEXT,
+    google_email TEXT,
+    scopes_granted TEXT NOT NULL,
+    token_ciphertext BLOB NOT NULL,
+    token_key_id TEXT NOT NULL,
+    token_version INTEGER NOT NULL DEFAULT 1,
+    root_folder_id TEXT,
+    root_folder_path TEXT,
+    last_error_code TEXT,
+    connected_at TEXT,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+GOOGLE_DRIVE_FOLDER_CACHE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS google_drive_folder_cache (
+    workspace_id TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'google_drive',
+    folder_path TEXT NOT NULL,
+    folder_id TEXT NOT NULL,
+    parent_folder_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(workspace_id, provider, folder_path)
+);
+"""
+
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'telegram_id': 'INTEGER NOT NULL UNIQUE',
@@ -708,6 +744,12 @@ def ensure_archive_schema(connection: sqlite3.Connection) -> None:
     _ensure_archive_indexes(connection)
 
 
+def ensure_google_drive_connection_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(GOOGLE_DRIVE_CONNECTION_SCHEMA)
+    connection.execute(GOOGLE_DRIVE_FOLDER_CACHE_SCHEMA)
+    _ensure_google_drive_connection_indexes(connection)
+
+
 def _ensure_archive_job_additive_columns(connection: sqlite3.Connection) -> None:
     existing_columns = {
         row[1] for row in connection.execute('PRAGMA table_info(archive_jobs)').fetchall()
@@ -738,6 +780,17 @@ def _ensure_archive_indexes(connection: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_google_drive_connection_indexes(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_google_drive_connections_status '
+        'ON google_drive_connections (provider, status, updated_at)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_google_drive_folder_cache_workspace '
+        'ON google_drive_folder_cache (workspace_id, provider, folder_path)'
+    )
+
+
 @contextmanager
 def managed_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(db_path)
@@ -762,4 +815,5 @@ def init_db(db_path: Path) -> None:
         _bootstrap_confirmed_semantic_alias_table(connection)
         _bootstrap_customization_request_table(connection)
         ensure_archive_schema(connection)
+        ensure_google_drive_connection_schema(connection)
         connection.commit()

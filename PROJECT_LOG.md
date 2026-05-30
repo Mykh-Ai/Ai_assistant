@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-05-30 - Session 123 - Google Drive connection schema and token crypto foundation
+
+Summary:
+- Added additive SQLite foundation tables for future per-workspace Google Drive
+  connections and folder-id caching.
+- Added `GoogleDriveConnectionService` primitives for schema bootstrap,
+  encrypted connection upsert, metadata-only connection reads, explicit token
+  decryption through an injected crypto provider, needs-reauth/disconnect
+  status updates, and workspace-scoped folder cache read/update/clear.
+- Added `TokenCryptoProvider` abstraction with a deterministic fake provider
+  for tests and an unconfigured production placeholder that requires future
+  explicit secret/KMS wiring before real credentials can be stored.
+- Added tests proving ciphertext-only persistence, no plaintext token in DB or
+  repr output, bounded validation/status handling, workspace-scoped folder
+  cache isolation, no Google/network imports, and no Product Truth/InfoHelp
+  status upgrade.
+
+Constraints:
+- Foundation only.
+- No Google OAuth flow, Google API calls, real Drive adapter, upload, worker
+  real-provider execution, Telegram handler changes, connect/status/disconnect
+  commands, plaintext token storage, or Product Truth/InfoHelp Google Drive
+  implementation claim.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_connection_service.py tests/test_token_crypto.py`
+  - 21 passed.
+
 ## 2026-05-30 - Session 122 - Accounting original cleanup dry-run
 
 Summary:
