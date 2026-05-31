@@ -1,5 +1,36 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 129 - Google Drive setup commands foundation
+
+Summary:
+- Added admin-only Telegram setup commands for the future Google Drive
+  Accounting Archive connection:
+  `/google_drive_connect`, `/google_drive_status`, and
+  `/google_drive_disconnect`.
+- `/google_drive_connect` creates a single-use OAuth state and returns a
+  Google authorization URL using configured `GOOGLE_OAUTH_CLIENT_ID` and
+  `GOOGLE_OAUTH_REDIRECT_URI`; it does not exchange tokens or call Google.
+- `/google_drive_status` reads only the local connection record and hides
+  tokens, ciphertext, raw scopes, state tokens, and OAuth internals.
+- `/google_drive_disconnect` marks the local connection disconnected only; it
+  does not revoke Google tokens, delete Google Drive files, delete local files,
+  run workers, or mutate archive jobs.
+- Added config placeholders for the OAuth client id and redirect URI.
+
+Constraints:
+- Telegram setup command foundation only.
+- No real callback endpoint, token exchange, Google API/network calls, real
+  Drive adapter, upload, worker run, local cleanup/deletion, outgoing invoice
+  PDF archive, or Product Truth/InfoHelp Google Drive capability upgrade.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_setup_commands.py tests/test_google_drive_oauth_state_service.py tests/test_google_drive_connection_service.py`
+  - 65 passed.
+- `python -m pytest -q`
+  - 1511 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-31 - Session 128 - Google Drive OAuth callback failure hardening
 
 Summary:

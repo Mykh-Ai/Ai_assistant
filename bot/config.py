@@ -24,6 +24,8 @@ class Config:
     storage_dir: Path
     allowed_telegram_user_ids: frozenset[int] = frozenset()
     admin_telegram_user_ids: frozenset[int] = frozenset()
+    google_oauth_client_id: str | None = None
+    google_oauth_redirect_uri: str | None = None
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -56,6 +58,8 @@ def load_config() -> Config:
         os.getenv('ADMIN_TELEGRAM_USER_IDS', ''),
         env_name='ADMIN_TELEGRAM_USER_IDS',
     )
+    google_oauth_client_id = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '').strip() or None
+    google_oauth_redirect_uri = os.getenv('GOOGLE_OAUTH_REDIRECT_URI', '').strip() or None
     ensure_storage_dirs(storage_dir)
 
     return Config(
@@ -68,6 +72,8 @@ def load_config() -> Config:
         storage_dir=storage_dir,
         allowed_telegram_user_ids=allowed_telegram_user_ids,
         admin_telegram_user_ids=admin_telegram_user_ids,
+        google_oauth_client_id=google_oauth_client_id,
+        google_oauth_redirect_uri=google_oauth_redirect_uri,
     )
 
 

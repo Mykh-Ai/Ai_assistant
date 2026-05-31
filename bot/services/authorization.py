@@ -34,6 +34,9 @@ ADMIN_COMMANDS = {
     '/reject',
     '/block',
     '/users',
+    '/google_drive_connect',
+    '/google_drive_status',
+    '/google_drive_disconnect',
 }
 ADMIN_COMMAND_ALIASES = {
     'access requests',
