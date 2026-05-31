@@ -267,6 +267,22 @@ CREATE TABLE IF NOT EXISTS google_drive_folder_cache (
 );
 """
 
+GOOGLE_DRIVE_OAUTH_STATE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS google_drive_oauth_states (
+    state_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    telegram_id INTEGER NOT NULL,
+    state_token_hash TEXT NOT NULL UNIQUE,
+    scopes_requested TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    consumed_at TEXT,
+    last_error_code TEXT
+);
+"""
+
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'telegram_id': 'INTEGER NOT NULL UNIQUE',
@@ -747,6 +763,7 @@ def ensure_archive_schema(connection: sqlite3.Connection) -> None:
 def ensure_google_drive_connection_schema(connection: sqlite3.Connection) -> None:
     connection.execute(GOOGLE_DRIVE_CONNECTION_SCHEMA)
     connection.execute(GOOGLE_DRIVE_FOLDER_CACHE_SCHEMA)
+    connection.execute(GOOGLE_DRIVE_OAUTH_STATE_SCHEMA)
     _ensure_google_drive_connection_indexes(connection)
 
 
@@ -788,6 +805,14 @@ def _ensure_google_drive_connection_indexes(connection: sqlite3.Connection) -> N
     connection.execute(
         'CREATE INDEX IF NOT EXISTS idx_google_drive_folder_cache_workspace '
         'ON google_drive_folder_cache (workspace_id, provider, folder_path)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_google_drive_oauth_states_status_expires '
+        'ON google_drive_oauth_states (status, expires_at)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_google_drive_oauth_states_workspace '
+        'ON google_drive_oauth_states (workspace_id, telegram_id, created_at)'
     )
 
 

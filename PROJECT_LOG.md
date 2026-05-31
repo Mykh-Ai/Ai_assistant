@@ -1,5 +1,32 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 125 - Google Drive OAuth state foundation
+
+Summary:
+- Added additive SQLite storage for future Google Drive OAuth state records via
+  `google_drive_oauth_states`.
+- Added `GoogleDriveOAuthStateService` to create single-use OAuth state tokens,
+  persist only SHA-256 state-token hashes, build Google authorization URLs with
+  offline access parameters, consume pending states once, expire stale states,
+  and mark states rejected with bounded error codes.
+- Added tests proving schema bootstrap idempotency, raw state tokens are not
+  stored or exposed in repr output, authorization URLs contain required OAuth
+  parameters but no client secret, state consumption is single-use, expired and
+  reused states are bounded, scopes/workspace/user metadata are preserved, and
+  no Google/network imports were introduced.
+
+Constraints:
+- OAuth state foundation and URL builder only.
+- No token exchange, Google API calls, callback endpoint, token storage, real
+  Drive adapter, upload, Telegram handler/command change, or Product
+  Truth/InfoHelp Google Drive status upgrade.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_oauth_state_service.py tests/test_google_drive_connection_service.py tests/test_token_crypto.py`
+  - 52 passed.
+- `python -m pytest -q`
+  - 1476 passed, 7 subtests passed.
+
 ## 2026-05-30 - Session 124 - Google Drive connection error-code hardening
 
 Summary:
