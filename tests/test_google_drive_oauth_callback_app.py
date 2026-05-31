@@ -395,6 +395,14 @@ def test_create_callback_app_from_config_rejects_fake_mode_and_creates_no_db(tmp
     assert not _db_path(tmp_path).exists()
 
 
+def test_callback_runtime_is_not_wired_to_real_token_exchanger() -> None:
+    source = inspect.getsource(google_drive_oauth_callback_app)
+
+    assert 'google_oauth_token_exchanger' not in source
+    assert 'bot.services.google_oauth_token_exchanger' not in source
+    assert 'UrllibGoogleOAuthHTTPClient' not in source
+
+
 def test_google_drive_product_truth_stays_unsupported() -> None:
     result = get_capability('google_drive_invoice_storage')
     answer = build_product_truth_guidance(user_input_text='Can bot save invoices to Google Drive?')

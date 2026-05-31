@@ -186,9 +186,9 @@ def _expires_at(response: dict[str, object], now: datetime | None) -> str | None
     try:
         expires_in = int(raw_expires_in)
     except (TypeError, ValueError):
-        return None
+        raise GoogleOAuthTokenExchangeError(GOOGLE_DRIVE_ERROR_CONNECTION) from None
     if expires_in <= 0:
-        return None
+        raise GoogleOAuthTokenExchangeError(GOOGLE_DRIVE_ERROR_CONNECTION)
     timestamp = _utc_now(now) + timedelta(seconds=expires_in)
     return timestamp.isoformat()
 

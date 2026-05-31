@@ -1,5 +1,30 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 136 - Google OAuth token exchanger regression hardening
+
+Summary:
+- Hardened Google OAuth token exchanger regression coverage before any
+  callback wiring.
+- Added tests that token bundle repr hides token plaintext, invalid
+  `expires_in` fails with a bounded error, invalid `id_token` metadata is
+  ignored without repr leakage, mocked `HTTPError`/`URLError` paths stay
+  bounded, raw Google response bodies are not exposed, and callback runtime
+  remains unwired to the real exchanger.
+- Tightened exchanger behavior so invalid non-positive or non-integer
+  `expires_in` raises bounded `drive_connection_error` instead of silently
+  accepting the token response.
+
+Constraints:
+- No callback runtime wiring, real Google API/network call in tests, Drive
+  adapter, upload, Telegram handler change, cleanup/delete, or Product
+  Truth/InfoHelp status change.
+
+Verification:
+- `python -m pytest -q tests/test_google_oauth_token_exchanger.py tests/test_google_drive_oauth_callback_app.py tests/test_token_crypto.py`
+  - 58 passed.
+- `python -m pytest -q`
+  - 1574 passed, 7 subtests passed.
+
 ## 2026-05-31 - Session 135 - Google OAuth token exchanger foundation
 
 Summary:

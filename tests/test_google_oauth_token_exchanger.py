@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import base64
+import io
 import inspect
 import json
 from pathlib import Path
+from urllib import error
 
 import pytest
 
@@ -153,6 +155,17 @@ def test_success_exchange_returns_normalized_token_bundle() -> None:
     assert bundle.google_email == 'user@example.com'
 
 
+def test_token_bundle_repr_hides_plaintext_tokens() -> None:
+    http_client = FakeHTTPClient(payload=_success_payload(id_token=ID_TOKEN))
+
+    bundle = _exchange(http_client)
+
+    text = repr(bundle)
+    assert ACCESS_TOKEN not in text
+    assert REFRESH_TOKEN not in text
+    assert ID_TOKEN not in text
+
+
 def test_success_requires_refresh_token() -> None:
     http_client = FakeHTTPClient(payload=_success_payload(refresh_token=''))
 
@@ -181,6 +194,29 @@ def test_scope_defaults_to_requested_scopes_when_response_omits_scope() -> None:
     bundle = _exchange(http_client)
 
     assert GOOGLE_DRIVE_FILE_SCOPE in bundle.scope
+
+
+@pytest.mark.parametrize('invalid_expires_in', ['not-an-int raw_google_response', 0, -1])
+def test_invalid_expires_in_maps_to_bounded_connection_error(invalid_expires_in: object) -> None:
+    http_client = FakeHTTPClient(payload=_success_payload(expires_in=invalid_expires_in))
+
+    with pytest.raises(GoogleOAuthTokenExchangeError) as excinfo:
+        _exchange(http_client)
+
+    assert excinfo.value.error_code == GOOGLE_DRIVE_ERROR_CONNECTION
+    _assert_safe_exception(excinfo.value)
+
+
+def test_invalid_id_token_is_ignored_without_repr_leak() -> None:
+    raw_id_token = 'raw-id-token-secret.invalid-base64.signature'
+    http_client = FakeHTTPClient(payload=_success_payload(id_token=raw_id_token))
+
+    bundle = _exchange(http_client)
+
+    assert bundle.id_token == raw_id_token
+    assert bundle.google_subject is None
+    assert bundle.google_email is None
+    assert raw_id_token not in repr(bundle)
 
 
 def test_invalid_grant_maps_to_auth_revoked() -> None:
@@ -246,6 +282,69 @@ def test_network_timeout_maps_to_bounded_connection_error() -> None:
     _assert_safe_exception(excinfo.value)
 
 
+def test_urllib_http_error_body_status_maps_to_bounded_safe_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    raw_body = (
+        f'{{"error":"invalid_client","error_description":"raw_google_response '
+        f'code={AUTH_CODE} secret={CLIENT_SECRET}"}}'
+    ).encode('utf-8')
+    calls: list[tuple[str, float]] = []
+
+    def fake_urlopen(oauth_request, timeout: float):
+        calls.append((oauth_request.full_url, timeout))
+        raise error.HTTPError(
+            oauth_request.full_url,
+            401,
+            'Unauthorized',
+            {},
+            io.BytesIO(raw_body),
+        )
+
+    monkeypatch.setattr(google_oauth_token_exchanger.request, 'urlopen', fake_urlopen)
+    exchanger = GoogleOAuthTokenExchanger(
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        now=NOW,
+    )
+
+    with pytest.raises(GoogleOAuthTokenExchangeError) as excinfo:
+        exchanger.exchange_code(
+            code=AUTH_CODE,
+            redirect_uri=REDIRECT_URI,
+            scopes=DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
+        )
+
+    assert calls == [(GOOGLE_OAUTH_TOKEN_ENDPOINT, 10.0)]
+    assert excinfo.value.error_code == GOOGLE_DRIVE_ERROR_CONNECTION
+    _assert_safe_exception(excinfo.value)
+
+
+def test_urllib_url_error_maps_to_bounded_connection_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def fake_urlopen(oauth_request, timeout: float):
+        nonlocal calls
+        calls += 1
+        raise error.URLError(f'network failed code={AUTH_CODE} secret={CLIENT_SECRET}')
+
+    monkeypatch.setattr(google_oauth_token_exchanger.request, 'urlopen', fake_urlopen)
+    exchanger = GoogleOAuthTokenExchanger(
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        now=NOW,
+    )
+
+    with pytest.raises(GoogleOAuthTokenExchangeError) as excinfo:
+        exchanger.exchange_code(
+            code=AUTH_CODE,
+            redirect_uri=REDIRECT_URI,
+            scopes=DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
+        )
+
+    assert calls == 1
+    assert excinfo.value.error_code == GOOGLE_DRIVE_ERROR_CONNECTION
+    _assert_safe_exception(excinfo.value)
+
+
 def test_unexpected_http_client_exception_maps_to_unknown_without_raw_message() -> None:
     http_client = FakeHTTPClient(exception=RuntimeError(f'raw_google_response token={ACCESS_TOKEN}'))
 
@@ -282,6 +381,25 @@ def test_exception_and_repr_do_not_include_code_secret_tokens_or_raw_response() 
     with pytest.raises(GoogleOAuthTokenExchangeError) as excinfo:
         _exchange(http_client)
 
+    _assert_safe_exception(excinfo.value)
+
+
+def test_raw_google_response_body_is_not_in_exception_text() -> None:
+    http_client = FakeHTTPClient(
+        status=400,
+        payload={
+            'error': 'server_error',
+            'error_description': (
+                f'raw_google_response code={AUTH_CODE} client_secret={CLIENT_SECRET} '
+                f'access_token={ACCESS_TOKEN} refresh_token={REFRESH_TOKEN}'
+            ),
+        },
+    )
+
+    with pytest.raises(GoogleOAuthTokenExchangeError) as excinfo:
+        _exchange(http_client)
+
+    assert excinfo.value.error_code == GOOGLE_DRIVE_ERROR_CONNECTION
     _assert_safe_exception(excinfo.value)
 
 
