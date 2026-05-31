@@ -1,5 +1,34 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 131 - Google Drive OAuth callback HTTP skeleton
+
+Summary:
+- Added a separate `aiohttp` callback service entrypoint:
+  `python -m bot.google_drive_oauth_callback_app`.
+- The callback app exposes `GET /oauth/google/callback`, handles `state`,
+  `code`, and `error` query parameters, calls the existing
+  `GoogleDriveOAuthCallbackService`, and sends safe Telegram success/failure
+  messages when a consumed/rejected OAuth state identifies the Telegram user.
+- The slice uses `FakeGoogleOAuthTokenExchanger` only, guarded by explicit
+  `GOOGLE_OAUTH_CALLBACK_USE_FAKE_EXCHANGER=1` for runtime startup.
+- Added callback host/port/fake-mode config placeholders and documented the
+  separate callback command in README.
+
+Constraints:
+- Separate callback HTTP service only; `bot/main.py` polling runtime remains
+  unchanged.
+- No real Google token exchange, Google API/network call, Drive adapter,
+  upload, archive worker run, local cleanup/delete, or Product Truth/InfoHelp
+  Google Drive capability upgrade.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_oauth_callback_app.py tests/test_google_drive_oauth_callback_service.py tests/test_google_drive_oauth_state_service.py tests/test_google_drive_connection_service.py`
+  - 84 passed.
+- `python -m pytest -q`
+  - 1531 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-31 - Session 130 - Google Drive setup command boundary tests
 
 Summary:

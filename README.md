@@ -335,6 +335,13 @@ Production-like owner-run baseline:
 - `scripts/update_repo.sh`
 - `scripts/deploy_owner_run.sh`
 
+Google Drive OAuth callback skeleton:
+- separate process, not `bot/main.py` polling;
+- fake exchanger only in the current slice;
+- no real Google API, token endpoint, Drive upload, or archive worker;
+- command: `python -m bot.google_drive_oauth_callback_app`;
+- requires explicit `GOOGLE_OAUTH_CALLBACK_USE_FAKE_EXCHANGER=1` for this skeleton.
+
 Before server-side work, read the private local runbook if present:
 
 ```text

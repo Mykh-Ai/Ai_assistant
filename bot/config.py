@@ -26,6 +26,9 @@ class Config:
     admin_telegram_user_ids: frozenset[int] = frozenset()
     google_oauth_client_id: str | None = None
     google_oauth_redirect_uri: str | None = None
+    google_oauth_callback_host: str = '127.0.0.1'
+    google_oauth_callback_port: int = 8080
+    google_oauth_callback_use_fake_exchanger: bool = False
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -60,6 +63,14 @@ def load_config() -> Config:
     )
     google_oauth_client_id = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '').strip() or None
     google_oauth_redirect_uri = os.getenv('GOOGLE_OAUTH_REDIRECT_URI', '').strip() or None
+    google_oauth_callback_host = os.getenv('GOOGLE_OAUTH_CALLBACK_HOST', '').strip() or '127.0.0.1'
+    google_oauth_callback_port = _parse_positive_int(
+        os.getenv('GOOGLE_OAUTH_CALLBACK_PORT', '8080'),
+        env_name='GOOGLE_OAUTH_CALLBACK_PORT',
+    )
+    google_oauth_callback_use_fake_exchanger = _parse_bool(
+        os.getenv('GOOGLE_OAUTH_CALLBACK_USE_FAKE_EXCHANGER', ''),
+    )
     ensure_storage_dirs(storage_dir)
 
     return Config(
@@ -74,6 +85,9 @@ def load_config() -> Config:
         admin_telegram_user_ids=admin_telegram_user_ids,
         google_oauth_client_id=google_oauth_client_id,
         google_oauth_redirect_uri=google_oauth_redirect_uri,
+        google_oauth_callback_host=google_oauth_callback_host,
+        google_oauth_callback_port=google_oauth_callback_port,
+        google_oauth_callback_use_fake_exchanger=google_oauth_callback_use_fake_exchanger,
     )
 
 
@@ -95,3 +109,17 @@ def _parse_telegram_user_ids(raw_value: str, *, env_name: str) -> frozenset[int]
             raise RuntimeError(f'{env_name} must contain positive Telegram user ids')
         ids.add(parsed)
     return frozenset(ids)
+
+
+def _parse_positive_int(raw_value: str, *, env_name: str) -> int:
+    try:
+        parsed = int(raw_value.strip())
+    except ValueError as exc:
+        raise RuntimeError(f'{env_name} must be a positive integer') from exc
+    if parsed <= 0:
+        raise RuntimeError(f'{env_name} must be a positive integer')
+    return parsed
+
+
+def _parse_bool(raw_value: str) -> bool:
+    return raw_value.strip().lower() in {'1', 'true', 'yes', 'on'}
