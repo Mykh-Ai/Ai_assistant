@@ -238,14 +238,26 @@ class GoogleDriveOAuthStateService:
             row = self._get_state_row_by_hash(connection, state_token_hash)
             if row is None:
                 raise GoogleDriveOAuthStateServiceError(GOOGLE_DRIVE_OAUTH_ERROR_INVALID)
-            connection.execute(
+            if row['status'] != GOOGLE_DRIVE_OAUTH_STATUS_PENDING:
+                return _state_record_from_row(row)
+            cursor = connection.execute(
                 (
                     'UPDATE google_drive_oauth_states SET status = ?, last_error_code = ? '
-                    'WHERE state_id = ?'
+                    'WHERE state_id = ? AND status = ?'
                 ),
-                (GOOGLE_DRIVE_OAUTH_STATUS_REJECTED, error_code, row['state_id']),
+                (
+                    GOOGLE_DRIVE_OAUTH_STATUS_REJECTED,
+                    error_code,
+                    row['state_id'],
+                    GOOGLE_DRIVE_OAUTH_STATUS_PENDING,
+                ),
             )
             connection.commit()
+            if cursor.rowcount != 1:
+                updated = self._get_state_row_by_id(connection, row['state_id'])
+                if updated is None:
+                    raise GoogleDriveOAuthStateServiceError('oauth_state_not_found_after_reject')
+                return _state_record_from_row(updated)
             updated = self._get_state_row_by_id(connection, row['state_id'])
             if updated is None:
                 raise GoogleDriveOAuthStateServiceError('oauth_state_not_found_after_reject')

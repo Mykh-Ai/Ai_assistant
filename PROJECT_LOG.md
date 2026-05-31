@@ -1,5 +1,27 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 126 - Google Drive OAuth state rejection hardening
+
+Summary:
+- Hardened `GoogleDriveOAuthStateService.mark_oauth_state_rejected(...)` so it
+  only transitions pending OAuth states to rejected.
+- Consumed and expired states now remain terminal and cannot be overwritten to
+  rejected; already rejected states return a deterministic no-op result.
+- Added tests for pending rejection, consumed/expired terminal guards,
+  rejected no-op behavior, wrong/missing state safety, and exact SHA-256 state
+  token hash persistence.
+
+Constraints:
+- Small OAuth state service hardening and tests only.
+- No token exchange, Google API/network calls, callback handler, Telegram
+  commands, or Product Truth/InfoHelp status change.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_oauth_state_service.py tests/test_google_drive_connection_service.py tests/test_token_crypto.py`
+  - 58 passed.
+- `python -m pytest -q`
+  - 1482 passed, 7 subtests passed.
+
 ## 2026-05-31 - Session 125 - Google Drive OAuth state foundation
 
 Summary:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
 import inspect
 from pathlib import Path
 import sqlite3
@@ -85,6 +86,7 @@ def test_create_state_stores_hash_not_raw_token(tmp_path: Path) -> None:
     assert row[0] != created.raw_state_token
     assert created.raw_state_token not in row[0]
     assert len(row[0]) == 64
+    assert row[0] == hashlib.sha256(created.raw_state_token.encode('utf-8')).hexdigest()
     assert row[1] == GOOGLE_DRIVE_OAUTH_STATUS_PENDING
     assert row[2] == ' '.join(DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES)
     assert row[3] == 'https://officeflow.example.test/oauth/google/callback'
@@ -211,6 +213,96 @@ def test_rejected_state_is_not_consumed(tmp_path: Path) -> None:
 
     assert rejected.status == GOOGLE_DRIVE_OAUTH_STATUS_REJECTED
     assert rejected.last_error_code == GOOGLE_DRIVE_OAUTH_ERROR_REJECTED
+
+
+def test_pending_state_can_transition_to_rejected(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    created = _create_state(service)
+
+    rejected = service.mark_oauth_state_rejected(raw_state_token=created.raw_state_token)
+
+    with sqlite3.connect(_db_path(tmp_path)) as connection:
+        row = connection.execute(
+            'SELECT status, consumed_at, last_error_code FROM google_drive_oauth_states WHERE state_id = ?',
+            (created.record.state_id,),
+        ).fetchone()
+
+    assert rejected.status == GOOGLE_DRIVE_OAUTH_STATUS_REJECTED
+    assert row[0] == GOOGLE_DRIVE_OAUTH_STATUS_REJECTED
+    assert row[1] is None
+    assert row[2] == GOOGLE_DRIVE_OAUTH_ERROR_REJECTED
+
+
+def test_consumed_state_cannot_be_overwritten_to_rejected(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    created = _create_state(service)
+    consumed_at = datetime(2026, 5, 31, 10, 3, tzinfo=UTC)
+    service.consume_oauth_state(raw_state_token=created.raw_state_token, now=consumed_at)
+
+    result = service.mark_oauth_state_rejected(raw_state_token=created.raw_state_token)
+
+    with sqlite3.connect(_db_path(tmp_path)) as connection:
+        row = connection.execute(
+            'SELECT status, consumed_at, last_error_code FROM google_drive_oauth_states WHERE state_id = ?',
+            (created.record.state_id,),
+        ).fetchone()
+
+    assert result.status == GOOGLE_DRIVE_OAUTH_STATUS_CONSUMED
+    assert row[0] == GOOGLE_DRIVE_OAUTH_STATUS_CONSUMED
+    assert row[1] == consumed_at.isoformat()
+    assert row[2] is None
+
+
+def test_expired_state_cannot_be_overwritten_to_rejected(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    start = datetime(2026, 5, 31, 10, 0, tzinfo=UTC)
+    created = _create_state(service, now=start)
+    with pytest.raises(GoogleDriveOAuthStateServiceError, match=GOOGLE_DRIVE_OAUTH_ERROR_EXPIRED):
+        service.consume_oauth_state(
+            raw_state_token=created.raw_state_token,
+            now=start + timedelta(minutes=11),
+        )
+
+    result = service.mark_oauth_state_rejected(raw_state_token=created.raw_state_token)
+
+    with sqlite3.connect(_db_path(tmp_path)) as connection:
+        row = connection.execute(
+            'SELECT status, consumed_at, last_error_code FROM google_drive_oauth_states WHERE state_id = ?',
+            (created.record.state_id,),
+        ).fetchone()
+
+    assert result.status == GOOGLE_DRIVE_OAUTH_STATUS_EXPIRED
+    assert row[0] == GOOGLE_DRIVE_OAUTH_STATUS_EXPIRED
+    assert row[1] is None
+    assert row[2] == GOOGLE_DRIVE_OAUTH_ERROR_EXPIRED
+
+
+def test_rejected_state_reject_call_is_deterministic_noop(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    created = _create_state(service)
+    first = service.mark_oauth_state_rejected(raw_state_token=created.raw_state_token)
+
+    second = service.mark_oauth_state_rejected(raw_state_token=created.raw_state_token)
+
+    assert first == second
+    assert second.status == GOOGLE_DRIVE_OAUTH_STATUS_REJECTED
+    assert second.last_error_code == GOOGLE_DRIVE_OAUTH_ERROR_REJECTED
+
+
+@pytest.mark.parametrize('bad_state', ['', 'wrong-state-token'])
+def test_reject_wrong_or_missing_state_is_safe(
+    tmp_path: Path,
+    bad_state: str,
+) -> None:
+    service = _service(tmp_path)
+    _create_state(service)
+
+    with pytest.raises(GoogleDriveOAuthStateServiceError) as exc_info:
+        service.mark_oauth_state_rejected(raw_state_token=bad_state)
+
+    assert str(exc_info.value) in {GOOGLE_DRIVE_OAUTH_ERROR_INVALID, 'state_token_required'}
+    if bad_state:
+        assert bad_state not in str(exc_info.value)
 
 
 @pytest.mark.parametrize(
