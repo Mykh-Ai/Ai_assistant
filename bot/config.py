@@ -25,6 +25,7 @@ class Config:
     allowed_telegram_user_ids: frozenset[int] = frozenset()
     admin_telegram_user_ids: frozenset[int] = frozenset()
     google_oauth_client_id: str | None = None
+    google_oauth_client_secret: str | None = None
     google_oauth_redirect_uri: str | None = None
     google_oauth_callback_host: str = '127.0.0.1'
     google_oauth_callback_port: int = 8080
@@ -63,6 +64,7 @@ def load_config() -> Config:
         env_name='ADMIN_TELEGRAM_USER_IDS',
     )
     google_oauth_client_id = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '').strip() or None
+    google_oauth_client_secret = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', '').strip() or None
     google_oauth_redirect_uri = os.getenv('GOOGLE_OAUTH_REDIRECT_URI', '').strip() or None
     google_oauth_callback_host = os.getenv('GOOGLE_OAUTH_CALLBACK_HOST', '').strip() or '127.0.0.1'
     google_oauth_callback_port = _parse_positive_int(
@@ -86,6 +88,7 @@ def load_config() -> Config:
         allowed_telegram_user_ids=allowed_telegram_user_ids,
         admin_telegram_user_ids=admin_telegram_user_ids,
         google_oauth_client_id=google_oauth_client_id,
+        google_oauth_client_secret=google_oauth_client_secret,
         google_oauth_redirect_uri=google_oauth_redirect_uri,
         google_oauth_callback_host=google_oauth_callback_host,
         google_oauth_callback_port=google_oauth_callback_port,

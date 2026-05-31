@@ -338,10 +338,14 @@ Production-like owner-run baseline:
 Google Drive OAuth callback skeleton:
 - separate process, not `bot/main.py` polling;
 - fake exchanger only through injected test services in the current slice;
-- no real Google API, token endpoint, Drive upload, or archive worker;
+- production token exchanger foundation exists, but it is not wired into this
+  callback runtime yet;
+- no Drive upload, archive worker, or active Google Drive archive runtime;
 - command: `python -m bot.google_drive_oauth_callback_app`;
 - the config/runtime entrypoint intentionally fails closed until production
   token exchange and production token crypto are implemented.
+- `GOOGLE_OAUTH_CLIENT_SECRET` is a placeholder for future token exchange;
+  do not commit a real value.
 - `GOOGLE_TOKEN_CRYPTO_SECRET` is a placeholder for future encrypted token
   storage; do not commit a real value.
 - Token crypto operations are documented in

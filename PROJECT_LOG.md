@@ -1,5 +1,34 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 135 - Google OAuth token exchanger foundation
+
+Summary:
+- Added `GoogleOAuthTokenExchanger` as a production-capable authorization-code
+  token exchanger foundation for future Google Drive OAuth callback wiring.
+- The exchanger posts form data to `https://oauth2.googleapis.com/token` via an
+  injectable HTTP client, normalizes token responses into the existing
+  `GoogleOAuthTokenBundle`, validates refresh-token and `drive.file` scope
+  requirements, and extracts safe subject/email metadata from `id_token` when
+  present.
+- Added bounded provider error mapping for invalid grants, invalid clients,
+  scope errors, malformed JSON, HTTP 5xx, timeouts, and unexpected client
+  failures without exposing auth code, client secret, token values, or raw
+  Google response text.
+- Added `GOOGLE_OAUTH_CLIENT_SECRET` config/env placeholders only.
+
+Constraints:
+- Token exchanger service only.
+- No callback runtime wiring, real Google API call in tests, Drive adapter,
+  file upload, archive worker real-provider run, local cleanup/delete, archive
+  job behavior change, real secret commit, or Product Truth/InfoHelp status
+  change.
+
+Verification:
+- `python -m pytest -q tests/test_google_oauth_token_exchanger.py tests/test_google_drive_oauth_callback_service.py tests/test_google_drive_oauth_callback_app.py tests/test_token_crypto.py`
+  - 67 passed.
+- `python -m pytest -q`
+  - 1565 passed, 7 subtests passed.
+
 ## 2026-05-31 - Session 134 - Google Drive token crypto operations docs
 
 Summary:
