@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 127 - Fake Google Drive OAuth callback service
+
+Summary:
+- Added `GoogleDriveOAuthCallbackService` as a local/fake callback pipeline for
+  future Google Drive setup.
+- The service consumes a stored OAuth state once, calls an injected token
+  exchanger protocol, validates refresh-token and required-scope presence,
+  encrypts the token bundle through the existing crypto provider, and upserts a
+  connected `google_drive_connections` record.
+- Added bounded callback/token-exchange result handling for missing code,
+  invalid/reused/expired/rejected state, missing refresh token, missing scope,
+  invalid grant, provider error, and unknown connection persistence errors.
+- Added tests proving fake-token success, one-time state consumption,
+  no exchanger call for bad state/code, bounded provider errors, encrypted-only
+  persistence, no raw code/state/token persistence or repr exposure, no
+  Google/network imports, and no Product Truth/InfoHelp status upgrade.
+
+Constraints:
+- Fake/local OAuth callback token-exchange foundation only.
+- No real Google API calls, real token endpoint, real Google client, upload,
+  Drive adapter, Telegram settings UI, or Product Truth/InfoHelp status change.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_oauth_callback_service.py tests/test_google_drive_oauth_state_service.py tests/test_google_drive_connection_service.py tests/test_token_crypto.py`
+  - 72 passed.
+- `python -m pytest -q`
+  - 1496 passed, 7 subtests passed.
+
 ## 2026-05-31 - Session 126 - Google Drive OAuth state rejection hardening
 
 Summary:
