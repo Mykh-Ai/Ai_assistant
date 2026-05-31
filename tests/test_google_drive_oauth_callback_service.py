@@ -38,9 +38,11 @@ from bot.services.google_drive_oauth_state_service import (
 from bot.services.info_help import build_product_truth_guidance
 from bot.services.product_truth import ProductTruthStatus, get_capability
 from bot.services.token_crypto import DeterministicFakeTokenCryptoProvider
+from bot.services.token_crypto import UnconfiguredTokenCryptoProvider
 
 
 AUTH_CODE = '4/0AfJohXn-raw-auth-code-secret'
+SECOND_AUTH_CODE = '4/0AfJohXn-second-raw-auth-code-secret'
 STATE_NOW = datetime(2026, 5, 31, 10, 0, tzinfo=UTC)
 CALLBACK_NOW = datetime(2026, 5, 31, 10, 3, tzinfo=UTC)
 REDIRECT_URI = 'https://officeflow.example.test/oauth/google/callback'
@@ -82,16 +84,18 @@ def _crypto() -> DeterministicFakeTokenCryptoProvider:
 
 def _default_bundle(
     *,
+    access_token: str = 'access-token-secret',
     refresh_token: str | None = 'refresh-token-secret',
+    id_token: str | None = 'id-token-secret',
     scopes: tuple[str, ...] = DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
 ) -> GoogleOAuthTokenBundle:
     return GoogleOAuthTokenBundle(
-        access_token='access-token-secret',
+        access_token=access_token,
         refresh_token=refresh_token,
         expires_at='2026-05-31T11:00:00+00:00',
         scope=scopes,
         token_type='Bearer',
-        id_token='id-token-secret',
+        id_token=id_token,
         google_subject='google-subject-1',
         google_email='USER@Example.COM',
     )
@@ -112,11 +116,28 @@ def _create_state(tmp_path: Path, *, now: datetime = STATE_NOW):
 def _callback_service(
     tmp_path: Path,
     exchanger: FakeTokenExchanger,
+    crypto_provider=None,
 ) -> GoogleDriveOAuthCallbackService:
     return GoogleDriveOAuthCallbackService(
         db_path=_db_path(tmp_path),
-        crypto_provider=_crypto(),
+        crypto_provider=crypto_provider or _crypto(),
         token_exchanger=exchanger,
+    )
+
+
+def _create_existing_connection(
+    tmp_path: Path,
+    *,
+    token_plaintext: str = 'old-refresh-token-secret',
+) -> None:
+    GoogleDriveConnectionService(_db_path(tmp_path), _crypto()).create_or_update_connection(
+        workspace_id='telegram-111001',
+        telegram_id=111001,
+        scopes_granted=DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
+        token_plaintext=token_plaintext,
+        google_subject='old-google-subject',
+        google_email='old@example.com',
+        now=datetime(2026, 5, 31, 9, 0, tzinfo=UTC),
     )
 
 
@@ -247,7 +268,7 @@ def test_missing_code_rejects_state_and_exchanger_not_called(tmp_path: Path) -> 
     assert result.error_code == GOOGLE_DRIVE_CALLBACK_ERROR_MISSING_CODE
     assert exchanger.calls == 0
     assert row[0] == GOOGLE_DRIVE_OAUTH_STATUS_REJECTED
-    assert row[1] == 'drive_unknown_error'
+    assert row[1] == GOOGLE_DRIVE_CALLBACK_ERROR_MISSING_CODE
 
 
 def test_rejected_state_is_not_exchanged(tmp_path: Path) -> None:
@@ -319,6 +340,30 @@ def test_invalid_grant_maps_to_auth_revoked(tmp_path: Path) -> None:
     assert exchanger.calls == 1
 
 
+def test_existing_connection_invalid_grant_marks_needs_reauth(tmp_path: Path) -> None:
+    _create_existing_connection(tmp_path)
+    created = _create_state(tmp_path)
+    exchanger = FakeTokenExchanger(exception=GoogleOAuthInvalidGrantError())
+
+    result = _callback_service(tmp_path, exchanger).handle_callback(
+        state_token=created.raw_state_token,
+        code=AUTH_CODE,
+        now=CALLBACK_NOW,
+    )
+
+    record = GoogleDriveConnectionService(
+        _db_path(tmp_path),
+        _crypto(),
+    ).get_connection_for_workspace(workspace_id='telegram-111001')
+
+    assert result.success is False
+    assert result.error_code == GOOGLE_DRIVE_ERROR_AUTH_REVOKED
+    assert exchanger.calls == 1
+    assert record is not None
+    assert record.status == 'needs_reauth'
+    assert record.last_error_code == GOOGLE_DRIVE_ERROR_AUTH_REVOKED
+
+
 def test_provider_error_maps_to_connection_error(tmp_path: Path) -> None:
     created = _create_state(tmp_path)
     exchanger = FakeTokenExchanger(exception=GoogleOAuthProviderError())
@@ -332,6 +377,95 @@ def test_provider_error_maps_to_connection_error(tmp_path: Path) -> None:
     assert result.success is False
     assert result.error_code == GOOGLE_DRIVE_ERROR_CONNECTION
     assert exchanger.calls == 1
+
+
+def test_generic_provider_exception_maps_to_bounded_error(tmp_path: Path) -> None:
+    created = _create_state(tmp_path)
+    raw_message = f'provider crashed with code={AUTH_CODE} token=access-token-secret'
+    exchanger = FakeTokenExchanger(exception=RuntimeError(raw_message))
+
+    result = _callback_service(tmp_path, exchanger).handle_callback(
+        state_token=created.raw_state_token,
+        code=AUTH_CODE,
+        now=CALLBACK_NOW,
+    )
+    db_values = _all_db_values(tmp_path)
+
+    assert result.success is False
+    assert result.error_code == GOOGLE_DRIVE_ERROR_CONNECTION
+    assert exchanger.calls == 1
+    assert raw_message not in repr(result)
+    assert raw_message not in db_values
+    assert AUTH_CODE not in db_values
+    assert 'access-token-secret' not in db_values
+
+
+def test_token_crypto_error_maps_to_bounded_error_without_plaintext_persistence(tmp_path: Path) -> None:
+    created = _create_state(tmp_path)
+    exchanger = FakeTokenExchanger(bundle=_default_bundle())
+
+    result = _callback_service(
+        tmp_path,
+        exchanger,
+        crypto_provider=UnconfiguredTokenCryptoProvider(),
+    ).handle_callback(
+        state_token=created.raw_state_token,
+        code=AUTH_CODE,
+        now=CALLBACK_NOW,
+    )
+    db_values = _all_db_values(tmp_path)
+
+    assert result.success is False
+    assert result.error_code == GOOGLE_DRIVE_ERROR_CONNECTION
+    assert exchanger.calls == 1
+    assert 'access-token-secret' not in db_values
+    assert 'refresh-token-secret' not in db_values
+    assert 'id-token-secret' not in db_values
+    assert AUTH_CODE not in db_values
+    assert created.raw_state_token not in db_values
+    assert GoogleDriveConnectionService(
+        _db_path(tmp_path),
+        _crypto(),
+    ).get_connection_for_workspace(workspace_id='telegram-111001') is None
+
+
+def test_successful_reconnect_updates_encrypted_token_metadata(tmp_path: Path) -> None:
+    _create_existing_connection(tmp_path)
+    created = _create_state(tmp_path)
+    exchanger = FakeTokenExchanger(
+        bundle=_default_bundle(
+            access_token='new-access-token-secret',
+            refresh_token='new-refresh-token-secret',
+            id_token='new-id-token-secret',
+        ),
+    )
+
+    result = _callback_service(tmp_path, exchanger).handle_callback(
+        state_token=created.raw_state_token,
+        code=SECOND_AUTH_CODE,
+        now=CALLBACK_NOW,
+    )
+    connection_service = GoogleDriveConnectionService(_db_path(tmp_path), _crypto())
+    record = connection_service.get_connection_for_workspace(workspace_id='telegram-111001')
+    decrypted = json.loads(
+        connection_service.decrypt_token_for_workspace(workspace_id='telegram-111001').decode('utf-8')
+    )
+    db_values = _all_db_values(tmp_path)
+
+    assert result.success is True
+    assert record is not None
+    assert record.status == GOOGLE_DRIVE_STATUS_CONNECTED
+    assert record.google_email == 'user@example.com'
+    assert record.connected_at == CALLBACK_NOW.isoformat()
+    assert decrypted['refresh_token'] == 'new-refresh-token-secret'
+    assert decrypted['access_token'] == 'new-access-token-secret'
+    assert decrypted['id_token'] == 'new-id-token-secret'
+    assert 'old-refresh-token-secret' not in db_values
+    assert 'new-refresh-token-secret' not in db_values
+    assert 'new-access-token-secret' not in db_values
+    assert 'new-id-token-secret' not in db_values
+    assert SECOND_AUTH_CODE not in db_values
+    assert created.raw_state_token not in db_values
 
 
 def test_plaintext_tokens_code_and_state_do_not_appear_in_db(tmp_path: Path) -> None:

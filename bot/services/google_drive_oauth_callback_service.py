@@ -18,6 +18,7 @@ from bot.services.google_drive_connection_service import (
 )
 from bot.services.google_drive_oauth_state_service import (
     DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
+    GOOGLE_DRIVE_OAUTH_ERROR_CODE_MISSING,
     GOOGLE_DRIVE_OAUTH_ERROR_EXPIRED,
     GOOGLE_DRIVE_OAUTH_ERROR_INVALID,
     GOOGLE_DRIVE_OAUTH_ERROR_REJECTED,
@@ -26,10 +27,10 @@ from bot.services.google_drive_oauth_state_service import (
     GoogleDriveOAuthStateService,
     GoogleDriveOAuthStateServiceError,
 )
-from bot.services.token_crypto import TokenCryptoProvider
+from bot.services.token_crypto import TokenCryptoError, TokenCryptoProvider
 
 
-GOOGLE_DRIVE_CALLBACK_ERROR_MISSING_CODE = 'drive_oauth_code_missing'
+GOOGLE_DRIVE_CALLBACK_ERROR_MISSING_CODE = GOOGLE_DRIVE_OAUTH_ERROR_CODE_MISSING
 
 REQUIRED_GOOGLE_DRIVE_OAUTH_SCOPES = DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES
 
@@ -155,8 +156,12 @@ class GoogleDriveOAuthCallbackService:
             return _failure_from_consumed(consumed, GOOGLE_DRIVE_ERROR_AUTH_REVOKED)
         except GoogleOAuthTokenExchangeError as exc:
             return _failure_from_consumed(consumed, exc.error_code)
+        except TokenCryptoError:
+            return _failure_from_consumed(consumed, GOOGLE_DRIVE_ERROR_CONNECTION)
         except GoogleDriveConnectionServiceError:
-            return _failure_from_consumed(consumed, GOOGLE_DRIVE_ERROR_UNKNOWN)
+            return _failure_from_consumed(consumed, GOOGLE_DRIVE_ERROR_CONNECTION)
+        except Exception:
+            return _failure_from_consumed(consumed, GOOGLE_DRIVE_ERROR_CONNECTION)
 
         return GoogleDriveOAuthCallbackResult(
             success=True,

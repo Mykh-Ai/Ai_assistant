@@ -1,5 +1,30 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 128 - Google Drive OAuth callback failure hardening
+
+Summary:
+- Hardened `GoogleDriveOAuthCallbackService.handle_callback(...)` so generic
+  token exchanger exceptions and token crypto failures return bounded
+  `drive_connection_error` failures instead of escaping.
+- Added `drive_oauth_code_missing` as a bounded OAuth state error code so
+  missing-code callback diagnostics are consistent between callback result and
+  stored OAuth state.
+- Added tests for generic provider exception handling, token crypto failure,
+  missing-code state diagnostics, existing-connection `invalid_grant`
+  `needs_reauth` marking, and successful reconnect token rotation without
+  plaintext persistence.
+
+Constraints:
+- Small callback service hardening and tests only.
+- No real Google API, real callback endpoint, Telegram commands, upload/Drive
+  adapter, raw provider-error logging, or Product Truth/InfoHelp status change.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_oauth_callback_service.py tests/test_google_drive_oauth_state_service.py tests/test_google_drive_connection_service.py tests/test_token_crypto.py`
+  - 76 passed.
+- `python -m pytest -q`
+  - 1500 passed, 7 subtests passed.
+
 ## 2026-05-31 - Session 127 - Fake Google Drive OAuth callback service
 
 Summary:
