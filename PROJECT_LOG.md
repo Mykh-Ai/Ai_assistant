@@ -1,5 +1,28 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 130 - Google Drive setup command boundary tests
+
+Summary:
+- Hardened Google Drive setup command boundary tests before any real callback
+  endpoint or token exchange work.
+- Added coverage for missing `GOOGLE_OAUTH_REDIRECT_URI`, non-admin status
+  denial, middleware allowlist pass-through for the three Google Drive setup
+  commands, disconnected/revoked/error status display, and status-output
+  secrecy guards.
+
+Constraints:
+- Tests/log update only.
+- No callback endpoint, token exchange, Google API/network call,
+  upload/Drive adapter, or Product Truth/InfoHelp capability upgrade.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_setup_commands.py tests/test_google_drive_connection_service.py tests/test_google_drive_oauth_state_service.py`
+  - 73 passed.
+- `python -m pytest -q`
+  - 1519 passed, 7 subtests passed.
+- `git diff --check`
+  - passed; line-ending warning only.
+
 ## 2026-05-31 - Session 129 - Google Drive setup commands foundation
 
 Summary:

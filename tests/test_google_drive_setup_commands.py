@@ -26,9 +26,12 @@ from bot.services.authorization import TelegramUserAuthorizationMiddleware, UNAU
 from bot.services.db import init_db, managed_connection
 from bot.services.google_drive_connection_service import (
     GOOGLE_DRIVE_ERROR_AUTH_REVOKED,
+    GOOGLE_DRIVE_ERROR_CONNECTION,
     GOOGLE_DRIVE_STATUS_CONNECTED,
     GOOGLE_DRIVE_STATUS_DISCONNECTED,
+    GOOGLE_DRIVE_STATUS_ERROR,
     GOOGLE_DRIVE_STATUS_NEEDS_REAUTH,
+    GOOGLE_DRIVE_STATUS_REVOKED,
     GoogleDriveConnectionService,
 )
 from bot.services.google_drive_oauth_state_service import DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES
@@ -114,6 +117,26 @@ def _connection_service(config: Config) -> GoogleDriveConnectionService:
     )
 
 
+def _assert_no_status_internals(answer: str) -> None:
+    forbidden = (
+        'access_token',
+        'refresh_token',
+        'id_token',
+        'safe-test-token',
+        'ciphertext',
+        'client_secret',
+        'state_token',
+        'authorization_url',
+        'auth code',
+        'openid',
+        'drive.file',
+        'scope',
+    )
+
+    lowered = answer.lower()
+    assert not any(value in lowered for value in forbidden)
+
+
 def test_admin_connect_creates_oauth_state_and_returns_safe_authorization_url(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
@@ -150,6 +173,17 @@ def test_admin_connect_creates_oauth_state_and_returns_safe_authorization_url(tm
 
 def test_connect_missing_google_oauth_config_does_not_create_state(tmp_path: Path) -> None:
     config = _config(tmp_path, client_id=None)
+    init_db(config.db_path)
+    message = _DummyMessage('/google_drive_connect', ADMIN_ID)
+
+    asyncio.run(cmd_google_drive_connect(message, config))
+
+    assert message.answers == [GOOGLE_DRIVE_CONFIG_MISSING_MESSAGE]
+    assert _state_rows(config.db_path) == []
+
+
+def test_connect_missing_google_oauth_redirect_uri_does_not_create_state(tmp_path: Path) -> None:
+    config = _config(tmp_path, redirect_uri=None)
     init_db(config.db_path)
     message = _DummyMessage('/google_drive_connect', ADMIN_ID)
 
@@ -196,6 +230,32 @@ def test_unauthorized_user_is_blocked_by_middleware_before_connect_handler(tmp_p
     assert _state_rows(config.db_path) == []
 
 
+@pytest.mark.parametrize(
+    'command',
+    [
+        '/google_drive_connect',
+        '/google_drive_status',
+        '/google_drive_disconnect',
+    ],
+)
+def test_admin_google_drive_commands_pass_middleware_allowlist(
+    tmp_path: Path,
+    command: str,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage(command, ADMIN_ID)
+    calls: list[str] = []
+
+    async def _handler(event, data):
+        calls.append(event.text)
+
+    asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config}))
+
+    assert calls == [command]
+    assert message.answers == []
+
+
 def test_status_without_connection_is_safe(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
@@ -204,6 +264,17 @@ def test_status_without_connection_is_safe(tmp_path: Path) -> None:
     asyncio.run(cmd_google_drive_status(message, config))
 
     assert message.answers == [GOOGLE_DRIVE_NOT_CONNECTED_MESSAGE]
+
+
+def test_non_admin_cannot_read_google_drive_status(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=USER_ID, approved_by=ADMIN_ID)
+    message = _DummyMessage('/google_drive_status', USER_ID)
+
+    asyncio.run(cmd_google_drive_status(message, config))
+
+    assert message.answers == [GOOGLE_DRIVE_ADMIN_ONLY_MESSAGE]
 
 
 def test_status_connected_hides_secrets_and_runtime_overclaim(tmp_path: Path) -> None:
@@ -227,10 +298,7 @@ def test_status_connected_hides_secrets_and_runtime_overclaim(tmp_path: Path) ->
     assert 'owner@example.test' in answer
     assert 'OfficeFlow/Faktury' in answer
     assert 'nespusta nahravanie suborov' in answer
-    assert 'access_token' not in answer
-    assert 'refresh_token' not in answer
-    assert 'ciphertext' not in answer
-    assert 'scope' not in answer.lower()
+    _assert_no_status_internals(answer)
 
 
 def test_status_needs_reauth_shows_bounded_error_only(tmp_path: Path) -> None:
@@ -256,7 +324,78 @@ def test_status_needs_reauth_shows_bounded_error_only(tmp_path: Path) -> None:
     assert 'status: needs_reauth' in answer
     assert 'opatovne prihlasenie' in answer
     assert GOOGLE_DRIVE_ERROR_AUTH_REVOKED in answer
-    assert 'safe-test-token' not in answer
+    _assert_no_status_internals(answer)
+
+
+def test_status_disconnected_is_safe(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = _connection_service(config)
+    service.create_or_update_connection(
+        workspace_id=_workspace_id(),
+        telegram_id=ADMIN_ID,
+        scopes_granted=DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
+        token_plaintext='safe-test-token',
+        google_email='owner@example.test',
+    )
+    service.mark_disconnected(workspace_id=_workspace_id())
+    message = _DummyMessage('/google_drive_status', ADMIN_ID)
+
+    asyncio.run(cmd_google_drive_status(message, config))
+
+    answer = message.answers[0]
+    assert 'status: disconnected' in answer
+    assert 'zatial nie je aktivne pripojeny' in answer
+    _assert_no_status_internals(answer)
+
+
+def test_status_revoked_is_safe(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    _connection_service(config).create_or_update_connection(
+        workspace_id=_workspace_id(),
+        telegram_id=ADMIN_ID,
+        scopes_granted=DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
+        token_plaintext='safe-test-token',
+        status=GOOGLE_DRIVE_STATUS_REVOKED,
+        google_email='owner@example.test',
+    )
+    message = _DummyMessage('/google_drive_status', ADMIN_ID)
+
+    asyncio.run(cmd_google_drive_status(message, config))
+
+    answer = message.answers[0]
+    assert 'status: revoked' in answer
+    assert 'zatial nie je aktivne pripojeny' in answer
+    _assert_no_status_internals(answer)
+
+
+def test_status_error_shows_bounded_error_only(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    _connection_service(config).create_or_update_connection(
+        workspace_id=_workspace_id(),
+        telegram_id=ADMIN_ID,
+        scopes_granted=DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
+        token_plaintext='safe-test-token',
+        status=GOOGLE_DRIVE_STATUS_ERROR,
+        google_email='owner@example.test',
+    )
+    with managed_connection(config.db_path) as connection:
+        connection.execute(
+            'UPDATE google_drive_connections SET last_error_code = ? WHERE workspace_id = ?',
+            (GOOGLE_DRIVE_ERROR_CONNECTION, _workspace_id()),
+        )
+        connection.commit()
+    message = _DummyMessage('/google_drive_status', ADMIN_ID)
+
+    asyncio.run(cmd_google_drive_status(message, config))
+
+    answer = message.answers[0]
+    assert 'status: error' in answer
+    assert GOOGLE_DRIVE_ERROR_CONNECTION in answer
+    assert 'chybovy stav' in answer
+    _assert_no_status_internals(answer)
 
 
 def test_disconnect_marks_local_connection_disconnected_without_delete_or_google_api(
