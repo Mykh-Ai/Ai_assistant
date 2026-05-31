@@ -29,6 +29,7 @@ class Config:
     google_oauth_callback_host: str = '127.0.0.1'
     google_oauth_callback_port: int = 8080
     google_oauth_callback_use_fake_exchanger: bool = False
+    google_token_crypto_secret: str | None = None
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -71,6 +72,7 @@ def load_config() -> Config:
     google_oauth_callback_use_fake_exchanger = _parse_bool(
         os.getenv('GOOGLE_OAUTH_CALLBACK_USE_FAKE_EXCHANGER', ''),
     )
+    google_token_crypto_secret = os.getenv('GOOGLE_TOKEN_CRYPTO_SECRET', '').strip() or None
     ensure_storage_dirs(storage_dir)
 
     return Config(
@@ -88,6 +90,7 @@ def load_config() -> Config:
         google_oauth_callback_host=google_oauth_callback_host,
         google_oauth_callback_port=google_oauth_callback_port,
         google_oauth_callback_use_fake_exchanger=google_oauth_callback_use_fake_exchanger,
+        google_token_crypto_secret=google_token_crypto_secret,
     )
 
 

@@ -342,6 +342,8 @@ Google Drive OAuth callback skeleton:
 - command: `python -m bot.google_drive_oauth_callback_app`;
 - the config/runtime entrypoint intentionally fails closed until production
   token exchange and production token crypto are implemented.
+- `GOOGLE_TOKEN_CRYPTO_SECRET` is a placeholder for future encrypted token
+  storage; do not commit a real value.
 
 Before server-side work, read the private local runbook if present:
 

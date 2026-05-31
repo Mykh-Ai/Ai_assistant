@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 133 - Production token crypto provider foundation
+
+Summary:
+- Added `FernetTokenCryptoProvider` as a production-capable token crypto
+  foundation using authenticated Fernet encryption from the `cryptography`
+  dependency.
+- Added `GOOGLE_TOKEN_CRYPTO_SECRET` config/env placeholders for future
+  external secret wiring; no real secret value is committed.
+- Kept `DeterministicFakeTokenCryptoProvider` test-only and left the Google
+  OAuth callback runtime fail-closed without wiring production crypto into it.
+- Added tests for missing/invalid secret fail-closed behavior, Fernet
+  encrypt/decrypt roundtrip, ciphertext/plaintext separation, repr secrecy,
+  wrong-secret rejection, key/version mismatch handling, DB plaintext
+  protection through `GoogleDriveConnectionService`, env placeholder safety,
+  and no Google/network imports.
+
+Constraints:
+- Token encryption provider foundation only.
+- No real Google token exchange, Google API/network call, Drive adapter,
+  upload, callback runtime enablement, real secret commit, or Product
+  Truth/InfoHelp status change.
+
+Verification:
+- `python -m pytest -q tests/test_token_crypto.py tests/test_google_drive_connection_service.py`
+  - 46 passed.
+- `python -m pytest -q`
+  - 1546 passed, 7 subtests passed.
+
 ## 2026-05-31 - Session 132 - Google Drive OAuth callback runtime fail-close
 
 Summary:

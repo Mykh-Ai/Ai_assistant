@@ -6,6 +6,7 @@ import inspect
 import sqlite3
 
 import pytest
+from cryptography.fernet import Fernet
 
 from bot.services import google_drive_connection_service
 from bot.services.google_drive_connection_service import (
@@ -20,7 +21,7 @@ from bot.services.google_drive_connection_service import (
 )
 from bot.services.info_help import build_product_truth_guidance
 from bot.services.product_truth import ProductTruthStatus, get_capability
-from bot.services.token_crypto import DeterministicFakeTokenCryptoProvider
+from bot.services.token_crypto import DeterministicFakeTokenCryptoProvider, FernetTokenCryptoProvider
 
 
 def _db_path(tmp_path: Path) -> Path:
@@ -98,6 +99,28 @@ def test_create_connected_connection_stores_ciphertext_not_plaintext(tmp_path: P
     assert row[0] != b'refresh-token-secret'
     assert b'refresh-token-secret' not in row[0]
     assert row[1] == 'test-key'
+    assert row[2] == 1
+
+
+def test_create_connected_connection_with_production_crypto_stores_no_plaintext(tmp_path: Path) -> None:
+    service = GoogleDriveConnectionService(
+        _db_path(tmp_path),
+        FernetTokenCryptoProvider(secret=Fernet.generate_key(), key_id='google-token-key-v1'),
+    )
+
+    record = _create_connection(service)
+    decrypted = service.decrypt_token_for_workspace(workspace_id='telegram-111001')
+
+    with sqlite3.connect(_db_path(tmp_path)) as connection:
+        row = connection.execute(
+            'SELECT token_ciphertext, token_key_id, token_version FROM google_drive_connections'
+        ).fetchone()
+
+    assert record.status == GOOGLE_DRIVE_STATUS_CONNECTED
+    assert decrypted == b'refresh-token-secret'
+    assert row[0] != b'refresh-token-secret'
+    assert b'refresh-token-secret' not in row[0]
+    assert row[1] == 'google-token-key-v1'
     assert row[2] == 1
 
 
