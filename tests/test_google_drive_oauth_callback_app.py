@@ -11,6 +11,7 @@ from aiohttp.test_utils import make_mocked_request
 
 from bot.config import Config
 from bot import google_drive_oauth_callback_app
+import bot.main as bot_main
 from bot.google_drive_oauth_callback_app import (
     GOOGLE_DRIVE_CALLBACK_BROWSER_FAILURE,
     GOOGLE_DRIVE_CALLBACK_BROWSER_SUCCESS,
@@ -261,6 +262,60 @@ def test_google_error_param_rejects_state_and_sends_safe_failure_message(tmp_pat
     assert 'access_denied_raw_google_error' not in bot.messages[0][1]
 
 
+def test_google_error_with_wrong_state_sends_no_telegram_and_does_not_call_exchanger(tmp_path: Path) -> None:
+    _create_state(tmp_path)
+    app, exchanger, bot = _build_app(tmp_path)
+
+    response = _call(
+        app,
+        state=RAW_STATE_SENTINEL,
+        error='access_denied_raw_google_error',
+        error_description='raw-provider-url https://accounts.google.com/o/oauth2/v2/auth?code=secret',
+    )
+
+    assert response.status == 400
+    assert response.text == GOOGLE_DRIVE_CALLBACK_BROWSER_FAILURE
+    assert exchanger.calls == 0
+    assert bot.messages == []
+    assert 'access_denied_raw_google_error' not in response.text
+    assert 'raw-provider-url' not in response.text
+
+
+def test_google_error_description_is_not_reflected_to_browser_or_telegram(tmp_path: Path) -> None:
+    created = _create_state(tmp_path)
+    app, exchanger, bot = _build_app(tmp_path)
+    raw_description = 'token-like-error refresh_token=secret&client_secret=hidden'
+
+    response = _call(
+        app,
+        state=created.raw_state_token,
+        error='access_denied',
+        error_description=raw_description,
+    )
+
+    assert response.status == 400
+    assert exchanger.calls == 0
+    assert bot.messages == [(111001, GOOGLE_DRIVE_CALLBACK_TELEGRAM_FAILURE)]
+    assert raw_description not in response.text
+    assert raw_description not in bot.messages[0][1]
+
+
+def test_query_telegram_id_is_ignored_and_consumed_state_user_is_notified(tmp_path: Path) -> None:
+    created = _create_state(tmp_path)
+    app, exchanger, bot = _build_app(tmp_path)
+
+    response = _call(
+        app,
+        state=created.raw_state_token,
+        code=AUTH_CODE,
+        telegram_id='999999',
+    )
+
+    assert response.status == 200
+    assert exchanger.calls == 1
+    assert bot.messages == [(111001, GOOGLE_DRIVE_CALLBACK_TELEGRAM_SUCCESS)]
+
+
 def test_browser_telegram_and_db_do_not_include_code_state_or_tokens(tmp_path: Path) -> None:
     created = _create_state(tmp_path)
     app, _, bot = _build_app(tmp_path)
@@ -292,6 +347,14 @@ def test_callback_app_uses_fake_exchanger_and_imports_no_google_client_or_archiv
 
     assert not any(value in source for value in forbidden)
     assert 'FakeGoogleOAuthTokenExchanger' in source
+    assert 'DeterministicFakeTokenCryptoProvider' not in source
+
+
+def test_bot_main_has_no_callback_app_wiring() -> None:
+    source = inspect.getsource(bot_main)
+
+    assert 'google_drive_oauth_callback_app' not in source
+    assert 'oauth/google/callback' not in source
 
 
 def test_create_callback_app_from_config_requires_bot_token(tmp_path: Path) -> None:
@@ -305,15 +368,31 @@ def test_create_callback_app_from_config_requires_bot_token(tmp_path: Path) -> N
         raise AssertionError('missing BOT_TOKEN must fail safely')
 
 
-def test_create_callback_app_from_config_requires_explicit_fake_mode(tmp_path: Path) -> None:
+def test_create_callback_app_from_config_fails_closed_by_default(tmp_path: Path) -> None:
     config = _config(tmp_path, bot_token='123:ABC', use_fake_exchanger=False)
 
     try:
         create_callback_app_from_config(config)
     except RuntimeError as exc:
-        assert 'GOOGLE_OAUTH_CALLBACK_USE_FAKE_EXCHANGER' in str(exc)
+        assert str(exc) == (
+            'Google Drive OAuth callback runtime is disabled until production token exchange '
+            'and token crypto are configured'
+        )
     else:
-        raise AssertionError('fake callback skeleton must require explicit fake mode')
+        raise AssertionError('callback runtime must fail closed without production exchanger/crypto')
+
+
+def test_create_callback_app_from_config_rejects_fake_mode_and_creates_no_db(tmp_path: Path) -> None:
+    config = _config(tmp_path, bot_token='123:ABC', use_fake_exchanger=True)
+
+    try:
+        create_callback_app_from_config(config)
+    except RuntimeError as exc:
+        assert 'production token exchange and token crypto' in str(exc)
+    else:
+        raise AssertionError('fake mode must not enable runtime callback startup')
+
+    assert not _db_path(tmp_path).exists()
 
 
 def test_google_drive_product_truth_stays_unsupported() -> None:

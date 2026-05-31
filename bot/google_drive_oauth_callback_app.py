@@ -4,12 +4,8 @@ from dataclasses import dataclass
 import logging
 
 from aiohttp import web
-from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 
 from bot.config import Config, load_config
-from bot.services.db import init_db
 from bot.services.google_drive_oauth_callback_service import (
     GOOGLE_DRIVE_ERROR_CONNECTION,
     GoogleDriveOAuthCallbackResult,
@@ -21,7 +17,6 @@ from bot.services.google_drive_oauth_state_service import (
     GoogleDriveOAuthStateService,
     GoogleDriveOAuthStateServiceError,
 )
-from bot.services.token_crypto import DeterministicFakeTokenCryptoProvider
 
 
 logger = logging.getLogger(__name__)
@@ -87,23 +82,9 @@ def create_callback_app(
 
 def create_callback_app_from_config(config: Config) -> web.Application:
     _validate_runtime_config(config)
-    init_db(config.db_path)
-    bot = Bot(
-        token=config.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
-    exchanger = FakeGoogleOAuthTokenExchanger()
-    crypto_provider = DeterministicFakeTokenCryptoProvider(key_id='fake-google-drive-callback-key')
-    callback_service = GoogleDriveOAuthCallbackService(
-        db_path=config.db_path,
-        crypto_provider=crypto_provider,
-        token_exchanger=exchanger,
-    )
-    oauth_state_service = GoogleDriveOAuthStateService(config.db_path)
-    return create_callback_app(
-        callback_service=callback_service,
-        oauth_state_service=oauth_state_service,
-        bot=bot,
+    raise RuntimeError(
+        'Google Drive OAuth callback runtime is disabled until production token exchange '
+        'and token crypto are configured'
     )
 
 
@@ -183,8 +164,6 @@ def _oauth_state_service(request: web.Request) -> GoogleDriveOAuthStateService:
 def _validate_runtime_config(config: Config) -> None:
     if not str(config.bot_token).strip():
         raise RuntimeError('BOT_TOKEN is required')
-    if not config.google_oauth_callback_use_fake_exchanger:
-        raise RuntimeError('GOOGLE_OAUTH_CALLBACK_USE_FAKE_EXCHANGER must be enabled for this fake callback skeleton')
     if config.google_oauth_callback_port <= 0:
         raise RuntimeError('GOOGLE_OAUTH_CALLBACK_PORT must be a positive integer')
 

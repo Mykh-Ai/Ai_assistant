@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 132 - Google Drive OAuth callback runtime fail-close
+
+Summary:
+- Hardened the Google Drive OAuth callback skeleton so the injectable
+  `create_callback_app(...)` test path still supports fake exchanger/crypto,
+  but `create_callback_app_from_config(...)` fails closed until production
+  token exchange and production token crypto are explicitly implemented.
+- Removed the runtime config path's use of `DeterministicFakeTokenCryptoProvider`
+  so `python -m bot.google_drive_oauth_callback_app` cannot start a service
+  that persists fake connected Google Drive rows into a real DB.
+- Added callback boundary tests for fake-mode rejection, no runtime DB
+  creation, Google error handling with wrong state, ignoring raw
+  `error_description`, ignoring query-provided `telegram_id`, and keeping
+  `bot/main.py` free of callback app wiring.
+- Updated README to describe the callback app as a test/integration foundation
+  whose config/runtime entrypoint is intentionally disabled for production.
+
+Constraints:
+- Safety hardening and tests only.
+- No real Google token exchange, Google API/network call, real Drive adapter,
+  upload, Product Truth/InfoHelp status change, or push.
+
+Verification:
+- `python -m pytest -q tests/test_google_drive_oauth_callback_app.py tests/test_google_drive_oauth_callback_service.py tests/test_google_drive_oauth_state_service.py tests/test_google_drive_connection_service.py`
+  - 89 passed.
+- `python -m pytest -q`
+  - 1536 passed, 7 subtests passed.
+
 ## 2026-05-31 - Session 131 - Google Drive OAuth callback HTTP skeleton
 
 Summary:
