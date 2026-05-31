@@ -802,6 +802,19 @@ Bloček-y:
 
 ## 14. Implementation note
 
+### 14.1. Token crypto operations
+
+Production handling for `GOOGLE_TOKEN_CRYPTO_SECRET` is documented in:
+
+```text
+docs/Google_Drive_Token_Crypto_Operations.md
+```
+
+That operations document is the source of truth for generating, storing,
+backing up, rotating, and recovering the token crypto secret. It does not
+enable Google OAuth, Google API calls, Drive uploads, or local cleanup by
+itself.
+
 Цей документ описує продуктову і технічну політику. Перед реалізацією потрібно окремо перевірити поточний код:
 
 ```text

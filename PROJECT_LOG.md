@@ -1,5 +1,27 @@
 # PROJECT_LOG
 
+## 2026-05-31 - Session 134 - Google Drive token crypto operations docs
+
+Summary:
+- Added `docs/Google_Drive_Token_Crypto_Operations.md` to document production
+  handling for `GOOGLE_TOKEN_CRYPTO_SECRET`.
+- Covered purpose, loss impact, common loss scenarios, storage policy, backup
+  policy, current no-rotation policy, recovery steps, Fernet-compatible
+  generation guidance, and the checklist required before real Google OAuth
+  token exchange.
+- Linked the operations document from the Google Drive storage policy and
+  README.
+
+Constraints:
+- Documentation-only session.
+- No runtime code changes, real Google token exchange, Google API/network
+  call, Drive adapter, upload, real secret commit, or Product Truth/InfoHelp
+  status change.
+
+Verification:
+- `git diff --check`
+  - passed; line-ending warnings only.
+
 ## 2026-05-31 - Session 133 - Production token crypto provider foundation
 
 Summary:

@@ -344,6 +344,8 @@ Google Drive OAuth callback skeleton:
   token exchange and production token crypto are implemented.
 - `GOOGLE_TOKEN_CRYPTO_SECRET` is a placeholder for future encrypted token
   storage; do not commit a real value.
+- Token crypto operations are documented in
+  `docs/Google_Drive_Token_Crypto_Operations.md`.
 
 Before server-side work, read the private local runbook if present:
 
