@@ -74,6 +74,9 @@
 - accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
 
 ### Fixed
+- Ukrainian current-year invoice summary wording such as `цього року` now
+  resolves through bounded period-value canonicalization to the yearly invoice
+  summary instead of the generic supported-year guidance message.
 - Invoice draft creation now honors an explicitly stated issue date (`Dátum
   vystavenia`, including voice-like Cyrillic forms such as `датом
   вытворения`) before validating delivery-date windows and computing due date.

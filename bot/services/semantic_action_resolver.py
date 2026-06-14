@@ -234,6 +234,38 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
     if not tokens:
         return _UNKNOWN
 
+    if context_name == 'invoice_summary_period_selection':
+        normalized_text = _normalize_bounded_reply_text(text)
+        current_year_markers = {
+            'tento rok',
+            'tomto roku',
+            'v tomto roku',
+            'this year',
+            'current year',
+            '\u0446\u044c\u043e\u0433\u043e \u0440\u043e\u043a\u0443',
+            '\u0443 \u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+            '\u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+            '\u0432 \u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+            '\u0446\u044c\u043e\u0433\u043e\u0440\u0456\u0447',
+            '\u0437\u0430 \u0446\u0435\u0439 \u0440\u0456\u043a',
+            '\u044d\u0442\u043e\u043c \u0433\u043e\u0434\u0443',
+            '\u0432 \u044d\u0442\u043e\u043c \u0433\u043e\u0434\u0443',
+            '\u0433\u044d\u0442\u044b\u043c \u0433\u043e\u0434\u0437\u0435',
+            '\u0443 \u0433\u044d\u0442\u044b\u043c \u0433\u043e\u0434\u0437\u0435',
+        }
+        previous_year_markers = {
+            'minuly rok',
+            'minulom roku',
+            'last year',
+            '\u043c\u0438\u043d\u0443\u043b\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+            '\u043f\u0440\u043e\u0448\u043b\u043e\u043c \u0433\u043e\u0434\u0443',
+        }
+        if 'current_year' in allowed and any(marker in normalized_text for marker in current_year_markers):
+            return 'current_year'
+        if 'previous_year' in allowed and any(marker in normalized_text for marker in previous_year_markers):
+            return 'previous_year'
+        return _UNKNOWN
+
     if context_name == 'top_level_action':
         normalized_text = _normalize_bounded_reply_text(text)
         start_phrases = {

@@ -1,5 +1,19 @@
 # PROJECT_LOG
 
+## 2026-06-14 - Session 142 - Ukrainian current-year invoice summary wording
+
+Summary:
+- Investigated the Telegram screenshot where the voice request `На яку суму я виставив фактур цього року?` returned the supported-year guidance instead of the invoice total.
+- Confirmed server logs resolved the top-level action as `invoice_period_summary`; the failure was action-parameter canonicalization for the supported year period.
+- Reworked the local fix to follow the LLM/orchestrator contract: after the top-level action token is selected, the handler asks bounded resolver context `invoice_summary_period_selection` for `current_year`, `previous_year`, or `unknown`; Python still parses explicit `YYYY` deterministically and owns date-range validation/execution.
+- Added narrow deterministic fallback only inside the shared semantic resolver for no-key/offline operation, with LLM fallback available when configured.
+- Added regression coverage so the screenshot wording answers with the yearly summary and proves the bounded period resolver is used.
+
+Verification:
+- Superseded earlier local phrase-parser patch before commit/deploy; verification rerun below after bounded resolver alignment.
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py::test_invoice_period_summary_resolves_as_read_only_top_level_action tests/test_invoice_intent_prerouter.py::test_process_invoice_text_answers_invoice_period_summary_without_side_effects tests/test_invoice_intent_prerouter.py::test_invoice_period_summary_uses_bounded_period_value_resolver tests/test_voice_state_routing.py::test_voice_idle_invoice_period_summary_answers_from_top_level_router` -> `10 passed`.
+- `python -m pytest -q` -> `1599 passed, 7 subtests passed`.
+
 ## 2026-06-14 - Session 141 - Invoice explicit issue-date intake guardrail
 
 Summary:

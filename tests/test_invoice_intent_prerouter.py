@@ -441,6 +441,7 @@ def test_send_invoice_request_does_not_become_invoice_creation() -> None:
         'Na akú sumu som vystavil faktúry v tomto roku?',
         'Koľko som vystavil faktúr tento rok?',
         'Súhrn faktúr za 2026',
+        'На яку суму я виставив фактур цього року?',
         'На яку суму я вже виставив фактуру в цьому році?',
         'На какую сумму я выставил фактур в этом году?',
         'На якую суму я выставіў фактур у гэтым годзе?',
@@ -532,7 +533,7 @@ def test_process_invoice_text_answers_invoice_period_summary_without_side_effect
         ],
     )
 
-    message = _authorized_message('Na akú sumu som vystavil faktúry v tomto roku?', telegram_id=111)
+    message = _authorized_message('На яку суму я виставив фактур цього року?', telegram_id=111)
     state = _DummyState()
 
     asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
@@ -545,6 +546,35 @@ def test_process_invoice_text_answers_invoice_period_summary_without_side_effect
     assert '999.00' not in message.answers[-1]
     assert message.documents == []
     assert not (tmp_path / 'invoices').exists()
+
+
+def test_invoice_period_summary_uses_bounded_period_value_resolver(tmp_path: Path, monkeypatch) -> None:
+    calls: list[dict] = []
+
+    async def _resolver(**kwargs) -> str:
+        calls.append(kwargs)
+        if kwargs['context_name'] == 'top_level_action':
+            return 'invoice_period_summary'
+        if kwargs['context_name'] == 'invoice_summary_period_selection':
+            assert kwargs['allowed_actions'] == ['current_year', 'previous_year', 'unknown']
+            assert 'current_year' in kwargs['action_hints']
+            assert 'supported_periods' in kwargs['auxiliary_context']
+            return 'current_year'
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    config = _config(tmp_path)
+    message = _authorized_message('На яку суму я виставив фактур цього року?', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert [call['context_name'] for call in calls] == [
+        'top_level_action',
+        'invoice_summary_period_selection',
+    ]
+    assert 'Za aktuálny rok 2026 som vo vašom účte nenašiel žiadne vystavené faktúry.' in message.answers[-1]
+    assert not config.db_path.exists()
 
 
 def test_process_invoice_text_invoice_period_summary_without_db_does_not_create_db(tmp_path: Path) -> None:

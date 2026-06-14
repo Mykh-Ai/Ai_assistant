@@ -156,9 +156,21 @@ def _format_existing_invoice_summary(
     return '\n'.join(lines)
 
 
-def _resolve_invoice_summary_year_period(
+def _invoice_summary_period_from_token(token: str, *, today: date | None = None) -> tuple[str, str, str] | None:
+    current_date = today or date.today()
+    if token == 'current_year':
+        year = current_date.year
+        return f'aktuálny rok {year}', f'{year:04d}-01-01', f'{year:04d}-12-31'
+    if token == 'previous_year':
+        year = current_date.year - 1
+        return f'minulý rok {year}', f'{year:04d}-01-01', f'{year:04d}-12-31'
+    return None
+
+
+async def _resolve_invoice_summary_year_period_bounded(
     text: str,
     *,
+    config: Config,
     today: date | None = None,
 ) -> tuple[str, str, str] | None:
     normalized = _normalize_period_text(text)
@@ -167,35 +179,27 @@ def _resolve_invoice_summary_year_period(
         year = explicit_years[-1]
         return f'rok {year}', f'{year:04d}-01-01', f'{year:04d}-12-31'
 
-    current_year_markers = (
-        'tento rok',
-        'tomto roku',
-        'v tomto roku',
-        'this year',
-        'current year',
-        '\u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
-        '\u0432 \u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
-        '\u044d\u0442\u043e\u043c \u0433\u043e\u0434\u0443',
-        '\u0432 \u044d\u0442\u043e\u043c \u0433\u043e\u0434\u0443',
-        '\u0433\u044d\u0442\u044b\u043c \u0433\u043e\u0434\u0437\u0435',
-        '\u0443 \u0433\u044d\u0442\u044b\u043c \u0433\u043e\u0434\u0437\u0435',
+    period_token = await resolve_semantic_action(
+        context_name='invoice_summary_period_selection',
+        allowed_actions=['current_year', 'previous_year', 'unknown'],
+        user_input_text=text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        auxiliary_context={
+            'current_date': (today or date.today()).isoformat(),
+            'supported_periods': ['current calendar year', 'previous calendar year', 'explicit calendar year'],
+            'unsupported_periods': ['month', 'quarter', 'custom date range', 'all time'],
+        },
+        action_hints={
+            'current_year': {
+                'meaning': 'The user asks for the invoice summary for the current calendar year.',
+            },
+            'previous_year': {
+                'meaning': 'The user asks for the invoice summary for the previous calendar year.',
+            },
+        },
     )
-    if any(marker in normalized for marker in current_year_markers):
-        year = (today or date.today()).year
-        return f'aktuálny rok {year}', f'{year:04d}-01-01', f'{year:04d}-12-31'
-
-    previous_year_markers = (
-        'minuly rok',
-        'minulom roku',
-        'last year',
-        '\u043c\u0438\u043d\u0443\u043b\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
-        '\u043f\u0440\u043e\u0448\u043b\u043e\u043c \u0433\u043e\u0434\u0443',
-    )
-    if any(marker in normalized for marker in previous_year_markers):
-        year = (today or date.today()).year - 1
-        return f'minulý rok {year}', f'{year:04d}-01-01', f'{year:04d}-12-31'
-
-    return None
+    return _invoice_summary_period_from_token(period_token, today=today)
 
 
 def _format_invoice_period_summary(summary, *, period_label: str) -> str:
@@ -2843,7 +2847,7 @@ async def process_invoice_text(
             await message.answer('Nepodarilo sa identifikovať používateľa.')
             await state.clear()
             return
-        period = _resolve_invoice_summary_year_period(invoice_text)
+        period = await _resolve_invoice_summary_year_period_bounded(invoice_text, config=config)
         if period is None:
             await message.answer(
                 'Zatiaľ viem spočítať vystavené faktúry za kalendárny rok. '
