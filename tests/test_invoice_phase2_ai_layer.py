@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import asyncio
@@ -16,6 +16,7 @@ from bot.handlers.invoice import (
     _looks_like_item_boundary_split,
     _SLOT_ITEMS,
     _resolve_delivery_date,
+    _resolve_issue_date,
     _resolve_service_alias_bounded,
     process_invoice_customer_alias_confirm,
     process_invoice_slot_clarification,
@@ -1650,6 +1651,68 @@ def test_delivery_date_year_anchor_supports_ukrainian_month_form() -> None:
     )
 
     assert resolved.isoformat() == '2026-04-04'
+
+
+def test_issue_date_resolves_from_voice_like_cyrillic_issue_cue() -> None:
+    resolved = _resolve_issue_date(
+        raw_text=(
+            'Вытвори фактуру на Tech Company за оправы на 3490 EUR '
+            'датом додания 14 лютого, сплатность 30 дней датом вытворения 17 лютого.'
+        ),
+        today=date(2026, 6, 14),
+    )
+
+    assert resolved.isoformat() == '2026-02-17'
+
+
+def test_preview_uses_explicit_issue_date_for_delivery_window_and_due_date(
+    configured_db: tuple[Path, int, int],
+) -> None:
+    db_path, telegram_id, _ = configured_db
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=db_path.parent,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState()
+    current_year = date.today().year
+    raw_text = (
+        'Вытвори фактуру на Tech Company за оправы на 3490 EUR '
+        'датом додания 14 лютого, сплатность 30 дней датом вытворения 17 лютого.'
+    )
+    payload = _valid_payload(raw_text)
+    payload['biznis_sk']['odberatel_kandidat'] = 'Tech Company'
+    payload['biznis_sk']['service_raw_mention'] = 'оправы'
+    payload['biznis_sk']['polozka_povodna'] = 'oprava'
+    payload['biznis_sk']['termin_sluzby_sk'] = 'oprava'
+    payload['biznis_sk']['mnozstvo'] = None
+    payload['biznis_sk']['jednotka'] = 'ks'
+    payload['biznis_sk']['suma'] = 3490
+    payload['biznis_sk']['cena_za_jednotku'] = None
+    payload['biznis_sk']['datum_dodania'] = f'{current_year - 3}-02-14'
+    payload['biznis_sk']['splatnost_dni'] = 30
+    _, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+
+    asyncio.run(_build_and_store_preview(
+        message=message,
+        state=state,
+        config=config,
+        request_id='test-request-id',
+        raw_text=raw_text,
+        parsed_draft=parsed,
+    ))
+
+    draft = state.data['invoice_draft']
+    assert draft['issue_date'] == f'{current_year}-02-17'
+    assert draft['delivery_date'] == f'{current_year}-02-14'
+    assert draft['due_date'] == (date(current_year, 2, 17) + timedelta(days=30)).isoformat()
+    assert draft['amount'] == 3490.0
+    assert state.last_state == InvoiceStates.waiting_confirm
 
 
 def test_delivery_date_explicit_local_year_disables_anchoring() -> None:

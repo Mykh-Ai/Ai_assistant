@@ -795,8 +795,8 @@ Runtime follow-up areas (future patches):
 - optional per-item detail extraction policy hardening.
 
 Правила дат для invoice draft:
-- `issue_date` відповідає `Dátum vystavenia` і завжди ставиться ботом автоматично в момент створення фактури.
-- Дата, яку користувач продиктував або написав у повідомленні, інтерпретується як `delivery_date` (`Dátum dodania`).
+- `issue_date` відповідає `Dátum vystavenia`. За замовчуванням ставиться ботом автоматично в момент створення фактури, але якщо користувач явно назвав дату виставлення у запиті на створення фактури, Python runtime детерміновано бере цю дату в draft.
+- Дата, яку користувач продиктував або написав як дату додання/доставки, інтерпретується як `delivery_date` (`Dátum dodania`).
 - Якщо користувач не вказав дату, `delivery_date` дорівнює `issue_date`.
 - `due_date` обчислюється як `issue_date + due_days`.
 

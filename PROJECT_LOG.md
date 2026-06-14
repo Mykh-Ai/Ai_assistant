@@ -1,5 +1,23 @@
 # PROJECT_LOG
 
+## 2026-06-14 - Session 141 - Invoice explicit issue-date intake guardrail
+
+Summary:
+- Investigated server logs for a failed invoice draft where the user said delivery date `14 лютого` and issue date `17 лютого`.
+- Confirmed the runtime understood delivery date, but compared it against `date.today()` as `issue_date`, so the delivery-date guard rejected it as more than 62 days in the past.
+- Added deterministic Python extraction of explicitly marked invoice issue date from the raw/STT text before delivery-date validation and due-date computation.
+- Kept the stale-year delivery guardrail intact; the fix changes the anchor date when the user explicitly provides `Dátum vystavenia`.
+
+Contracts/preflight:
+- Contracts already read for this invoice/runtime task: Product Doctrine, AI Layer Implementation Standards, Product Truth Layer/Registry, Self-Learning Layer, Evaluation and Smoke Test Standards, Product UX Eval Artifacts, TZ, LLM Orchestrator Contract, Canonical/In-Action registries, New Action checklist, Bounded Resolver prompt, InfoHelp, Customization Request, Confirmed Semantic Alias Learning, DecisionResolver, and server runbook.
+- Touched scopes: invoice FSM/runtime date normalization, tests, TZ, changelog, project log.
+- No DB schema, persisted-data migration, storage rewrite, access change, Product Truth capability expansion, or confirmation parser change.
+- Current status: implemented bug fix for create-invoice draft date anchoring; AI maturity unchanged.
+- Out of scope: broad natural-language date grammar, numeric issue-date forms without month names, server deploy unless explicitly requested.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_phase2_ai_layer.py` -> `68 passed`.
+
 ## 2026-06-14 - Session 140 - Fix singleton invoice price clarification loop
 
 Summary:

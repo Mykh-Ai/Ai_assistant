@@ -1227,6 +1227,18 @@ _EXPLICIT_YEAR_PATTERN = re.compile(r'(?<!\d)(?:19|20)\d{2}(?!\d)')
 _DAY_NUMBER_PATTERN = re.compile(r'(?<!\d)(0?[1-9]|[12]\d|3[01])(?!\d)')
 _MAX_UNCONFIRMED_PAST_DELIVERY_DAYS = 62
 _MAX_UNCONFIRMED_FUTURE_DELIVERY_DAYS = 93
+_ISSUE_DATE_CUE_PATTERN = re.compile(
+    r'(?:'
+    r'\b(?:d[aá]tum\s+)?vystavenia\b'
+    r'|\b(?:datum|d[aá]tum)\s+vystavenia\b'
+    r'|(?:дата|датом|датум)\s+'
+    r'(?:'
+    r'виставлення|выставления|виставлен[іяя]|выставлен[ияя]'
+    r'|вытворення|вытворения|створення|создания'
+    r')'
+    r')',
+    flags=re.IGNORECASE,
+)
 _DELIVERY_DAY_MONTH_PATTERN = re.compile(
     r'(?<!\d)(?P<day>0?[1-9]|[12]\d|3[01])\s*(?:[.\-/]\s*|\s+)'
     r'(?P<month>'
@@ -1386,11 +1398,18 @@ def _normalize_month_token(token: str) -> str:
     )
 
 
-def _has_explicit_year_near_day_month(raw_text: str, start: int, end: int) -> bool:
+def _extract_explicit_year_near_day_month(raw_text: str, start: int, end: int) -> int | None:
     local_window_start = max(0, start - 8)
     local_window_end = min(len(raw_text), end + 12)
     local_window = raw_text[local_window_start:local_window_end]
-    return bool(_EXPLICIT_YEAR_PATTERN.search(local_window))
+    match = _EXPLICIT_YEAR_PATTERN.search(local_window)
+    if not match:
+        return None
+    return int(match.group(0))
+
+
+def _has_explicit_year_near_day_month(raw_text: str, start: int, end: int) -> bool:
+    return _extract_explicit_year_near_day_month(raw_text, start, end) is not None
 
 
 def _has_explicit_year_confirmation_for_delivery_date(raw_text: str, delivery_date: date) -> bool:
@@ -1447,6 +1466,29 @@ def _extract_day_month_without_explicit_year(raw_text: str) -> tuple[int, int] |
     if month is None:
         return None
     return day, month
+
+
+def _resolve_issue_date(*, raw_text: str, today: date) -> date:
+    for match in _DELIVERY_DAY_MONTH_PATTERN.finditer(raw_text):
+        local_window_start = max(0, match.start() - 40)
+        local_window_end = min(len(raw_text), match.end() + 28)
+        local_window = raw_text[local_window_start:local_window_end]
+        if not _ISSUE_DATE_CUE_PATTERN.search(local_window):
+            continue
+
+        day = int(match.group('day'))
+        month_token = _normalize_month_token(match.group('month'))
+        month = _MONTH_TOKEN_TO_NUMBER.get(month_token)
+        if month is None:
+            continue
+
+        year = _extract_explicit_year_near_day_month(raw_text, match.start(), match.end()) or today.year
+        try:
+            return date(year, month, day)
+        except ValueError as exc:
+            raise ValueError('Neplatný dátum vystavenia vo vstupe.') from exc
+
+    return today
 
 
 def _resolve_delivery_date(
@@ -1917,7 +1959,20 @@ async def _build_and_store_preview(
     first_item = normalized_items[0]
     currency = (parsed_draft.get('currency') or 'EUR').strip().upper() or 'EUR'
 
-    issue_date_obj = date.today()
+    try:
+        issue_date_obj = _resolve_issue_date(raw_text=raw_text, today=date.today())
+    except ValueError as exc:
+        await _start_invoice_slot_clarification(
+            message=message,
+            state=state,
+            config=config,
+            request_id=request_id,
+            raw_text=raw_text,
+            parsed_draft=parsed_draft,
+            unresolved_slot=_SLOT_DELIVERY_DATE,
+            debug_payload={'issue_date_error': str(exc)},
+        )
+        return
     try:
         delivery_date_obj = _resolve_delivery_date(
             raw_text=raw_text,

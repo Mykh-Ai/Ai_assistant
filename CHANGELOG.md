@@ -74,9 +74,14 @@
 - accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
 
 ### Fixed
+- Invoice draft creation now honors an explicitly stated issue date (`Dátum
+  vystavenia`, including voice-like Cyrillic forms such as `датом
+  вытворения`) before validating delivery-date windows and computing due date.
+  This fixes the case where `14 лютого` delivery was rejected against today's
+  date even though the user also said the invoice issue date was `17 лютого`.
 - Singleton invoice item parsing now fills missing item-level quantity, unit,
-  amount, and unit price from validated top-level draft values. This fixes the
-  case where logs showed `unit_price` recognized at draft level while
+  and unit price from validated top-level draft values. This fixes the case
+  where logs showed `unit_price` recognized at draft level while
   `items[0].unit_price` stayed empty and the bot kept asking for the price.
 
 ### Notes
