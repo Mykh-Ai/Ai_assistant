@@ -12,6 +12,7 @@ from bot.services.product_truth import get_safe_answer_payload, list_capabilitie
 _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'create_invoice',
     'show_existing_invoice',
+    'invoice_period_summary',
     'edit_existing_invoice',
     'delete_existing_invoice',
     'invoice_pdf_generation',
@@ -58,6 +59,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'summary': 'Vytvorenie odosielanej faktúry je podporované cez existujúci fakturačný tok.',
         'limitation': 'Bežné použitie vyžaduje autorizovaného používateľa, profil dodávateľa, službu a kontakt.',
         'safe_next': 'Ak chcete faktúru naozaj vytvoriť, napíšte konkrétne údaje faktúry alebo použite /invoice.',
+    },
+    'invoice_period_summary': {
+        'title': 'Súhrn faktúr za rok',
+        'summary': 'Súhrn uložených vystavených faktúr za rok je podporovaný ako read-only výpočet.',
+        'limitation': 'Počítam iba už uložené odoslané faktúry vo vašom účte podľa dátumu vystavenia. Zatiaľ nejde o všeobecnú analytiku, DPH report, neuhradené faktúry ani účtovné doklady.',
+        'safe_next': 'Napíšte napríklad: „Na akú sumu som vystavil faktúry tento rok?“ alebo „Súhrn faktúr za 2026“.',
     },
     'send_invoice_email': {
         'title': 'Odosielanie faktúr emailom',
@@ -177,6 +184,7 @@ _SLOVAK_CAPABILITY_COPY = {
 _SLOVAK_OVERVIEW_TITLES = {
     'create_invoice': 'vytvorenie faktúry',
     'show_existing_invoice': 'zobrazenie existujúcej faktúry',
+    'invoice_period_summary': 'súhrn faktúr za rok',
     'edit_existing_invoice': 'úprava existujúcej faktúry',
     'delete_existing_invoice': 'vymazanie existujúcej faktúry',
     'invoice_pdf_generation': 'generovanie PDF faktúry',
@@ -304,6 +312,7 @@ class InfoHelpTriageResult:
     triage_class: str = TRIAGE_UNKNOWN
     confidence: float = 0.0
     needs_clarification: bool = False
+    business_need: str = ''
 
 
 def parse_info_help_triage_model_output(
@@ -409,6 +418,13 @@ def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageR
         return _triage_result(TRIAGE_OUT_OF_DOMAIN, confidence=0.85)
     if _is_admin_review_request(normalized, tokens):
         return _triage_result(TRIAGE_ADMIN_REVIEW_CANDIDATE, confidence=0.8)
+    if _is_invoice_period_summary_request(normalized, tokens):
+        return InfoHelpTriageResult(
+            capability_id='invoice_period_summary',
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.85,
+        )
     if _is_new_business_feature_request(normalized, tokens):
         return _triage_result(TRIAGE_NEW_BUSINESS_FEATURE_REQUEST, confidence=0.8)
     if _is_customization_candidate(normalized, tokens):
@@ -488,6 +504,9 @@ def _render_info_help_triage_result(
             return _render_product_truth_payload(payload)
         return _build_capability_overview()
     if result.triage_class == TRIAGE_NEW_BUSINESS_FEATURE_REQUEST:
+        if result.business_need == 'invoice_period_summary':
+            payload = get_safe_answer_payload('invoice_period_summary', account_context=account_context)
+            return _render_product_truth_payload(payload)
         return (
             'Toto vyzer\u00e1 ako po\u017eiadavka na nov\u00fa biznis funkciu. '
             'V aktu\u00e1lnom runtime ju neviem potvrdi\u0165 ako podporovan\u00fa.\n\n'
@@ -576,6 +595,8 @@ def classify_info_help_capability(
         return 'voice_invoice_intake'
     if _mentions_delete_database_safety(normalized, tokens):
         return 'delete_user_database'
+    if _mentions_invoice_period_summary_capability(normalized, tokens):
+        return 'invoice_period_summary'
     if _mentions_delete_existing_invoice_how_to(normalized, tokens):
         return 'delete_existing_invoice'
     if _mentions_edit_existing_invoice_how_to(normalized, tokens):
@@ -600,12 +621,12 @@ def classify_info_help_capability(
 def _render_product_truth_payload(payload: Mapping[str, Any]) -> str:
     capability_id = str(payload.get('capability_id') or '')
     slovak_copy = _SLOVAK_CAPABILITY_COPY.get(capability_id, {})
-    title = str(slovak_copy.get('title') or 'Táto schopnosť')
+    title = str(slovak_copy.get('title') or payload.get('title') or capability_id or 'Neznáma schopnosť')
     product_status = str(payload.get('product_status') or 'unknown')
     account_status = str(payload.get('account_status') or 'unknown')
-    summary = str(slovak_copy.get('summary') or '').strip()
-    limitation = str(slovak_copy.get('limitation') or '').strip()
-    safe_next = str(slovak_copy.get('safe_next') or '').strip()
+    summary = str(slovak_copy.get('summary') or payload.get('summary_for_user') or '').strip()
+    limitation = str(slovak_copy.get('limitation') or _join_payload_text(payload.get('current_limitations'))).strip()
+    safe_next = str(slovak_copy.get('safe_next') or _join_payload_text(payload.get('safe_next_steps'))).strip()
 
     lines = [
         f'{title}: {_STATUS_LABELS.get(product_status, product_status)}.',
@@ -630,6 +651,14 @@ def _render_product_truth_payload(payload: Mapping[str, Any]) -> str:
         lines.append(review_offer)
 
     return '\n\n'.join(lines)
+
+
+def _join_payload_text(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)):
+        return ' '.join(str(item).strip() for item in value if str(item).strip())
+    return ''
 
 
 def _human_review_offer_for_payload(payload: Mapping[str, Any]) -> str | None:
@@ -863,12 +892,14 @@ def _triage_result(
     *,
     confidence: float,
     needs_clarification: bool = False,
+    business_need: str = '',
 ) -> InfoHelpTriageResult:
     return InfoHelpTriageResult(
         topic_id=_TRIAGE_TOPIC_BY_CLASS.get(triage_class, TRIAGE_UNKNOWN),
         triage_class=triage_class,
         confidence=confidence,
         needs_clarification=needs_clarification,
+        business_need=business_need,
     )
 
 
@@ -927,6 +958,8 @@ def _is_admin_review_request(normalized: str, tokens: set[str]) -> bool:
 
 
 def _is_new_business_feature_request(normalized: str, tokens: set[str]) -> bool:
+    if _is_invoice_period_summary_request(normalized, tokens):
+        return False
     mentions_revenue_overview = bool(tokens.intersection({'trzieb', 'trzby', 'revenue', 'vynosov', 'выручки', 'виручки'})) and bool(
         tokens.intersection({'prehlad', 'report', 'vykaz', 'overview', 'отчет', 'звіт'})
     )
@@ -935,6 +968,110 @@ def _is_new_business_feature_request(normalized: str, tokens: set[str]) -> bool:
         mentions_month
         and bool(tokens.intersection({'prehlad', 'report', 'vykaz', 'overview', 'отчет', 'звіт'}))
         and not tokens.intersection({'fakturu', 'faktura', 'invoice'})
+    )
+
+
+def _is_invoice_period_summary_request(normalized: str, tokens: set[str]) -> bool:
+    invoice_terms = {
+        'faktura',
+        'fakturu',
+        'faktury',
+        'faktur',
+        'invoice',
+        'invoices',
+        'фактуру',
+        'фактура',
+        'фактуры',
+        'фактури',
+        'фактур',
+    }
+    report_terms = {
+        'suma',
+        'sumu',
+        'celkom',
+        'spolu',
+        'kolko',
+        'suhrn',
+        'suhrny',
+        'prehlad',
+        'report',
+        'vykaz',
+        'summary',
+        'total',
+        'amount',
+        'сума',
+        'суму',
+        'сумму',
+        'сколько',
+        'кольки',
+        'звіт',
+        'звит',
+        'отчет',
+        'отчёт',
+        'усяго',
+        'всего',
+    }
+    issued_terms = {
+        'vystavil',
+        'vystavene',
+        'vystavenych',
+        'issued',
+        'створив',
+        'виставив',
+        'виставіў',
+        'выставил',
+        'выставіў',
+        'выставі',
+        'выставленных',
+    }
+    period_terms = {
+        'rok',
+        'roku',
+        'rocne',
+        'year',
+        'yearly',
+        'tento',
+        'tomto',
+        'obdobie',
+        'obdobi',
+        'mesiac',
+        'month',
+        'місяць',
+        'месяц',
+        'год',
+        'году',
+        'році',
+        'роцы',
+        'годзе',
+    }
+    return (
+        bool(tokens.intersection(invoice_terms))
+        and bool(tokens.intersection(report_terms))
+        and (
+            bool(tokens.intersection(issued_terms))
+            or bool(tokens.intersection(period_terms))
+            or bool(re.search(r'\b(?:19|20)\d{2}\b', normalized))
+        )
+    )
+
+
+def _mentions_invoice_period_summary_capability(normalized: str, tokens: set[str]) -> bool:
+    capability_question_terms = {
+        'vie',
+        'vies',
+        'viete',
+        'mozes',
+        'mozete',
+        'dokazes',
+        'dokazete',
+        'da',
+        'ako',
+        'how',
+        'can',
+        'could',
+    }
+    return _is_invoice_period_summary_request(normalized, tokens) and bool(
+        tokens.intersection(capability_question_terms)
     )
 
 

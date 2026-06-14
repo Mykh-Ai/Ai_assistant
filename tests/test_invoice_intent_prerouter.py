@@ -434,6 +434,140 @@ def test_send_invoice_request_does_not_become_invoice_creation() -> None:
     assert result == 'send_invoice'
 
 
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Na akú sumu som vystavil faktúry v tomto roku?',
+        'Koľko som vystavil faktúr tento rok?',
+        'Súhrn faktúr za 2026',
+        'На яку суму я вже виставив фактуру в цьому році?',
+        'На какую сумму я выставил фактур в этом году?',
+        'На якую суму я выставіў фактур у гэтым годзе?',
+    ],
+)
+def test_invoice_period_summary_resolves_as_read_only_top_level_action(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'invoice_period_summary', 'unknown'],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'invoice_period_summary'
+
+
+def test_process_invoice_text_answers_invoice_period_summary_without_side_effects(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    invoice_service = InvoiceService(config.db_path)
+    invoice_service.create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        invoice_number='20260001',
+        issue_date='2026-01-15',
+        delivery_date='2026-01-15',
+        due_date='2026-01-29',
+        due_days=14,
+        total_amount=100.25,
+        currency='EUR',
+        status='created',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='oprava',
+                description_normalized='Oprava',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=100.25,
+                total_price=100.25,
+            )
+        ],
+    )
+    invoice_service.create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        invoice_number='20260002',
+        issue_date='2026-06-01',
+        delivery_date='2026-06-01',
+        due_date='2026-06-15',
+        due_days=14,
+        total_amount=200,
+        currency='EUR',
+        status='created',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='servis',
+                description_normalized='Servis',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=200,
+                total_price=200,
+            )
+        ],
+    )
+    invoice_service.create_invoice_with_items(
+        supplier_telegram_id=222,
+        contact_id=1,
+        invoice_number='20260001',
+        issue_date='2026-06-01',
+        delivery_date='2026-06-01',
+        due_date='2026-06-15',
+        due_days=14,
+        total_amount=999,
+        currency='EUR',
+        status='created',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='cudzia',
+                description_normalized='Cudzia',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=999,
+                total_price=999,
+            )
+        ],
+    )
+
+    message = _authorized_message('Na akú sumu som vystavil faktúry v tomto roku?', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.cleared is True
+    assert state.current_state is None
+    assert 'Súhrn vystavených faktúr za aktuálny rok 2026' in message.answers[-1]
+    assert 'Počet faktúr: 2' in message.answers[-1]
+    assert 'Celkom: 300.25 EUR' in message.answers[-1]
+    assert '999.00' not in message.answers[-1]
+    assert message.documents == []
+    assert not (tmp_path / 'invoices').exists()
+
+
+def test_process_invoice_text_invoice_period_summary_without_db_does_not_create_db(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    message = _authorized_message('Súhrn faktúr za 2026', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert 'Za rok 2026 som vo vašom účte nenašiel žiadne vystavené faktúry.' in message.answers[-1]
+    assert state.cleared is True
+    assert not config.db_path.exists()
+
+
+def test_process_invoice_text_invoice_period_summary_asks_for_supported_year_period(tmp_path: Path) -> None:
+    message = _authorized_message('Koľko bolo faktúr minulý mesiac?', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=_config(tmp_path), invoice_text=message.text))
+
+    assert 'Zatiaľ viem spočítať vystavené faktúry za kalendárny rok' in message.answers[-1]
+    assert state.cleared is True
+
+
 def test_process_invoice_text_routes_add_service_alias_to_existing_service_flow(tmp_path: Path, monkeypatch) -> None:
     message = _DummyMessage('pridaj novú službu')
     state = _DummyState()
@@ -1308,6 +1442,7 @@ def test_process_invoice_text_uses_bounded_info_help_triage_without_side_effects
     assert state.cleared is True
     assert state.current_state is None
     assert expected_fragment in message.answers[-1]
+    assert 'podporovan\u00e9' not in message.answers[-1]
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 
@@ -1368,6 +1503,30 @@ def test_all_eligible_triage_classes_create_preview_only(
 
     assert state.current_state == CustomizationRequestStates.waiting_preview_decision
     assert state.data['customization_request_draft']['source_triage_class'] == triage_class
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+
+def test_invoice_period_summary_resolver_fallback_is_product_truth_not_customization_preview(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Na ak\u00fa sumu som vystavil fakt\u00fary v tomto roku?')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.cleared is True
+    assert state.current_state is None
+    assert 'S\u00fahrn fakt\u00far za rok' in message.answers[-1]
+    assert 'podporovan' in message.answers[-1]
+    assert 'read-only v\u00fdpo\u010det' in message.answers[-1]
+    assert 'N\u00e1vrh po\u017eiadavky' not in message.answers[-1]
     assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
 
 

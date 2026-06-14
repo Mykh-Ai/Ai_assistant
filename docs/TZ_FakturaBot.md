@@ -12,9 +12,11 @@
 
 Approved users may view an already created outgoing invoice through the canonical top-level action `show_existing_invoice`. User wording such as “show/open invoice/faktura 04” must resolve to read-only invoice display, not to persisted invoice editing. Python resolves the invoice only inside the current supplier scope, sends the invoice summary and available PDF, and then clears FSM state / returns the bot to idle.
 
+Approved users may also ask a read-only yearly summary of already saved outgoing invoices through canonical top-level action `invoice_period_summary`. User wording such as "Na aku sumu som vystavil faktury tento rok?" or "Suhrn faktur za 2026" resolves to Python-owned period parsing and tenant-scoped invoice aggregation by `supplier_telegram_id` and `issue_date`. The action currently supports current year, previous year, or an explicit calendar year, groups totals by currency, answers in chat, and clears FSM state. It must not create/edit/delete invoices, generate PDFs, summarize receipts or incoming invoices, or claim broad accounting analytics.
+
 Persisted invoice editing remains the separate canonical action `edit_existing_invoice`. User wording that means edit/change/correct an invoice by number may enter the bounded invoice edit FSM after Python supplier-scoped lookup.
 
-System/read-only surfaces are stateless interruptions: `/start`, `/menu`, `/moj_profil` when the profile exists, `/blocek`, and `show_existing_invoice` may clear the current FSM state and show their result without leaving the user in a workflow.
+System/read-only surfaces are stateless interruptions: `/start`, `/menu`, `/moj_profil` when the profile exists, `/blocek`, `show_existing_invoice`, and `invoice_period_summary` may clear the current FSM state and show their result without leaving the user in a workflow.
 
 Global state cancellation is supported through `/cancel` and shared DecisionResolver-backed cancel wording in text or voice transcripts, such as `zrušiť`, `скасувати`, `відмінити`, `відминити`, `отменить`, and “почни з початку”. Cancellation must be state-aware: temporary Document Intake/OfficeFlow staging is cleaned; draft invoice states are cleared; newly generated unconfirmed post-PDF invoices keep the existing cancel cleanup behavior; persisted invoice edit cancellation only exits edit mode and must not delete the already stored invoice. Voice cancellation must not bypass exact typed destructive confirmations.
 

@@ -25,6 +25,7 @@ from bot.services.info_help import (
     classify_info_help_triage,
     parse_info_help_triage_model_output,
 )
+from bot.services.product_truth import get_safe_answer_payload
 
 
 class _FakeChoice:
@@ -922,6 +923,60 @@ def test_info_help_triage_business_feature_request() -> None:
     assert 'po\u017eiadavka na nov\u00fa biznis funkciu' in answer
     assert 'požiadavku na kontrolu správcom' in answer
     assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Na akú sumu som vystavil faktúry v tomto roku?',
+        'Koľko som vystavil faktúr tento rok?',
+        'Súhrn faktúr za 2026',
+        'На яку суму я вже виставив фактуру в цьому році?',
+        'На какую сумму я выставил фактур в этом году?',
+        'На якую суму я выставіў фактур у гэтым годзе?',
+    ],
+)
+def test_direct_invoice_period_summary_request_does_not_intercept_top_level_action(user_input: str) -> None:
+    assert build_product_truth_guidance(user_input_text=user_input) is None
+
+    result = classify_info_help_triage(user_input_text=user_input)
+
+    assert result.triage_class == 'known_product_capability'
+    assert result.capability_id == 'invoice_period_summary'
+    assert result.business_need == ''
+
+
+def test_invoice_period_summary_capability_question_renders_supported_product_truth() -> None:
+    answer = build_product_truth_guidance(user_input_text='Vieš spočítať súhrn faktúr za 2026?')
+
+    assert answer is not None
+    assert 'Súhrn faktúr za rok' in answer
+    assert 'podporované' in answer
+    assert 'read-only výpočet' in answer
+    assert 'už uložené odoslané faktúry' in answer
+    assert 'Súhrn faktúr za 2026' in answer
+
+    result = classify_info_help_triage(user_input_text='Vieš spočítať súhrn faktúr za 2026?')
+    assert result.triage_class == 'known_product_capability'
+    assert result.capability_id == 'invoice_period_summary'
+
+
+def test_product_truth_renderer_uses_payload_fields_when_localized_copy_is_missing() -> None:
+    answer = info_help._render_product_truth_payload(get_safe_answer_payload('invoice_pdf_generation'))
+
+    assert 'Invoice PDF generation: podporované.' in answer
+    assert 'Táto schopnosť' not in answer
+    assert 'Generates invoice PDFs' in answer
+    assert 'Use the approved invoice flow' in answer
+
+
+def test_unknown_product_truth_renderer_does_not_collapse_to_supported_generic_title() -> None:
+    answer = info_help._render_product_truth_payload(get_safe_answer_payload('invoice_year_summary'))
+
+    assert 'Unknown capability: neznáme.' in answer
+    assert 'Táto schopnosť' not in answer
+    assert 'podporované' not in answer
+    assert 'Product Truth has no verified entry' in answer
 
 
 def test_info_help_triage_out_of_domain_weather() -> None:

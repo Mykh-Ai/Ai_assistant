@@ -37,6 +37,22 @@ class InvoiceItemRecord:
     total_price: float
 
 
+@dataclass(frozen=True)
+class InvoiceCurrencySummary:
+    currency: str
+    invoice_count: int
+    total_amount: float
+
+
+@dataclass(frozen=True)
+class InvoicePeriodSummary:
+    supplier_telegram_id: int
+    start_date: str
+    end_date: str
+    invoice_count: int
+    totals_by_currency: tuple[InvoiceCurrencySummary, ...]
+
+
 @dataclass
 class CreateInvoicePayload:
     supplier_telegram_id: int
@@ -396,6 +412,45 @@ class InvoiceService:
             )
             for row in rows
         ]
+
+    def summarize_invoices_for_supplier_period(
+        self,
+        *,
+        supplier_telegram_id: int,
+        start_date: str,
+        end_date: str,
+    ) -> InvoicePeriodSummary:
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                (
+                    'SELECT UPPER(TRIM(currency)) AS currency, '
+                    'COUNT(*) AS invoice_count, '
+                    'COALESCE(SUM(total_amount), 0) AS total_amount '
+                    'FROM invoice '
+                    'WHERE supplier_telegram_id = ? '
+                    'AND issue_date >= ? '
+                    'AND issue_date <= ? '
+                    'GROUP BY UPPER(TRIM(currency)) '
+                    'ORDER BY currency ASC'
+                ),
+                (supplier_telegram_id, start_date, end_date),
+            ).fetchall()
+        totals = tuple(
+            InvoiceCurrencySummary(
+                currency=str(row['currency'] or '').strip().upper() or 'UNKNOWN',
+                invoice_count=int(row['invoice_count'] or 0),
+                total_amount=round(float(row['total_amount'] or 0), 2),
+            )
+            for row in rows
+        )
+        return InvoicePeriodSummary(
+            supplier_telegram_id=supplier_telegram_id,
+            start_date=start_date,
+            end_date=end_date,
+            invoice_count=sum(item.invoice_count for item in totals),
+            totals_by_currency=totals,
+        )
 
     def is_invoice_number_available(
         self,

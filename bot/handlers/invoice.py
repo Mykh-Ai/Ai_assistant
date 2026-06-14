@@ -5,6 +5,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import unicodedata
 from uuid import uuid4
 
 from aiogram import Router
@@ -42,7 +43,7 @@ from bot.services.info_help import (
     render_info_help_triage_result,
     resolve_info_help_triage_result_with_llm,
 )
-from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
+from bot.services.invoice_service import CreateInvoiceItemPayload, InvoicePeriodSummary, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
     PdfInvoiceData,
@@ -66,6 +67,7 @@ logger = logging.getLogger(__name__)
 
 _CREATE_INVOICE_INTENT = 'create_invoice'
 _SHOW_EXISTING_INVOICE_INTENT = 'show_existing_invoice'
+_INVOICE_PERIOD_SUMMARY_INTENT = 'invoice_period_summary'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
 _DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
@@ -94,6 +96,13 @@ def _invoice_pdf_path(storage_dir: Path, supplier_telegram_id: int, invoice_numb
 
 def _message_supplier_telegram_id(message: Message) -> int | None:
     return getattr(getattr(message, 'from_user', None), 'id', None)
+
+
+def _normalize_period_text(value: str) -> str:
+    normalized = re.sub(r'\s+', ' ', value.casefold()).strip()
+    return ''.join(
+        ch for ch in unicodedata.normalize('NFKD', normalized) if not unicodedata.combining(ch)
+    )
 
 
 def _get_invoice_for_message_supplier(
@@ -144,6 +153,77 @@ def _format_existing_invoice_summary(
         lines.append(f'   Množstvo: {quantity:g} {unit} × {unit_price:.2f} {currency} = {total_price:.2f} {currency}')
     lines.append('')
     lines.append(f'Celkom: {float(total_amount):.2f} {currency}')
+    return '\n'.join(lines)
+
+
+def _resolve_invoice_summary_year_period(
+    text: str,
+    *,
+    today: date | None = None,
+) -> tuple[str, str, str] | None:
+    normalized = _normalize_period_text(text)
+    explicit_years = [int(match) for match in re.findall(r'\b((?:19|20)\d{2})\b', normalized)]
+    if explicit_years:
+        year = explicit_years[-1]
+        return f'rok {year}', f'{year:04d}-01-01', f'{year:04d}-12-31'
+
+    current_year_markers = (
+        'tento rok',
+        'tomto roku',
+        'v tomto roku',
+        'this year',
+        'current year',
+        '\u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+        '\u0432 \u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+        '\u044d\u0442\u043e\u043c \u0433\u043e\u0434\u0443',
+        '\u0432 \u044d\u0442\u043e\u043c \u0433\u043e\u0434\u0443',
+        '\u0433\u044d\u0442\u044b\u043c \u0433\u043e\u0434\u0437\u0435',
+        '\u0443 \u0433\u044d\u0442\u044b\u043c \u0433\u043e\u0434\u0437\u0435',
+    )
+    if any(marker in normalized for marker in current_year_markers):
+        year = (today or date.today()).year
+        return f'aktuálny rok {year}', f'{year:04d}-01-01', f'{year:04d}-12-31'
+
+    previous_year_markers = (
+        'minuly rok',
+        'minulom roku',
+        'last year',
+        '\u043c\u0438\u043d\u0443\u043b\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+        '\u043f\u0440\u043e\u0448\u043b\u043e\u043c \u0433\u043e\u0434\u0443',
+    )
+    if any(marker in normalized for marker in previous_year_markers):
+        year = (today or date.today()).year - 1
+        return f'minulý rok {year}', f'{year:04d}-01-01', f'{year:04d}-12-31'
+
+    return None
+
+
+def _format_invoice_period_summary(summary, *, period_label: str) -> str:
+    if int(summary.invoice_count) == 0:
+        return (
+            f'Za {period_label} som vo vašom účte nenašiel žiadne vystavené faktúry.\n\n'
+            f'Obdobie: {summary.start_date} až {summary.end_date}. '
+            'Počítam iba uložené odoslané faktúry podľa dátumu vystavenia.'
+        )
+
+    lines = [
+        f'Súhrn vystavených faktúr za {period_label}:',
+        f'Počet faktúr: {int(summary.invoice_count)}',
+    ]
+    if len(summary.totals_by_currency) == 1:
+        total = summary.totals_by_currency[0]
+        lines.append(f'Celkom: {float(total.total_amount):.2f} {total.currency}')
+    else:
+        lines.append('Celkom podľa meny:')
+        for total in summary.totals_by_currency:
+            lines.append(f'- {float(total.total_amount):.2f} {total.currency} ({int(total.invoice_count)} faktúr)')
+    lines.extend(
+        [
+            '',
+            f'Obdobie: {summary.start_date} až {summary.end_date}.',
+            'Počítam iba uložené odoslané faktúry podľa dátumu vystavenia.',
+        ]
+    )
     return '\n'.join(lines)
 
 
@@ -2459,6 +2539,7 @@ async def process_invoice_text(
             _START_INTENT,
             _CREATE_INVOICE_INTENT,
             _SHOW_EXISTING_INVOICE_INTENT,
+            _INVOICE_PERIOD_SUMMARY_INTENT,
             _SHOW_SUPPLIER_PROFILE_INTENT,
             _EDIT_SUPPLIER_INTENT,
             _ADD_CONTACT_INTENT,
@@ -2506,6 +2587,18 @@ async def process_invoice_text(
                     'delete an invoice',
                     'create a new invoice draft',
                     'view recent accounting receipts',
+                ],
+            },
+            _INVOICE_PERIOD_SUMMARY_INTENT: {
+                'meaning': (
+                    'user wants a read-only total/count summary of their already saved outgoing invoices for a calendar year; '
+                    'Python parses the supported year period, reads only current supplier-scoped invoice rows, and answers without DB/PDF mutations'
+                ),
+                'not_this': [
+                    'create a new invoice draft',
+                    'show one specific invoice by number',
+                    'edit or delete invoices',
+                    'summarize external receipts or accounting documents',
                 ],
             },
             _SHOW_SUPPLIER_PROFILE_INTENT: {
@@ -2608,6 +2701,7 @@ async def process_invoice_text(
     )
     if top_level_intent in {
         _UNKNOWN_INVOICE_INTENT,
+        _INVOICE_PERIOD_SUMMARY_INTENT,
         _SEND_INVOICE_INTENT,
         _CREATE_INVOICE_INTENT,
         _ADD_RECEIPT_INTENT,
@@ -2674,6 +2768,44 @@ async def process_invoice_text(
             await message.answer('Našiel som viac faktúr. Napíšte viac posledných číslic alebo celé číslo faktúry.')
             return
         await _send_existing_invoice_view(message=message, config=config, invoice=invoice_matches[0])
+        await state.clear()
+        return
+    if top_level_intent == _INVOICE_PERIOD_SUMMARY_INTENT:
+        if hasattr(message, 'from_user') and message.from_user is None:
+            await message.answer('Nepodarilo sa identifikovať používateľa.')
+            await state.clear()
+            return
+        period = _resolve_invoice_summary_year_period(invoice_text)
+        if period is None:
+            await message.answer(
+                'Zatiaľ viem spočítať vystavené faktúry za kalendárny rok. '
+                'Napíšte napríklad: „Na akú sumu som vystavil faktúry tento rok?“ '
+                'alebo „Súhrn faktúr za 2026“.'
+            )
+            await state.clear()
+            return
+        period_label, start_date, end_date = period
+        if not config.db_path.exists():
+            await message.answer(
+                _format_invoice_period_summary(
+                    InvoicePeriodSummary(
+                        supplier_telegram_id=message.from_user.id,
+                        start_date=start_date,
+                        end_date=end_date,
+                        invoice_count=0,
+                        totals_by_currency=(),
+                    ),
+                    period_label=period_label,
+                )
+            )
+            await state.clear()
+            return
+        summary = InvoiceService(config.db_path).summarize_invoices_for_supplier_period(
+            supplier_telegram_id=message.from_user.id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        await message.answer(_format_invoice_period_summary(summary, period_label=period_label))
         await state.clear()
         return
     if top_level_intent == _EDIT_EXISTING_INVOICE_INTENT:
@@ -2777,7 +2909,10 @@ async def process_invoice_text(
             model=config.openai_llm_model,
             input_channel=input_channel,
         )
-        if triage_result.triage_class in REQUEST_STARTING_TRIAGE_CLASSES:
+        if (
+            triage_result.triage_class in REQUEST_STARTING_TRIAGE_CLASSES
+            and triage_result.business_need != 'invoice_period_summary'
+        ):
             telegram_id = _message_supplier_telegram_id(message)
             if telegram_id is None:
                 await message.answer('Nepodarilo sa identifikova\u0165 pou\u017e\u00edvate\u013ea. Po\u017eiadavku som neulo\u017eil.')

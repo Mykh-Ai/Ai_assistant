@@ -204,3 +204,25 @@ InfoHelp/triage. Active FSM state still wins before top-level routing.
 forbidden_behavior: route direct execution request into customization triage
 side_effect_expectation: only existing action flow may proceed after Python
 preconditions
+
+### PT-IH-016 Invoice Period Summary Runtime
+
+account_state: approved user
+input_channel: text / voice transcript
+user_input: Na akú sumu som vystavil faktúry v tomto roku?
+expected_product_truth_status: supported
+expected_response_behavior: Direct text/voice action routes before
+InfoHelp/triage to `invoice_period_summary`; Python parses the supported year,
+reads only current supplier-scoped outgoing invoices by `issue_date`, groups
+totals by currency, answers with count/total, and clears FSM state. A separate
+capability/how-to question renders Product Truth guidance for the same
+capability.
+forbidden_behavior: start invoice creation, create/save a customization
+request, claim arbitrary analytics, summarize receipts/incoming invoices,
+cross tenant scope, or mutate invoice rows/PDFs.
+side_effect_expectation: no invoice/contact/accounting/customization DB rows
+created, no invoice row updates/deletes, no storage writes, and no invoice PDF
+generation
+notes: Runtime top-level action implemented for current year, previous year,
+or explicit calendar year such as 2026. Month/VAT/unpaid/accounting analytics
+remain outside this action.

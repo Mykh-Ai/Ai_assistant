@@ -1,5 +1,84 @@
 # PROJECT_LOG
 
+## 2026-06-13 - Session 138 - Invoice yearly summary top-level action
+
+Summary:
+- Implemented `invoice_period_summary` as a bounded top-level read-only action
+  for text/voice questions such as `Na akú sumu som vystavil faktúry tento
+  rok?` and `Súhrn faktúr za 2026`.
+- Added a tenant-scoped invoice service summary query that counts and sums only
+  saved outgoing invoices for the current supplier by `issue_date` and
+  calendar-year bounds.
+- Updated Product Truth, InfoHelp copy, canonical action registry,
+  orchestrator contract, TZ notes, and UX smoke artifact so the narrow yearly
+  summary is `supported` while broader invoice analytics/reporting remains out
+  of scope.
+
+Preflight:
+- Contracts read: Product Doctrine, AI Layer Standards, Product Truth Layer and
+  Registry design, Self-Learning Layer, Evaluation/Smoke standards, Product UX
+  eval artifacts, TZ, LLM Orchestrator contract, Canonical Action Registry, New
+  Action checklist, InfoHelp guidance, Customization Request layer, Confirmed
+  Semantic Alias contract, In-Action Response registry, Bounded Resolver prompt
+  template, and Canonical DecisionResolver contract.
+- Touched scopes: top-level routing/resolver, invoice read service,
+  user-facing invoice handler response, Product Truth, InfoHelp, docs, evals,
+  tests, and project log.
+- Current implementation status: `supported` for read-only calendar-year
+  outgoing invoice totals; `unsupported` for receipts, incoming invoices, VAT
+  reports, unpaid/cashflow analytics, arbitrary period analytics, and document
+  intake summaries.
+- AI maturity: runtime action with Product Truth/InfoHelp Level 2 coverage for
+  this specific capability; no new self-learning behavior.
+- Out of scope: DB schema changes, migrations, PDF/storage writes, invoice
+  creation/edit/delete, confirmations, admin review storage, external lookup,
+  and broad analytics.
+- User journey proof: idle text or voice can ask for a yearly invoice summary;
+  Python resolves the bounded action, parses a supported year, reads only the
+  authorized supplier's saved invoices, returns count/totals, clears state, and
+  creates no PDFs or storage files.
+- Source of truth: current code, Product Truth entry
+  `invoice_period_summary`, canonical action registry, orchestrator contract,
+  TZ notes, tests, and eval artifact.
+
+Verification:
+- `python -m pytest -q tests/test_info_help.py tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py tests/test_product_truth.py`
+  - 303 passed.
+- `python -m pytest -q`
+  - 1594 passed, 7 subtests passed.
+
+## 2026-06-13 - Session 137 - InfoHelp invoice-summary honesty hardening
+
+Summary:
+- Audited a production voice failure where an unknown invoice-period summary
+  question was answered as `Táto schopnosť: podporované.`
+- Server logs showed STT transcript
+  `На яку суму я вже виставив фактуру в цьому році?`, request id
+  `433d328c-2491-4b2c-90a5-d75ba80b33a5`, Telegram message id `1168`,
+  update id `384865418`, and top-level intent `unknown`; logs did not include
+  InfoHelp triage output, selected capability id, Product Truth status, active
+  FSM state value, or final response body.
+- Hardened Product Truth rendering so missing localized Slovak copy falls back
+  to Product Truth payload fields (`title`, `summary_for_user`,
+  `current_limitations`, `safe_next_steps`) instead of generic
+  `Táto schopnosť`.
+- Added bounded deterministic triage for invoice/report/summary/total-by-period
+  requests as a plausible unsupported/unverified business reporting need, with
+  an answer-only response that states no calculation or mutation happened.
+
+Constraints:
+- No invoice yearly summary/report action was implemented.
+- No DB schema, storage, Google Drive, receipt categorization, invoice
+  analytics, destructive confirmation, or voice phrase dictionary changes.
+- InfoHelp remains partial Level 2; this fixes a specific honesty and renderer
+  gap but does not complete broad capability-aware Q&A.
+
+Verification:
+- `python -m pytest -q tests/test_info_help.py tests/test_invoice_intent_prerouter.py tests/test_voice_state_routing.py tests/test_product_truth.py`
+  - 293 passed.
+- `python -m pytest -q`
+  - 1584 passed, 7 subtests passed.
+
 ## 2026-05-31 - Session 136 - Google OAuth token exchanger regression hardening
 
 Summary:

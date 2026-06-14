@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- `invoice_period_summary` top-level read-only action for natural text/voice
+  questions about saved outgoing invoice count and totals for a supported
+  calendar-year period, scoped to the authorized supplier account.
 - deterministic Phase 1 top-level `info_help` fallback guidance for idle text/voice inputs when the semantic action resolver returns `unknown`.
 - `show_existing_invoice` top-level read-only action: natural text/voice such as “show/open invoice/faktura 04” now shows the existing outgoing invoice summary/PDF and returns to idle instead of entering edit mode.
 - global state cancellation through `/cancel` and shared DecisionResolver-backed text/voice cancel wording (`zrušiť`, `скасувати`, `відмінити`, `отменить`, “почни з початку”), with state-aware cleanup for temporary intake and safe persisted-invoice-edit exit.
@@ -28,6 +31,11 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- InfoHelp/Product Truth handling now distinguishes supported read-only yearly
+  invoice summaries from broader unsupported analytics/reporting requests;
+  Product Truth rendering also falls back to registry payload fields when
+  localized Slovak copy is missing, avoiding generic `Táto schopnosť:
+  podporované` output.
 - invoice edit invalid-date and invalid numeric item-value fallbacks now include field-specific examples while preserving the existing `zrušiť` recovery hint.
 - accounting Document Intake and OfficeFlow attachment-routing invalid-input fallbacks now include Slovak cancel recovery hints for temp-staged flows without changing storage, cleanup, or classification behavior.
 - business/contact/service/invoice exact-value FSM invalid-input fallbacks now include Slovak cancel recovery hints without changing successful paths or side effects.

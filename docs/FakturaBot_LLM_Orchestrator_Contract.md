@@ -80,6 +80,7 @@ Example allowed actions (defined by Python per turn):
 - `add_contact`
 - `show_supplier_profile`
 - `show_existing_invoice`
+- `invoice_period_summary`
 - `edit_supplier`
 - `show_recent_accounting_documents`
 - `add_receipt`
@@ -93,6 +94,7 @@ LLM must return one of allowed actions or `unknown`.
 `edit_invoice` remains a **reserved top-level action token**.
 Runtime editing is defined as bounded in-action/subflow operations under invoice flow (`upraviť`), not as a separate top-level executor.
 `show_existing_invoice` is an explicit read-only top-level action for viewing an already created/persisted invoice by number reference; Python performs supplier-scoped lookup, sends summary/PDF when available, clears FSM state, and must not enter edit mode or mutate invoice rows/PDFs.
+`invoice_period_summary` is an explicit read-only top-level action for answering yearly summary questions over already saved outgoing invoices. LLM/resolver may only select the canonical token when Python includes it in `allowed_actions`; Python parses the supported year period, filters by the current `supplier_telegram_id`, groups totals by currency, renders the answer, clears FSM state, and must not create/edit/delete invoices, generate PDFs, or summarize receipts/incoming invoices.
 `edit_existing_invoice` is an explicit top-level action for editing an already created/persisted invoice by number reference; LLM only resolves intent + reference text, Python performs DB lookup with supplier scope and ambiguity handling.
 
 OfficeFlow/Document Intake actions may be top-level only when explicitly registered and backed by Python-owned runtime validation. Current bounded top-level accounting actions are limited to the existing recent-documents view and the existing upload-waiting intake starter. Voice/text `add_receipt` starts the upload FSM and asks for a photo/PDF; it must not create an invoice, extract a receipt, or save accounting metadata from voice content alone. Future actions for contracts archive, bank statements, categories, or manual accounting-document editing must be introduced docs-first in the relevant registry and then implemented only after Python-side validation/storage contracts are defined.

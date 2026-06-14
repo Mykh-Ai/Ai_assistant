@@ -96,7 +96,7 @@ class ProductTruthResult:
         }
 
 
-_LAST_VERIFIED_AT = '2026-05-24'
+_LAST_VERIFIED_AT = '2026-06-13'
 
 
 def _capability(
@@ -195,6 +195,31 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         safe_next_steps=('Ask for the invoice number or reference, then use the existing read-only view route.',),
         requires_setup=True,
         setup_state_keys=('authorized_user', 'supplier_profile'),
+    ),
+    _capability(
+        capability_id='invoice_period_summary',
+        title='Invoice yearly summary',
+        domain='invoices',
+        status=ProductTruthStatus.SUPPORTED,
+        summary_for_user='Shows a read-only count and total amount of already saved outgoing invoices for a supported calendar-year period.',
+        current_limitations=(
+            'Supported period parsing is limited to current year, previous year, or an explicit calendar year such as 2026.',
+            'It counts only already saved outgoing invoices in the current supplier scope by issue_date; it does not summarize receipts, incoming invoices, VAT, unpaid status, or arbitrary analytics.',
+        ),
+        runtime_owner='bot/handlers/invoice.py::process_invoice_text',
+        canonical_actions=('invoice_period_summary',),
+        linked_handlers=('bot/handlers/invoice.py', 'bot/services/invoice_service.py'),
+        truth_source_refs=('docs/llm/Canonical_Action_Registry.md', 'docs/TZ_FakturaBot.md', 'PROJECT_LOG.md'),
+        test_refs=('tests/test_invoice_intent_prerouter.py', 'tests/test_info_help.py', 'tests/test_voice_state_routing.py'),
+        safe_next_steps=('Ask for a yearly invoice summary, for example: Na akú sumu som vystavil faktúry tento rok?',),
+        requires_setup=True,
+        setup_state_keys=('authorized_user',),
+        forbidden_claims=(
+            'I counted receipts or incoming invoices.',
+            'I changed invoice data while calculating the summary.',
+            'I can produce arbitrary accounting analytics from this action.',
+        ),
+        notes_for_agents='Read-only outgoing-invoice yearly summary only; Python owns period parsing, tenant scoping, DB read, and rendering.',
     ),
     _capability(
         capability_id='edit_existing_invoice',

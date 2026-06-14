@@ -18,6 +18,7 @@ from bot.handlers.supplier import ServiceAliasStates
 from bot.handlers.voice import handle_voice
 from bot.services.customization_requests import CustomizationRequestService
 from bot.services.db import init_db
+from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 
 
 class _DummyVoice:
@@ -900,6 +901,48 @@ def test_voice_idle_show_existing_invoice_reaches_top_level_router(monkeypatch, 
     assert calls == ['покажи фактуру 04']
 
 
+def test_voice_idle_invoice_period_summary_answers_from_top_level_router(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'Na akú sumu som vystavil faktúry v tomto roku?'
+
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        invoice_number='20260001',
+        issue_date='2026-02-10',
+        delivery_date='2026-02-10',
+        due_date='2026-02-24',
+        due_days=14,
+        total_amount=120,
+        currency='EUR',
+        status='created',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='oprava',
+                description_normalized='Oprava',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=120,
+                total_price=120,
+            )
+        ],
+    )
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+
+    message = _DummyMessage()
+    state = _DummyState(None)
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert state.current_state is None
+    assert 'Súhrn vystavených faktúr za aktuálny rok 2026' in message.answers[-1]
+    assert 'Počet faktúr: 1' in message.answers[-1]
+    assert 'Celkom: 120.00 EUR' in message.answers[-1]
+    assert not (tmp_path / 'invoices').exists()
+
+
 def test_voice_idle_profile_routes_to_profile_view(monkeypatch, tmp_path: Path) -> None:
     async def _stt(*args, **kwargs) -> str:
         return 'môj profil'
@@ -964,6 +1007,7 @@ def test_voice_idle_transcript_uses_safe_info_help_triage(
 
     assert state.current_state is None
     assert expected_fragment in message.answers[-1]
+    assert 'podporovan\u00e9' not in message.answers[-1]
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 
