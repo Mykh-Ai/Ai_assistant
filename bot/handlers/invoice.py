@@ -1547,6 +1547,19 @@ def _normalize_items_input(parsed_draft: dict[str, object]) -> list[dict[str, ob
             if isinstance(candidate, dict):
                 normalized.append(candidate)
         if normalized:
+            if len(normalized) == 1:
+                item = dict(normalized[0])
+                for key in (
+                    'service_raw_mention',
+                    'item_name_raw',
+                    'service_term_sk',
+                    'quantity',
+                    'unit',
+                    'unit_price',
+                ):
+                    if item.get(key) in (None, '') and parsed_draft.get(key) not in (None, ''):
+                        item[key] = parsed_draft.get(key)
+                normalized = [item]
             return normalized
     return [
         {

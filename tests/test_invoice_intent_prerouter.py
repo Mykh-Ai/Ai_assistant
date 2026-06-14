@@ -8,6 +8,7 @@ from bot.config import Config
 from bot.handlers.invoice import (
     CustomizationRequestStates,
     InvoiceStates,
+    _normalize_items_input,
     customization_request_edit_text,
     customization_request_preview_decision,
     process_invoice_postpdf_decision,
@@ -1393,6 +1394,8 @@ def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
     assert state.cleared is True
     assert 'Nerozumiem, čo chcete spraviť.' in message.answers[-1]
     assert 'vytvoriť faktúru' in message.answers[-1]
+    assert 'spočítať súhrn vystavených faktúr za kalendárny rok' in message.answers[-1]
+    assert 'súhrn faktúr za 2026' in message.answers[-1]
     assert 'pridaj bloček' in message.answers[-1]
 
 
@@ -2142,6 +2145,8 @@ def test_info_help_guidance_builder_has_no_side_effects() -> None:
     assert first == second
     assert 'Nerozumiem, čo chcete spraviť.' in first
     assert 'vytvoriť faktúru' in first
+    assert 'spočítať súhrn vystavených faktúr za kalendárny rok' in first
+    assert 'súhrn faktúr za 2026' in first
 
 
 def test_process_invoice_text_keeps_partial_draft_when_only_service_slot_is_unknown(tmp_path: Path, monkeypatch) -> None:
@@ -2434,6 +2439,45 @@ def test_slot_clarification_applies_unit_price_and_continues_to_preview(tmp_path
     )
 
     assert captured['parsed_draft']['unit_price'] == 250.0
+
+
+def test_singleton_item_uses_top_level_quantity_and_price_from_llm_payload() -> None:
+    parsed_draft = {
+        'service_raw_mention': 'оправи',
+        'item_name_raw': 'opravy',
+        'service_term_sk': 'oprava',
+        'quantity': 1.0,
+        'unit': 'ks',
+        'amount': None,
+        'unit_price': 3490.0,
+        'items': [
+            {
+                'item_name_raw': 'opravy',
+                'service_raw_mention': 'оправи',
+                'service_term_sk': 'oprava',
+                'quantity': None,
+                'unit': None,
+                'amount': None,
+                'unit_price': None,
+                'item_description_raw': None,
+            }
+        ],
+    }
+
+    items = _normalize_items_input(parsed_draft)
+
+    assert items == [
+        {
+            'item_name_raw': 'opravy',
+            'service_raw_mention': 'оправи',
+            'service_term_sk': 'oprava',
+            'quantity': 1.0,
+            'unit': 'ks',
+            'amount': None,
+            'unit_price': 3490.0,
+            'item_description_raw': None,
+        }
+    ]
 
 
 @pytest.mark.parametrize(

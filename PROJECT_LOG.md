@@ -1,5 +1,52 @@
 # PROJECT_LOG
 
+## 2026-06-14 - Session 140 - Fix singleton invoice price clarification loop
+
+Summary:
+- Inspected live server logs for a failed invoice price entry during invoice
+  creation.
+- Logs showed the LLM/parser had recognized `quantity=1.0` and
+  `unit_price=3490.0` at the draft level, but `items[0].quantity` and
+  `items[0].unit_price` stayed empty, so the invoice builder re-entered
+  `quantity_unit_price_pair` clarification.
+- Fixed singleton item normalization so a one-item draft fills missing item
+  fields from the validated top-level draft values. Multi-item drafts are left
+  unchanged to avoid applying one price to multiple items.
+
+Constraints:
+- No DB/schema/storage migration, no persisted data writes, no Product Truth
+  status change, and no confirmation parser change.
+- Runtime scope: invoice draft normalization before preview/save.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py::test_singleton_item_uses_top_level_quantity_and_price_from_llm_payload tests/test_invoice_intent_prerouter.py::test_slot_clarification_applies_unit_price_and_continues_to_preview tests/test_invoice_intent_prerouter.py::test_slot_clarification_applies_quantity_unit_price_pair_and_continues_to_preview tests/test_invoice_intent_prerouter.py::test_unknown_top_level_gets_info_help_guidance tests/test_invoice_intent_prerouter.py::test_info_help_guidance_builder_has_no_side_effects`
+  - 15 passed.
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py`
+  - 158 passed.
+- `python -m pytest -q tests/test_invoice_phase2_ai_layer.py`
+  - 66 passed.
+- `python -m pytest -q`
+  - 1595 passed, 7 subtests passed.
+
+## 2026-06-14 - Session 139 - InfoHelp invoice summary visibility
+
+Summary:
+- Updated the top-level unknown InfoHelp guidance so the general capability
+  list explicitly says the bot can count a calendar-year summary of saved
+  outgoing invoices.
+- Added the `súhrn faktúr za 2026` example to the same guidance so users can
+  discover the supported `invoice_period_summary` wording from fallback help.
+
+Constraints:
+- No runtime execution logic, DB/schema, storage, PDF, Product Truth status,
+  resolver, or server configuration changes.
+- This is a user-facing InfoHelp copy change only; the supported capability was
+  already implemented as `invoice_period_summary`.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py::test_unknown_top_level_gets_info_help_guidance tests/test_invoice_intent_prerouter.py::test_info_help_guidance_builder_has_no_side_effects tests/test_info_help.py::test_invoice_period_summary_capability_question_renders_supported_product_truth`
+  - 3 passed.
+
 ## 2026-06-13 - Session 138 - Invoice yearly summary top-level action
 
 Summary:

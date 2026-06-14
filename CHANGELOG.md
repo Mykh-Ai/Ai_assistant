@@ -31,6 +31,8 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- Top-level unknown InfoHelp guidance now explicitly mentions that the bot can
+  count saved outgoing invoices for a calendar-year summary.
 - InfoHelp/Product Truth handling now distinguishes supported read-only yearly
   invoice summaries from broader unsupported analytics/reporting requests;
   Product Truth rendering also falls back to registry payload fields when
@@ -70,6 +72,12 @@
 - accounting Document Intake now extracts raw `purchase_subject` / `Predmet nákupu` instead of premature accounting category candidates.
 - temporary OfficeFlow/accounting intake sessions now expire after 5 minutes and safely clean only upload staging paths.
 - accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
+
+### Fixed
+- Singleton invoice item parsing now fills missing item-level quantity, unit,
+  amount, and unit price from validated top-level draft values. This fixes the
+  case where logs showed `unit_price` recognized at draft level while
+  `items[0].unit_price` stayed empty and the bot kept asking for the price.
 
 ### Notes
 - Tenant-scope rollout exposed a migration/repair gap for existing server data: confirmed accounting documents can exist under the legacy `mykhailo-szco` workspace while `/blocek` reads the requesting tenant workspace, and some historical invoice `pdf_path` values can point to local Windows paths. Data repair must use audit, backup, dry-run, and explicit apply approval rather than cross-tenant fallback reads.

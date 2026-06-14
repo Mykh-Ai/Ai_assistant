@@ -1115,10 +1115,11 @@ def build_top_level_unknown_guidance(*, user_input_text: str | None = None) -> s
         'Môžem vám pomôcť napríklad s týmito vecami:\n'
         '- vytvoriť faktúru,\n'
         '- zobraziť alebo upraviť existujúcu faktúru,\n'
+        '- spočítať súhrn vystavených faktúr za kalendárny rok,\n'
         '- pridať kontakt,\n'
         '- upraviť môj profil,\n'
         '- pridať službu používanú vo faktúrach,\n'
         '- pridať bloček alebo prijatú faktúru.\n\n'
         'Skúste napísať konkrétne, čo chcete urobiť, napríklad „vytvor faktúru“, '
-        '„pridaj kontakt“ alebo „pridaj bloček“.'
+        '„súhrn faktúr za 2026“, „pridaj kontakt“ alebo „pridaj bloček“.'
     )

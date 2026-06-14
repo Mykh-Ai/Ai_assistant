@@ -129,7 +129,7 @@ def _valid_payload(original_text: str) -> dict:
             'suma': 150,
             'cena_za_jednotku': 150,
             'mena': 'EUR',
-            'datum_dodania': '2026-04-12',
+            'datum_dodania': date.today().isoformat(),
             'splatnost_dni': 7,
             'datum_splatnosti': None,
         },
