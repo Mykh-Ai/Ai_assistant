@@ -59,6 +59,23 @@ Verification:
   - next-day tick sent 0 reminders for the muted invoice;
   - no Telegram API, Google API, network, PDF rewrite, or external storage was
     used.
+- Deployment:
+  - committed as `b931e98` (`Add automatic invoice due-date follow-up`) and
+    pushed to `origin/main`;
+  - server env updated only in `/bot/repo/.env` for follow-up scheduler keys:
+    scheduler enabled, default daily interval `86400`, notification cooldown
+    `24` hours;
+  - server backup created under `/bot/backups/deploy_20260615_184522/` before
+    restart (`fakturabot.db.bak`, `storage.tgz`, `env.bak`);
+  - server `/bot/repo` fast-forwarded to `b931e98`;
+  - container rebuilt/restarted with `docker compose -f docker-compose.prod.yml
+    up -d --build`;
+  - post-deploy logs showed `FakturaBot starting`, `Start polling`,
+    `Invoice follow-up scheduler started interval_seconds=86400`, and
+    scheduler tick `eligible_suppliers=1`, `notified_suppliers=1`,
+    `reminders_sent=5`, `failed_sends=0`;
+  - container state stayed `running`, restart count `0`, and logs showed no
+    `ERROR`, `Traceback`, `TelegramConflictError`, or polling conflict.
 
 ## 2026-06-15 - Session 143 - Manual overdue invoice follow-up Phase 1
 
