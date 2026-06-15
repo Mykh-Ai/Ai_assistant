@@ -12,10 +12,12 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'show_existing_invoice',
     'edit_existing_invoice',
     'delete_existing_invoice',
+    'invoice_due_date_reminders',
     'invoice_pdf_generation',
     'invoice_pdf_custom_template',
     'send_invoice_email',
     'google_drive_invoice_storage',
+    'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
     'accounting_export',
     'supplier_profile',
@@ -41,6 +43,7 @@ REQUIRED_MVP_CAPABILITY_IDS = {
 NOT_SUPPORTED_CAPABILITY_IDS = {
     'send_invoice_email',
     'google_drive_invoice_storage',
+    'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
     'accounting_export',
     'invoice_pdf_custom_template',
@@ -50,6 +53,7 @@ NOT_SUPPORTED_CAPABILITY_IDS = {
 EXTERNAL_CREDENTIAL_CAPABILITY_IDS = {
     'send_invoice_email',
     'google_drive_invoice_storage',
+    'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
     'accounting_export',
 }
@@ -196,6 +200,31 @@ def test_access_request_and_invoice_draft_records_exist() -> None:
     assert entries['invoice_draft_edit_flow'].status == ProductTruthStatus.SUPPORTED
     assert 'edit/approve/cancel' in entries['invoice_draft_edit_flow'].summary_for_user
     assert 'tests/test_decision_callbacks.py' in entries['invoice_draft_edit_flow'].test_refs
+
+
+def test_invoice_due_date_reminders_record_is_partial_automatic_runtime() -> None:
+    entry = _registry_by_id()['invoice_due_date_reminders']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert entry.commands == ()
+    assert 'background scheduler' in entry.current_limitations[0]
+    assert 'invoice_followup_scheduler.py' in (entry.runtime_owner or '')
+    assert 'No email, SMS' in entry.current_limitations[2]
+    assert 'real Google Drive archive/upload' in entry.current_limitations[2]
+    assert 'Overdue invoice reminders use email or SMS.' in entry.forbidden_claims
+    assert 'I archived the invoice to Google Drive.' in entry.forbidden_claims
+
+
+def test_google_drive_after_due_date_archive_record_stays_unsupported_stub_only() -> None:
+    entry = _registry_by_id()['google_drive_invoice_archive_after_due_date']
+
+    assert entry.status == ProductTruthStatus.UNSUPPORTED
+    assert entry.requires_external_credentials is True
+    assert entry.runtime_owner is None
+    assert 'only a deterministic local stub' in entry.current_limitations[0]
+    assert 'no upload happened' in entry.current_limitations[1]
+    assert 'I archived this invoice to Google Drive.' in entry.forbidden_claims
+    assert 'The invoice was uploaded to Drive.' in entry.forbidden_claims
 
 
 def test_create_invoice_returns_supported_with_account_setup_requirement() -> None:

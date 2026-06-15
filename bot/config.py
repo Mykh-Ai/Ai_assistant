@@ -31,6 +31,9 @@ class Config:
     google_oauth_callback_port: int = 8080
     google_oauth_callback_use_fake_exchanger: bool = False
     google_token_crypto_secret: str | None = None
+    invoice_followup_scheduler_enabled: bool = True
+    invoice_followup_check_interval_seconds: int = 86400
+    invoice_followup_notification_cooldown_hours: int = 24
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -75,6 +78,17 @@ def load_config() -> Config:
         os.getenv('GOOGLE_OAUTH_CALLBACK_USE_FAKE_EXCHANGER', ''),
     )
     google_token_crypto_secret = os.getenv('GOOGLE_TOKEN_CRYPTO_SECRET', '').strip() or None
+    invoice_followup_scheduler_enabled = not _parse_bool(
+        os.getenv('DISABLE_INVOICE_FOLLOWUP_SCHEDULER', ''),
+    )
+    invoice_followup_check_interval_seconds = _parse_positive_int(
+        os.getenv('INVOICE_FOLLOWUP_CHECK_INTERVAL_SECONDS', '86400'),
+        env_name='INVOICE_FOLLOWUP_CHECK_INTERVAL_SECONDS',
+    )
+    invoice_followup_notification_cooldown_hours = _parse_positive_int(
+        os.getenv('INVOICE_FOLLOWUP_NOTIFICATION_COOLDOWN_HOURS', '24'),
+        env_name='INVOICE_FOLLOWUP_NOTIFICATION_COOLDOWN_HOURS',
+    )
     ensure_storage_dirs(storage_dir)
 
     return Config(
@@ -94,6 +108,9 @@ def load_config() -> Config:
         google_oauth_callback_port=google_oauth_callback_port,
         google_oauth_callback_use_fake_exchanger=google_oauth_callback_use_fake_exchanger,
         google_token_crypto_secret=google_token_crypto_secret,
+        invoice_followup_scheduler_enabled=invoice_followup_scheduler_enabled,
+        invoice_followup_check_interval_seconds=invoice_followup_check_interval_seconds,
+        invoice_followup_notification_cooldown_hours=invoice_followup_notification_cooldown_hours,
     )
 
 

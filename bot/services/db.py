@@ -81,6 +81,22 @@ CREATE TABLE IF NOT EXISTS invoice_item (
 );
 """
 
+INVOICE_FOLLOWUP_STATE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS invoice_followup_state (
+    invoice_id INTEGER PRIMARY KEY,
+    supplier_telegram_id INTEGER NOT NULL,
+    payment_status TEXT NOT NULL DEFAULT 'unpaid',
+    reminder_status TEXT NOT NULL DEFAULT 'active',
+    remind_after TEXT,
+    paid_at TEXT,
+    muted_at TEXT,
+    drive_archive_status TEXT NOT NULL DEFAULT 'stub_not_uploaded',
+    drive_archive_note TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 SUPPLIER_SERVICE_ALIAS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS supplier_service_alias (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -348,6 +364,20 @@ INVOICE_ITEM_EXPECTED_COLUMNS = {
     'total_price': 'REAL NOT NULL',
 }
 
+INVOICE_FOLLOWUP_STATE_EXPECTED_COLUMNS = {
+    'invoice_id': 'INTEGER PRIMARY KEY',
+    'supplier_telegram_id': 'INTEGER NOT NULL',
+    'payment_status': 'TEXT NOT NULL',
+    'reminder_status': 'TEXT NOT NULL',
+    'remind_after': 'TEXT',
+    'paid_at': 'TEXT',
+    'muted_at': 'TEXT',
+    'drive_archive_status': 'TEXT NOT NULL',
+    'drive_archive_note': 'TEXT',
+    'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+    'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+}
+
 SUPPLIER_SERVICE_ALIAS_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'supplier_id': 'INTEGER NOT NULL',
@@ -610,6 +640,37 @@ def _bootstrap_invoice_item_table(connection: sqlite3.Connection) -> None:
     )
 
 
+def _bootstrap_invoice_followup_state_table(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1]: row[2] for row in connection.execute('PRAGMA table_info(invoice_followup_state)')
+    }
+
+    if not existing_columns:
+        connection.execute(INVOICE_FOLLOWUP_STATE_SCHEMA)
+        _ensure_invoice_followup_state_indexes(connection)
+        return
+
+    if set(existing_columns.keys()) == set(INVOICE_FOLLOWUP_STATE_EXPECTED_COLUMNS.keys()):
+        _ensure_invoice_followup_state_indexes(connection)
+        return
+
+    raise RuntimeError(
+        'Incompatible local schema for table invoice_followup_state. '
+        'Manual migration/intervention is required; automatic DROP is disabled.'
+    )
+
+
+def ensure_invoice_followup_state_schema(connection: sqlite3.Connection) -> None:
+    _bootstrap_invoice_followup_state_table(connection)
+
+
+def _ensure_invoice_followup_state_indexes(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_invoice_followup_supplier_reminder '
+        'ON invoice_followup_state (supplier_telegram_id, payment_status, reminder_status, remind_after)'
+    )
+
+
 def _bootstrap_supplier_service_alias_table(connection: sqlite3.Connection) -> None:
     existing_columns = {
         row[1]: row[2] for row in connection.execute('PRAGMA table_info(supplier_service_alias)')
@@ -833,6 +894,7 @@ def init_db(db_path: Path) -> None:
         _bootstrap_contact_table(connection)
         _bootstrap_invoice_table(connection)
         _bootstrap_invoice_item_table(connection)
+        _bootstrap_invoice_followup_state_table(connection)
         _bootstrap_supplier_service_alias_table(connection)
         _bootstrap_access_request_table(connection)
         _bootstrap_authorized_user_table(connection)

@@ -17,6 +17,7 @@ class UserDataDeletionResult:
     contacts_deleted: int
     invoices_deleted: int
     invoice_items_deleted: int
+    invoice_followup_states_deleted: int
     service_aliases_deleted: int
     invoice_number_settings_deleted: int
     confirmed_aliases_deleted: int
@@ -61,6 +62,7 @@ class UserDataDeletionService:
             ]
 
             invoice_items_deleted = _delete_invoice_items(connection, invoice_ids)
+            invoice_followup_states_deleted = _delete_invoice_followup_states(connection, invoice_ids)
             invoices_deleted = connection.execute(
                 'DELETE FROM invoice WHERE supplier_telegram_id = ?',
                 (telegram_id,),
@@ -101,6 +103,7 @@ class UserDataDeletionService:
             contacts_deleted=contacts_deleted,
             invoices_deleted=invoices_deleted,
             invoice_items_deleted=invoice_items_deleted,
+            invoice_followup_states_deleted=invoice_followup_states_deleted,
             service_aliases_deleted=service_aliases_deleted,
             invoice_number_settings_deleted=invoice_number_settings_deleted,
             confirmed_aliases_deleted=confirmed_aliases_deleted,
@@ -195,5 +198,15 @@ def _delete_invoice_items(connection: sqlite3.Connection, invoice_ids: list[int]
     placeholders = ','.join('?' for _ in invoice_ids)
     return connection.execute(
         f'DELETE FROM invoice_item WHERE invoice_id IN ({placeholders})',
+        tuple(invoice_ids),
+    ).rowcount
+
+
+def _delete_invoice_followup_states(connection: sqlite3.Connection, invoice_ids: list[int]) -> int:
+    if not invoice_ids:
+        return 0
+    placeholders = ','.join('?' for _ in invoice_ids)
+    return connection.execute(
+        f'DELETE FROM invoice_followup_state WHERE invoice_id IN ({placeholders})',
         tuple(invoice_ids),
     ).rowcount

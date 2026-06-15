@@ -643,5 +643,6 @@ class InvoiceService:
     def delete_invoice_with_items(self, invoice_id: int) -> None:
         with managed_connection(self._db_path) as connection:
             connection.execute('DELETE FROM invoice_item WHERE invoice_id = ?', (invoice_id,))
+            connection.execute('DELETE FROM invoice_followup_state WHERE invoice_id = ?', (invoice_id,))
             connection.execute('DELETE FROM invoice WHERE id = ?', (invoice_id,))
             connection.commit()

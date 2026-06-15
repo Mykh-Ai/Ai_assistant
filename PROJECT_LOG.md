@@ -1,5 +1,126 @@
 # PROJECT_LOG
 
+## 2026-06-15 - Session 144 - Automatic overdue invoice follow-up correction
+
+Summary:
+- Reworked Phase 1 overdue outgoing-invoice follow-up from manual command
+  trigger to automatic runtime control.
+- Added an in-process aiogram background scheduler started from `bot/main.py`.
+  The scheduler runs due-invoice checks automatically once per day by default,
+  sends Telegram reminder cards to authorized supplier owners, and is
+  cancelled when polling stops.
+- Removed `/kontrola_splatnosti` from the user-facing runtime surface.
+- Added access-boundary filtering inside the scheduler path because automatic
+  jobs do not pass through Telegram middleware. Blocked, deleted, and
+  unauthorized users are skipped before any reminder message is sent.
+- Added successful-send cooldown persistence through `remind_after` so the
+  same overdue invoice is not sent again on every scheduler tick.
+- Corrected the default scheduler interval from the initial hourly setting to
+  `86400` seconds because invoice due-date status changes at day granularity.
+- Kept the three bounded callback decisions: mark paid, remind later, do not
+  remind again. Kept the Google Drive behavior as a local honest stub only.
+- Updated Product Truth, InfoHelp, TZ, canonical/in-action docs, changelog,
+  product UX smoke scenarios, and tests to remove manual-command assumptions.
+
+Preflight:
+- Touched scopes: runtime scheduler, invoice follow-up service, callback-only
+  handler surface, config, access filtering, Product Truth/InfoHelp, docs,
+  evals, tests.
+- Not touched: LLM, STT, LMM, PDF/layout generation, local invoice PDF saving
+  behavior, server operations, real Google OAuth/Drive APIs, email/SMS,
+  accounting export, bank matching.
+- Current implementation status: `partial` for invoice due-date reminders
+  because automatic Telegram reminders run in-process, while external
+  cron/worker deployment and non-Telegram channels remain out of scope;
+  `unsupported` for real Google Drive invoice archive/upload.
+- AI maturity: no new AI maturity level; deterministic Python runtime with
+  Product Truth/InfoHelp coverage.
+- Self-learning hooks considered: none added; reminder outcomes are payment
+  and notification state, not semantic learning signals.
+- User journey proof: approved supplier with overdue invoice receives an
+  automatic Telegram reminder card without running a command, chooses a
+  callback decision, and state persists; blocked users are not notified.
+- Persisted-data safety: still additive table only; this correction adds state
+  updates to `remind_after` after successful sends but does not rewrite
+  existing invoice rows, invoice numbers, PDF paths, or local PDFs.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_followup_service.py tests/test_invoice_followup_handler.py tests/test_product_truth.py tests/test_info_help.py`
+  - 119 passed.
+- `python -m pytest -q`
+  - 1625 passed, 7 subtests passed.
+- Local file smoke with temporary SQLite DB and dummy Telegram bot:
+  - created approved supplier/contact/overdue invoice locally;
+  - automatic scheduler tick sent one reminder card;
+  - card buttons were `Oznacit ako zaplatenu`, `Pripomenut neskor`,
+    `Viac nepripominat`;
+  - same-day duplicate tick sent 0 reminders because `remind_after` was set;
+  - `Viac nepripominat` persisted `reminder_status=muted`;
+  - next-day tick sent 0 reminders for the muted invoice;
+  - no Telegram API, Google API, network, PDF rewrite, or external storage was
+    used.
+
+## 2026-06-15 - Session 143 - Manual overdue invoice follow-up Phase 1
+
+Summary:
+- Implemented Phase 1 overdue outgoing-invoice follow-up behind deterministic
+  Python services and Telegram callbacks.
+- Added additive `invoice_followup_state` bootstrap schema. Existing invoices
+  without a follow-up row are interpreted as unpaid/active; no existing invoice
+  rows, invoice numbers, PDF paths, or local PDF files are rewritten.
+- Added `/kontrola_splatnosti` as the manual Phase 1 trigger. It lists only the
+  current authorized supplier's overdue invoices and sends reminder cards with
+  mark-paid, remind-later, and do-not-remind-again choices.
+- Added persisted follow-up state transitions for `paid`, `snoozed`, and
+  `muted`, plus tenant-scoped callback validation before every write.
+- Added `GoogleDriveArchiveStubService` as a no-network local stub after
+  mark-paid. It records only stub state and tells the user that Google Drive
+  archive is not active and the invoice remains stored locally.
+- Updated Product Truth, InfoHelp copy/classification, action/in-action
+  registries, TZ, changelog, and product UX smoke scenarios.
+
+Preflight:
+- Docs/contracts read: AGENTS, PROJECT_LOG, TZ, Product Truth Layer, InfoHelp
+  Guidance, Customization Request Layer, Implementation Agent Checklist,
+  Code-Agent Handoff Contract, Google Drive Token Crypto Operations,
+  OfficeFlow Storage Model Proposal, Canonical Action Registry,
+  In-Action Response Registry, Bounded Resolver Prompt Template,
+  Canonical DecisionResolver Contract, Product Doctrine, AI Layer Standards,
+  Product Truth Registry MVP Design, Self-Learning Layer, Product UX Eval
+  Artifacts, LLM Orchestrator Contract, New Action Checklist, Data Migration
+  Runbook, CHANGELOG.
+- Touched scopes: DB schema additive table, invoice follow-up service,
+  Telegram command/callback routing, Product Truth/InfoHelp, docs/evals/tests,
+  user-data deletion cleanup, invoice deletion cleanup.
+- Not touched: LLM, STT, LMM, PDF/layout generation, local invoice PDF saving
+  behavior, server operations, real Google OAuth/Drive APIs, email/SMS,
+  accounting export, bank matching, automatic scheduler.
+- Current implementation status: `partial` for invoice due-date reminders
+  because the trigger is manual `/kontrola_splatnosti`; `unsupported` for real
+  Google Drive invoice archive after due-date follow-up.
+- AI maturity: no new AI maturity level; deterministic runtime and partial
+  Product Truth/InfoHelp coverage only.
+- Self-learning hooks considered: no learning added; reminder decisions are
+  payment/reminder state, not semantic aliases.
+- User journey proof: approved user runs `/kontrola_splatnosti`, sees only own
+  overdue invoices, chooses one of three callback decisions, state persists,
+  and Drive stub copy remains honest.
+- Persisted-data safety: additive table only; legacy rows require no migration.
+  Read-only audit for server apply would count invoice rows, follow-up rows,
+  and orphan states before any production DB write. Backup/rollback for server
+  apply would back up SQLite first; no server writes were performed in this
+  session.
+- Product claim sources: current code/tests plus Product Truth entries
+  `invoice_due_date_reminders` and
+  `google_drive_invoice_archive_after_due_date`, this log, TZ addendum, and
+  focused spec.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_followup_service.py tests/test_invoice_followup_handler.py tests/test_product_truth.py tests/test_info_help.py`
+  - 116 passed.
+- `python -m pytest -q`
+  - 1622 passed, 7 subtests passed.
+
 ## 2026-06-14 - Session 142 - Ukrainian current-year invoice summary wording
 
 Summary:

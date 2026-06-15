@@ -102,6 +102,32 @@ def test_google_drive_question_renders_external_limitation() -> None:
     assert 'externé prístupy' in answer
 
 
+def test_invoice_due_date_reminder_question_renders_partial_automatic_status() -> None:
+    answer = build_product_truth_guidance(user_input_text='Vieš mi pripomenúť neuhradené faktúry po splatnosti?')
+
+    assert answer is not None
+    assert 'Pripomienky faktúr po splatnosti' in answer
+    assert 'čiastočné' in answer
+    assert '/kontrola_splatnosti' not in answer
+    assert 'background scheduler' in answer
+    assert 'Google Drive' in answer
+    assert 'nie sú zapnuté' in answer
+
+
+def test_google_drive_after_due_date_archive_question_renders_stub_only_unsupported_status() -> None:
+    answer = build_product_truth_guidance(
+        user_input_text='Vieš archivovať zaplatené faktúry po splatnosti na Google Drive?'
+    )
+
+    assert answer is not None
+    assert 'Archivácia faktúry na Google Drive po splatnosti' in answer
+    assert 'nepodporované' in answer
+    assert 'iba lokálny stub' in answer
+    assert 'nič sa nenahráva na Google Drive' in answer
+    assert 'úspešné nahratie' in answer
+    assert 'uploaded' not in answer.lower()
+
+
 def test_sms_question_renders_external_limitation() -> None:
     answer = build_product_truth_guidance(user_input_text='Viete posielať SMS pripomienky?')
 

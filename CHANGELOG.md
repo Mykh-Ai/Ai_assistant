@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- automatic Phase 1 overdue invoice follow-up flow:
+  in-process aiogram scheduler with default daily check, tenant-scoped overdue
+  invoice detection, Telegram reminder cards, persisted mark-paid/remind-later
+  /mute state, and an honest Google Drive archive stub after marking a
+  reminder invoice as paid.
 - `invoice_period_summary` top-level read-only action for natural text/voice
   questions about saved outgoing invoice count and totals for a supported
   calendar-year period, scoped to the authorized supplier account.
@@ -88,6 +93,10 @@
   `items[0].unit_price` stayed empty and the bot kept asking for the price.
 
 ### Notes
+- Real Google Drive invoice archive/upload after due-date follow-up remains
+  unsupported. The Phase 1 stub records only local state, does not call Google
+  APIs, does not create Drive folders, does not upload files, and does not
+  delete local invoice PDFs.
 - Tenant-scope rollout exposed a migration/repair gap for existing server data: confirmed accounting documents can exist under the legacy `mykhailo-szco` workspace while `/blocek` reads the requesting tenant workspace, and some historical invoice `pdf_path` values can point to local Windows paths. Data repair must use audit, backup, dry-run, and explicit apply approval rather than cross-tenant fallback reads.
 - Controlled multi-user dry run remains one backend, one bot token, and one SQLite DB; access is limited to bootstrap allowlisted or admin-approved Telegram users, and this is not full SaaS multi-tenancy.
 - Public automatic signup remains out of scope; unknown users can only request access and must be approved by an admin before onboarding, LLM/STT/LMM, invoices, contacts, or document intake.

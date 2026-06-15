@@ -13,6 +13,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'create_invoice',
     'show_existing_invoice',
     'invoice_period_summary',
+    'invoice_due_date_reminders',
     'edit_existing_invoice',
     'delete_existing_invoice',
     'invoice_pdf_generation',
@@ -28,6 +29,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'access_request_approval',
     'send_invoice_email',
     'google_drive_invoice_storage',
+    'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
     'accounting_export',
     'invoice_pdf_custom_template',
@@ -66,6 +68,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'limitation': 'Počítam iba už uložené odoslané faktúry vo vašom účte podľa dátumu vystavenia. Zatiaľ nejde o všeobecnú analytiku, DPH report, neuhradené faktúry ani účtovné doklady.',
         'safe_next': 'Napíšte napríklad: „Na akú sumu som vystavil faktúry tento rok?“ alebo „Súhrn faktúr za 2026“.',
     },
+    'invoice_due_date_reminders': {
+        'title': 'Pripomienky faktúr po splatnosti',
+        'summary': 'Pripomienky faktúr po splatnosti sú podporované čiastočne cez automatickú kontrolu v Telegrame.',
+        'limitation': 'Automatická kontrola beží ako interný background scheduler s predvolenou dennou kontrolou. Emailové/SMS pripomienky, bankové párovanie a reálne Google Drive archivovanie nie sú zapnuté.',
+        'safe_next': 'Keď bot nájde faktúru po splatnosti, pošle Telegram kartu. Pri každej faktúre môžete zvoliť označiť ako zaplatenú, pripomenúť neskôr alebo viac nepripomínať.',
+    },
     'send_invoice_email': {
         'title': 'Odosielanie faktúr emailom',
         'summary': 'Automatické odosielanie faktúr emailom priamo z bota nie je v aktuálnej verzii implementované.',
@@ -77,6 +85,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'summary': 'Ukladanie alebo synchronizácia faktúr na Google Drive nie je v aktuálnej verzii implementovaná.',
         'limitation': 'Faktúry sa ukladajú v systéme bota a dostupné sú cez existujúce Telegram postupy.',
         'safe_next': 'Google Drive by vyžadoval samostatnú integráciu, prístupy a schválený rozsah.',
+    },
+    'google_drive_invoice_archive_after_due_date': {
+        'title': 'Archivácia faktúry na Google Drive po splatnosti',
+        'summary': 'Reálna archivácia alebo upload faktúr na Google Drive po pripomienke nie je implementovaná.',
+        'limitation': 'Po označení faktúry ako zaplatenej sa zobrazí iba lokálny stub: nič sa nenahráva na Google Drive a faktúra ostáva uložená lokálne.',
+        'safe_next': 'Drive archív treba brať ako budúcu integráciu. Aktuálny stub nesmie byť opisovaný ako úspešné nahratie.',
     },
     'sms_reminders': {
         'title': 'SMS pripomienky',
@@ -185,6 +199,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'create_invoice': 'vytvorenie faktúry',
     'show_existing_invoice': 'zobrazenie existujúcej faktúry',
     'invoice_period_summary': 'súhrn faktúr za rok',
+    'invoice_due_date_reminders': 'pripomienky faktúr po splatnosti',
     'edit_existing_invoice': 'úprava existujúcej faktúry',
     'delete_existing_invoice': 'vymazanie existujúcej faktúry',
     'invoice_pdf_generation': 'generovanie PDF faktúry',
@@ -200,6 +215,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'access_request_approval': 'žiadosť o prístup a schválenie',
     'send_invoice_email': 'odosielanie faktúr emailom',
     'google_drive_invoice_storage': 'ukladanie faktúr na Google Drive',
+    'google_drive_invoice_archive_after_due_date': 'archivácia faktúry na Google Drive po splatnosti',
     'sms_reminders': 'SMS pripomienky',
     'accounting_export': 'export do účtovníctva',
     'invoice_pdf_custom_template': 'vlastná PDF šablóna faktúry',
@@ -569,8 +585,12 @@ def classify_info_help_capability(
 
     if _mentions_email_invoice(normalized, tokens):
         return 'send_invoice_email'
+    if _mentions_google_drive_invoice_archive_after_due_date(normalized, tokens):
+        return 'google_drive_invoice_archive_after_due_date'
     if _mentions_google_drive(normalized, tokens):
         return 'google_drive_invoice_storage'
+    if _mentions_invoice_due_date_reminders(normalized, tokens):
+        return 'invoice_due_date_reminders'
     if 'sms' in tokens or 'esemes' in tokens or 'esemesky' in tokens:
         return 'sms_reminders'
     if _mentions_accounting_export(normalized, tokens):
@@ -721,6 +741,73 @@ def _mentions_google_drive(normalized: str, tokens: set[str]) -> bool:
         or 'googledrive' in normalized
         or 'google disk' in normalized
     )
+
+
+def _mentions_google_drive_invoice_archive_after_due_date(normalized: str, tokens: set[str]) -> bool:
+    if not _mentions_google_drive(normalized, tokens):
+        return False
+    mentions_invoice = bool(tokens.intersection({'faktura', 'fakturu', 'faktury', 'faktur', 'invoice', 'invoices'}))
+    mentions_archive = bool(
+        tokens.intersection({'archiv', 'archivacia', 'archivovat', 'archive', 'upload', 'nahrat', 'ulozit'})
+    )
+    mentions_followup_context = bool(
+        tokens.intersection(
+            {
+                'splatnosti',
+                'splatnost',
+                'zaplatena',
+                'zaplateni',
+                'paid',
+                'payment',
+                'reminder',
+                'pripomienke',
+                'pripomienka',
+            }
+        )
+    )
+    return mentions_invoice and mentions_archive and mentions_followup_context
+
+
+def _mentions_invoice_due_date_reminders(normalized: str, tokens: set[str]) -> bool:
+    if tokens.intersection({'sms', 'esemes', 'esemesky'}):
+        return False
+    if tokens.intersection({'adminovi', 'admin', 'spravcovi', 'spravca'}) and tokens.intersection(
+        {'povedz', 'posli', 'odosli', 'napis'}
+    ):
+        return False
+    mentions_invoice = bool(tokens.intersection({'faktura', 'fakturu', 'faktury', 'faktur', 'invoice', 'invoices'}))
+    mentions_reminder = bool(
+        tokens.intersection(
+            {
+                'pripomienky',
+                'pripomienka',
+                'pripomenut',
+                'pripominat',
+                'reminder',
+                'reminders',
+                'remind',
+                'upozornenie',
+                'upozornit',
+            }
+        )
+    )
+    mentions_due_or_unpaid = bool(
+        tokens.intersection(
+            {
+                'splatnosti',
+                'splatnost',
+                'neuhradene',
+                'neuhradenych',
+                'nezaplatene',
+                'nezaplatenych',
+                'unpaid',
+                'overdue',
+                'late',
+                'due',
+            }
+        )
+    )
+    return mentions_invoice and mentions_reminder and mentions_due_or_unpaid
 
 
 def _mentions_accounting_export(normalized: str, tokens: set[str]) -> bool:

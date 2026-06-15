@@ -22,6 +22,34 @@ Global state cancellation is supported through `/cancel` and shared DecisionReso
 
 ---
 
+## 2026-06-15 Addendum: automatic overdue invoice follow-up
+
+The bot runtime automatically checks saved outgoing invoices for overdue
+`due_date` values through an in-process aiogram background scheduler. The
+default check interval is once per day (`86400` seconds). The Phase 1 runtime
+detects invoices where `due_date` is before today, no paid/muted follow-up
+state exists, and any `remind_after` value is due. Missing
+`invoice_followup_state` rows are treated as unpaid and active for legacy
+invoices.
+
+The reminder is tenant-scoped by `supplier_telegram_id` and offers three
+Telegram decisions: mark as paid, remind later, or do not remind again. These
+decisions persist only follow-up state in `invoice_followup_state`; the existing
+local invoice PDF generation and `invoice.pdf_path` behavior are unchanged.
+
+Current status is `partial`: automatic Telegram reminders are implemented
+inside the bot process, while email reminders, SMS reminders, bank matching,
+accounting export, external cron/worker deployment, and real Google Drive
+upload/archive remain out of scope.
+
+After marking an invoice as paid, the runtime may show a deterministic Google
+Drive archive stub. This stub records that no upload happened and tells the
+user the invoice remains stored locally. Real Google Drive invoice archive
+after due-date follow-up is still `unsupported`; no Drive folder is created, no
+file is uploaded, and no local PDF is deleted.
+
+---
+
 ## 2026-05-06 Addendum: STT transcription context prompt
 
 Voice transcription may pass a compact STT context prompt to the transcription model. The prompt describes the expected FakturaBot / OfficeFlow domain and possible spoken languages: Slovak, Ukrainian, Russian, English, and mixed Surzhyk / mixed Slovak-Ukrainian-Russian-English speech.

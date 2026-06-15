@@ -96,7 +96,7 @@ class ProductTruthResult:
         }
 
 
-_LAST_VERIFIED_AT = '2026-06-13'
+_LAST_VERIFIED_AT = '2026-06-15'
 
 
 def _capability(
@@ -222,6 +222,32 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         notes_for_agents='Read-only outgoing-invoice yearly summary only; Python owns period parsing, tenant scoping, DB read, and rendering.',
     ),
     _capability(
+        capability_id='invoice_due_date_reminders',
+        title='Invoice due-date reminders',
+        domain='reminders',
+        status=ProductTruthStatus.PARTIAL,
+        summary_for_user='Automatically checks overdue outgoing invoices for authorized suppliers, sends Telegram reminder cards, and stores the selected follow-up state.',
+        current_limitations=(
+            'Phase 1 uses an in-process aiogram background scheduler with a default daily check; it is not a separate external cron/worker deployment.',
+            'Reminder decisions are limited to mark paid, remind later, or do not remind again.',
+            'No email, SMS, accounting export, bank matching, or real Google Drive archive/upload is performed.',
+        ),
+        runtime_owner='bot/services/invoice_followup_scheduler.py::run_invoice_followup_scheduler and bot/services/invoice_followup_service.py',
+        linked_handlers=('bot/handlers/invoice_followup.py', 'bot/services/invoice_followup_scheduler.py', 'bot/services/invoice_followup_service.py'),
+        truth_source_refs=('docs/Google_Drive_Invoice_Archive_After_Due_Date_Spec.md', 'docs/TZ_FakturaBot.md', 'PROJECT_LOG.md'),
+        test_refs=('tests/test_invoice_followup_service.py', 'tests/test_invoice_followup_handler.py', 'tests/test_product_truth.py', 'tests/test_info_help.py'),
+        safe_next_steps=('Wait for the automatic Telegram follow-up card, then choose mark paid, remind later, or do not remind again.',),
+        requires_setup=True,
+        setup_state_keys=('authorized_user', 'supplier_profile'),
+        forbidden_claims=(
+            'Overdue invoice reminders use email or SMS.',
+            'I sent an email or SMS reminder.',
+            'I checked another supplier account.',
+            'I archived the invoice to Google Drive.',
+        ),
+        notes_for_agents='Partial automatic in-process Telegram reminder slice. Default check interval is 86400 seconds and can be overridden by INVOICE_FOLLOWUP_CHECK_INTERVAL_SECONDS. Missing follow-up rows mean unpaid/active for detection; successful sends set remind_after to avoid repeated notifications every scheduler tick.',
+    ),
+    _capability(
         capability_id='edit_existing_invoice',
         title='Edit existing invoice',
         domain='invoices',
@@ -305,6 +331,33 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         customization_allowed=True,
         requires_external_credentials=True,
         forbidden_claims=('I can store invoices on Google Drive.', 'Google Drive sync is active.', 'I saved this invoice to Drive.'),
+    ),
+    _capability(
+        capability_id='google_drive_invoice_archive_after_due_date',
+        title='Google Drive invoice archive after due date',
+        domain='google_drive',
+        status=ProductTruthStatus.UNSUPPORTED,
+        summary_for_user='Real Google Drive invoice archive/upload after due-date follow-up is not implemented.',
+        current_limitations=(
+            'Phase 1 has only a deterministic local stub after marking an invoice as paid.',
+            'The stub records that no upload happened and tells the user the invoice remains stored locally.',
+            'No OAuth upload worker, Drive folder creation, file upload, local PDF deletion, or archive retry exists for this flow.',
+        ),
+        truth_source_refs=(
+            'docs/Google_Drive_Invoice_Archive_After_Due_Date_Spec.md',
+            'docs/Google_Drive_Token_Crypto_Operations.md',
+            'docs/Product_Truth_Layer.md',
+        ),
+        safe_next_steps=('Do not claim Drive upload/archive; keep local PDF behavior and show the stub limitation only.',),
+        customization_allowed=True,
+        requires_external_credentials=True,
+        forbidden_claims=(
+            'I archived this invoice to Google Drive.',
+            'The invoice was uploaded to Drive.',
+            'Drive archive runs automatically after payment.',
+            'Local PDFs are deleted after Drive archive.',
+        ),
+        notes_for_agents='Unsupported real integration; the implemented stub is not an upload/archive runtime.',
     ),
     _capability(
         capability_id='sms_reminders',

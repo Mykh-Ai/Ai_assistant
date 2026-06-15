@@ -226,3 +226,49 @@ generation
 notes: Runtime top-level action implemented for current year, previous year,
 or explicit calendar year such as 2026. Month/VAT/unpaid/accounting analytics
 remain outside this action.
+
+### PT-IH-017 Invoice Due-Date Follow-Up Phase 1
+
+account_state: approved user, saved outgoing invoice exists with `due_date`
+before today
+input_channel: automatic scheduler + Telegram callback
+user_input: no manual user command; scheduler tick finds overdue invoice
+expected_product_truth_status: partial
+expected_response_behavior: Bot sends reminder cards only to the authorized
+supplier owner for overdue outgoing invoices, with three choices: mark as
+paid, remind later, or do not remind again. The selected callback persists
+`invoice_followup_state`. Successful sends record `remind_after` so the same
+invoice is not sent again on every scheduler tick.
+forbidden_behavior: require a manual command; notify a different supplier's
+invoice; notify blocked/deleted/unauthorized users; send email/SMS; run bank
+matching; upload to Google Drive.
+side_effect_expectation: only local follow-up state changes for the selected
+invoice; no invoice PDF rewrite, no contact/accounting/customization side
+effects.
+automation_status: automated in `tests/test_invoice_followup_service.py` and
+`tests/test_invoice_followup_handler.py`
+last_result: passed in focused and full test runs after automatic scheduler correction
+last_run_at: 2026-06-15
+notes: Phase 1 is an in-process aiogram scheduler, not an external cron/worker
+deployment. Missing follow-up state rows are treated as unpaid/active for
+legacy invoices.
+
+### PT-IH-018 Google Drive Archive Stub After Paid Reminder
+
+account_state: approved user marks overdue invoice as paid from reminder card
+input_channel: Telegram callback
+user_input: Oznacit ako zaplatenu
+expected_product_truth_status: unsupported for real Drive archive
+expected_response_behavior: Bot marks local follow-up payment state as paid and
+shows an honest stub saying Google Drive archive is not active and the invoice
+remains stored locally.
+forbidden_behavior: claim the invoice was uploaded/archived to Drive; call
+Google APIs; create Drive folders; delete local PDF; say Drive sync is active.
+side_effect_expectation: local `invoice_followup_state.drive_archive_status`
+may become `stub_requested_after_paid`; no external network or Drive side
+effect.
+automation_status: automated in `tests/test_invoice_followup_service.py`,
+`tests/test_invoice_followup_handler.py`, `tests/test_product_truth.py`, and
+`tests/test_info_help.py`
+last_result: passed in focused and full test runs after automatic scheduler correction
+last_run_at: 2026-06-15
