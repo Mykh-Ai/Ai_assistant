@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-06-16 - Session 145 - Invoice follow-up callback keyboard cleanup
+
+Summary:
+- Updated overdue invoice follow-up callback handling so a successful
+  mark-paid, remind-later, or do-not-remind-again decision removes the inline
+  keyboard from the original Telegram reminder card before sending the
+  confirmation message.
+- Keyboard cleanup happens only after the callback is parsed, ownership is
+  validated, and the decision state is persisted. Stale/forbidden callbacks do
+  not clear keyboards or claim success.
+- Cleanup failure is logged and does not roll back the already persisted
+  decision.
+
+Scope and constraints:
+- Touched scopes: invoice follow-up Telegram callback UX, focused handler
+  tests, changelog, project log.
+- Not touched: overdue detection rules, scheduler interval/cooldown,
+  payment/reminder state semantics, real Google Drive upload, invoice PDF
+  generation, local invoice storage.
+- Current implementation status: UX fix for existing partial automatic
+  due-date follow-up; Google Drive archive remains an unsupported stub only.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_followup_handler.py`
+  - 8 passed.
+- `python -m pytest -q`
+  - 1626 passed, 7 subtests passed.
+
 ## 2026-06-15 - Session 144 - Automatic overdue invoice follow-up correction
 
 Summary:

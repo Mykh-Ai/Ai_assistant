@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -12,6 +14,7 @@ from bot.services.invoice_followup_service import (
 
 
 router = Router(name='invoice_followup')
+logger = logging.getLogger(__name__)
 
 INVOICE_FOLLOWUP_CALLBACK_PREFIX = 'invoice_followup:'
 INVOICE_FOLLOWUP_DECISION_MARK_PAID = 'mark_paid'
@@ -41,6 +44,7 @@ async def invoice_followup_callback(callback: CallbackQuery, config: Config) -> 
                 invoice_id=invoice_id,
                 supplier_telegram_id=supplier_telegram_id,
             )
+            await _clear_callback_keyboard(callback)
             await _answer_callback_message(
                 callback,
                 'Fakturu som oznacil ako zaplatenu.\n\n' + stub.user_message,
@@ -54,6 +58,7 @@ async def invoice_followup_callback(callback: CallbackQuery, config: Config) -> 
                 supplier_telegram_id=supplier_telegram_id,
             )
             suffix = f'\nDalsia pripomienka najskor: {state.remind_after}.' if state.remind_after else ''
+            await _clear_callback_keyboard(callback)
             await _answer_callback_message(callback, 'Dobre, pripomeniem neskor.' + suffix)
             await callback.answer()
             return
@@ -63,6 +68,7 @@ async def invoice_followup_callback(callback: CallbackQuery, config: Config) -> 
                 invoice_id=invoice_id,
                 supplier_telegram_id=supplier_telegram_id,
             )
+            await _clear_callback_keyboard(callback)
             await _answer_callback_message(callback, 'Dobre, tuto fakturu uz nebudem pripominat.')
             await callback.answer()
             return
@@ -140,3 +146,13 @@ async def _answer_callback_message(callback: CallbackQuery, text: str) -> None:
         await source_message.answer(text)
         return
     await callback.answer(text, show_alert=True)
+
+
+async def _clear_callback_keyboard(callback: CallbackQuery) -> None:
+    source_message = callback.message
+    if source_message is None or not hasattr(source_message, 'edit_reply_markup'):
+        return
+    try:
+        await source_message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        logger.exception('Failed to clear invoice follow-up inline keyboard')

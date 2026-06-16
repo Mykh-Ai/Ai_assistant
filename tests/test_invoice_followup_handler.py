@@ -41,10 +41,17 @@ class _DummyMessage:
         self.from_user = _DummyUser(user_id)
         self.answers: list[str] = []
         self.reply_markups: list[object] = []
+        self.cleared_reply_markups: list[object | None] = []
+        self.fail_edit_reply_markup = False
 
     async def answer(self, text: str, **kwargs) -> None:
         self.answers.append(text)
         self.reply_markups.append(kwargs.get('reply_markup'))
+
+    async def edit_reply_markup(self, **kwargs) -> None:
+        if self.fail_edit_reply_markup:
+            raise RuntimeError('edit_reply_markup_failed')
+        self.cleared_reply_markups.append(kwargs.get('reply_markup'))
 
 
 class _DummyCallback:
@@ -219,6 +226,7 @@ def test_mark_paid_callback_persists_state_and_shows_drive_stub(tmp_path: Path) 
     assert state.payment_status == PAYMENT_STATUS_PAID
     assert state.reminder_status == REMINDER_STATUS_MUTED
     assert state.drive_archive_status == DRIVE_ARCHIVE_STATUS_STUB_REQUESTED_AFTER_PAID
+    assert source_message.cleared_reply_markups == [None]
     assert 'Fakturu som oznacil ako zaplatenu.' in source_message.answers[-1]
     assert 'Google Drive este nie je aktivna' in source_message.answers[-1]
     assert 'ostava ulozena lokalne' in source_message.answers[-1]
@@ -240,6 +248,7 @@ def test_remind_later_callback_persists_snoozed_state_without_drive_stub(tmp_pat
     assert state is not None
     assert state.reminder_status == REMINDER_STATUS_SNOOZED
     assert state.remind_after is not None
+    assert source_message.cleared_reply_markups == [None]
     assert 'Dobre, pripomeniem neskor.' in source_message.answers[-1]
     assert 'Google Drive' not in source_message.answers[-1]
 
@@ -259,6 +268,7 @@ def test_mute_callback_persists_muted_state_without_drive_upload_claim(tmp_path:
     state = InvoiceFollowupService(config.db_path).get_state(invoice_id=invoice_id)
     assert state is not None
     assert state.reminder_status == REMINDER_STATUS_MUTED
+    assert source_message.cleared_reply_markups == [None]
     assert 'uz nebudem pripominat' in source_message.answers[-1]
     assert 'Google Drive' not in source_message.answers[-1]
 
@@ -275,4 +285,27 @@ def test_callback_rejects_invoice_from_another_supplier(tmp_path: Path) -> None:
     asyncio.run(invoice_followup_callback(callback, config))
 
     assert callback.answers == [('Tato pripomienka uz nie je dostupna pre vas ucet.', True)]
+    assert callback.message is not None
+    assert callback.message.cleared_reply_markups == []
     assert InvoiceFollowupService(config.db_path).get_state(invoice_id=invoice_id) is None
+
+
+def test_keyboard_cleanup_failure_does_not_roll_back_successful_decision(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    invoice_id = _setup_invoice(config)
+    source_message = _DummyMessage(user_id=USER_A)
+    source_message.fail_edit_reply_markup = True
+    callback = _DummyCallback(
+        data=_callback_data(INVOICE_FOLLOWUP_DECISION_MUTE, invoice_id),
+        user_id=USER_A,
+        message=source_message,
+    )
+
+    asyncio.run(invoice_followup_callback(callback, config))
+
+    state = InvoiceFollowupService(config.db_path).get_state(invoice_id=invoice_id)
+    assert state is not None
+    assert state.reminder_status == REMINDER_STATUS_MUTED
+    assert source_message.cleared_reply_markups == []
+    assert 'uz nebudem pripominat' in source_message.answers[-1]
+    assert callback.answers == [(None, None)]
