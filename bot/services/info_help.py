@@ -13,6 +13,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'create_invoice',
     'show_existing_invoice',
     'invoice_period_summary',
+    'invoice_analytics',
     'invoice_due_date_reminders',
     'edit_existing_invoice',
     'delete_existing_invoice',
@@ -67,6 +68,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'summary': 'Súhrn uložených vystavených faktúr za rok je podporovaný ako read-only výpočet.',
         'limitation': 'Počítam iba už uložené odoslané faktúry vo vašom účte podľa dátumu vystavenia. Zatiaľ nejde o všeobecnú analytiku, DPH report, neuhradené faktúry ani účtovné doklady.',
         'safe_next': 'Napíšte napríklad: „Na akú sumu som vystavil faktúry tento rok?“ alebo „Súhrn faktúr za 2026“.',
+    },
+    'invoice_analytics': {
+        'title': 'Analytika vystavených faktúr',
+        'summary': 'Analytika vystavených faktúr je podporovaná čiastočne ako read-only pilot nad uloženými odoslanými faktúrami.',
+        'limitation': 'Pilot pracuje iba s odoslanými faktúrami aktuálneho dodávateľa. Nepočíta bločky, prijaté faktúry, bankové pohyby, dane ani všeobecné účtovné závery a nič nemení v databáze.',
+        'safe_next': 'Môžete sa opýtať napríklad na faktúry za máj, porovnanie dvoch období, neuhradené/zaplatené faktúry alebo top odberateľov podľa sumy faktúr.',
     },
     'invoice_due_date_reminders': {
         'title': 'Pripomienky faktúr po splatnosti',
@@ -199,6 +206,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'create_invoice': 'vytvorenie faktúry',
     'show_existing_invoice': 'zobrazenie existujúcej faktúry',
     'invoice_period_summary': 'súhrn faktúr za rok',
+    'invoice_analytics': 'analytika vystavených faktúr',
     'invoice_due_date_reminders': 'pripomienky faktúr po splatnosti',
     'edit_existing_invoice': 'úprava existujúcej faktúry',
     'delete_existing_invoice': 'vymazanie existujúcej faktúry',
@@ -441,6 +449,13 @@ def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageR
             triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
             confidence=0.85,
         )
+    if _is_invoice_analytics_request(normalized, tokens):
+        return InfoHelpTriageResult(
+            capability_id='invoice_analytics',
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.8,
+        )
     if _is_new_business_feature_request(normalized, tokens):
         return _triage_result(TRIAGE_NEW_BUSINESS_FEATURE_REQUEST, confidence=0.8)
     if _is_customization_candidate(normalized, tokens):
@@ -617,6 +632,8 @@ def classify_info_help_capability(
         return 'delete_user_database'
     if _mentions_invoice_period_summary_capability(normalized, tokens):
         return 'invoice_period_summary'
+    if _mentions_invoice_analytics_capability(normalized, tokens):
+        return 'invoice_analytics'
     if _mentions_delete_existing_invoice_how_to(normalized, tokens):
         return 'delete_existing_invoice'
     if _mentions_edit_existing_invoice_how_to(normalized, tokens):
@@ -1047,6 +1064,8 @@ def _is_admin_review_request(normalized: str, tokens: set[str]) -> bool:
 def _is_new_business_feature_request(normalized: str, tokens: set[str]) -> bool:
     if _is_invoice_period_summary_request(normalized, tokens):
         return False
+    if _is_invoice_analytics_request(normalized, tokens):
+        return False
     mentions_revenue_overview = bool(tokens.intersection({'trzieb', 'trzby', 'revenue', 'vynosov', 'выручки', 'виручки'})) and bool(
         tokens.intersection({'prehlad', 'report', 'vykaz', 'overview', 'отчет', 'звіт'})
     )
@@ -1159,6 +1178,95 @@ def _mentions_invoice_period_summary_capability(normalized: str, tokens: set[str
     }
     return _is_invoice_period_summary_request(normalized, tokens) and bool(
         tokens.intersection(capability_question_terms)
+    )
+
+
+def _is_invoice_analytics_request(normalized: str, tokens: set[str]) -> bool:
+    if _is_invoice_period_summary_request(normalized, tokens):
+        return False
+    invoice_terms = {
+        'faktura',
+        'fakturu',
+        'faktury',
+        'faktur',
+        'invoice',
+        'invoices',
+        'фактуру',
+        'фактура',
+        'фактуры',
+        'фактури',
+        'фактур',
+    }
+    analytics_terms = {
+        'analytika',
+        'analytiku',
+        'analytics',
+        'report',
+        'prehlad',
+        'vykaz',
+        'porovnaj',
+        'porovnanie',
+        'compare',
+        'mesiac',
+        'mesacny',
+        'month',
+        'maj',
+        'may',
+        'top',
+        'najviac',
+        'priemer',
+        'priemerna',
+        'average',
+        'neuhradene',
+        'neuhradenych',
+        'nezaplatene',
+        'nezaplatenych',
+        'zaplatene',
+        'uhradene',
+        'unpaid',
+        'paid',
+        'klienti',
+        'zakaznici',
+        'odberatelia',
+        'customers',
+        'trzby',
+        'obrat',
+        'сравни',
+        'порівняй',
+        'травень',
+        'май',
+        'топ',
+        'клієнтів',
+        'клиентов',
+        'неоплачених',
+        'неоплачені',
+        'оплачені',
+        'середня',
+        'средняя',
+        'оборот',
+    }
+    return bool(tokens.intersection(invoice_terms)) and bool(tokens.intersection(analytics_terms))
+
+
+def _mentions_invoice_analytics_capability(normalized: str, tokens: set[str]) -> bool:
+    capability_question_terms = {
+        'vie',
+        'vies',
+        'viete',
+        'mozes',
+        'mozete',
+        'dokazes',
+        'dokazete',
+        'da',
+        'ako',
+        'how',
+        'can',
+        'could',
+    }
+    return _is_invoice_analytics_request(normalized, tokens) and (
+        bool(tokens.intersection(capability_question_terms))
+        or 'analytika' in tokens
+        or 'analytics' in tokens
     )
 
 

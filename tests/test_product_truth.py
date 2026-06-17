@@ -35,6 +35,7 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'admin_response_delivery_observability',
     'access_request_approval',
     'invoice_draft_edit_flow',
+    'invoice_analytics',
     'code_agent_handoff',
     'self_learning_aliases',
     'info_help',
@@ -213,6 +214,26 @@ def test_invoice_due_date_reminders_record_is_partial_automatic_runtime() -> Non
     assert 'real Google Drive archive/upload' in entry.current_limitations[2]
     assert 'Overdue invoice reminders use email or SMS.' in entry.forbidden_claims
     assert 'I archived the invoice to Google Drive.' in entry.forbidden_claims
+
+
+def test_invoice_analytics_record_is_partial_read_only_runtime() -> None:
+    entry = _registry_by_id()['invoice_analytics']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert entry.commands == ()
+    assert entry.canonical_actions == ('invoice_analytics',)
+    assert 'read-only' in entry.summary_for_user
+    assert 'saved outgoing invoices' in entry.summary_for_user
+    assert 'bot/services/invoice_analytics_dataset.py' in entry.linked_handlers
+    assert 'bot/services/safe_python_analytics_executor.py' in entry.linked_handlers
+    assert 'docs/llm/Invoice_Analytics_Runtime_Contract.md' in entry.truth_source_refs
+    assert 'tests/test_invoice_analytics_dataset.py' in entry.test_refs
+    assert 'tests/test_safe_python_analytics_executor.py' in entry.test_refs
+    assert any('receipts' in limitation.lower() for limitation in entry.current_limitations)
+    assert any('bank' in limitation.lower() for limitation in entry.current_limitations)
+    assert 'I analyzed receipts or incoming invoices.' in entry.forbidden_claims
+    assert 'I changed invoice status or edited invoices from analytics.' in entry.forbidden_claims
+    assert 'This is full accounting analytics.' in entry.forbidden_claims
 
 
 def test_google_drive_after_due_date_archive_record_stays_unsupported_stub_only() -> None:

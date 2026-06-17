@@ -1,5 +1,68 @@
 # PROJECT_LOG
 
+## 2026-06-16 - Session 146 - Invoice analytics runtime pilot
+
+Summary:
+- Added canonical top-level action `invoice_analytics` as a partial read-only
+  runtime pilot for saved outgoing invoice analytics.
+- The runtime builds a supplier-scoped sanitized pandas dataframe from saved
+  outgoing invoices, injects the current runtime date, asks the LLM only for a
+  bounded analysis code plan, validates the AST, executes in a timeout-killed
+  child process without DB/file/network/write access, and answers from computed
+  results.
+- Added Python-side normalized bot payment status fields
+  `payment_status_canonical`, `payment_status_label`, and
+  `payment_status_source`; raw invoice lifecycle status is exposed only as
+  `invoice_status_raw` and must not be treated as payment truth.
+- Preserved the existing deterministic `invoice_period_summary` yearly summary
+  path as separate implemented behavior.
+
+Preflight:
+- Docs/contracts read: AGENTS, Product Doctrine, AI Layer Implementation
+  Standards, Product Truth Layer, Product Truth Registry MVP Design,
+  Self-Learning Layer, Evaluation and Smoke Test Standards, Product UX Eval
+  Artifacts, TZ FakturaBot, LLM Orchestrator Contract, Canonical Action
+  Registry, In-Action Response Registry, New Action Design Checklist, Bounded
+  Resolver Prompt Template, Canonical DecisionResolver Contract, InfoHelp
+  Guidance Layer, Customization Request Layer, Confirmed Semantic Alias
+  Learning Contract, PROJECT_LOG.
+- Touched scopes: top-level routing, LLM planning boundary, read-only DB
+  dataset service, safe analytics executor, final answer rendering, Product
+  Truth, InfoHelp, canonical docs, TZ, eval smoke artifacts, tests.
+- Not touched: invoice create/edit/delete persistence, status mutation,
+  confirmation flows, STT implementation, LMM, accounting document intake,
+  receipts/incoming invoices, bank statements, PDF layout/generation, external
+  storage, email/SMS, server deployment, DB schema.
+- Current implementation status: `partial` for invoice analytics; existing
+  `invoice_period_summary` remains `implemented`; full accounting analytics,
+  tax/VAT advice, receipt/incoming invoice analytics, bank matching, and write
+  operations remain unsupported.
+- AI maturity: bounded AI-assisted runtime pilot. Python owns data, scope,
+  payment-status normalization, validation, process isolation, execution, and
+  side-effect denial; LLM only drafts bounded code and wording from
+  Python-provided facts.
+- Self-learning hooks considered: none added. Analytics questions are not
+  confirmed semantic aliases and must not expand canonical actions or Product
+  Truth automatically.
+- User journey proof: authorized idle user asks a text or voice invoice
+  analytics question, sees a computed answer over only their saved outgoing
+  invoices, and no invoice/PDF/storage/DB write occurs.
+- Product claim sources: current code/tests, Product Truth entry
+  `invoice_analytics`, `docs/llm/Invoice_Analytics_Runtime_Contract.md`, TZ
+  addendum, canonical action registry, eval smoke artifacts, and this log.
+
+Verification:
+- `python -m pytest -q tests/test_safe_python_analytics_executor.py`
+  - 21 passed.
+- `python -m pytest -q tests/test_invoice_analytics_dataset.py`
+  - 4 passed.
+- `python -m pytest -q tests/test_invoice_analytics_planner.py`
+  - 6 passed.
+- `python -m pytest -q`
+  - 1668 passed, 7 subtests passed.
+- `git diff --check`
+  - passed with line-ending conversion warnings only.
+
 ## 2026-06-16 - Session 145 - Invoice follow-up callback keyboard cleanup
 
 Summary:

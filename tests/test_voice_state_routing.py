@@ -943,6 +943,22 @@ def test_voice_idle_invoice_period_summary_answers_from_top_level_router(monkeyp
     assert not (tmp_path / 'invoices').exists()
 
 
+def test_voice_idle_invoice_analytics_reaches_top_level_router(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'Покажи фактури за травень'
+
+    calls: list[tuple[str, str]] = []
+
+    async def _invoice_text(**kwargs) -> None:
+        calls.append((kwargs['invoice_text'], kwargs['input_channel']))
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _invoice_text)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+    assert calls == [('Покажи фактури за травень', 'voice')]
+
+
 def test_voice_idle_profile_routes_to_profile_view(monkeypatch, tmp_path: Path) -> None:
     async def _stt(*args, **kwargs) -> str:
         return 'môj profil'

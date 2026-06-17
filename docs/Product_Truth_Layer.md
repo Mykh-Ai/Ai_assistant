@@ -561,6 +561,8 @@ current code before runtime claims:
   confirmation;
 - invoice exact numeric/date/identifier values by voice: partial/text-only for
   precision-sensitive fields;
+- invoice analytics over saved outgoing invoices: partial read-only pilot over
+  the current supplier's persisted outgoing invoice rows only;
 - invoice PDF generation: supported in current invoice flow;
 - Google Drive invoice storage: unsupported/planned only unless later runtime
   code proves otherwise;

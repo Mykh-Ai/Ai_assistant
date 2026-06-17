@@ -50,6 +50,31 @@ file is uploaded, and no local PDF is deleted.
 
 ---
 
+## 2026-06-16 Addendum: invoice analytics runtime pilot
+
+Approved users may ask broader read-only analytics questions over their saved
+outgoing invoices through canonical top-level action `invoice_analytics`.
+Examples include counts, sums, period comparisons, customer/month/currency
+grouping, normalized bot payment-status grouping, and bounded lists of
+matching saved outgoing invoices.
+
+Current status is `partial`: the pilot reads only already persisted outgoing
+invoice rows for the current supplier scope. Python builds a sanitized
+dataframe, injects the current runtime date for relative questions, normalizes
+bot payment state into `pending_payment`, `paid`, `overdue`, or `unknown`,
+validates any LLM-planned analysis code, and executes it without DB/file/
+network/write access. The dataframe does not expose `pdf_path` or absolute
+storage paths. Payment status is the bot's stored/derived state from follow-up
+data and due dates, not bank-confirmed settlement.
+
+The pilot does not create, edit, delete, send, archive, mark paid, or generate
+invoices/PDFs. It does not analyze receipts, incoming invoices, bank
+statements, cashflow, VAT, tax, or accounting-export data. It must not claim
+full accounting analytics. The existing deterministic `invoice_period_summary`
+yearly summary remains implemented and separate.
+
+---
+
 ## 2026-05-06 Addendum: STT transcription context prompt
 
 Voice transcription may pass a compact STT context prompt to the transcription model. The prompt describes the expected FakturaBot / OfficeFlow domain and possible spoken languages: Slovak, Ukrainian, Russian, English, and mixed Surzhyk / mixed Slovak-Ukrainian-Russian-English speech.

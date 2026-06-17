@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- `invoice_analytics` top-level read-only runtime pilot for natural text/voice
+  questions over saved outgoing invoices, with supplier-scoped sanitized
+  dataframe reads, normalized bot payment-status fields, current-date
+  injection, process-isolated validated analysis code execution, and Product
+  Truth/InfoHelp status as partial rather than full accounting analytics.
 - automatic Phase 1 overdue invoice follow-up flow:
   in-process aiogram scheduler with default daily check, tenant-scoped overdue
   invoice detection, Telegram reminder cards, persisted mark-paid/remind-later

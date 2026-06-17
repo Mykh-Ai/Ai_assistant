@@ -272,3 +272,52 @@ automation_status: automated in `tests/test_invoice_followup_service.py`,
 `tests/test_info_help.py`
 last_result: passed in focused and full test runs after automatic scheduler correction
 last_run_at: 2026-06-15
+
+### PT-IH-019 Invoice Analytics Runtime Pilot
+
+user_inputs:
+- Koľko mám neuhradených faktúr?
+- Покажи фактури за травень
+- Porovnaj máj 2026 a máj 2025 vo vystavených faktúrach.
+- Top klientov podľa sumy faktúr.
+
+expected_product_truth_status: partial
+expected_response_behavior: Direct runtime requests route to
+`invoice_analytics`, not InfoHelp, when the user is authorized and idle. Python
+reads only the current supplier's saved outgoing invoices, builds the sanitized
+dataframe, injects the current runtime date, normalizes bot payment state from
+follow-up state plus due dates, validates generated analysis code in a
+timeout-killed child process, and answers from computed results.
+forbidden_behavior: mutate invoice rows/statuses/PDFs/contacts/receipts or
+accounting documents; expose `pdf_path`, absolute storage paths, tenant ids, or
+raw invoice lifecycle status as payment truth; run SQL; let the LLM access
+DB/files/network; claim bank-confirmed settlement; analyze incoming invoices,
+receipts, bank statements, VAT/tax, or accounting export data; replace the
+deterministic `invoice_period_summary` path for supported yearly count/total
+questions.
+side_effect_expectation: no DB, file, PDF, storage, or external-service write.
+automation_status: automated in `tests/test_invoice_analytics_dataset.py`,
+`tests/test_invoice_analytics_planner.py`,
+`tests/test_safe_python_analytics_executor.py`,
+`tests/test_invoice_intent_prerouter.py`, and
+`tests/test_voice_state_routing.py`
+last_result: passed in focused and full test runs for the runtime pilot
+last_run_at: 2026-06-16
+
+### PT-IH-020 Invoice Analytics Product Truth / InfoHelp
+
+user_input: Vieš robiť analytiku faktúr?
+expected_product_truth_status: partial
+expected_response_behavior: Product Truth / InfoHelp states that invoice
+analytics is a partial read-only pilot over saved outgoing invoices only,
+scoped to the current supplier. It names current limitations and does not claim
+full accounting analytics, receipt analytics, bank matching, tax advice, or
+write capability.
+forbidden_behavior: answer only with `/menu`; mark invoice analytics as fully
+supported accounting analytics; offer fake external integrations or unsupported
+write actions; create a customization request without the normal
+confirmation-gated request path.
+automation_status: automated in `tests/test_product_truth.py` and
+`tests/test_info_help.py`
+last_result: passed in focused and full test runs for the runtime pilot
+last_run_at: 2026-06-16

@@ -987,6 +987,30 @@ def test_invoice_period_summary_capability_question_renders_supported_product_tr
     assert result.capability_id == 'invoice_period_summary'
 
 
+def test_invoice_analytics_capability_question_renders_partial_product_truth() -> None:
+    answer = build_product_truth_guidance(user_input_text='Vieš robiť analytiku faktúr?')
+
+    assert answer is not None
+    assert 'Analytika vystavených faktúr' in answer
+    assert 'čiastočné' in answer
+    assert 'read-only pilot' in answer
+    assert 'uloženými odoslanými faktúrami' in answer
+    assert 'bankové pohyby' in answer
+    assert 'nič nemení v databáze' in answer
+    assert '/menu' not in answer
+
+    result = classify_info_help_triage(user_input_text='Vieš robiť analytiku faktúr?')
+    assert result.triage_class == 'known_product_capability'
+    assert result.capability_id == 'invoice_analytics'
+
+
+def test_invoice_analytics_direct_runtime_request_is_known_capability_not_new_feature() -> None:
+    result = classify_info_help_triage(user_input_text='Koľko mám neuhradených faktúr?')
+
+    assert result.triage_class == 'known_product_capability'
+    assert result.capability_id == 'invoice_analytics'
+
+
 def test_product_truth_renderer_uses_payload_fields_when_localized_copy_is_missing() -> None:
     answer = info_help._render_product_truth_payload(get_safe_answer_payload('invoice_pdf_generation'))
 

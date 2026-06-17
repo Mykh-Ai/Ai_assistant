@@ -115,6 +115,8 @@ def _matches_invoice_period_summary(text: str, tokens: set[str]) -> bool:
         '\u0441\u0443\u043c\u0443',
         '\u0441\u0443\u043c\u043c\u0443',
         '\u0441\u043a\u043e\u043b\u044c\u043a\u043e',
+        '\u0441\u043a\u0456\u043b\u044c\u043a\u0438',
+        '\u0441\u043a\u0456\u043b\u044c\u043a\u043e',
         '\u0437\u0432\u0456\u0442',
         '\u0437\u0432\u0438\u0442',
         '\u043e\u0442\u0447\u0435\u0442',
@@ -136,6 +138,8 @@ def _matches_invoice_period_summary(text: str, tokens: set[str]) -> bool:
         'month',
         '\u0446\u044c\u043e\u043c\u0443',
         '\u0440\u043e\u0446\u0456',
+        '\u0440\u0456\u043a',
+        '\u0446\u0435\u0439',
         '\u0440\u043e\u0446\u044b',
         '\u044d\u0442\u043e\u043c',
         '\u0433\u043e\u0434\u0443',
@@ -164,6 +168,102 @@ def _matches_invoice_period_summary(text: str, tokens: set[str]) -> bool:
             or bool(re.search(r'\b(?:19|20)\d{2}\b', text))
         )
     )
+
+
+def _matches_invoice_analytics_request(text: str, tokens: set[str]) -> bool:
+    if _matches_invoice_period_summary(text, tokens):
+        return False
+    invoice_terms = {
+        'fakturu',
+        'faktura',
+        'faktury',
+        'faktur',
+        'invoice',
+        'invoices',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0443',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0430',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0438',
+        '\u0444\u0430\u043a\u0442\u0443\u0440',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u044b',
+    }
+    analytics_terms = {
+        'kolko',
+        'suma',
+        'sumu',
+        'celkom',
+        'spolu',
+        'prehlad',
+        'porovnaj',
+        'porovnat',
+        'compare',
+        'analytika',
+        'analytiku',
+        'top',
+        'najviac',
+        'priemer',
+        'priemerna',
+        'average',
+        'zaplatene',
+        'nezaplatene',
+        'neuhradene',
+        'neuhradenych',
+        'uhradene',
+        'paid',
+        'unpaid',
+        'status',
+        'zakaznici',
+        'klienti',
+        'odberatelia',
+        'customer',
+        'customers',
+        'month',
+        'mesiac',
+        'maj',
+        'may',
+        '\u0441\u043a\u0456\u043b\u044c\u043a\u0438',
+        '\u0441\u043a\u043e\u043b\u044c\u043a\u043e',
+        '\u043f\u043e\u043a\u0430\u0436\u0438',
+        '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0439',
+        '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0438',
+        '\u0441\u0440\u0430\u0432\u043d\u0438',
+        '\u0442\u0440\u0430\u0432\u0435\u043d\u044c',
+        '\u043c\u0430\u0439',
+        '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0438\u0445',
+        '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
+        '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
+        '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u043d\u044b\u0445',
+        '\u043a\u043b\u0456\u0454\u043d\u0442\u0456\u0432',
+        '\u043a\u043b\u0438\u0435\u043d\u0442\u043e\u0432',
+        '\u043a\u043e\u043c\u043f\u0430\u043d\u0456\u0457',
+        '\u0441\u0435\u0440\u0435\u0434\u043d\u044f',
+        '\u0441\u0440\u0435\u0434\u043d\u044f\u044f',
+    }
+    write_terms = {
+        'vytvor',
+        'sprav',
+        'urob',
+        'zrob',
+        'uprav',
+        'upravit',
+        'edit',
+        'delete',
+        'vymaz',
+        'zmazat',
+        'posli',
+        'send',
+        'oznac',
+        'mark',
+    }
+    if tokens.intersection(write_terms):
+        return False
+    if bool(tokens.intersection(invoice_terms)) and bool(tokens.intersection(analytics_terms)):
+        return True
+    has_period_comparison = (
+        bool(tokens.intersection({'porovnaj', 'porovnat', 'compare', '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0439', '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0438', '\u0441\u0440\u0430\u0432\u043d\u0438'}))
+        and bool(tokens.intersection({'maj', 'may', 'mesiac', 'month', '\u0442\u0440\u0430\u0432\u0435\u043d\u044c', '\u043c\u0430\u0439'}))
+        and len(re.findall(r'(?:19|20)\d{2}', text)) >= 2
+    )
+    return has_period_comparison
 
 
 def _matches_top_level_edit_existing_invoice(tokens: set[str]) -> bool:
@@ -439,6 +539,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'send_invoice'
         if 'invoice_period_summary' in allowed and _matches_invoice_period_summary(text, tokens):
             return 'invoice_period_summary'
+        if 'invoice_analytics' in allowed and _matches_invoice_analytics_request(text, tokens):
+            return 'invoice_analytics'
         if 'edit_existing_invoice' in allowed and _matches_top_level_edit_existing_invoice(tokens):
             return 'edit_existing_invoice'
         if 'delete_existing_invoice' in allowed and _matches_top_level_delete_invoice(tokens):
@@ -959,6 +1061,7 @@ async def resolve_semantic_action(
         'show_supplier_profile',
         'show_existing_invoice',
         'invoice_period_summary',
+        'invoice_analytics',
         'edit_supplier',
         'show_recent_accounting_documents',
         'delete_user_database',

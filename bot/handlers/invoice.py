@@ -43,6 +43,15 @@ from bot.services.info_help import (
     render_info_help_triage_result,
     resolve_info_help_triage_result_with_llm,
 )
+from bot.services.invoice_analytics_answerer import answer_invoice_analytics
+from bot.services.invoice_analytics_dataset import (
+    InvoiceAnalyticsDatasetService,
+    build_invoice_analytics_data_catalog,
+)
+from bot.services.invoice_analytics_planner import (
+    InvoiceAnalyticsPlanError,
+    plan_invoice_analytics_code,
+)
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoicePeriodSummary, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
@@ -58,6 +67,11 @@ from bot.services.semantic_action_resolver import (
     resolve_semantic_action,
 )
 from bot.services.semantic_action_resolver import resolve_quantity_unit_price_pair
+from bot.services.safe_python_analytics_executor import (
+    AnalyticsCodeValidationError,
+    AnalyticsExecutionError,
+    execute_invoice_analytics_code,
+)
 from bot.services.supplier_service import SupplierService
 from bot.services.validation import parse_strict_date_dd_mm_yyyy
 
@@ -68,6 +82,7 @@ logger = logging.getLogger(__name__)
 _CREATE_INVOICE_INTENT = 'create_invoice'
 _SHOW_EXISTING_INVOICE_INTENT = 'show_existing_invoice'
 _INVOICE_PERIOD_SUMMARY_INTENT = 'invoice_period_summary'
+_INVOICE_ANALYTICS_INTENT = 'invoice_analytics'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
 _DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
@@ -229,6 +244,86 @@ def _format_invoice_period_summary(summary, *, period_label: str) -> str:
         ]
     )
     return '\n'.join(lines)
+
+
+async def _run_invoice_analytics(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    user_question: str,
+) -> None:
+    supplier_telegram_id = _message_supplier_telegram_id(message)
+    if supplier_telegram_id is None:
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        await state.clear()
+        return
+
+    current_date = date.today()
+    current_date_iso = current_date.isoformat()
+    dataset_service = InvoiceAnalyticsDatasetService(config.db_path)
+    invoices_df = dataset_service.build_invoice_dataframe_for_supplier(
+        supplier_telegram_id=supplier_telegram_id,
+        current_date=current_date,
+    )
+    metadata = {
+        'row_count': int(len(invoices_df)),
+        'columns': list(invoices_df.columns),
+        'current_date_iso': current_date_iso,
+        'scope': 'outgoing_invoices_current_supplier_only',
+    }
+    if invoices_df.empty:
+        await message.answer(
+            'Vo vašom účte som nenašiel žiadne uložené vystavené faktúry na analýzu.\n\n'
+            'Počítam iba read-only odoslané faktúry aktuálneho dodávateľa.'
+        )
+        await state.clear()
+        return
+
+    try:
+        plan = await plan_invoice_analytics_code(
+            user_question=user_question,
+            current_date_iso=current_date_iso,
+            data_catalog=build_invoice_analytics_data_catalog(),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+        execution = execute_invoice_analytics_code(
+            code=plan.analysis_code,
+            invoices_df=invoices_df,
+            current_date=current_date,
+        )
+        computed_result = dict(execution.result)
+        if execution.warnings:
+            warnings = list(computed_result.get('warnings') or [])
+            warnings.extend(execution.warnings)
+            computed_result['warnings'] = warnings
+        answer = await answer_invoice_analytics(
+            user_question=user_question,
+            current_date_iso=current_date_iso,
+            computed_result=computed_result,
+            dataset_metadata=metadata,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            answer_language=plan.answer_language,
+        )
+        await message.answer(answer)
+    except InvoiceAnalyticsPlanError:
+        await message.answer(
+            'Analytickú otázku som teraz nevedel bezpečne naplánovať. '
+            'Táto pilotná funkcia je read-only a pracuje iba s uloženými odoslanými faktúrami.'
+        )
+    except (AnalyticsCodeValidationError, AnalyticsExecutionError):
+        await message.answer(
+            'Analytický výpočet som zastavil, pretože neprešiel bezpečnostnou kontrolou. '
+            'Žiadne faktúry, PDF ani databázové údaje som nezmenil.'
+        )
+    except Exception:
+        logger.exception('Invoice analytics runtime failed')
+        await message.answer(
+            'Analýzu faktúr sa nepodarilo dokončiť. Žiadne údaje som nezmenil.'
+        )
+    await state.clear()
 
 
 async def _send_existing_invoice_view(
@@ -2612,6 +2707,7 @@ async def process_invoice_text(
             _CREATE_INVOICE_INTENT,
             _SHOW_EXISTING_INVOICE_INTENT,
             _INVOICE_PERIOD_SUMMARY_INTENT,
+            _INVOICE_ANALYTICS_INTENT,
             _SHOW_SUPPLIER_PROFILE_INTENT,
             _EDIT_SUPPLIER_INTENT,
             _ADD_CONTACT_INTENT,
@@ -2671,6 +2767,28 @@ async def process_invoice_text(
                     'show one specific invoice by number',
                     'edit or delete invoices',
                     'summarize external receipts or accounting documents',
+                ],
+            },
+            _INVOICE_ANALYTICS_INTENT: {
+                'meaning': (
+                    'user asks an analytical, statistical, reporting, comparison, listing, grouping, paid/unpaid/overdue, '
+                    'customer, normalized payment status, currency, month, or average question about already saved outgoing invoices; '
+                    'Python builds a sanitized supplier-scoped dataframe, validates read-only analysis code, and returns computed facts'
+                ),
+                'positive_examples': [
+                    'show invoices for May',
+                    'compare May 2026 and May 2025',
+                    'how many unpaid invoices do I have',
+                    'top customers by invoice amount',
+                ],
+                'not_this': [
+                    'create invoice',
+                    'edit invoice',
+                    'delete invoice',
+                    'send invoice',
+                    'mark invoice as paid',
+                    'receipt or incoming invoice analytics',
+                    'bank movement or tax advice',
                 ],
             },
             _SHOW_SUPPLIER_PROFILE_INTENT: {
@@ -2879,6 +2997,14 @@ async def process_invoice_text(
         )
         await message.answer(_format_invoice_period_summary(summary, period_label=period_label))
         await state.clear()
+        return
+    if top_level_intent == _INVOICE_ANALYTICS_INTENT:
+        await _run_invoice_analytics(
+            message=message,
+            state=state,
+            config=config,
+            user_question=invoice_text,
+        )
         return
     if top_level_intent == _EDIT_EXISTING_INVOICE_INTENT:
         if hasattr(message, 'from_user') and message.from_user is None:
