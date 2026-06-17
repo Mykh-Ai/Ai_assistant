@@ -41,6 +41,7 @@ def parse_invoice_analytics_plan(raw_model_output: str) -> InvoiceAnalyticsPlan:
     analysis_code = parsed.get('analysis_code')
     if not isinstance(analysis_code, str) or not analysis_code.strip():
         raise InvoiceAnalyticsPlanError('missing_analysis_code')
+    analysis_code = _normalize_planned_analysis_code(analysis_code)
     if '```' in analysis_code or '```' in raw_model_output:
         raise InvoiceAnalyticsPlanError('markdown_fence_not_allowed')
     if not re.search(r'(^|\n)\s*result\s*=', analysis_code):
@@ -62,6 +63,20 @@ def parse_invoice_analytics_plan(raw_model_output: str) -> InvoiceAnalyticsPlan:
         answer_language=answer_language,
         reasoning_summary=reasoning_summary.strip()[:500],
     )
+
+
+def _normalize_planned_analysis_code(code: str) -> str:
+    normalized_lines: list[str] = []
+    for line in code.splitlines():
+        stripped = line.strip()
+        if re.fullmatch(r'import\s+pandas\s+as\s+pd', stripped):
+            continue
+        if re.fullmatch(r'from\s+datetime\s+import\s+datetime', stripped):
+            continue
+        if re.fullmatch(r'current_date\s*=\s*datetime\.strptime\(.+\)', stripped):
+            continue
+        normalized_lines.append(line)
+    return '\n'.join(normalized_lines).strip()
 
 
 async def plan_invoice_analytics_code(
@@ -89,12 +104,14 @@ async def plan_invoice_analytics_code(
                     'No markdown fences. The user may write Slovak, Ukrainian, Russian, or mixed language. '
                     'You may write Python code only over the provided sanitized dataframe invoices_df. '
                     'The code must assign the final JSON-serializable dict to variable result. '
-                    'Use current_date from Python; never assume the current year from memory. '
                     'Allowed variables: invoices_df, pd, current_date. '
-                    'Start by copying the dataframe: df = invoices_df.copy(). '
+                    'pd is already available; do not import pandas. '
+                    'current_date is already available from Python; do not import datetime, do not redefine current_date, and never assume the current year from memory. '
+                    'Start by copying the dataframe exactly like this: df = invoices_df.copy(). '
                     'Allowed analysis: counts, sums, grouping, period filters, payment_status_canonical/customer/currency filters, comparisons, limited lists. '
                     'Use payment_status_canonical for paid, pending payment, and overdue questions; do not treat invoice_status_raw as bank-confirmed payment truth. '
                     'Forbidden: imports, file/network/system calls, SQL, DB access, writes, eval, exec, compile, open, __import__, os, sys, subprocess, socket, requests, pathlib, sqlite3, dunder access. '
+                    'Assign the final JSON-serializable dict to variable result. '
                     'Required result shape: {"summary": {...}, "tables": {...}, "warnings": [...], "answer_hints": [...]}. '
                     'If the question asks to edit, delete, send, mark paid, or otherwise mutate invoices, return a result that refuses the write request in warnings and answer_hints; do not perform a mutation.'
                 ),

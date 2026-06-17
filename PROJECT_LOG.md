@@ -1,5 +1,33 @@
 # PROJECT_LOG
 
+## 2026-06-17 - Session 147 - Invoice analytics planner import-boilerplate fix
+
+Summary:
+- Investigated live post-deploy smoke where `invoice_analytics` routed
+  correctly but returned the safe validation-stop answer instead of executing.
+- Server-side mock `message.answer` smoke showed the real generated planner
+  code included forbidden `import pandas as pd` and
+  `from datetime import datetime` boilerplate despite the prompt.
+- Added planner-side normalization that strips only the known harmless
+  `import pandas as pd` / `from datetime import datetime` boilerplate and
+  redundant `current_date = datetime.strptime(...)` assignment before the
+  existing AST safe executor validation. Other imports remain visible and are
+  rejected by planner or executor validation.
+- Kept executor authority unchanged: imports remain forbidden and any
+  remaining unsafe code is still rejected before execution.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_analytics_planner.py`
+  - 7 passed.
+- `python -m pytest -q tests/test_safe_python_analytics_executor.py`
+  - 21 passed.
+- `python -m pytest -q tests/test_invoice_analytics_dataset.py`
+  - 4 passed.
+- `python -m pytest -q`
+  - 1669 passed, 7 subtests passed.
+- `git diff --check`
+  - passed with line-ending conversion warnings only.
+
 ## 2026-06-16 - Session 146 - Invoice analytics runtime pilot
 
 Summary:
