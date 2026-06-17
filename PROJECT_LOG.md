@@ -19,6 +19,10 @@ Summary:
   but timed out in Docker because child-process spawn plus pandas startup did
   not fit the original 2-second default. Increased the default hard timeout to
   10 seconds while preserving terminate/kill isolation on timeout.
+- A second server mock smoke still showed intermittent safe-stop responses from
+  Linux container execution paths using `spawn`. Switched Linux/Unix execution
+  context to `fork` while keeping Windows on `spawn`, preserving the separate
+  process and timeout-kill boundary.
 
 Verification:
 - `python -m pytest -q tests/test_invoice_analytics_planner.py`

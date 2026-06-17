@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 import json
 import multiprocessing as mp
+import sys
 from queue import Empty
 from typing import Any
 
@@ -216,7 +217,7 @@ def execute_invoice_analytics_code(
     timeout_seconds: float = 10.0,
 ) -> AnalyticsExecutionResult:
     validate_analytics_code(code)
-    context = mp.get_context('spawn')
+    context = _execution_context()
     output_queue = context.Queue(maxsize=1)
     process = context.Process(
         target=_analytics_worker,
@@ -281,6 +282,15 @@ def _analytics_worker(
         output_queue.put(('execution_error', str(exc), ()))
     except Exception:
         output_queue.put(('execution_error', 'execution_failed', ()))
+
+
+def _execution_context() -> mp.context.BaseContext:
+    if sys.platform != 'win32':
+        try:
+            return mp.get_context('fork')
+        except ValueError:
+            pass
+    return mp.get_context('spawn')
 
 
 def _close_process(process: mp.Process) -> None:
