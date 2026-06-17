@@ -15,6 +15,10 @@ Summary:
   rejected by planner or executor validation.
 - Kept executor authority unchanged: imports remain forbidden and any
   remaining unsafe code is still rejected before execution.
+- Follow-up production smoke showed sanitized planner code passed validation
+  but timed out in Docker because child-process spawn plus pandas startup did
+  not fit the original 2-second default. Increased the default hard timeout to
+  10 seconds while preserving terminate/kill isolation on timeout.
 
 Verification:
 - `python -m pytest -q tests/test_invoice_analytics_planner.py`

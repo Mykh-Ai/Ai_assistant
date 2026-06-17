@@ -213,7 +213,7 @@ def execute_invoice_analytics_code(
     code: str,
     invoices_df: pd.DataFrame,
     current_date: date,
-    timeout_seconds: float = 2.0,
+    timeout_seconds: float = 10.0,
 ) -> AnalyticsExecutionResult:
     validate_analytics_code(code)
     context = mp.get_context('spawn')
