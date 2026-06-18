@@ -2,6 +2,8 @@
 
 Status: partial runtime pilot as of 2026-06-16.
 
+This contract follows `docs/llm/Safe_Data_Analyst_Runtime_Checklist.md`.
+
 This contract defines the bounded runtime for canonical top-level action
 `invoice_analytics`.
 
@@ -121,6 +123,9 @@ The planner returns strict JSON only:
 }
 ```
 
+`answer_language` is retained only as planner metadata/legacy shape. It must
+not control the final user-facing business answer language.
+
 `analysis_code` must assign a JSON-serializable dict to variable `result`.
 
 Required `result` shape:
@@ -147,6 +152,20 @@ Allowed analysis patterns:
 Write requests such as mark paid, edit, delete, send, archive, upload, or
 generate should produce a refusal in `warnings` / `answer_hints` and no side
 effect.
+
+## Final Answer Language
+
+Final invoice analytics answers use Slovak business language by default.
+
+The user may ask in Slovak, Ukrainian, Russian, or mixed/STT-noisy language.
+The planner may understand multilingual input, but it must not choose the
+final business language. Python owns the final answer language policy and
+passes a controlled Slovak setting to the answerer.
+
+The final answer LLM must be instructed to answer in Slovak business language
+and to use only the Python-computed result plus safe dataset metadata. Planner
+`answer_language` values such as `uk`, `ru`, or `mixed` must not override the
+Slovak business-answer policy.
 
 ## Safe Executor
 

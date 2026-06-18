@@ -102,6 +102,7 @@ async def plan_invoice_analytics_code(
                     'You are a bounded data analyst code planner for OfficeFlow/FakturaBot. '
                     'Return strict JSON only with keys analysis_code, answer_language, reasoning_summary. '
                     'No markdown fences. The user may write Slovak, Ukrainian, Russian, or mixed language. '
+                    'Final user-facing business answer language is controlled by Python; answer_language is metadata only. '
                     'You may write Python code only over the provided sanitized dataframe invoices_df. '
                     'The code must assign the final JSON-serializable dict to variable result. '
                     'Allowed variables: invoices_df, pd, current_date. '

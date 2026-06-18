@@ -41,6 +41,11 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- `invoice_analytics` final LLM-written answers now use Python-controlled
+  Slovak business language by default instead of mirroring the user's input
+  language; a reusable Safe Data Analyst Runtime checklist documents the
+  read-only analytics sandbox, status-semantics, timeout, normalization, and
+  language-policy rules for future analytics domains.
 - Top-level unknown InfoHelp guidance now explicitly mentions that the bot can
   count saved outgoing invoices for a calendar-year summary.
 - InfoHelp/Product Truth handling now distinguishes supported read-only yearly

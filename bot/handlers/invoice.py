@@ -83,6 +83,7 @@ _CREATE_INVOICE_INTENT = 'create_invoice'
 _SHOW_EXISTING_INVOICE_INTENT = 'show_existing_invoice'
 _INVOICE_PERIOD_SUMMARY_INTENT = 'invoice_period_summary'
 _INVOICE_ANALYTICS_INTENT = 'invoice_analytics'
+_INVOICE_ANALYTICS_FINAL_ANSWER_LANGUAGE = 'sk'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
 _DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
@@ -305,7 +306,7 @@ async def _run_invoice_analytics(
             dataset_metadata=metadata,
             api_key=config.openai_api_key,
             model=config.openai_llm_model,
-            answer_language=plan.answer_language,
+            answer_language=_INVOICE_ANALYTICS_FINAL_ANSWER_LANGUAGE,
         )
         await message.answer(answer)
     except InvoiceAnalyticsPlanError:

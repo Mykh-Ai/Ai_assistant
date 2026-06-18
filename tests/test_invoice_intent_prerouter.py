@@ -1544,6 +1544,7 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
         assert kwargs['computed_result']['summary']['invoice_count'] == 1
         assert kwargs['computed_result']['summary']['total'] == 300.0
         assert 'supplier_telegram_id' not in kwargs['dataset_metadata']
+        assert kwargs['answer_language'] == 'sk'
         return 'Máte 1 faktúru v sume 300.00 EUR.'
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)

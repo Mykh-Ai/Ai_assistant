@@ -1,5 +1,50 @@
 # PROJECT_LOG
 
+## 2026-06-18 - Session 148 - Safe data analyst checklist and analytics language policy
+
+Summary:
+- Added `docs/llm/Safe_Data_Analyst_Runtime_Checklist.md` as the reusable
+  checklist for future read-only LLM-generated analytics runtimes.
+- Recorded the invoice analytics pilot lessons: raw lifecycle status is not
+  payment/business truth, LLM boilerplate imports need narrow normalization,
+  Docker/Linux process timeout behavior must be verified in production, and
+  final business answer language must be Python-controlled.
+- Updated the invoice analytics runtime contract to reference the universal
+  checklist while keeping invoice-specific dataset/payment semantics and
+  unsupported boundaries in the invoice contract.
+- Hardened `invoice_analytics` final-answer behavior so planner
+  `answer_language` metadata cannot override the default Slovak business
+  answer policy.
+
+Preflight:
+- Docs/contracts read: AGENTS, AI Layer Implementation Standards, FakturaBot
+  LLM Orchestrator Contract, Product Truth Layer, Evaluation and Smoke Test
+  Standards, Invoice Analytics Runtime Contract, PROJECT_LOG, and recent
+  invoice analytics commits `b65e72a`, `da048f2`, `95d5419`, and `d812502`.
+- Touched scopes: LLM planner prompt, final answerer prompt/payload, invoice
+  analytics handler handoff, docs/contracts, tests, project log, changelog.
+- Current implementation status: `partial` for invoice analytics; no new
+  receipt, incoming invoice, bank, tax, accounting, or write analytics domain
+  was implemented.
+- AI maturity level: bounded read-only analytics pilot remains under the
+  existing partial runtime model.
+- Out of scope: executor policy changes, scheduler/deploy changes, new data
+  domains, DB/storage writes, Google Drive upload, payment semantics changes.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_analytics_answerer.py`
+  - 1 passed.
+- `python -m pytest -q tests/test_invoice_analytics_planner.py`
+  - 18 passed.
+- `python -m pytest -q tests/test_safe_python_analytics_executor.py`
+  - 21 passed.
+- `python -m pytest -q tests/test_invoice_analytics_dataset.py`
+  - 4 passed.
+- `python -m pytest -q`
+  - 1681 passed, 7 subtests passed.
+- `git diff --check`
+  - passed with line-ending conversion warnings only.
+
 ## 2026-06-17 - Session 147 - Invoice analytics planner import-boilerplate fix
 
 Summary:

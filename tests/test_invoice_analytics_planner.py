@@ -1,8 +1,13 @@
+import asyncio
+import json
+from types import SimpleNamespace
+
 import pytest
 
 from bot.services.invoice_analytics_planner import (
     InvoiceAnalyticsPlanError,
     parse_invoice_analytics_plan,
+    plan_invoice_analytics_code,
 )
 from bot.services.safe_python_analytics_executor import (
     AnalyticsCodeValidationError,
@@ -30,6 +35,61 @@ def test_invoice_analytics_plan_strips_common_forbidden_import_boilerplate() -> 
     assert 'datetime.strptime' not in plan.analysis_code
     assert plan.analysis_code.startswith('df = invoices_df.copy()')
     validate_analytics_code(plan.analysis_code)
+
+
+class _PlannerOpenAICompletionsFake:
+    last_kwargs: dict | None = None
+
+    async def create(self, **kwargs):
+        _PlannerOpenAICompletionsFake.last_kwargs = kwargs
+        content = json.dumps(
+            {
+                'analysis_code': (
+                    'df = invoices_df.copy()\n'
+                    'result = {"summary": {"count": int(len(df))}, "tables": {}, "warnings": [], "answer_hints": []}'
+                ),
+                'answer_language': 'uk',
+                'reasoning_summary': 'count invoices',
+            }
+        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+
+class _PlannerOpenAIChatFake:
+    def __init__(self) -> None:
+        self.completions = _PlannerOpenAICompletionsFake()
+
+
+class _PlannerOpenAIFake:
+    def __init__(self, **kwargs) -> None:
+        self.chat = _PlannerOpenAIChatFake()
+
+
+def test_invoice_analytics_planner_prompt_declares_python_owned_runtime_policy(monkeypatch) -> None:
+    _PlannerOpenAICompletionsFake.last_kwargs = None
+    monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
+
+    plan = asyncio.run(
+        plan_invoice_analytics_code(
+            user_question='Скільки фактур чекає оплати?',
+            current_date_iso='2026-06-18',
+            data_catalog={'datasets': {'invoices_df': {'columns': ['payment_status_canonical']}}},
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert plan.answer_language == 'uk'
+    assert _PlannerOpenAICompletionsFake.last_kwargs is not None
+    system_prompt = _PlannerOpenAICompletionsFake.last_kwargs['messages'][0]['content']
+    assert 'pd is already available' in system_prompt
+    assert 'current_date is already available' in system_prompt
+    assert 'do not import pandas' in system_prompt
+    assert 'do not import datetime' in system_prompt
+    assert 'do not redefine current_date' in system_prompt
+    assert 'df = invoices_df.copy()' in system_prompt
+    assert 'Assign the final JSON-serializable dict to variable result' in system_prompt
+    assert 'Final user-facing business answer language is controlled by Python' in system_prompt
 
 
 @pytest.mark.parametrize(

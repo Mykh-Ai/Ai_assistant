@@ -5,6 +5,8 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+_FINAL_ANSWER_LANGUAGE = 'sk'
+
 
 async def answer_invoice_analytics(
     *,
@@ -16,6 +18,7 @@ async def answer_invoice_analytics(
     model: str,
     answer_language: str = 'sk',
 ) -> str:
+    final_answer_language = _normalize_final_answer_language(answer_language)
     if api_key and api_key.startswith('sk-'):
         try:
             client = AsyncOpenAI(api_key=api_key)
@@ -30,7 +33,8 @@ async def answer_invoice_analytics(
                             'Use only the provided computed_result and dataset_metadata. '
                             'Do not invent numbers, invoices, customers, tax conclusions, accounting advice, or unsupported capabilities. '
                             'If result is empty, say that no matching outgoing invoices were found. '
-                            'Keep the answer concise and in the user language where possible. '
+                            'Answer in Slovak business language. Do not mirror Ukrainian, Russian, or mixed user input. '
+                            'Keep the answer concise and professional. '
                             'Mention that this is read-only outgoing-invoice analytics when relevant.'
                         ),
                     },
@@ -40,7 +44,7 @@ async def answer_invoice_analytics(
                             {
                                 'user_question': user_question,
                                 'current_date_iso': current_date_iso,
-                                'answer_language': answer_language,
+                                'final_answer_language': final_answer_language,
                                 'dataset_metadata': dataset_metadata,
                                 'computed_result': computed_result,
                             },
@@ -55,6 +59,10 @@ async def answer_invoice_analytics(
         except Exception:
             pass
     return build_invoice_analytics_fallback_answer(computed_result, dataset_metadata=dataset_metadata)
+
+
+def _normalize_final_answer_language(_answer_language: str | None) -> str:
+    return _FINAL_ANSWER_LANGUAGE
 
 
 def build_invoice_analytics_fallback_answer(
