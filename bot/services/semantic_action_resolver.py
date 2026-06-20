@@ -174,6 +174,11 @@ def _matches_top_level_show_invoice(tokens: set[str]) -> bool:
     return bool(tokens.intersection(show_verbs)) and bool(tokens.intersection(invoice_targets))
 
 
+def _has_existing_invoice_number_reference(text: str) -> bool:
+    numbers = re.findall(r'\b\d+\b', text)
+    return any(not (len(value) == 4 and value.startswith(('19', '20'))) for value in numbers)
+
+
 def _matches_invoice_period_summary(text: str, tokens: set[str]) -> bool:
     if tokens.intersection(_MONTH_PERIOD_TERMS):
         return False
@@ -638,6 +643,25 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'delete_user_database'
         if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'відправ', 'отправь'}):
             return 'send_invoice'
+        has_existing_invoice_reference = _has_existing_invoice_number_reference(normalized_text)
+        if (
+            has_existing_invoice_reference
+            and 'edit_existing_invoice' in allowed
+            and _matches_top_level_edit_existing_invoice(tokens)
+        ):
+            return 'edit_existing_invoice'
+        if (
+            has_existing_invoice_reference
+            and 'delete_existing_invoice' in allowed
+            and _matches_top_level_delete_invoice(tokens)
+        ):
+            return 'delete_existing_invoice'
+        if (
+            has_existing_invoice_reference
+            and 'show_existing_invoice' in allowed
+            and _matches_top_level_show_invoice(tokens)
+        ):
+            return 'show_existing_invoice'
         if (
             'invoice_analytics' in allowed
             and 'invoice_period_summary' not in allowed

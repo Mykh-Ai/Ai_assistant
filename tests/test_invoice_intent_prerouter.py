@@ -1,6 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +24,7 @@ from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.product_truth import list_capabilities
 from bot.services.info_help import InfoHelpTriageResult, build_top_level_unknown_guidance
 from bot.services.invoice_analytics_planner import InvoiceAnalyticsPlan
+from bot.services.safe_python_analytics_executor import AnalyticsCodeValidationError
 from bot.services.db import init_db
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.service_alias_service import ServiceAliasService
@@ -99,6 +101,18 @@ def _config_with_api_key(tmp_path: Path) -> Config:
     return Config(
         bot_token='token',
         openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'test.db',
+        storage_dir=tmp_path,
+    )
+
+
+def _config_with_valid_api_key(tmp_path: Path) -> Config:
+    return Config(
+        bot_token='token',
+        openai_api_key='sk-test',
         openai_stt_model='whisper-1',
         openai_llm_model='gpt-4o',
         debug_invoice_transparency=False,
@@ -395,6 +409,37 @@ def test_top_level_edit_existing_invoice_short_reference_beats_create_invoice() 
     ) == 'edit_existing_invoice'
 
 
+@pytest.mark.parametrize(
+    ('user_input', 'expected_action'),
+    [
+        ('покажи фактуру 04', 'show_existing_invoice'),
+        ('upraviť fakturu 05', 'edit_existing_invoice'),
+        ('покажи видатки за цей рік', 'unknown'),
+    ],
+)
+def test_smoke_nearby_invoice_top_actions_stay_out_of_invoice_analytics(
+    user_input: str,
+    expected_action: str,
+) -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=[
+                'create_invoice',
+                'invoice_period_summary',
+                'invoice_analytics',
+                'show_existing_invoice',
+                'edit_existing_invoice',
+                'show_recent_accounting_documents',
+                'unknown',
+            ],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected_action
+
+
 def test_pdf_template_question_does_not_resolve_to_invoice_edit_action() -> None:
     result = asyncio.run(
         resolve_semantic_action(
@@ -558,6 +603,11 @@ def test_invoice_period_summary_uses_bounded_period_value_resolver(tmp_path: Pat
         calls.append(kwargs)
         if kwargs['context_name'] == 'top_level_action':
             return 'invoice_analytics'
+        if kwargs['context_name'] == 'invoice_analytics_execution_strategy':
+            assert kwargs['allowed_actions'] == ['whole_calendar_year_summary', 'safe_analytics_runtime', 'unknown']
+            assert 'whole_calendar_year_summary' in kwargs['action_hints']
+            assert 'safe_runtime_examples' in kwargs['auxiliary_context']
+            return 'whole_calendar_year_summary'
         if kwargs['context_name'] == 'invoice_summary_period_selection':
             assert kwargs['allowed_actions'] == ['current_year', 'previous_year', 'unknown']
             assert 'current_year' in kwargs['action_hints']
@@ -566,7 +616,7 @@ def test_invoice_period_summary_uses_bounded_period_value_resolver(tmp_path: Pat
         return 'unknown'
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
-    config = _config(tmp_path)
+    config = _config_with_valid_api_key(tmp_path)
     message = _authorized_message('На яку суму я виставив фактур цього року?', telegram_id=111)
     state = _DummyState()
 
@@ -574,6 +624,7 @@ def test_invoice_period_summary_uses_bounded_period_value_resolver(tmp_path: Pat
 
     assert [call['context_name'] for call in calls] == [
         'top_level_action',
+        'invoice_analytics_execution_strategy',
         'invoice_summary_period_selection',
     ]
     assert 'Za aktuálny rok 2026 som vo vašom účte nenašiel žiadne vystavené faktúry.' in message.answers[-1]
@@ -600,6 +651,145 @@ def test_process_invoice_text_month_invoice_question_does_not_use_yearly_fallbac
 
     assert 'Zatiaľ viem spočítať vystavené faktúry za kalendárny rok' not in message.answers[-1]
     assert 'uložené vystavené faktúry na analýzu' in message.answers[-1]
+    assert state.cleared is True
+
+
+def test_process_invoice_text_quarter_invoice_question_uses_safe_analytics_runtime(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[dict] = []
+
+    async def _resolver(**kwargs) -> str:
+        calls.append(kwargs)
+        if kwargs['context_name'] == 'top_level_action':
+            return 'invoice_analytics'
+        if kwargs['context_name'] == 'invoice_analytics_execution_strategy':
+            assert 'whole_calendar_year_summary' in kwargs['allowed_actions']
+            assert 'safe_analytics_runtime' in kwargs['allowed_actions']
+            return 'safe_analytics_runtime'
+        return 'unknown'
+
+    async def _unexpected_planner(**kwargs) -> InvoiceAnalyticsPlan:
+        raise AssertionError('planner must not run for empty dataset')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _unexpected_planner)
+
+    message = _authorized_message('На яку суму я виставив фактури за перший квартал 2026?', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=_config_with_valid_api_key(tmp_path),
+            invoice_text=message.text,
+        )
+    )
+
+    assert [call['context_name'] for call in calls] == [
+        'top_level_action',
+        'invoice_analytics_execution_strategy',
+    ]
+    assert 'Súhrn vystavených faktúr za rok 2026' not in message.answers[-1]
+    assert 'uložené vystavené faktúry na analýzu' in message.answers[-1]
+    assert state.cleared is True
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Porovnaj vystavené faktúry za február a apríl 2026.',
+        'Koľko som vyfakturoval za druhý kvartál 2026?',
+        'Скільки було виставлених фактур за останні 90 днів?',
+    ],
+)
+def test_smoke_invoice_analytics_new_questions_reach_safe_runtime(
+    tmp_path: Path,
+    monkeypatch,
+    user_input: str,
+) -> None:
+    config = _config_with_valid_api_key(tmp_path)
+    init_db(config.db_path)
+    InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        invoice_number='20260021',
+        issue_date='2026-04-12',
+        delivery_date='2026-04-12',
+        due_date='2026-04-26',
+        due_days=14,
+        total_amount=420,
+        currency='EUR',
+        status='created',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='servis',
+                description_normalized='Servis',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=420,
+                total_price=420,
+            )
+        ],
+    )
+    resolver_calls: list[dict] = []
+    planner_calls: list[dict] = []
+
+    async def _resolver(**kwargs) -> str:
+        resolver_calls.append(kwargs)
+        if kwargs['context_name'] == 'top_level_action':
+            return 'invoice_analytics'
+        if kwargs['context_name'] == 'invoice_analytics_execution_strategy':
+            return 'safe_analytics_runtime'
+        return 'unknown'
+
+    async def _planner(**kwargs) -> InvoiceAnalyticsPlan:
+        planner_calls.append(kwargs)
+        assert kwargs['user_question'] == user_input
+        assert kwargs['repair_feedback'] is None
+        return InvoiceAnalyticsPlan(
+            analysis_code=(
+                'df = invoices_df.copy()\n'
+                'result = {"summary": {"invoice_count": int(len(df)), "total": float(df["total_amount"].sum())}, '
+                '"tables": {}, "warnings": [], "answer_hints": []}'
+            ),
+            answer_language='sk',
+            reasoning_summary='safe smoke runtime plan',
+        )
+
+    def _execute(**kwargs):
+        assert 'current_date' in kwargs
+        return SimpleNamespace(
+            result={'summary': {'invoice_count': 1, 'total': 420.0}, 'tables': {}, 'warnings': [], 'answer_hints': []},
+            warnings=(),
+        )
+
+    async def _answer(**kwargs) -> str:
+        assert kwargs['user_question'] == user_input
+        assert kwargs['answer_language'] == 'sk'
+        assert kwargs['computed_result']['summary'] == {'invoice_count': 1, 'total': 420.0}
+        return 'Za zadané obdobie evidujem 1 vystavenú faktúru v sume 420.00 EUR.'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _planner)
+    monkeypatch.setattr('bot.handlers.invoice.execute_invoice_analytics_code', _execute)
+    monkeypatch.setattr('bot.handlers.invoice.answer_invoice_analytics', _answer)
+
+    message = _authorized_message(user_input, telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert [call['context_name'] for call in resolver_calls] == [
+        'top_level_action',
+        'invoice_analytics_execution_strategy',
+    ]
+    assert len(planner_calls) == 1
+    assert message.answers[-1] == 'Za zadané obdobie evidujem 1 vystavenú faktúru v sume 420.00 EUR.'
+    assert 'kalendárny rok' not in message.answers[-1]
     assert state.cleared is True
 
 
@@ -1567,6 +1757,154 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
     assert not (tmp_path / 'invoices').exists()
 
 
+def test_invoice_analytics_validation_stop_logs_reason(tmp_path: Path, monkeypatch, caplog) -> None:
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        invoice_number='20260001',
+        issue_date='2026-05-10',
+        delivery_date='2026-05-10',
+        due_date='2026-05-24',
+        due_days=14,
+        total_amount=300,
+        currency='EUR',
+        status='created',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='oprava',
+                description_normalized='Oprava',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=300,
+                total_price=300,
+            )
+        ],
+    )
+
+    async def _resolver(**kwargs) -> str:
+        return 'invoice_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
+
+    async def _planner(**kwargs) -> InvoiceAnalyticsPlan:
+        return InvoiceAnalyticsPlan(
+            analysis_code='df = invoices_df.copy()\nresult = {}',
+            answer_language='sk',
+            reasoning_summary='validation failure test',
+        )
+
+    def _execute(**kwargs):
+        raise AnalyticsCodeValidationError('name_not_allowed:datetime')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _planner)
+    monkeypatch.setattr('bot.handlers.invoice.execute_invoice_analytics_code', _execute)
+
+    message = _authorized_message('Покажи фактури за травень', telegram_id=111)
+    state = _DummyState()
+
+    with caplog.at_level('WARNING', logger='bot.handlers.invoice'):
+        asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert 'Analytický výpočet som zastavil' in message.answers[-1]
+    assert any(
+        'Invoice analytics execution stopped' in record.message
+        and 'AnalyticsCodeValidationError' in record.message
+        and 'name_not_allowed:datetime' in record.message
+        and 'row_count=1' in record.message
+        for record in caplog.records
+    )
+
+
+def test_invoice_analytics_repairs_invalid_generated_code_before_user_fallback(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+) -> None:
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        invoice_number='20260001',
+        issue_date='2026-05-10',
+        delivery_date='2026-05-10',
+        due_date='2026-05-24',
+        due_days=14,
+        total_amount=300,
+        currency='EUR',
+        status='created',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='oprava',
+                description_normalized='Oprava',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=300,
+                total_price=300,
+            )
+        ],
+    )
+    planner_calls: list[dict] = []
+
+    async def _resolver(**kwargs) -> str:
+        return 'invoice_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
+
+    async def _planner(**kwargs) -> InvoiceAnalyticsPlan:
+        planner_calls.append(kwargs)
+        if len(planner_calls) == 1:
+            assert kwargs['repair_feedback'] is None
+            return InvoiceAnalyticsPlan(
+                analysis_code='df = invoices_df.copy()\nvalue = datetime.now()\nresult = {}',
+                answer_language='uk',
+                reasoning_summary='invalid first plan',
+            )
+        assert kwargs['repair_feedback']['stage'] == 'execution'
+        assert kwargs['repair_feedback']['error_type'] == 'AnalyticsCodeValidationError'
+        assert kwargs['repair_feedback']['error_reason'] == 'name_not_allowed:datetime'
+        assert 'datetime.now()' in kwargs['repair_feedback']['previous_analysis_code']
+        return InvoiceAnalyticsPlan(
+            analysis_code=(
+                'df = invoices_df.copy()\n'
+                'result = {"summary": {"invoice_count": int(len(df)), "total": float(df["total_amount"].sum())}, "tables": {}, "warnings": [], "answer_hints": []}'
+            ),
+            answer_language='uk',
+            reasoning_summary='opraveny plan: suma ulozenych vystavenych faktur',
+        )
+
+    def _execute(**kwargs):
+        if 'datetime.now()' in kwargs['code']:
+            raise AnalyticsCodeValidationError('name_not_allowed:datetime')
+        return SimpleNamespace(
+            result={'summary': {'invoice_count': 1, 'total': 300.0}, 'tables': {}, 'warnings': [], 'answer_hints': []},
+            warnings=(),
+        )
+
+    async def _answer(**kwargs) -> str:
+        assert kwargs['computed_result']['summary'] == {'invoice_count': 1, 'total': 300.0}
+        assert kwargs['answer_language'] == 'sk'
+        return 'Máte 1 faktúru v sume 300.00 EUR.'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _planner)
+    monkeypatch.setattr('bot.handlers.invoice.execute_invoice_analytics_code', _execute)
+    monkeypatch.setattr('bot.handlers.invoice.answer_invoice_analytics', _answer)
+
+    message = _authorized_message('Покажи фактури за травень', telegram_id=111)
+    state = _DummyState()
+
+    with caplog.at_level('WARNING', logger='bot.handlers.invoice'):
+        asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert len(planner_calls) == 2
+    assert message.answers[-1] == 'Máte 1 faktúru v sume 300.00 EUR.'
+    assert 'Analytický výpočet som zastavil' not in message.answers[-1]
+    assert state.cleared is True
+    assert any('attempt=1' in record.message and 'name_not_allowed:datetime' in record.message for record in caplog.records)
+
+
 def test_process_invoice_text_invoice_analytics_missing_db_returns_empty_answer(tmp_path: Path, monkeypatch) -> None:
     async def _resolver(**kwargs) -> str:
         return 'invoice_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
@@ -1594,6 +1932,7 @@ def test_process_invoice_text_invoice_analytics_missing_db_returns_empty_answer(
     [
         'Ти можеш порахувати видатки згідно чеків по місяцям?',
         'Покажи витрати по чеках за місяцями.',
+        'покажи видатки за цей рік',
         'Vieš analyzovať výdavky podľa bločkov?',
         'Can you analyze my receipts by month?',
     ],

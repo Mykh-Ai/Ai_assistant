@@ -62,6 +62,15 @@ strategy under `invoice_analytics`; month-specific, multi-month, comparison,
 customer, status, grouping, list, and average questions must stay in the safe
 analytics runtime instead of falling into yearly-only guidance.
 
+Before using the internal yearly fast path, Python must establish that the
+question is exactly a whole-calendar-year count/total summary. This gate must
+not depend on a partial dictionary of month or quarter names. When an LLM is
+available, Python should use a bounded strategy decision with outputs such as
+`whole_calendar_year_summary`, `safe_analytics_runtime`, and `unknown`.
+Questions about months, quarters, custom date ranges, customers, statuses,
+comparisons, lists, averages, top rankings, or ambiguous periods must choose
+`safe_analytics_runtime`.
+
 ## Dataset Boundary
 
 The runtime builds one dataframe: `invoices_df`.
@@ -142,6 +151,28 @@ Required `result` shape:
 }
 ```
 
+Before writing `analysis_code`, the planner prompt must require an internal
+workflow:
+
+1. normalize the user request into Slovak FakturaBot business semantics;
+2. identify the analysis kind, such as sum, count, list, comparison, grouping,
+   average, or payment-status analysis;
+3. identify the exact period, such as explicit year, current year, month or
+   months, date range, relative period, or `unknown`;
+4. choose the date column: `issue_date` by default for issued invoices,
+   `delivery_date` for delivery/service-date wording, and `due_date` for
+   due-date/splatnost wording;
+5. identify row filters such as customer, currency,
+   `payment_status_canonical`, month numbers, years, or date range;
+6. identify only the required `invoices_df` columns from the data catalog;
+7. write sandbox-safe pandas code;
+8. self-check that the code answers the normalized question and returns the
+   facts required for the final Slovak business answer.
+
+The planner may record the concise normalized plan in `reasoning_summary`, but
+the final user-facing answer is still generated only after Python validates
+and executes the code.
+
 Allowed analysis patterns:
 
 - count invoices;
@@ -155,6 +186,32 @@ Allowed analysis patterns:
 Write requests such as mark paid, edit, delete, send, archive, upload, or
 generate should produce a refusal in `warnings` / `answer_hints` and no side
 effect.
+
+## Planner Repair Loop
+
+If the first generated plan fails parsing, AST validation, or sandbox
+execution, Python should not immediately show the user a generic failure when a
+bounded repair attempt remains available.
+
+Python may send structured repair feedback back to the planner:
+
+```json
+{
+  "stage": "planning|execution",
+  "error_type": "InvoiceAnalyticsPlanError|AnalyticsCodeValidationError|AnalyticsExecutionError",
+  "error_reason": "short validator/runtime reason",
+  "previous_analysis_code": "previous generated code when available"
+}
+```
+
+The planner must return a complete replacement `analysis_code` for the same
+user question. Python still validates and executes the repaired code through
+the same safe executor. Only after the configured repair attempts are exhausted
+may the handler show a safe fallback to the user.
+
+Server/runtime logs should include the stop reason, error type, attempt number,
+channel, and sanitized dataset row count. Logs must not expose cross-tenant
+data, PDF paths, DB paths, secrets, or broad raw persisted content.
 
 ## Final Answer Language
 

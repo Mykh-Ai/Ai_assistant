@@ -1,5 +1,68 @@
 # PROJECT_LOG
 
+## 2026-06-20 - Session 151 - Invoice analytics planner workflow and repair loop
+
+Summary:
+- Tightened the `invoice_analytics` planner prompt into a generic workflow:
+  normalize the user request into Slovak FakturaBot business semantics, identify
+  analysis kind, period, date column, row filters, required dataframe columns,
+  sandbox-safe pandas code, and self-check that the computed result can answer
+  the request.
+- Added a bounded planner repair loop: if generated code fails planning,
+  validation, or sandbox execution, Python logs the sanitized reason and sends
+  structured repair feedback back to the planner before showing a user-facing
+  fallback.
+- Replaced the yearly fast-path gate with a bounded execution-strategy decision
+  (`whole_calendar_year_summary` vs `safe_analytics_runtime`) when an LLM key is
+  available, so month, quarter, date-range, customer/status/list/comparison,
+  and ambiguous-period questions do not depend on partial month-name
+  dictionaries before reaching the safe analytics runtime.
+- Fixed the top-level resolver priority for explicit existing-invoice number
+  references so `show/edit/delete invoice 04` style requests stay in the
+  existing invoice flows instead of being captured by invoice analytics; plain
+  four-digit years such as `2026` are not treated as invoice-number references.
+- Kept final user-facing invoice analytics answers Python-controlled as Slovak
+  business language; planner `answer_language` remains metadata only.
+
+Preflight:
+- Docs/contracts read: AGENTS, AI Layer Implementation Standards, Safe Data
+  Analyst Runtime Checklist, Product Truth Layer, FakturaBot LLM Orchestrator
+  Contract, Invoice Analytics Runtime Contract, current planner/handler/tests,
+  and focused memory notes for invoice analytics/Slovak final answers.
+- Touched scopes: invoice analytics planner prompt, handler retry/fallback
+  behavior, yearly fast-path gate, runtime logging, contract docs, tests,
+  project log. Not touched:
+  DB schema, storage, PDF generation, authorization, STT/LMM, Product Truth
+  status, receipt/bank/tax analytics support, server/deploy.
+- Current implementation status: `partial` read-only invoice analytics pilot.
+- AI maturity level: Level 2 bounded analytics interpretation/explanation with
+  Python validation and no side effects; this is not full accounting analytics
+  and not adaptive workflow.
+- Out of scope: hardcoding March/May behavior, adding receipt analytics,
+  changing tenant scoping, or promising a result after all safe repair attempts
+  fail.
+- User journey proof: a non-yearly invoice analytics request can recover from a
+  rejected generated code plan through structured repair feedback and then
+  return a Slovak business answer from Python-computed results; a quarter
+  invoice analytics question is routed to safe analytics runtime instead of the
+  deterministic yearly summary; smoke coverage now includes new invoice
+  analytics phrasings, exact `покажи фактуру 04` / `upraviť fakturu 05` routes,
+  and the unsupported `покажи видатки за цей рік` guard.
+
+Verification:
+- `python -m pytest -q tests\test_invoice_analytics_planner.py tests\test_invoice_intent_prerouter.py::test_invoice_analytics_validation_stop_logs_reason tests\test_invoice_intent_prerouter.py::test_invoice_analytics_repairs_invalid_generated_code_before_user_fallback tests\test_invoice_intent_prerouter.py::test_process_invoice_text_runs_invoice_analytics_without_side_effects tests\test_safe_python_analytics_executor.py tests\test_invoice_analytics_answerer.py`
+  - 44 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py tests\test_product_truth.py tests\test_info_help.py tests\test_voice_state_routing.py`
+  - 354 passed.
+- `python -m pytest -q`
+  - 1715 passed, 7 subtests passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py -k "smoke or unsupported_expense_domains or quarter_invoice_question"`
+  - 17 passed, 169 deselected.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py -k "show_existing_invoice or edit_existing_invoice or nearby_invoice_top_actions"`
+  - 8 passed, 178 deselected.
+- `git diff --check`
+  - passed with line-ending conversion warnings only.
+
 ## 2026-06-20 - Session 150 - Invoice analytics routing and InfoHelp honesty guards
 
 Summary:
