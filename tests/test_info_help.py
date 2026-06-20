@@ -802,7 +802,7 @@ def test_llm_unknown_classification_returns_no_triage_answer(monkeypatch) -> Non
 
     answer = asyncio.run(
         build_info_help_triage_guidance_with_llm(
-            user_input_text='cashflow dashboard maybe',
+            user_input_text='nejasny dashboard maybe',
             api_key='sk-test',
             model='gpt-4o',
         )
@@ -962,13 +962,13 @@ def test_info_help_triage_business_feature_request() -> None:
         'На якую суму я выставіў фактур у гэтым годзе?',
     ],
 )
-def test_direct_invoice_period_summary_request_does_not_intercept_top_level_action(user_input: str) -> None:
+def test_direct_yearly_invoice_summary_request_is_invoice_analytics_capability(user_input: str) -> None:
     assert build_product_truth_guidance(user_input_text=user_input) is None
 
     result = classify_info_help_triage(user_input_text=user_input)
 
     assert result.triage_class == 'known_product_capability'
-    assert result.capability_id == 'invoice_period_summary'
+    assert result.capability_id == 'invoice_analytics'
     assert result.business_need == ''
 
 
@@ -976,15 +976,14 @@ def test_invoice_period_summary_capability_question_renders_supported_product_tr
     answer = build_product_truth_guidance(user_input_text='Vieš spočítať súhrn faktúr za 2026?')
 
     assert answer is not None
-    assert 'Súhrn faktúr za rok' in answer
-    assert 'podporované' in answer
-    assert 'read-only výpočet' in answer
-    assert 'už uložené odoslané faktúry' in answer
-    assert 'Súhrn faktúr za 2026' in answer
+    assert 'Analytika vystavených faktúr' in answer
+    assert 'čiastočné' in answer
+    assert 'read-only pilot' in answer
+    assert 'uloženými odoslanými faktúrami' in answer
 
     result = classify_info_help_triage(user_input_text='Vieš spočítať súhrn faktúr za 2026?')
     assert result.triage_class == 'known_product_capability'
-    assert result.capability_id == 'invoice_period_summary'
+    assert result.capability_id == 'invoice_analytics'
 
 
 def test_invoice_analytics_capability_question_renders_partial_product_truth() -> None:
@@ -995,6 +994,8 @@ def test_invoice_analytics_capability_question_renders_partial_product_truth() -
     assert 'čiastočné' in answer
     assert 'read-only pilot' in answer
     assert 'uloženými odoslanými faktúrami' in answer
+    assert 'normalizovaný stav úhrady' in answer
+    assert 'surový lifecycle status' in answer
     assert 'bankové pohyby' in answer
     assert 'nič nemení v databáze' in answer
     assert '/menu' not in answer
@@ -1002,6 +1003,67 @@ def test_invoice_analytics_capability_question_renders_partial_product_truth() -
     result = classify_info_help_triage(user_input_text='Vieš robiť analytiku faktúr?')
     assert result.triage_class == 'known_product_capability'
     assert result.capability_id == 'invoice_analytics'
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Vieš analyzovať bločky?',
+        'Vies kategorizovat blocky?',
+        'vydavky podla kategorii z blockov',
+        'receipt analytics',
+        '\u0430\u043d\u0430\u043b\u0456\u0442\u0438\u043a\u0430 \u0447\u0435\u043a\u0456\u0432',
+        '\u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0456\u0457 \u0447\u0435\u043a\u0456\u0432',
+        '\u0430\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430 \u0447\u0435\u043a\u043e\u0432',
+    ],
+)
+def test_receipt_analytics_questions_render_planned_prerequisite_answer(user_input: str) -> None:
+    assert classify_info_help_capability(user_input_text=user_input) == 'receipt_analytics'
+
+    result = classify_info_help_triage(user_input_text=user_input)
+    assert result.triage_class == 'known_product_capability'
+    assert result.capability_id == 'receipt_analytics'
+
+    answer = build_product_truth_guidance(user_input_text=user_input)
+    assert answer is not None
+    assert 'Analytika bločkov' in answer
+    assert 'plánované' in answer
+    assert 'ešte nie je hotová' in answer
+    assert 'kategórie bločkov' in answer
+    assert 'OCR alebo LMM extrakcia nie je finálna účtovná kategória' in answer
+    assert 'bločky prijímať a ukladať' in answer
+    assert '/add_blocek' not in answer
+    assert '\u0430\u043d\u0430\u043b' not in answer
+
+
+def test_receipt_analytics_question_is_not_routed_as_upload_receipt_how_to() -> None:
+    assert classify_info_help_capability(user_input_text='Ako pridám bloček?') == 'add_receipt_or_incoming_invoice'
+    assert classify_info_help_capability(user_input_text='Vieš analyzovať bločky?') == 'receipt_analytics'
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Vieš robiť cashflow?',
+        'Vieš analyzovať banku?',
+        'Vieš DPH report?',
+        'Vieš robiť daňovú analytiku?',
+    ],
+)
+def test_bank_cashflow_tax_questions_render_unsupported_answer(user_input: str) -> None:
+    assert classify_info_help_capability(user_input_text=user_input) == 'bank_cashflow_tax_analytics'
+
+    result = classify_info_help_triage(user_input_text=user_input)
+    assert result.triage_class == 'known_product_capability'
+    assert result.capability_id == 'bank_cashflow_tax_analytics'
+
+    answer = build_product_truth_guidance(user_input_text=user_input)
+    assert answer is not None
+    assert 'Banková, cashflow, DPH a daňová analytika' in answer
+    assert 'nepodporované' in answer
+    assert 'bankové výpisy' in answer
+    assert 'DPH report' in answer
+    assert 'daňové poradenstvo' in answer
 
 
 def test_invoice_analytics_direct_runtime_request_is_known_capability_not_new_feature() -> None:
@@ -1080,6 +1142,7 @@ def test_multilingual_and_noisy_triage_examples() -> None:
     assert classify_info_help_triage(user_input_text='Vies poslat fakturu emailom?').capability_id == 'send_invoice_email'
     assert classify_info_help_triage(user_input_text='\u0427\u0438 \u043c\u043e\u0436\u043d\u0430 \u0437\u0431\u0435\u0440\u0456\u0433\u0430\u0442\u0438 \u0444\u0430\u043a\u0442\u0443\u0440\u0438 \u043d\u0430 Google Drive?').capability_id == 'google_drive_invoice_storage'
     assert classify_info_help_triage(user_input_text='\u041c\u043e\u0436\u043d\u043e \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u0442\u044c SMS \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f?').capability_id == 'sms_reminders'
+    assert classify_info_help_triage(user_input_text='\u0430\u043d\u0430\u043b\u0456\u0442\u0438\u043a\u0430 \u0447\u0435\u043a\u0456\u0432').capability_id == 'receipt_analytics'
     assert (
         classify_info_help_triage(user_input_text='Treba mesacny report trzieb, no tak trochu').triage_class
         == TRIAGE_NEW_BUSINESS_FEATURE_REQUEST

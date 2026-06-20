@@ -450,16 +450,16 @@ def test_send_invoice_request_does_not_become_invoice_creation() -> None:
         'На якую суму я выставіў фактур у гэтым годзе?',
     ],
 )
-def test_invoice_period_summary_resolves_as_read_only_top_level_action(user_input: str) -> None:
+def test_yearly_invoice_summary_resolves_to_invoice_analytics_top_level_action(user_input: str) -> None:
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'invoice_period_summary', 'unknown'],
+            allowed_actions=['create_invoice', 'invoice_analytics', 'unknown'],
             user_input_text=user_input,
             api_key=None,
             model='gpt-4o',
         )
-    ) == 'invoice_period_summary'
+    ) == 'invoice_analytics'
 
 
 def test_process_invoice_text_answers_invoice_period_summary_without_side_effects(tmp_path: Path) -> None:
@@ -557,7 +557,7 @@ def test_invoice_period_summary_uses_bounded_period_value_resolver(tmp_path: Pat
     async def _resolver(**kwargs) -> str:
         calls.append(kwargs)
         if kwargs['context_name'] == 'top_level_action':
-            return 'invoice_period_summary'
+            return 'invoice_analytics'
         if kwargs['context_name'] == 'invoice_summary_period_selection':
             assert kwargs['allowed_actions'] == ['current_year', 'previous_year', 'unknown']
             assert 'current_year' in kwargs['action_hints']
@@ -592,13 +592,14 @@ def test_process_invoice_text_invoice_period_summary_without_db_does_not_create_
     assert not config.db_path.exists()
 
 
-def test_process_invoice_text_invoice_period_summary_asks_for_supported_year_period(tmp_path: Path) -> None:
+def test_process_invoice_text_month_invoice_question_does_not_use_yearly_fallback(tmp_path: Path) -> None:
     message = _authorized_message('Koľko bolo faktúr minulý mesiac?', telegram_id=111)
     state = _DummyState()
 
     asyncio.run(process_invoice_text(message=message, state=state, config=_config(tmp_path), invoice_text=message.text))
 
-    assert 'Zatiaľ viem spočítať vystavené faktúry za kalendárny rok' in message.answers[-1]
+    assert 'Zatiaľ viem spočítať vystavené faktúry za kalendárny rok' not in message.answers[-1]
+    assert 'uložené vystavené faktúry na analýzu' in message.answers[-1]
     assert state.cleared is True
 
 
@@ -1436,6 +1437,10 @@ def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
     'user_input',
     [
         'Покажи фактури за травень',
+        'На яку суму я виставив фактури в березні та травні?',
+        'Koľko som vystavil faktúr v marci a máji?',
+        'Porovnaj faktúry za marec a máj.',
+        'Сума фактур по місяцях.',
         'Порівняй травень 2026 і травень 2025',
         'Koľko mám neuhradených faktúr?',
         'Top klientov podľa sumy faktúr',
@@ -1445,7 +1450,7 @@ def test_invoice_analytics_resolves_as_read_only_top_level_action(user_input: st
     assert asyncio.run(
         resolve_semantic_action(
             context_name='top_level_action',
-            allowed_actions=['create_invoice', 'invoice_period_summary', 'invoice_analytics', 'unknown'],
+            allowed_actions=['create_invoice', 'invoice_analytics', 'unknown'],
             user_input_text=user_input,
             api_key=None,
             model='gpt-4o',
@@ -1584,6 +1589,89 @@ def test_process_invoice_text_invoice_analytics_missing_db_returns_empty_answer(
     assert 'read-only odoslané faktúry' in message.answers[-1]
 
 
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Ти можеш порахувати видатки згідно чеків по місяцям?',
+        'Покажи витрати по чеках за місяцями.',
+        'Vieš analyzovať výdavky podľa bločkov?',
+        'Can you analyze my receipts by month?',
+    ],
+)
+def test_process_invoice_text_invoice_analytics_rejects_unsupported_expense_domains(
+    tmp_path: Path,
+    monkeypatch,
+    user_input: str,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'invoice_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
+
+    async def _unexpected_planner(**kwargs) -> InvoiceAnalyticsPlan:
+        raise AssertionError('planner must not run for receipt or expense analytics requests')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _unexpected_planner)
+
+    message = _authorized_message(user_input, telegram_id=111)
+    state = _DummyState()
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    answer = message.answers[-1]
+    assert 'Návrh požiadavky' in answer
+    assert 'Schváliť / Upraviť / Zrušiť' in answer
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert state.cleared is False
+    draft = state.data['customization_request_draft']
+    assert draft['source_triage_class'] == 'new_business_feature_request'
+    assert draft['source_capability_id'] == 'receipt_analytics'
+    assert draft['source_topic_id'] == 'receipt_analytics'
+    assert draft['redacted_original_text'] == user_input
+    assert message.documents == []
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+
+def test_unsupported_expense_analytics_preview_approval_saves_one_request(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'invoice_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
+
+    async def _unexpected_planner(**kwargs) -> InvoiceAnalyticsPlan:
+        raise AssertionError('planner must not run for receipt or expense analytics requests')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _unexpected_planner)
+
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Ти можеш порахувати видатки згідно чеків по місяцям?', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+    asyncio.run(
+        customization_request_preview_decision(
+            message=_authorized_message('schváliť', telegram_id=111),
+            state=state,
+            config=config,
+        )
+    )
+
+    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
+    assert len(records) == 1
+    assert records[0].source_triage_class == 'new_business_feature_request'
+    assert records[0].source_capability_id == 'receipt_analytics'
+    assert records[0].source_topic_id == 'receipt_analytics'
+    assert records[0].status == 'confirmed_pending_review'
+
+
 def test_known_reserved_send_invoice_action_uses_product_truth_and_does_not_execute(tmp_path: Path, monkeypatch) -> None:
     message = _DummyMessage('pošli faktúru 20260001')
     state = _DummyState()
@@ -1711,9 +1799,9 @@ def test_invoice_period_summary_resolver_fallback_is_product_truth_not_customiza
 
     assert state.cleared is True
     assert state.current_state is None
-    assert 'S\u00fahrn fakt\u00far za rok' in message.answers[-1]
-    assert 'podporovan' in message.answers[-1]
-    assert 'read-only v\u00fdpo\u010det' in message.answers[-1]
+    assert 'Analytika vystaven\u00fdch fakt\u00far' in message.answers[-1]
+    assert '\u010diasto\u010dn' in message.answers[-1]
+    assert 'read-only pilot' in message.answers[-1]
     assert 'N\u00e1vrh po\u017eiadavky' not in message.answers[-1]
     assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
 
@@ -2085,7 +2173,7 @@ def test_process_invoice_text_unknown_can_use_llm_info_help_triage_without_side_
         db_path=tmp_path / 'test.db',
         storage_dir=tmp_path,
     )
-    message = _authorized_message('cashflow dashboard pls')
+    message = _authorized_message('custom widget pls')
     state = _DummyState()
 
     asyncio.run(
@@ -2093,7 +2181,7 @@ def test_process_invoice_text_unknown_can_use_llm_info_help_triage_without_side_
             message=message,
             state=state,
             config=config,
-            invoice_text='cashflow dashboard pls',
+            invoice_text='custom widget pls',
         )
     )
 
@@ -2137,7 +2225,7 @@ def test_process_invoice_text_llm_unknown_falls_back_to_generic_guidance_without
         db_path=tmp_path / 'test.db',
         storage_dir=tmp_path,
     )
-    message = _DummyMessage('cashflow maybe maybe')
+    message = _DummyMessage('lorem ipsum maybe')
     state = _DummyState()
 
     asyncio.run(
@@ -2145,7 +2233,7 @@ def test_process_invoice_text_llm_unknown_falls_back_to_generic_guidance_without
             message=message,
             state=state,
             config=config,
-            invoice_text='cashflow maybe maybe',
+            invoice_text='lorem ipsum maybe',
         )
     )
 

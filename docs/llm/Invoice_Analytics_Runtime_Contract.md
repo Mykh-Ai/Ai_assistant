@@ -48,16 +48,19 @@ LLM must not:
 `invoice_analytics` is a top-level action only when Python includes it in
 `allowed_actions`.
 
-It is separate from:
+It owns:
 
-- `invoice_period_summary`: implemented yearly count/total summary for current,
-  previous, or explicit year;
+- an internal deterministic yearly count/total fast path for current,
+  previous, or explicit calendar year questions;
 - `show_existing_invoice`: read-only view of one persisted outgoing invoice;
 - `edit_existing_invoice`: persisted invoice edit FSM;
 - `delete_existing_invoice`: confirmation-gated persisted invoice deletion.
 
-The yearly period summary remains supported and must not be replaced by broad
-analytics.
+`invoice_period_summary` is no longer a competing user-facing top-level
+resolver action. The yearly period summary remains supported as an internal
+strategy under `invoice_analytics`; month-specific, multi-month, comparison,
+customer, status, grouping, list, and average questions must stay in the safe
+analytics runtime instead of falling into yearly-only guidance.
 
 ## Dataset Boundary
 
@@ -225,7 +228,7 @@ Tests/evals must prove:
 - no PDF path exposure;
 - missing DB is safe and read-only;
 - common analytics questions resolve to `invoice_analytics`;
-- yearly summary wording can still route to `invoice_period_summary`;
+- yearly summary wording routes to `invoice_analytics` and may use the internal deterministic yearly fast path;
 - voice can reach the top-level analytics action;
 - generated code rejects imports, SQL/DB access, file/network/system calls, and
   write-style operations;

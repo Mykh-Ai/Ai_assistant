@@ -38,6 +38,7 @@ from bot.services.customization_requests import (
 )
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.info_help import (
+    TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
     build_product_truth_guidance,
     build_top_level_unknown_guidance,
     render_info_help_triage_result,
@@ -118,6 +119,230 @@ def _normalize_period_text(value: str) -> str:
     normalized = re.sub(r'\s+', ' ', value.casefold()).strip()
     return ''.join(
         ch for ch in unicodedata.normalize('NFKD', normalized) if not unicodedata.combining(ch)
+    )
+
+
+def _invoice_analytics_tokens(value: str) -> set[str]:
+    return {
+        ''.join(
+            ch for ch in unicodedata.normalize('NFKD', token.casefold()) if not unicodedata.combining(ch)
+        )
+        for token in re.findall(r'[^\W\d_]+', value, flags=re.UNICODE)
+        if token
+    }
+
+
+_INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS = {
+    'vydavky',
+    'vydavkov',
+    'expense',
+    'expenses',
+    'spending',
+    'blocek',
+    'blocky',
+    'blockov',
+    'doklad',
+    'doklady',
+    'uctovne',
+    'receipt',
+    'receipts',
+    'cek',
+    'ceky',
+    'cekov',
+    'prijata',
+    'prijate',
+    'incoming',
+    'banka',
+    'bankove',
+    'bankovy',
+    'bank',
+    'cashflow',
+    'dph',
+    'vat',
+    'dan',
+    'dane',
+    'tax',
+    'kategoria',
+    'kategorie',
+    'category',
+    'categories',
+    '\u0432\u0438\u0442\u0440\u0430\u0442\u0438',
+    '\u0432\u0438\u0442\u0440\u0430\u0442',
+    '\u0432\u0438\u0434\u0430\u0442\u043a\u0438',
+    '\u0432\u0438\u0434\u0430\u0442\u043a\u0456\u0432',
+    '\u0447\u0435\u043a',
+    '\u0447\u0435\u043a\u0438',
+    '\u0447\u0435\u043a\u0456\u0432',
+    '\u0447\u0435\u043a\u0430\u0445',
+    '\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u0438',
+    '\u0431\u0430\u043d\u043a',
+    '\u0431\u0430\u043d\u043a\u0443',
+    '\u043f\u0434\u0432',
+    '\u043d\u0434\u0441',
+    '\u043f\u043e\u0434\u0430\u0442\u043a\u0438',
+    '\u043d\u0430\u043b\u043e\u0433',
+    '\u043d\u0430\u043b\u043e\u0433\u0438',
+    '\u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0456\u0457',
+    '\u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u0438',
+}
+
+_INVOICE_ANALYTICS_MONTH_TERMS = {
+    'mesiac',
+    'mesiace',
+    'mesiacov',
+    'mesacne',
+    'month',
+    'monthly',
+    'marec',
+    'marci',
+    'march',
+    'maj',
+    'maji',
+    'may',
+    'jun',
+    'june',
+    'july',
+    '\u043c\u0456\u0441\u044f\u0446\u044c',
+    '\u043c\u0456\u0441\u044f\u0446\u044f\u0445',
+    '\u043c\u0456\u0441\u044f\u0446\u044f\u043c\u0438',
+    '\u043c\u0435\u0441\u044f\u0446',
+    '\u043c\u0435\u0441\u044f\u0446\u0430\u0445',
+    '\u0431\u0435\u0440\u0435\u0437\u0435\u043d\u044c',
+    '\u0431\u0435\u0440\u0435\u0437\u043d\u0456',
+    '\u0431\u0435\u0440\u0435\u0437\u043d\u044f',
+    '\u0442\u0440\u0430\u0432\u0435\u043d\u044c',
+    '\u0442\u0440\u0430\u0432\u043d\u0456',
+    '\u0442\u0440\u0430\u0432\u043d\u044f',
+    '\u043c\u0430\u0440\u0442',
+    '\u043c\u0430\u0440\u0442\u0435',
+    '\u043c\u0430\u044f',
+}
+
+_INVOICE_ANALYTICS_COMPLEX_TERMS = _INVOICE_ANALYTICS_MONTH_TERMS | {
+    'porovnaj',
+    'porovnat',
+    'compare',
+    'top',
+    'najviac',
+    'priemer',
+    'priemerna',
+    'average',
+    'zakaznici',
+    'klienti',
+    'odberatelia',
+    'customer',
+    'customers',
+    'zaplatene',
+    'nezaplatene',
+    'neuhradene',
+    'uhradene',
+    'paid',
+    'unpaid',
+    'status',
+    'list',
+    'zoznam',
+    'pokaz',
+    'zobraz',
+    '\u043f\u043e\u043a\u0430\u0436\u0438',
+    '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0439',
+    '\u0441\u0440\u0430\u0432\u043d\u0438',
+    '\u043a\u043b\u0456\u0454\u043d\u0442\u0456\u0432',
+}
+
+
+def _is_unsupported_invoice_analytics_domain(text: str) -> bool:
+    tokens = _invoice_analytics_tokens(text)
+    return bool(tokens.intersection(_INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS))
+
+
+def _unsupported_invoice_analytics_capability_id(text: str) -> str:
+    tokens = _invoice_analytics_tokens(text)
+    if tokens.intersection(
+        {
+            'blocek',
+            'blocky',
+            'blockov',
+            'doklad',
+            'doklady',
+            'receipt',
+            'receipts',
+            'check',
+            'checks',
+            'expense',
+            'expenses',
+            'vydavky',
+            'vydavkov',
+            'vydavkoch',
+            '\u0432\u0438\u0434\u0430\u0442\u043a\u0438',
+            '\u0432\u0438\u0442\u0440\u0430\u0442\u0438',
+            '\u0447\u0435\u043a\u0438',
+            '\u0447\u0435\u043a\u0456\u0432',
+            '\u0447\u0435\u043a\u0430\u043c',
+            '\u0447\u0435\u043a\u043e\u0432',
+        }
+    ):
+        return 'receipt_analytics'
+    if tokens.intersection({'bank', 'bankove', 'cashflow', 'vat', 'dph', 'dan', 'dane', 'tax'}):
+        return 'bank_cashflow_tax_analytics'
+    return 'invoice_analytics'
+
+
+def _is_simple_yearly_invoice_summary_question(text: str) -> bool:
+    tokens = _invoice_analytics_tokens(text)
+    if tokens.intersection(_INVOICE_ANALYTICS_COMPLEX_TERMS):
+        return False
+    invoice_terms = {
+        'faktura',
+        'fakturu',
+        'faktury',
+        'faktur',
+        'invoice',
+        'invoices',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0443',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0430',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0438',
+        '\u0444\u0430\u043a\u0442\u0443\u0440',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u044b',
+    }
+    summary_terms = {
+        'suma',
+        'sumu',
+        'celkom',
+        'spolu',
+        'kolko',
+        'suhrn',
+        'summary',
+        'total',
+        'amount',
+        '\u0441\u0443\u043c\u0430',
+        '\u0441\u0443\u043c\u0443',
+        '\u0441\u0443\u043c\u043c\u0443',
+        '\u0441\u043a\u0456\u043b\u044c\u043a\u0438',
+        '\u0441\u043a\u0456\u043b\u044c\u043a\u043e',
+        '\u0441\u043a\u043e\u043b\u044c\u043a\u043e',
+    }
+    year_terms = {
+        'rok',
+        'roku',
+        'rocne',
+        'year',
+        'yearly',
+        'tento',
+        'tomto',
+        'minuly',
+        'last',
+        '\u0446\u044c\u043e\u0433\u043e',
+        '\u0446\u0435\u0439',
+        '\u0440\u0456\u043a',
+        '\u0440\u043e\u0446\u0456',
+        '\u044d\u0442\u043e\u043c',
+        '\u0433\u043e\u0434\u0443',
+        '\u0433\u043e\u0434',
+    }
+    return (
+        bool(tokens.intersection(invoice_terms))
+        and bool(tokens.intersection(summary_terms))
+        and (bool(tokens.intersection(year_terms)) or bool(re.search(r'\b(?:19|20)\d{2}\b', text)))
     )
 
 
@@ -247,17 +472,77 @@ def _format_invoice_period_summary(summary, *, period_label: str) -> str:
     return '\n'.join(lines)
 
 
+async def _run_invoice_yearly_summary_fast_path(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    user_question: str,
+    supplier_telegram_id: int,
+) -> bool:
+    if not _is_simple_yearly_invoice_summary_question(user_question):
+        return False
+
+    period = await _resolve_invoice_summary_year_period_bounded(user_question, config=config)
+    if period is None:
+        return False
+
+    period_label, start_date, end_date = period
+    if not config.db_path.exists():
+        summary = InvoicePeriodSummary(
+            supplier_telegram_id=supplier_telegram_id,
+            start_date=start_date,
+            end_date=end_date,
+            invoice_count=0,
+            totals_by_currency=(),
+        )
+    else:
+        summary = InvoiceService(config.db_path).summarize_invoices_for_supplier_period(
+            supplier_telegram_id=supplier_telegram_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    await message.answer(_format_invoice_period_summary(summary, period_label=period_label))
+    await state.clear()
+    return True
+
+
 async def _run_invoice_analytics(
     *,
     message: Message,
     state: FSMContext,
     config: Config,
     user_question: str,
+    source_channel: str = 'text',
 ) -> None:
     supplier_telegram_id = _message_supplier_telegram_id(message)
     if supplier_telegram_id is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         await state.clear()
+        return
+
+    if _is_unsupported_invoice_analytics_domain(user_question):
+        capability_id = _unsupported_invoice_analytics_capability_id(user_question)
+        await _start_customization_request_preview(
+            message=message,
+            state=state,
+            requester_telegram_id=supplier_telegram_id,
+            user_input_text=user_question,
+            source_channel=source_channel,
+            triage_class=TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+            capability_id=capability_id,
+            topic_id=capability_id,
+            confidence=0.85,
+        )
+        return
+
+    if await _run_invoice_yearly_summary_fast_path(
+        message=message,
+        state=state,
+        config=config,
+        user_question=user_question,
+        supplier_telegram_id=supplier_telegram_id,
+    ):
         return
 
     current_date = date.today()
@@ -2707,7 +2992,6 @@ async def process_invoice_text(
             _START_INTENT,
             _CREATE_INVOICE_INTENT,
             _SHOW_EXISTING_INVOICE_INTENT,
-            _INVOICE_PERIOD_SUMMARY_INTENT,
             _INVOICE_ANALYTICS_INTENT,
             _SHOW_SUPPLIER_PROFILE_INTENT,
             _EDIT_SUPPLIER_INTENT,
@@ -2758,25 +3042,14 @@ async def process_invoice_text(
                     'view recent accounting receipts',
                 ],
             },
-            _INVOICE_PERIOD_SUMMARY_INTENT: {
-                'meaning': (
-                    'user wants a read-only total/count summary of their already saved outgoing invoices for a calendar year; '
-                    'Python parses the supported year period, reads only current supplier-scoped invoice rows, and answers without DB/PDF mutations'
-                ),
-                'not_this': [
-                    'create a new invoice draft',
-                    'show one specific invoice by number',
-                    'edit or delete invoices',
-                    'summarize external receipts or accounting documents',
-                ],
-            },
             _INVOICE_ANALYTICS_INTENT: {
                 'meaning': (
-                    'user asks an analytical, statistical, reporting, comparison, listing, grouping, paid/unpaid/overdue, '
-                    'customer, normalized payment status, currency, month, or average question about already saved outgoing invoices; '
-                    'Python builds a sanitized supplier-scoped dataframe, validates read-only analysis code, and returns computed facts'
+                    'user asks a read-only analytical, statistical, reporting, comparison, listing, grouping, paid/unpaid/overdue, '
+                    'customer, normalized payment status, currency, month, average, or yearly total/count question about already saved outgoing invoices; '
+                    'Python may use a deterministic yearly summary fast path for simple calendar-year questions, otherwise it builds a sanitized supplier-scoped dataframe, validates read-only analysis code, and returns computed facts'
                 ),
                 'positive_examples': [
+                    'invoice total for 2026',
                     'show invoices for May',
                     'compare May 2026 and May 2025',
                     'how many unpaid invoices do I have',
@@ -2892,7 +3165,6 @@ async def process_invoice_text(
     )
     if top_level_intent in {
         _UNKNOWN_INVOICE_INTENT,
-        _INVOICE_PERIOD_SUMMARY_INTENT,
         _SEND_INVOICE_INTENT,
         _CREATE_INVOICE_INTENT,
         _ADD_RECEIPT_INTENT,
@@ -3005,6 +3277,7 @@ async def process_invoice_text(
             state=state,
             config=config,
             user_question=invoice_text,
+            source_channel=input_channel,
         )
         return
     if top_level_intent == _EDIT_EXISTING_INVOICE_INTENT:

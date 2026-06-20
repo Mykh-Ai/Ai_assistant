@@ -41,6 +41,19 @@
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
 
 ### Changed
+- `invoice_period_summary` is no longer offered as a competing top-level
+  user-facing resolver action. Simple calendar-year invoice count/total
+  questions now route through `invoice_analytics`, which may use the existing
+  deterministic yearly summary as an internal read-only fast path.
+- Invoice analytics now guards receipt/expense/incoming-invoice/bank/cashflow
+  /VAT/tax wording before calculation and refuses to answer those domains from
+  outgoing invoice data. Safe unsupported business analytics requests enter the
+  existing confirmation-gated customization/admin-review preview flow instead
+  of implying a request was created from plain text.
+- Product Truth, InfoHelp, README, and technical docs now distinguish partial
+  read-only invoice analytics from planned receipt/bloček analytics and
+  unsupported bank/cashflow/VAT/tax/full accounting analytics; this is a truth
+  sync, not a new analytics runtime.
 - `invoice_analytics` final LLM-written answers now use Python-controlled
   Slovak business language by default instead of mirroring the user's input
   language; a reusable Safe Data Analyst Runtime checklist documents the

@@ -206,6 +206,27 @@ Voice support:
 - exact item numeric values/prices/quantities: text-only;
 - final item description: text-only.
 
+### Invoice Analytics
+
+`invoice_analytics` is implemented as a partial read-only pilot for natural
+language questions over saved outgoing invoices for the current authorized
+supplier.
+
+It can answer questions about:
+- invoice counts and totals;
+- simple calendar-year summaries through an internal deterministic fast path;
+- periods and period comparisons;
+- customers, months, currencies, and bounded matching lists;
+- bot payment states such as pending payment, paid, and overdue.
+
+Payment-state analytics use Python-normalized `payment_status_canonical`, not
+raw invoice lifecycle `status`. The final business answer shown to the user is
+Slovak by default. Analytics is read-only: it must not create, edit, delete,
+send, archive, mark paid, generate PDFs, upload to Google Drive, or write any
+invoice/accounting data. Receipt, expense, incoming-invoice, bank, cashflow,
+VAT, tax, and full accounting analytics remain unsupported/planned as separate
+domains and must not be answered from outgoing invoice data.
+
 ### Accounting Documents / Bločky
 
 ```text
@@ -429,6 +450,12 @@ Do not treat these as current runtime:
 - standalone contract archive/save runtime;
 - Google Drive sync;
 - bank matching;
+- bank/cashflow analytics;
+- receipt/bloček analytics;
+- receipt/bloček categorization;
+- incoming invoice analytics;
+- tax/VAT advice;
+- full accounting analytics;
 - broad OCR pipeline for arbitrary scanned documents;
 - full OfficeFlow workspace runtime;
 - real SMTP/email sending flow for invoices;
