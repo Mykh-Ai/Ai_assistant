@@ -30,6 +30,44 @@ _FORBIDDEN_CODE_PATTERNS = (
 )
 
 
+_PLANNER_WORKFLOW_GUIDANCE = (
+    'Mandatory internal workflow before writing analysis_code: '
+    '1) translate or normalize the user question into Slovak FakturaBot business semantics; '
+    '2) identify the analysis kind: sum, count, list, comparison, grouping, average, or payment-status analysis; '
+    '3) identify the exact period: explicit year, current year, month/months, date range, relative period, or unknown; '
+    '4) choose the date column: issue_date by default for issued invoices, delivery_date for delivery/service-date wording, due_date for due-date/splatnost wording; '
+    '5) identify row filters such as customer_name, currency, payment_status_canonical, month numbers, years, or date range; '
+    '6) identify only the required invoices_df columns from the data catalog; '
+    '7) write sandbox-safe pandas code; '
+    '8) self-check that the code answers the normalized question and that result contains the facts needed for the final Slovak business answer. '
+    'If the period or required filter is genuinely ambiguous, do not invent it; return result warnings/answer_hints asking for clarification. '
+    'Put a short Slovak normalized plan in reasoning_summary, including analysis_kind, period, date_column, filters, and output facts.'
+)
+
+
+_PERIOD_AND_DATE_GUIDANCE = (
+    'Date filtering rules are strict. issue_date, delivery_date, and due_date are ISO date strings; '
+    'convert the selected date column with pd.to_datetime(..., errors="coerce") before using .dt.year, .dt.month, comparisons, or ranges. '
+    'Use current_date for today, this month, this year, previous periods, and any missing current-year default. '
+    'If the user names a month but no year, use int(current_date.year) as the target year. '
+    'Never filter date columns by translated month-name text and never assume day 1; use numeric .dt.month and .dt.year. '
+    'Recognize Slovak, Ukrainian, Russian, and common transliterated month names. '
+    'For multiple named months, create a list of month numbers and use .dt.month.isin(...). '
+    'For totals across currencies, group by currency; never merge different currencies into one amount.'
+)
+
+
+_SANDBOX_CODE_GUIDANCE = (
+    'Sandbox rules: no imports; no SQL/DB access; no file/network/system calls; no writes; no eval, exec, compile, open, __import__; '
+    'no os, sys, subprocess, socket, requests, pathlib, sqlite3, dunder access; '
+    'no for/while loops, comprehensions, function definitions, class definitions, lambda, with, global, or nonlocal. '
+    'Use vectorized pandas operations, boolean masks, groupby, agg, reset_index, round, to_dict(orient="records"), len, int, float, str, list, dict, and literals. '
+    'Start by copying the dataframe exactly like this: df = invoices_df.copy(). '
+    'Assign the final JSON-serializable dict to variable result. '
+    'Required result shape: {"summary": {...}, "tables": {...}, "warnings": [...], "answer_hints": [...]}.'
+)
+
+
 def parse_invoice_analytics_plan(raw_model_output: str) -> InvoiceAnalyticsPlan:
     try:
         parsed = json.loads(raw_model_output or '{}')
@@ -86,6 +124,7 @@ async def plan_invoice_analytics_code(
     data_catalog: dict[str, Any],
     api_key: str | None,
     model: str,
+    repair_feedback: dict[str, Any] | None = None,
 ) -> InvoiceAnalyticsPlan:
     if not api_key or not api_key.startswith('sk-'):
         raise InvoiceAnalyticsPlanError('missing_openai_api_key')
@@ -104,16 +143,18 @@ async def plan_invoice_analytics_code(
                     'No markdown fences. The user may write Slovak, Ukrainian, Russian, or mixed language. '
                     'Final user-facing business answer language is controlled by Python; answer_language is metadata only. '
                     'You may write Python code only over the provided sanitized dataframe invoices_df. '
-                    'The code must assign the final JSON-serializable dict to variable result. '
                     'Allowed variables: invoices_df, pd, current_date. '
                     'pd is already available; do not import pandas. '
                     'current_date is already available from Python; do not import datetime, do not redefine current_date, and never assume the current year from memory. '
-                    'Start by copying the dataframe exactly like this: df = invoices_df.copy(). '
                     'Allowed analysis: counts, sums, grouping, period filters, payment_status_canonical/customer/currency filters, comparisons, limited lists. '
+                    + _PLANNER_WORKFLOW_GUIDANCE
+                    + ' '
+                    + _PERIOD_AND_DATE_GUIDANCE
+                    + ' '
+                    + _SANDBOX_CODE_GUIDANCE
+                    + ' '
                     'Use payment_status_canonical for paid, pending payment, and overdue questions; do not treat invoice_status_raw as bank-confirmed payment truth. '
-                    'Forbidden: imports, file/network/system calls, SQL, DB access, writes, eval, exec, compile, open, __import__, os, sys, subprocess, socket, requests, pathlib, sqlite3, dunder access. '
-                    'Assign the final JSON-serializable dict to variable result. '
-                    'Required result shape: {"summary": {...}, "tables": {...}, "warnings": [...], "answer_hints": [...]}. '
+                    'If repair_feedback is provided, fix the previous failure and return a complete replacement analysis_code. '
                     'If the question asks to edit, delete, send, mark paid, or otherwise mutate invoices, return a result that refuses the write request in warnings and answer_hints; do not perform a mutation.'
                 ),
             },
@@ -128,10 +169,11 @@ async def plan_invoice_analytics_code(
                         'current_day': current_date_iso[8:10],
                         'timezone_context': 'Europe/Bratislava/Europe/Berlin local runtime date unless configured otherwise',
                         'data_catalog': data_catalog,
+                        'repair_feedback': repair_feedback or {},
                         'expected_json': {
                             'analysis_code': 'python code assigning result',
                             'answer_language': 'sk|uk|ru|mixed',
-                            'reasoning_summary': 'short explanation',
+                            'reasoning_summary': 'short Slovak normalized plan with analysis_kind, period, date_column, filters, output facts',
                         },
                     },
                     ensure_ascii=False,

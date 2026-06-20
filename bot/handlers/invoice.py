@@ -85,6 +85,9 @@ _SHOW_EXISTING_INVOICE_INTENT = 'show_existing_invoice'
 _INVOICE_PERIOD_SUMMARY_INTENT = 'invoice_period_summary'
 _INVOICE_ANALYTICS_INTENT = 'invoice_analytics'
 _INVOICE_ANALYTICS_FINAL_ANSWER_LANGUAGE = 'sk'
+_INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS = 2
+_INVOICE_ANALYTICS_WHOLE_YEAR_SUMMARY = 'whole_calendar_year_summary'
+_INVOICE_ANALYTICS_SAFE_RUNTIME = 'safe_analytics_runtime'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
 _DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
@@ -186,70 +189,6 @@ _INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS = {
     '\u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u0438',
 }
 
-_INVOICE_ANALYTICS_MONTH_TERMS = {
-    'mesiac',
-    'mesiace',
-    'mesiacov',
-    'mesacne',
-    'month',
-    'monthly',
-    'marec',
-    'marci',
-    'march',
-    'maj',
-    'maji',
-    'may',
-    'jun',
-    'june',
-    'july',
-    '\u043c\u0456\u0441\u044f\u0446\u044c',
-    '\u043c\u0456\u0441\u044f\u0446\u044f\u0445',
-    '\u043c\u0456\u0441\u044f\u0446\u044f\u043c\u0438',
-    '\u043c\u0435\u0441\u044f\u0446',
-    '\u043c\u0435\u0441\u044f\u0446\u0430\u0445',
-    '\u0431\u0435\u0440\u0435\u0437\u0435\u043d\u044c',
-    '\u0431\u0435\u0440\u0435\u0437\u043d\u0456',
-    '\u0431\u0435\u0440\u0435\u0437\u043d\u044f',
-    '\u0442\u0440\u0430\u0432\u0435\u043d\u044c',
-    '\u0442\u0440\u0430\u0432\u043d\u0456',
-    '\u0442\u0440\u0430\u0432\u043d\u044f',
-    '\u043c\u0430\u0440\u0442',
-    '\u043c\u0430\u0440\u0442\u0435',
-    '\u043c\u0430\u044f',
-}
-
-_INVOICE_ANALYTICS_COMPLEX_TERMS = _INVOICE_ANALYTICS_MONTH_TERMS | {
-    'porovnaj',
-    'porovnat',
-    'compare',
-    'top',
-    'najviac',
-    'priemer',
-    'priemerna',
-    'average',
-    'zakaznici',
-    'klienti',
-    'odberatelia',
-    'customer',
-    'customers',
-    'zaplatene',
-    'nezaplatene',
-    'neuhradene',
-    'uhradene',
-    'paid',
-    'unpaid',
-    'status',
-    'list',
-    'zoznam',
-    'pokaz',
-    'zobraz',
-    '\u043f\u043e\u043a\u0430\u0436\u0438',
-    '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0439',
-    '\u0441\u0440\u0430\u0432\u043d\u0438',
-    '\u043a\u043b\u0456\u0454\u043d\u0442\u0456\u0432',
-}
-
-
 def _is_unsupported_invoice_analytics_domain(text: str) -> bool:
     tokens = _invoice_analytics_tokens(text)
     return bool(tokens.intersection(_INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS))
@@ -287,10 +226,8 @@ def _unsupported_invoice_analytics_capability_id(text: str) -> str:
     return 'invoice_analytics'
 
 
-def _is_simple_yearly_invoice_summary_question(text: str) -> bool:
+def _has_invoice_summary_terms(text: str) -> bool:
     tokens = _invoice_analytics_tokens(text)
-    if tokens.intersection(_INVOICE_ANALYTICS_COMPLEX_TERMS):
-        return False
     invoice_terms = {
         'faktura',
         'fakturu',
@@ -321,29 +258,101 @@ def _is_simple_yearly_invoice_summary_question(text: str) -> bool:
         '\u0441\u043a\u0456\u043b\u044c\u043a\u043e',
         '\u0441\u043a\u043e\u043b\u044c\u043a\u043e',
     }
-    year_terms = {
-        'rok',
-        'roku',
-        'rocne',
-        'year',
-        'yearly',
-        'tento',
-        'tomto',
-        'minuly',
-        'last',
-        '\u0446\u044c\u043e\u0433\u043e',
-        '\u0446\u0435\u0439',
-        '\u0440\u0456\u043a',
-        '\u0440\u043e\u0446\u0456',
-        '\u044d\u0442\u043e\u043c',
-        '\u0433\u043e\u0434\u0443',
-        '\u0433\u043e\u0434',
+    return bool(tokens.intersection(invoice_terms)) and bool(tokens.intersection(summary_terms))
+
+
+def _local_whole_year_summary_fallback(text: str) -> bool:
+    """Conservative no-LLM fallback for obvious whole-calendar-year summaries only."""
+    if not _has_invoice_summary_terms(text):
+        return False
+    normalized = _normalize_period_text(text)
+    current_or_previous_year_markers = {
+        'tento rok',
+        'tomto roku',
+        'v tomto roku',
+        'minuly rok',
+        'minulom roku',
+        'this year',
+        'current year',
+        'last year',
+        '\u0446\u044c\u043e\u0433\u043e \u0440\u043e\u043a\u0443',
+        '\u0443 \u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+        '\u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+        '\u0432 \u0446\u044c\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+        '\u0437\u0430 \u0446\u0435\u0439 \u0440\u0456\u043a',
+        '\u043c\u0438\u043d\u0443\u043b\u043e\u043c\u0443 \u0440\u043e\u0446\u0456',
+        '\u043f\u0440\u043e\u0448\u043b\u043e\u043c \u0433\u043e\u0434\u0443',
     }
-    return (
-        bool(tokens.intersection(invoice_terms))
-        and bool(tokens.intersection(summary_terms))
-        and (bool(tokens.intersection(year_terms)) or bool(re.search(r'\b(?:19|20)\d{2}\b', text)))
+    if any(marker in normalized for marker in current_or_previous_year_markers):
+        return True
+    return bool(
+        re.search(r'\bsuhrn\s+(?:vystavenych\s+)?faktur\s+za\s+(?:19|20)\d{2}\b', normalized)
+        or re.search(r'\b(?:faktur|faktury|invoices?)\s+(?:za\s+)?(?:rok|year)\s+(?:19|20)\d{2}\b', normalized)
     )
+
+
+async def _resolve_invoice_analytics_execution_strategy(
+    text: str,
+    *,
+    config: Config,
+) -> str:
+    if config.openai_api_key and config.openai_api_key.startswith('sk-'):
+        token = await resolve_semantic_action(
+            context_name='invoice_analytics_execution_strategy',
+            allowed_actions=[
+                _INVOICE_ANALYTICS_WHOLE_YEAR_SUMMARY,
+                _INVOICE_ANALYTICS_SAFE_RUNTIME,
+                'unknown',
+            ],
+            user_input_text=text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            auxiliary_context={
+                'decision_rule': (
+                    'Choose whole_calendar_year_summary only for simple count/total questions over all saved outgoing invoices '
+                    'for one entire calendar year. Choose safe_analytics_runtime for any month, quarter, date range, customer, '
+                    'payment status, list, grouping, average, top, comparison, or ambiguous period.'
+                ),
+                'whole_year_examples': [
+                    'Na akú sumu som vystavil faktúry tento rok?',
+                    'Koľko faktúr som vystavil za rok 2026?',
+                    'Súhrn faktúr za 2026',
+                ],
+                'safe_runtime_examples': [
+                    'Na akú sumu som vystavil faktúry za september?',
+                    'Koľko faktúr bolo za prvý kvartál?',
+                    'Порахуй фактури за перший квартал 2026',
+                    'Porovnaj marec a máj',
+                    'Top klientov podľa faktúr',
+                ],
+            },
+            action_hints={
+                _INVOICE_ANALYTICS_WHOLE_YEAR_SUMMARY: {
+                    'meaning': (
+                        'Simple deterministic summary: count and/or total amount of all saved outgoing invoices '
+                        'for exactly one whole calendar year, current/previous/explicit year, with no other filters.'
+                    ),
+                    'not_this': [
+                        'month-specific question',
+                        'quarter-specific question',
+                        'custom date range',
+                        'customer/status/currency grouping',
+                        'comparison/list/top/average',
+                    ],
+                },
+                _INVOICE_ANALYTICS_SAFE_RUNTIME: {
+                    'meaning': (
+                        'Any read-only invoice analytics question that is not exactly a whole-calendar-year count/total summary.'
+                    ),
+                },
+            },
+        )
+        if token in {_INVOICE_ANALYTICS_WHOLE_YEAR_SUMMARY, _INVOICE_ANALYTICS_SAFE_RUNTIME}:
+            return token
+        return _INVOICE_ANALYTICS_SAFE_RUNTIME
+    if _local_whole_year_summary_fallback(text):
+        return _INVOICE_ANALYTICS_WHOLE_YEAR_SUMMARY
+    return _INVOICE_ANALYTICS_SAFE_RUNTIME
 
 
 def _get_invoice_for_message_supplier(
@@ -480,7 +489,8 @@ async def _run_invoice_yearly_summary_fast_path(
     user_question: str,
     supplier_telegram_id: int,
 ) -> bool:
-    if not _is_simple_yearly_invoice_summary_question(user_question):
+    strategy = await _resolve_invoice_analytics_execution_strategy(user_question, config=config)
+    if strategy != _INVOICE_ANALYTICS_WHOLE_YEAR_SUMMARY:
         return False
 
     period = await _resolve_invoice_summary_year_period_bounded(user_question, config=config)
@@ -566,49 +576,96 @@ async def _run_invoice_analytics(
         await state.clear()
         return
 
-    try:
-        plan = await plan_invoice_analytics_code(
-            user_question=user_question,
-            current_date_iso=current_date_iso,
-            data_catalog=build_invoice_analytics_data_catalog(),
-            api_key=config.openai_api_key,
-            model=config.openai_llm_model,
-        )
-        execution = execute_invoice_analytics_code(
-            code=plan.analysis_code,
-            invoices_df=invoices_df,
-            current_date=current_date,
-        )
-        computed_result = dict(execution.result)
-        if execution.warnings:
-            warnings = list(computed_result.get('warnings') or [])
-            warnings.extend(execution.warnings)
-            computed_result['warnings'] = warnings
-        answer = await answer_invoice_analytics(
-            user_question=user_question,
-            current_date_iso=current_date_iso,
-            computed_result=computed_result,
-            dataset_metadata=metadata,
-            api_key=config.openai_api_key,
-            model=config.openai_llm_model,
-            answer_language=_INVOICE_ANALYTICS_FINAL_ANSWER_LANGUAGE,
-        )
-        await message.answer(answer)
-    except InvoiceAnalyticsPlanError:
-        await message.answer(
-            'Analytickú otázku som teraz nevedel bezpečne naplánovať. '
-            'Táto pilotná funkcia je read-only a pracuje iba s uloženými odoslanými faktúrami.'
-        )
-    except (AnalyticsCodeValidationError, AnalyticsExecutionError):
-        await message.answer(
-            'Analytický výpočet som zastavil, pretože neprešiel bezpečnostnou kontrolou. '
-            'Žiadne faktúry, PDF ani databázové údaje som nezmenil.'
-        )
-    except Exception:
-        logger.exception('Invoice analytics runtime failed')
-        await message.answer(
-            'Analýzu faktúr sa nepodarilo dokončiť. Žiadne údaje som nezmenil.'
-        )
+    repair_feedback: dict[str, object] | None = None
+    for attempt in range(1, _INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS + 1):
+        plan = None
+        try:
+            plan = await plan_invoice_analytics_code(
+                user_question=user_question,
+                current_date_iso=current_date_iso,
+                data_catalog=build_invoice_analytics_data_catalog(),
+                api_key=config.openai_api_key,
+                model=config.openai_llm_model,
+                repair_feedback=repair_feedback,
+            )
+            execution = execute_invoice_analytics_code(
+                code=plan.analysis_code,
+                invoices_df=invoices_df,
+                current_date=current_date,
+            )
+            computed_result = dict(execution.result)
+            if execution.warnings:
+                warnings = list(computed_result.get('warnings') or [])
+                warnings.extend(execution.warnings)
+                computed_result['warnings'] = warnings
+            answer = await answer_invoice_analytics(
+                user_question=user_question,
+                current_date_iso=current_date_iso,
+                computed_result=computed_result,
+                dataset_metadata=metadata,
+                api_key=config.openai_api_key,
+                model=config.openai_llm_model,
+                answer_language=_INVOICE_ANALYTICS_FINAL_ANSWER_LANGUAGE,
+            )
+            await message.answer(answer)
+            await state.clear()
+            return
+        except InvoiceAnalyticsPlanError as exc:
+            logger.warning(
+                'Invoice analytics planning stopped: message_id=%s source_channel=%s row_count=%s attempt=%s max_attempts=%s reason=%s',
+                getattr(message, 'message_id', None),
+                source_channel,
+                metadata.get('row_count'),
+                attempt,
+                _INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS,
+                str(exc),
+            )
+            if attempt >= _INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS:
+                await message.answer(
+                    'Analytickú otázku som teraz nevedel bezpečne naplánovať. '
+                    'Táto pilotná funkcia je read-only a pracuje iba s uloženými odoslanými faktúrami.'
+                )
+                await state.clear()
+                return
+            repair_feedback = {
+                'stage': 'planning',
+                'error_type': type(exc).__name__,
+                'error_reason': str(exc),
+                'instruction': 'Return strict JSON with valid analysis_code assigning result. Keep the same user question.',
+            }
+        except (AnalyticsCodeValidationError, AnalyticsExecutionError) as exc:
+            logger.warning(
+                'Invoice analytics execution stopped: message_id=%s source_channel=%s row_count=%s attempt=%s max_attempts=%s error_type=%s reason=%s',
+                getattr(message, 'message_id', None),
+                source_channel,
+                metadata.get('row_count'),
+                attempt,
+                _INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS,
+                type(exc).__name__,
+                str(exc),
+            )
+            if attempt >= _INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS:
+                await message.answer(
+                    'Analytický výpočet som zastavil, pretože neprešiel bezpečnostnou kontrolou. '
+                    'Žiadne faktúry, PDF ani databázové údaje som nezmenil.'
+                )
+                await state.clear()
+                return
+            repair_feedback = {
+                'stage': 'execution',
+                'error_type': type(exc).__name__,
+                'error_reason': str(exc),
+                'previous_analysis_code': plan.analysis_code if plan is not None else '',
+                'instruction': 'Return a complete replacement analysis_code that avoids the validation/runtime error and still answers the same user question.',
+            }
+        except Exception:
+            logger.exception('Invoice analytics runtime failed')
+            await message.answer(
+                'Analýzu faktúr sa nepodarilo dokončiť. Žiadne údaje som nezmenil.'
+            )
+            await state.clear()
+            return
+
     await state.clear()
 
 
