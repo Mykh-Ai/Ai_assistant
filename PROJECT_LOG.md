@@ -1,5 +1,32 @@
 # PROJECT_LOG
 
+## 2026-06-20 - Session 152 - Safe analytics checklist failure register
+
+Summary:
+- Updated `docs/llm/Safe_Data_Analyst_Runtime_Checklist.md` with a mandatory
+  failure register and repair playbook for LLM-generated read-only analytics
+  runtimes.
+- Recorded the 2026-06-20 invoice analytics failures and fixes: unsupported
+  receipt/expense analytics preview state, overly broad yearly fast path,
+  partial period dictionaries, planner repair/logging, explicit invoice-number
+  show/edit routing, and Telegram-smoke-driven coverage.
+- Documented the current analytics layer model: bounded top-level routing,
+  unsupported-domain guard, bounded execution-strategy gate, narrow
+  deterministic whole-year fast path, planner semantics/code workflow, Python
+  validation/execution, repair loop, Slovak final answer policy, and read-only
+  side-effect boundary.
+- Integrated the same rules into the active checklist logic: authority split,
+  temporal logic, planner prompt, handler tests, product UX smoke, implementation
+  order, and pre-deploy checks now require the bounded strategy/guard/repair
+  model instead of only recording it as a past failure.
+
+Scope:
+- Documentation only. No runtime code, DB/storage, server state, Product Truth,
+  InfoHelp, or deployment changes.
+
+Verification:
+- Documentation-only update; tests not run.
+
 ## 2026-06-20 - Session 151 - Invoice analytics planner workflow and repair loop
 
 Summary:
