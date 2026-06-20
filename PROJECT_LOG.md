@@ -1,5 +1,106 @@
 # PROJECT_LOG
 
+## 2026-06-20 - Session 150 - Invoice analytics routing and InfoHelp honesty guards
+
+Summary:
+- Demoted `invoice_period_summary` from the public top-level routing surface;
+  simple calendar-year invoice count/total wording now reaches
+  `invoice_analytics` and can use the deterministic yearly summary only as an
+  internal read-only fast path.
+- Added Python-side unsupported-domain guards before invoice analytics
+  calculation for receipt, expense, incoming-invoice, bank, cashflow, VAT, tax,
+  and similar accounting analytics wording. Safe unsupported business analytics
+  requests now start the existing confirmation-gated customization/admin-review
+  preview flow; no request row is saved before approval.
+- Updated Product Truth, InfoHelp, contracts, README/TZ, changelog, and focused
+  tests so month/multi-month invoice questions route to invoice analytics while
+  unsupported plausible analytics requests stay honest and offer an
+  admin/customization-review path.
+
+Preflight:
+- Docs/contracts read: AGENTS, Product Doctrine 2030, AI Layer Implementation
+  Standards, Product Truth Layer, Product Truth Registry MVP Design,
+  Self-Learning Layer, Evaluation and Smoke Test Standards, Product UX Eval
+  Artifacts, TZ, LLM Orchestrator Contract, Canonical Action Registry,
+  In-Action Response Registry, New Action Design Checklist, Bounded Resolver
+  Prompt Template, Info Help Guidance Layer, Customization Request Layer,
+  Confirmed Semantic Alias Learning Contract, Invoice Analytics Runtime
+  Contract, README, PROJECT_LOG, and CHANGELOG.
+- Touched scopes: routing, LLM bounded resolver inputs, user-facing InfoHelp,
+  Product Truth, docs/contracts, tests, project log, changelog. Not touched:
+  STT/LMM behavior, storage layout, DB schema, authorization model,
+  server/deploy, PDF layout, or persisted data migration.
+- Current implementation status: `partial` for read-only invoice analytics;
+  `unsupported` for receipt/expense/incoming-invoice/bank/cashflow/VAT/tax
+  analytics; `planned` for future receipt/category analytics prerequisites.
+- AI maturity level: partial Level 2 capability-aware honesty for analytics
+  questions plus deterministic Python-gated read-only analytics routing. This
+  is not Level 3 customization persistence and not Level 7 adaptive workflow.
+- Explicitly out of scope: receipt or expense analytics, bank matching,
+  VAT/tax advice, Google Drive analytics, new DB/storage writes, automatic
+  category learning, or weakening authorization/confirmation gates.
+- Product journey proof: an approved user asking a March/May invoice question
+  reaches `invoice_analytics`; a simple current-year invoice summary reaches
+  `invoice_analytics` and may use the yearly fast path; a receipt/check expense
+  analytics question is refused before calculation, enters the customization
+  request preview state with approve/edit/cancel controls, and does not save a
+  request before confirmation.
+- Self-learning hooks considered: no new learning was added because these
+  requests are routing and truth-boundary behavior, not confirmed reusable
+  aliases or user-approved account preferences.
+- User-facing product claims are backed by current code, Product Truth,
+  InfoHelp guidance, active LLM contracts, README/TZ, and tests.
+
+Verification:
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py tests\test_info_help.py tests\test_product_truth.py tests\test_voice_state_routing.py`
+  - 344 passed.
+- `python -m pytest -q`
+  - 1704 passed, 7 subtests passed.
+- `git diff --check`
+  - passed with line-ending conversion warnings only.
+
+## 2026-06-18 - Session 149 - Product Truth and InfoHelp analytics truth sync
+
+Summary:
+- Synced README, TZ, Product Truth, and InfoHelp guidance after the Safe Data
+  Analyst Runtime pilot.
+- Made Product Truth/InfoHelp distinguish partial read-only invoice analytics
+  from planned receipt/blocek analytics and unsupported bank/cashflow/VAT/tax
+  /full accounting analytics.
+- Kept this as a truth/documentation and self-knowledge update only: no new
+  receipt analytics, receipt categories, incoming invoice analytics, bank
+  analytics, or invoice analytics runtime behavior was implemented.
+
+Preflight:
+- Docs/contracts read: AGENTS, README, TZ, Product Truth Layer, InfoHelp
+  Guidance Layer, Canonical Action Registry, Safe Data Analyst Runtime
+  Checklist, Invoice Analytics Runtime Contract, Product Truth/InfoHelp code,
+  focused tests, PROJECT_LOG, and CHANGELOG.
+- Touched scopes: documentation, Product Truth registry, InfoHelp deterministic
+  capability classification/rendering, tests, project log, changelog.
+- Current implementation status: `partial` for invoice analytics, `planned`
+  for receipt analytics prerequisites, `unsupported` for bank/cashflow/VAT/tax
+  /full accounting analytics.
+- Out of scope: new analytics domains, receipt categorization/storage,
+  invoice analytics executor/planner/runtime changes, DB/storage writes,
+  server/deploy changes.
+
+Verification:
+- `python -m pytest -q tests/test_product_truth.py`
+  - 21 passed.
+- `python -m pytest -q tests/test_info_help.py`
+  - 93 passed.
+- `python -m pytest -q tests/test_invoice_analytics_answerer.py`
+  - 1 passed.
+- `python -m pytest -q tests/test_invoice_analytics_planner.py`
+  - 18 passed.
+- `python -m pytest -q tests/test_safe_python_analytics_executor.py`
+  - 21 passed.
+- `python -m pytest -q`
+  - 1695 passed, 7 subtests passed.
+- `git diff --check`
+  - passed with line-ending conversion warnings only.
+
 ## 2026-06-18 - Session 148 - Safe data analyst checklist and analytics language policy
 
 Summary:

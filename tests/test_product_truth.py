@@ -36,6 +36,8 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'access_request_approval',
     'invoice_draft_edit_flow',
     'invoice_analytics',
+    'receipt_analytics',
+    'bank_cashflow_tax_analytics',
     'code_agent_handoff',
     'self_learning_aliases',
     'info_help',
@@ -47,6 +49,7 @@ NOT_SUPPORTED_CAPABILITY_IDS = {
     'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
     'accounting_export',
+    'bank_cashflow_tax_analytics',
     'invoice_pdf_custom_template',
     'code_agent_handoff',
 }
@@ -227,12 +230,50 @@ def test_invoice_analytics_record_is_partial_read_only_runtime() -> None:
     assert 'bot/services/invoice_analytics_dataset.py' in entry.linked_handlers
     assert 'bot/services/safe_python_analytics_executor.py' in entry.linked_handlers
     assert 'docs/llm/Invoice_Analytics_Runtime_Contract.md' in entry.truth_source_refs
+    assert 'docs/llm/Safe_Data_Analyst_Runtime_Checklist.md' in entry.truth_source_refs
     assert 'tests/test_invoice_analytics_dataset.py' in entry.test_refs
     assert 'tests/test_safe_python_analytics_executor.py' in entry.test_refs
+    assert 'tests/test_invoice_analytics_answerer.py' in entry.test_refs
     assert any('receipts' in limitation.lower() for limitation in entry.current_limitations)
     assert any('bank' in limitation.lower() for limitation in entry.current_limitations)
+    assert any('Slovak' in limitation for limitation in entry.current_limitations)
     assert 'I analyzed receipts or incoming invoices.' in entry.forbidden_claims
     assert 'I changed invoice status or edited invoices from analytics.' in entry.forbidden_claims
+    assert 'I answered invoice analytics in Ukrainian because the user wrote Ukrainian.' in entry.forbidden_claims
+    assert 'This is full accounting analytics.' in entry.forbidden_claims
+
+
+def test_receipt_analytics_record_is_planned_prerequisite_only() -> None:
+    entry = _registry_by_id()['receipt_analytics']
+
+    assert entry.status == ProductTruthStatus.PLANNED
+    assert entry.runtime_owner is None
+    assert entry.commands == ()
+    assert entry.canonical_actions == ()
+    assert entry.linked_handlers == ()
+    assert 'not implemented yet' in entry.summary_for_user
+    assert any('category taxonomy' in limitation for limitation in entry.current_limitations)
+    assert any('Raw OCR or LMM extraction' in limitation for limitation in entry.current_limitations)
+    assert any('tax deductibility' in limitation for limitation in entry.current_limitations)
+    assert 'docs/llm/Safe_Data_Analyst_Runtime_Checklist.md' in entry.truth_source_refs
+    assert 'tests/test_info_help.py' in entry.test_refs
+    assert 'I categorized your receipts for analytics.' in entry.forbidden_claims
+    assert 'Receipt analytics is implemented.' in entry.forbidden_claims
+
+
+def test_bank_cashflow_tax_analytics_record_is_unsupported() -> None:
+    entry = _registry_by_id()['bank_cashflow_tax_analytics']
+
+    assert entry.status == ProductTruthStatus.UNSUPPORTED
+    assert entry.runtime_owner is None
+    assert entry.commands == ()
+    assert entry.canonical_actions == ()
+    assert 'not implemented' in entry.summary_for_user
+    assert any('bank statement intake' in limitation for limitation in entry.current_limitations)
+    assert any('cashflow model' in limitation for limitation in entry.current_limitations)
+    assert any('tax advice' in limitation for limitation in entry.current_limitations)
+    assert 'I analyzed bank movements.' in entry.forbidden_claims
+    assert 'I produced a VAT or tax report.' in entry.forbidden_claims
     assert 'This is full accounting analytics.' in entry.forbidden_claims
 
 

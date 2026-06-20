@@ -96,7 +96,7 @@ class ProductTruthResult:
         }
 
 
-_LAST_VERIFIED_AT = '2026-06-16'
+_LAST_VERIFIED_AT = '2026-06-18'
 
 
 def _capability(
@@ -198,16 +198,17 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
     ),
     _capability(
         capability_id='invoice_period_summary',
-        title='Invoice yearly summary',
+        title='Invoice analytics yearly fast path',
         domain='invoices',
         status=ProductTruthStatus.SUPPORTED,
-        summary_for_user='Shows a read-only count and total amount of already saved outgoing invoices for a supported calendar-year period.',
+        summary_for_user='The invoice analytics route uses an internal deterministic read-only fast path for simple calendar-year count and total questions over saved outgoing invoices.',
         current_limitations=(
             'Supported period parsing is limited to current year, previous year, or an explicit calendar year such as 2026.',
-            'It counts only already saved outgoing invoices in the current supplier scope by issue_date; it does not summarize receipts, incoming invoices, VAT, unpaid status, or arbitrary analytics.',
+            'This is not a competing top-level user-facing action; user-facing invoice reporting should route through invoice_analytics.',
+            'It counts only already saved outgoing invoices in the current supplier scope by issue_date; it does not summarize receipts, expenses, incoming invoices, bank movements, VAT, tax, unpaid status, or arbitrary accounting analytics.',
         ),
-        runtime_owner='bot/handlers/invoice.py::process_invoice_text',
-        canonical_actions=('invoice_period_summary',),
+        runtime_owner='bot/handlers/invoice.py::_run_invoice_yearly_summary_fast_path',
+        canonical_actions=('invoice_analytics',),
         linked_handlers=('bot/handlers/invoice.py', 'bot/services/invoice_service.py'),
         truth_source_refs=('docs/llm/Canonical_Action_Registry.md', 'docs/TZ_FakturaBot.md', 'PROJECT_LOG.md'),
         test_refs=('tests/test_invoice_intent_prerouter.py', 'tests/test_info_help.py', 'tests/test_voice_state_routing.py'),
@@ -216,10 +217,11 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         setup_state_keys=('authorized_user',),
         forbidden_claims=(
             'I counted receipts or incoming invoices.',
+            'I counted expenses from receipts.',
             'I changed invoice data while calculating the summary.',
             'I can produce arbitrary accounting analytics from this action.',
         ),
-        notes_for_agents='Read-only outgoing-invoice yearly summary only; Python owns period parsing, tenant scoping, DB read, and rendering.',
+        notes_for_agents='Internal deterministic strategy under invoice_analytics. Do not expose invoice_period_summary as a competing top-level resolver action.',
     ),
     _capability(
         capability_id='invoice_analytics',
@@ -231,8 +233,10 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'Pilot scope is outgoing invoices only, current supplier only, and read-only.',
             'It can answer bounded analytical questions such as counts, sums, lists, period comparisons, grouping by customer, normalized bot payment status, or currency, and simple averages.',
             'Payment status means the bot stored/derived state from invoice follow-up data and due date, not bank-confirmed settlement.',
+            'Final user-facing business answers are Slovak by default; planner answer_language metadata must not override that policy.',
             'It does not analyze receipts, incoming invoices, bank movements, tax advice, or arbitrary accounting conclusions.',
             'It must not change invoice status, edit/delete/send invoices, generate PDFs, browse files, execute SQL, or read cross-tenant data.',
+            'Receipt/expense/incoming-invoice/bank/cashflow/VAT/tax wording is guarded before calculation and must not be answered from outgoing invoice data.',
         ),
         runtime_owner='bot/handlers/invoice.py::_run_invoice_analytics',
         canonical_actions=('invoice_analytics',),
@@ -244,6 +248,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'bot/services/invoice_analytics_answerer.py',
         ),
         truth_source_refs=(
+            'docs/llm/Safe_Data_Analyst_Runtime_Checklist.md',
             'docs/llm/Invoice_Analytics_Runtime_Contract.md',
             'docs/llm/Canonical_Action_Registry.md',
             'docs/FakturaBot_LLM_Orchestrator_Contract.md',
@@ -252,6 +257,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         test_refs=(
             'tests/test_invoice_analytics_dataset.py',
             'tests/test_invoice_analytics_planner.py',
+            'tests/test_invoice_analytics_answerer.py',
             'tests/test_safe_python_analytics_executor.py',
             'tests/test_invoice_intent_prerouter.py',
             'tests/test_voice_state_routing.py',
@@ -264,7 +270,9 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         setup_state_keys=('authorized_user',),
         forbidden_claims=(
             'I analyzed receipts or incoming invoices.',
+            'I analyzed expenses from receipts using outgoing invoice data.',
             'I changed invoice status or edited invoices from analytics.',
+            'I answered invoice analytics in Ukrainian because the user wrote Ukrainian.',
             'I executed SQL generated by the model.',
             'I read another supplier account.',
             'This is full accounting analytics.',
@@ -437,6 +445,34 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         forbidden_claims=('I can export to your accounting software.', 'I changed your accounting export.', 'Accounting export is configured.'),
     ),
     _capability(
+        capability_id='bank_cashflow_tax_analytics',
+        title='Bank, cashflow, VAT and tax analytics',
+        domain='business_analytics',
+        status=ProductTruthStatus.UNSUPPORTED,
+        summary_for_user='Bank movement, cashflow, VAT, tax, and full accounting analytics are not implemented in the current runtime.',
+        current_limitations=(
+            'The current analytics pilot covers only saved outgoing invoices for the current supplier.',
+            'There is no bank statement intake, bank reconciliation, cashflow model, VAT report, tax advice engine, or full accounting analytics runtime.',
+            'The bot must not infer tax deductibility, settlement, or accounting conclusions from invoice or receipt text.',
+        ),
+        truth_source_refs=(
+            'docs/Product_Truth_Layer.md',
+            'docs/Info_Help_Guidance_Layer.md',
+            'docs/llm/Safe_Data_Analyst_Runtime_Checklist.md',
+            'docs/TZ_FakturaBot.md',
+        ),
+        test_refs=('tests/test_product_truth.py', 'tests/test_info_help.py'),
+        safe_next_steps=('Do not claim bank/cashflow/tax analytics; future work needs separate data sources, validation, Product Truth, tests, and approval.',),
+        customization_allowed=True,
+        forbidden_claims=(
+            'I analyzed bank movements.',
+            'I calculated cashflow from bank data.',
+            'I produced a VAT or tax report.',
+            'This is full accounting analytics.',
+            'This is tax advice.',
+        ),
+    ),
+    _capability(
         capability_id='supplier_profile',
         title='Supplier profile',
         domain='supplier_profile',
@@ -520,6 +556,38 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         safe_next_steps=('Ask for a photo or PDF and require preview approval before confirmed save.',),
         requires_setup=True,
         setup_state_keys=('authorized_user', 'supplier_profile'),
+    ),
+    _capability(
+        capability_id='receipt_analytics',
+        title='Receipt analytics',
+        domain='accounting_documents',
+        status=ProductTruthStatus.PLANNED,
+        summary_for_user='Receipt/blocek analytics is not implemented yet; receipt categorization must be designed, validated, confirmed, stored, and tested first.',
+        current_limitations=(
+            'The current runtime can intake and show recent confirmed receipts/incoming invoices only within its implemented partial scope.',
+            'There is no receipt category taxonomy, category suggestion/confirmation flow, category source/confidence storage, or spending analytics runtime yet.',
+            'Raw OCR or LMM extraction is not a final accounting category and must not be treated as tax deductibility or accounting approval.',
+            'No broad receipt spending analytics, category totals, incoming-invoice analytics, bank matching, VAT/tax report, or full accounting analytics is implemented.',
+        ),
+        truth_source_refs=(
+            'docs/llm/Safe_Data_Analyst_Runtime_Checklist.md',
+            'docs/Product_Truth_Layer.md',
+            'docs/Info_Help_Guidance_Layer.md',
+            'docs/TZ_FakturaBot.md',
+        ),
+        test_refs=('tests/test_product_truth.py', 'tests/test_info_help.py'),
+        safe_next_steps=(
+            'Build category taxonomy, category suggestion, Python validation, confirmation where needed, storage with source/confidence, and tests before any receipt analytics runtime.',
+        ),
+        customization_allowed=True,
+        forbidden_claims=(
+            'I analyzed receipt categories.',
+            'I categorized your receipts for analytics.',
+            'Raw OCR is a final accounting category.',
+            'I calculated tax deductibility from receipts.',
+            'Receipt analytics is implemented.',
+        ),
+        notes_for_agents='Planned capability only. Do not route receipt analytics questions to the add/upload receipt flow.',
     ),
     _capability(
         capability_id='show_recent_accounting_documents',

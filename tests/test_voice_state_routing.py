@@ -1159,7 +1159,7 @@ def test_voice_idle_transcript_can_use_llm_info_help_triage_without_side_effects
     tmp_path: Path,
 ) -> None:
     async def _stt(*args, **kwargs) -> str:
-        return 'cashflow dashboard pls'
+        return 'nejasny hlasovy vstup'
 
     async def _resolver(**kwargs) -> str:
         return 'unknown'

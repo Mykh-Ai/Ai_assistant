@@ -562,7 +562,21 @@ current code before runtime claims:
 - invoice exact numeric/date/identifier values by voice: partial/text-only for
   precision-sensitive fields;
 - invoice analytics over saved outgoing invoices: partial read-only pilot over
-  the current supplier's persisted outgoing invoice rows only;
+  the current supplier's persisted outgoing invoice rows only, with Slovak
+  business answers by default, Python-normalized bot payment status rather
+  than raw invoice lifecycle status, and an internal deterministic calendar-year
+  count/total fast path for simple yearly questions;
+- yearly invoice summary: supported only as an internal deterministic strategy
+  under `invoice_analytics`, not as a competing user-facing top-level action;
+- receipt/blocek analytics: planned/not implemented; receipt category
+  taxonomy, suggestion, Python validation, confirmation/deterministic rule,
+  category storage, source/confidence, tests, and Product Truth must exist
+  before analytics over receipts can be claimed;
+- incoming invoice analytics: unsupported unless a separate runtime contract,
+  data model, Product Truth, and tests prove otherwise;
+- bank/cashflow/VAT/tax/full accounting analytics: unsupported unless a
+  separate implementation with data sources, validation rules, Product Truth,
+  and tests proves otherwise;
 - invoice PDF generation: supported in current invoice flow;
 - Google Drive invoice storage: unsupported/planned only unless later runtime
   code proves otherwise;

@@ -12,11 +12,11 @@
 
 Approved users may view an already created outgoing invoice through the canonical top-level action `show_existing_invoice`. User wording such as “show/open invoice/faktura 04” must resolve to read-only invoice display, not to persisted invoice editing. Python resolves the invoice only inside the current supplier scope, sends the invoice summary and available PDF, and then clears FSM state / returns the bot to idle.
 
-Approved users may also ask a read-only yearly summary of already saved outgoing invoices through canonical top-level action `invoice_period_summary`. User wording such as "Na aku sumu som vystavil faktury tento rok?" or "Suhrn faktur za 2026" resolves to Python-owned period parsing and tenant-scoped invoice aggregation by `supplier_telegram_id` and `issue_date`. The action currently supports current year, previous year, or an explicit calendar year, groups totals by currency, answers in chat, and clears FSM state. It must not create/edit/delete invoices, generate PDFs, summarize receipts or incoming invoices, or claim broad accounting analytics.
+Approved users may ask read-only questions about already saved outgoing invoices through canonical top-level action `invoice_analytics`. Simple yearly total/count wording such as "Na aku sumu som vystavil faktury tento rok?" or "Suhrn faktur za 2026" uses an internal deterministic fast path with Python-owned period parsing and tenant-scoped invoice aggregation by `supplier_telegram_id` and `issue_date`. The old `invoice_period_summary` behavior remains only as an internal analytics strategy, not as a competing user-facing top-level action. It must not create/edit/delete invoices, generate PDFs, summarize receipts, expenses, incoming invoices, bank data, VAT, tax, or claim broad accounting analytics.
 
 Persisted invoice editing remains the separate canonical action `edit_existing_invoice`. User wording that means edit/change/correct an invoice by number may enter the bounded invoice edit FSM after Python supplier-scoped lookup.
 
-System/read-only surfaces are stateless interruptions: `/start`, `/menu`, `/moj_profil` when the profile exists, `/blocek`, `show_existing_invoice`, and `invoice_period_summary` may clear the current FSM state and show their result without leaving the user in a workflow.
+System/read-only surfaces are stateless interruptions: `/start`, `/menu`, `/moj_profil` when the profile exists, `/blocek`, `show_existing_invoice`, and read-only `invoice_analytics` answers may clear the current FSM state and show their result without leaving the user in a workflow.
 
 Global state cancellation is supported through `/cancel` and shared DecisionResolver-backed cancel wording in text or voice transcripts, such as `zrušiť`, `скасувати`, `відмінити`, `відминити`, `отменить`, and “почни з початку”. Cancellation must be state-aware: temporary Document Intake/OfficeFlow staging is cleaned; draft invoice states are cleared; newly generated unconfirmed post-PDF invoices keep the existing cancel cleanup behavior; persisted invoice edit cancellation only exits edit mode and must not delete the already stored invoice. Voice cancellation must not bypass exact typed destructive confirmations.
 
@@ -68,10 +68,46 @@ storage paths. Payment status is the bot's stored/derived state from follow-up
 data and due dates, not bank-confirmed settlement.
 
 The pilot does not create, edit, delete, send, archive, mark paid, or generate
-invoices/PDFs. It does not analyze receipts, incoming invoices, bank
+invoices/PDFs. It does not analyze receipts, expenses, incoming invoices, bank
 statements, cashflow, VAT, tax, or accounting-export data. It must not claim
-full accounting analytics. The existing deterministic `invoice_period_summary`
-yearly summary remains implemented and separate.
+full accounting analytics. The deterministic yearly summary remains
+implemented as an internal fast path under `invoice_analytics`; month-specific,
+multi-month, comparison, customer, status, grouping, list, and average
+questions stay in the safe analytics runtime.
+
+---
+
+## 2026-06-18 Addendum: Safe Data Analyst runtime checklist and analytics boundaries
+
+`docs/llm/Safe_Data_Analyst_Runtime_Checklist.md` is now the reusable
+architecture checklist for future read-only analytics runtimes. The checklist
+defines the required authority split, data boundary, sandbox, Product Truth,
+language, testing, and unsupported-domain controls before a new data analyst
+runtime can be considered product-safe.
+
+`docs/llm/Invoice_Analytics_Runtime_Contract.md` is the first implemented
+domain contract that applies the checklist. It remains invoice-specific:
+current authorized supplier, saved outgoing invoices only, sanitized dataframe,
+normalized bot payment status, Python-owned execution, and no write
+operations.
+
+Final business answers in end-user flows must use Slovak business language by
+default. User input language or planner metadata must not override that policy
+unless a future Python-owned product decision explicitly changes it.
+
+Receipt/blocek analytics must not be built before all of these exist:
+
+1. category taxonomy;
+2. category suggestion;
+3. Python validation of allowed categories;
+4. user or deterministic confirmation where needed;
+5. category storage;
+6. category source/confidence;
+7. tests and Product Truth.
+
+Raw OCR/LMM extraction of a receipt is not final accounting truth, a final
+category, tax deductibility evidence, or a basis for spending analytics unless
+the above controls exist.
 
 ---
 

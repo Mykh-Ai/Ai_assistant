@@ -12,9 +12,9 @@ from bot.services.product_truth import get_safe_answer_payload, list_capabilitie
 _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'create_invoice',
     'show_existing_invoice',
-    'invoice_period_summary',
     'invoice_analytics',
     'invoice_due_date_reminders',
+    'receipt_analytics',
     'edit_existing_invoice',
     'delete_existing_invoice',
     'invoice_pdf_generation',
@@ -33,6 +33,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
     'accounting_export',
+    'bank_cashflow_tax_analytics',
     'invoice_pdf_custom_template',
     'delete_user_database',
 )
@@ -64,16 +65,22 @@ _SLOVAK_CAPABILITY_COPY = {
         'safe_next': 'Ak chcete faktúru naozaj vytvoriť, napíšte konkrétne údaje faktúry alebo použite /invoice.',
     },
     'invoice_period_summary': {
-        'title': 'Súhrn faktúr za rok',
-        'summary': 'Súhrn uložených vystavených faktúr za rok je podporovaný ako read-only výpočet.',
-        'limitation': 'Počítam iba už uložené odoslané faktúry vo vašom účte podľa dátumu vystavenia. Zatiaľ nejde o všeobecnú analytiku, DPH report, neuhradené faktúry ani účtovné doklady.',
-        'safe_next': 'Napíšte napríklad: „Na akú sumu som vystavil faktúry tento rok?“ alebo „Súhrn faktúr za 2026“.',
+        'title': 'Ročný súhrn v analytike faktúr',
+        'summary': 'Jednoduchý ročný súhrn uložených vystavených faktúr je interná read-only vetva pod analytikou faktúr.',
+        'limitation': 'Nie je to samostatná verejná top-level akcia. Počítam iba už uložené odoslané faktúry vo vašom účte podľa dátumu vystavenia. Nepočítam bločky, výdavky, prijaté faktúry, banku, cashflow, DPH ani dane.',
+        'safe_next': 'Napíšte napríklad: „Na akú sumu som vystavil faktúry tento rok?“ alebo širšiu otázku cez analytiku vystavených faktúr.',
     },
     'invoice_analytics': {
         'title': 'Analytika vystavených faktúr',
         'summary': 'Analytika vystavených faktúr je podporovaná čiastočne ako read-only pilot nad uloženými odoslanými faktúrami.',
-        'limitation': 'Pilot pracuje iba s odoslanými faktúrami aktuálneho dodávateľa. Nepočíta bločky, prijaté faktúry, bankové pohyby, dane ani všeobecné účtovné závery a nič nemení v databáze.',
+        'limitation': 'Pilot pracuje iba s odoslanými faktúrami aktuálneho dodávateľa. Používa normalizovaný stav úhrady v bota, nie surový lifecycle status faktúry. Nepočíta bločky, prijaté faktúry, bankové pohyby, dane ani všeobecné účtovné závery a nič nemení v databáze.',
         'safe_next': 'Môžete sa opýtať napríklad na faktúry za máj, porovnanie dvoch období, neuhradené/zaplatené faktúry alebo top odberateľov podľa sumy faktúr.',
+    },
+    'receipt_analytics': {
+        'title': 'Analytika bločkov',
+        'summary': 'Analytika bločkov ešte nie je hotová. Aktuálne nejde o podporovaný runtime výpočtov nad výdavkami.',
+        'limitation': 'Najprv treba doplniť kategórie bločkov: návrh kategórie, Python validáciu povolených kategórií, potvrdenie alebo deterministické pravidlo tam, kde treba, uloženie kategórie a zdroj/istotu kategórie. Surové OCR alebo LMM extrakcia nie je finálna účtovná kategória ani daňové posúdenie.',
+        'safe_next': 'Teraz môžete bločky prijímať a ukladať v implementovanom rozsahu, ale analytika výdavkov podľa kategórií príde až po kategorizácii a testoch.',
     },
     'invoice_due_date_reminders': {
         'title': 'Pripomienky faktúr po splatnosti',
@@ -110,6 +117,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'summary': 'Export do účtovného softvéru nie je v aktuálnej verzii implementovaný.',
         'limitation': 'Aktuálne účtovné dokumenty pokrývajú iba potvrdený príjem dokladov a nedávny prehľad tam, kde je podporený.',
         'safe_next': 'Export by potreboval cieľový softvér, formát alebo API, prístupy a samostatné schválenie.',
+    },
+    'bank_cashflow_tax_analytics': {
+        'title': 'Banková, cashflow, DPH a daňová analytika',
+        'summary': 'Bankové pohyby, cashflow, DPH/daňové výpočty a plná účtovná analytika nie sú v aktuálnom runtime implementované.',
+        'limitation': 'Pilot analytiky pracuje iba s uloženými odoslanými faktúrami. Nemá bankové výpisy, párovanie platieb, cashflow model, DPH report ani daňové poradenstvo.',
+        'safe_next': 'Takáto analytika by potrebovala samostatné zdroje dát, pravidlá validácie, Product Truth, testy a schválený rozsah.',
     },
     'invoice_pdf_custom_template': {
         'title': 'Vlastná PDF šablóna faktúry',
@@ -205,9 +218,10 @@ _SLOVAK_CAPABILITY_COPY = {
 _SLOVAK_OVERVIEW_TITLES = {
     'create_invoice': 'vytvorenie faktúry',
     'show_existing_invoice': 'zobrazenie existujúcej faktúry',
-    'invoice_period_summary': 'súhrn faktúr za rok',
+    'invoice_period_summary': 'ročný súhrn v analytike faktúr',
     'invoice_analytics': 'analytika vystavených faktúr',
     'invoice_due_date_reminders': 'pripomienky faktúr po splatnosti',
+    'receipt_analytics': 'analytika bločkov',
     'edit_existing_invoice': 'úprava existujúcej faktúry',
     'delete_existing_invoice': 'vymazanie existujúcej faktúry',
     'invoice_pdf_generation': 'generovanie PDF faktúry',
@@ -226,6 +240,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'google_drive_invoice_archive_after_due_date': 'archivácia faktúry na Google Drive po splatnosti',
     'sms_reminders': 'SMS pripomienky',
     'accounting_export': 'export do účtovníctva',
+    'bank_cashflow_tax_analytics': 'banková, cashflow, DPH a daňová analytika',
     'invoice_pdf_custom_template': 'vlastná PDF šablóna faktúry',
     'delete_user_database': 'vymazanie používateľskej databázy',
 }
@@ -444,7 +459,7 @@ def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageR
         return _triage_result(TRIAGE_ADMIN_REVIEW_CANDIDATE, confidence=0.8)
     if _is_invoice_period_summary_request(normalized, tokens):
         return InfoHelpTriageResult(
-            capability_id='invoice_period_summary',
+            capability_id='invoice_analytics',
             topic_id='product_capability',
             triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
             confidence=0.85,
@@ -455,6 +470,20 @@ def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageR
             topic_id='product_capability',
             triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
             confidence=0.8,
+        )
+    if _mentions_receipt_analytics_capability(normalized, tokens):
+        return InfoHelpTriageResult(
+            capability_id='receipt_analytics',
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.82,
+        )
+    if _mentions_bank_cashflow_tax_analytics(normalized, tokens):
+        return InfoHelpTriageResult(
+            capability_id='bank_cashflow_tax_analytics',
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.82,
         )
     if _is_new_business_feature_request(normalized, tokens):
         return _triage_result(TRIAGE_NEW_BUSINESS_FEATURE_REQUEST, confidence=0.8)
@@ -536,7 +565,7 @@ def _render_info_help_triage_result(
         return _build_capability_overview()
     if result.triage_class == TRIAGE_NEW_BUSINESS_FEATURE_REQUEST:
         if result.business_need == 'invoice_period_summary':
-            payload = get_safe_answer_payload('invoice_period_summary', account_context=account_context)
+            payload = get_safe_answer_payload('invoice_analytics', account_context=account_context)
             return _render_product_truth_payload(payload)
         return (
             'Toto vyzer\u00e1 ako po\u017eiadavka na nov\u00fa biznis funkciu. '
@@ -608,6 +637,10 @@ def classify_info_help_capability(
         return 'invoice_due_date_reminders'
     if 'sms' in tokens or 'esemes' in tokens or 'esemesky' in tokens:
         return 'sms_reminders'
+    if _mentions_receipt_analytics_capability(normalized, tokens):
+        return 'receipt_analytics'
+    if _mentions_bank_cashflow_tax_analytics(normalized, tokens):
+        return 'bank_cashflow_tax_analytics'
     if _mentions_accounting_export(normalized, tokens):
         return 'accounting_export'
     if _mentions_custom_pdf_template(normalized, tokens):
@@ -630,9 +663,7 @@ def classify_info_help_capability(
         return 'voice_invoice_intake'
     if _mentions_delete_database_safety(normalized, tokens):
         return 'delete_user_database'
-    if _mentions_invoice_period_summary_capability(normalized, tokens):
-        return 'invoice_period_summary'
-    if _mentions_invoice_analytics_capability(normalized, tokens):
+    if _mentions_invoice_period_summary_capability(normalized, tokens) or _mentions_invoice_analytics_capability(normalized, tokens):
         return 'invoice_analytics'
     if _mentions_delete_existing_invoice_how_to(normalized, tokens):
         return 'delete_existing_invoice'
@@ -931,6 +962,109 @@ def _mentions_receipt_how_to(normalized: str, tokens: set[str]) -> bool:
     return bool(tokens.intersection({'ako', 'how', 'pridam', 'nahrat', 'nahram', 'upload'}))
 
 
+def _mentions_receipt_analytics_capability(normalized: str, tokens: set[str]) -> bool:
+    receipt_terms = {
+        'blocek',
+        'blocky',
+        'blockov',
+        'doklad',
+        'doklady',
+        'receipt',
+        'receipts',
+        'cek',
+        'ceky',
+        'cekov',
+        'чеки',
+        'чеків',
+        'чеков',
+        'чеках',
+    }
+    analytics_terms = {
+        'analytika',
+        'analytiku',
+        'analyzovat',
+        'analyzuj',
+        'analytics',
+        'analyze',
+        'analyza',
+        'report',
+        'prehlad',
+        'vykaz',
+        'vydavky',
+        'vydavkov',
+        'kategoria',
+        'kategorie',
+        'kategorii',
+        'kategorizovat',
+        'kategorizacia',
+        'category',
+        'categories',
+        'spending',
+        'expenses',
+        'витрат',
+        'витрати',
+        'категорії',
+        'категоріі',
+        'категорія',
+        'категории',
+        'категория',
+        'аналітика',
+        'аналитика',
+        'аналіз',
+        'анализ',
+    }
+    return bool(tokens.intersection(receipt_terms)) and bool(tokens.intersection(analytics_terms))
+
+
+def _mentions_bank_cashflow_tax_analytics(normalized: str, tokens: set[str]) -> bool:
+    domain_terms = {
+        'banka',
+        'banku',
+        'bankove',
+        'bankovy',
+        'cashflow',
+        'cash',
+        'dph',
+        'vat',
+        'dan',
+        'dane',
+        'danovy',
+        'danovu',
+        'tax',
+        'bank',
+        'банку',
+        'банк',
+        'банкові',
+        'ндс',
+        'пдв',
+        'налог',
+        'налоги',
+        'податок',
+        'податки',
+    }
+    analytics_terms = {
+        'analytika',
+        'analyzovat',
+        'analytics',
+        'report',
+        'prehlad',
+        'vykaz',
+        'vypocet',
+        'cashflow',
+        'analyza',
+        'аналітика',
+        'аналитика',
+        'аналіз',
+        'анализ',
+        'звіт',
+        'отчет',
+    }
+    return bool(tokens.intersection(domain_terms)) and (
+        bool(tokens.intersection(analytics_terms))
+        or bool(tokens.intersection({'vies', 'viete', 'mozes', 'mozete', 'can', 'could', 'da'}))
+    )
+
+
 def _mentions_recent_accounting_how_to(normalized: str, tokens: set[str]) -> bool:
     mentions_docs = bool(tokens.intersection({'blocek', 'blocky', 'blockov', 'doklady', 'dokladov', 'uctovne'}))
     mentions_recent = bool(tokens.intersection({'posledne', 'nedavne', 'recent', 'zobrazim', 'ukazem', 'ako'}))
@@ -1078,6 +1212,29 @@ def _is_new_business_feature_request(normalized: str, tokens: set[str]) -> bool:
 
 
 def _is_invoice_period_summary_request(normalized: str, tokens: set[str]) -> bool:
+    month_terms = {
+        'mesiac',
+        'mesiace',
+        'mesiacov',
+        'month',
+        'monthly',
+        'marec',
+        'marci',
+        'march',
+        'maj',
+        'maji',
+        'may',
+        '\u043c\u0456\u0441\u044f\u0446\u044c',
+        '\u043c\u0456\u0441\u044f\u0446\u044f\u0445',
+        '\u043c\u0456\u0441\u044f\u0446\u044f\u043c\u0438',
+        '\u043c\u0435\u0441\u044f\u0446',
+        '\u0431\u0435\u0440\u0435\u0437\u0435\u043d\u044c',
+        '\u0431\u0435\u0440\u0435\u0437\u043d\u0456',
+        '\u0442\u0440\u0430\u0432\u0435\u043d\u044c',
+        '\u0442\u0440\u0430\u0432\u043d\u0456',
+    }
+    if tokens.intersection(month_terms):
+        return False
     invoice_terms = {
         'faktura',
         'fakturu',
@@ -1140,8 +1297,6 @@ def _is_invoice_period_summary_request(normalized: str, tokens: set[str]) -> boo
         'tomto',
         'obdobie',
         'obdobi',
-        'mesiac',
-        'month',
         'місяць',
         'месяц',
         'год',

@@ -186,6 +186,29 @@ still not complete. Admin answer-only response-to-user exists as a separate
 admin-confirmed runtime flow, but InfoHelp itself does not send responses.
 InfoHelp Level 2 is not complete.
 
+### Analytics Capability Guidance
+
+InfoHelp must distinguish analytics domains by Product Truth, not by broad
+business wording alone.
+
+- Invoice analytics is partial and read-only. It may be described only as
+  questions over saved outgoing invoices for the current authorized supplier,
+  including counts, sums, periods, customers, and normalized bot payment states.
+- Simple current/previous/explicit calendar-year count/total questions are
+  supported as an internal deterministic fast path under invoice analytics, not
+  as a separate competing top-level user-facing capability.
+- Receipt/blocek analytics is not implemented. InfoHelp must not confuse
+  "analyze/categorize receipts" with the existing add/upload receipt intake
+  flow. It should explain that receipt categorization must come first:
+  taxonomy, suggestion, Python validation, confirmation/deterministic rule,
+  category storage, source/confidence, tests, and Product Truth.
+- Unsupported but plausible expense/receipt analytics questions should offer
+  the confirmation-gated customization/admin-review request path when safe.
+- Bank, cashflow, VAT, tax, and full accounting analytics are unsupported
+  unless later code/docs add a separate proven implementation.
+- User-facing business answers should be Slovak by default, even when the
+  user asks in Ukrainian, Russian, or English.
+
 ## Response Contract
 
 Every InfoHelp answer must include:

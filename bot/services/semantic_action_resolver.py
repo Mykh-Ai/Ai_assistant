@@ -24,6 +24,97 @@ def _tokenize(value: str) -> set[str]:
     return normalized
 
 
+_MONTH_PERIOD_TERMS = {
+    'mesiac',
+    'mesiace',
+    'mesiacov',
+    'mesacne',
+    'month',
+    'monthly',
+    'marec',
+    'marci',
+    'march',
+    'maj',
+    'maji',
+    'may',
+    'jun',
+    'june',
+    'july',
+    '\u043c\u0456\u0441\u044f\u0446\u044c',
+    '\u043c\u0456\u0441\u044f\u0446\u044f\u0445',
+    '\u043c\u0456\u0441\u044f\u0446\u044f\u043c\u0438',
+    '\u043c\u0435\u0441\u044f\u0446',
+    '\u043c\u0435\u0441\u044f\u0446\u0430\u0445',
+    '\u0431\u0435\u0440\u0435\u0437\u0435\u043d\u044c',
+    '\u0431\u0435\u0440\u0435\u0437\u043d\u0456',
+    '\u0431\u0435\u0440\u0435\u0437\u043d\u044f',
+    '\u0442\u0440\u0430\u0432\u0435\u043d\u044c',
+    '\u0442\u0440\u0430\u0432\u043d\u0456',
+    '\u0442\u0440\u0430\u0432\u043d\u044f',
+    '\u043c\u0430\u0440\u0442',
+    '\u043c\u0430\u0440\u0442\u0435',
+    '\u043c\u0430\u044f',
+}
+
+
+_INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS = {
+    'vydavky',
+    'vydavkov',
+    'expense',
+    'expenses',
+    'spending',
+    'blocek',
+    'blocky',
+    'blockov',
+    'doklad',
+    'doklady',
+    'receipt',
+    'receipts',
+    'cek',
+    'ceky',
+    'cekov',
+    'prijata',
+    'prijate',
+    'incoming',
+    'banka',
+    'bankove',
+    'bankovy',
+    'bank',
+    'cashflow',
+    'dph',
+    'vat',
+    'dan',
+    'dane',
+    'tax',
+    'kategoria',
+    'kategorie',
+    'category',
+    'categories',
+    '\u0432\u0438\u0442\u0440\u0430\u0442\u0438',
+    '\u0432\u0438\u0442\u0440\u0430\u0442',
+    '\u0432\u0438\u0434\u0430\u0442\u043a\u0438',
+    '\u0432\u0438\u0434\u0430\u0442\u043a\u0456\u0432',
+    '\u0447\u0435\u043a',
+    '\u0447\u0435\u043a\u0438',
+    '\u0447\u0435\u043a\u0456\u0432',
+    '\u0447\u0435\u043a\u0430\u0445',
+    '\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u0438',
+    '\u0431\u0430\u043d\u043a',
+    '\u0431\u0430\u043d\u043a\u0443',
+    '\u043f\u0434\u0432',
+    '\u043d\u0434\u0441',
+    '\u043f\u043e\u0434\u0430\u0442\u043a\u0438',
+    '\u043d\u0430\u043b\u043e\u0433',
+    '\u043d\u0430\u043b\u043e\u0433\u0438',
+    '\u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0456\u0457',
+    '\u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u0438',
+}
+
+
+def _mentions_unsupported_invoice_analytics_domain(tokens: set[str]) -> bool:
+    return bool(tokens.intersection(_INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS))
+
+
 def _matches_top_level_delete_invoice(tokens: set[str]) -> bool:
     delete_verbs = {
         'vymaz',
@@ -84,6 +175,8 @@ def _matches_top_level_show_invoice(tokens: set[str]) -> bool:
 
 
 def _matches_invoice_period_summary(text: str, tokens: set[str]) -> bool:
+    if tokens.intersection(_MONTH_PERIOD_TERMS):
+        return False
     invoice_terms = {
         'fakturu',
         'faktura',
@@ -134,8 +227,6 @@ def _matches_invoice_period_summary(text: str, tokens: set[str]) -> bool:
         'tomto',
         'obdobie',
         'obdobi',
-        'mesiac',
-        'month',
         '\u0446\u044c\u043e\u043c\u0443',
         '\u0440\u043e\u0446\u0456',
         '\u0440\u0456\u043a',
@@ -172,6 +263,8 @@ def _matches_invoice_period_summary(text: str, tokens: set[str]) -> bool:
 
 def _matches_invoice_analytics_request(text: str, tokens: set[str]) -> bool:
     if _matches_invoice_period_summary(text, tokens):
+        return False
+    if _mentions_unsupported_invoice_analytics_domain(tokens):
         return False
     invoice_terms = {
         'fakturu',
@@ -219,6 +312,10 @@ def _matches_invoice_analytics_request(text: str, tokens: set[str]) -> bool:
         'month',
         'mesiac',
         'maj',
+        'maji',
+        'marec',
+        'marci',
+        'march',
         'may',
         '\u0441\u043a\u0456\u043b\u044c\u043a\u0438',
         '\u0441\u043a\u043e\u043b\u044c\u043a\u043e',
@@ -227,7 +324,10 @@ def _matches_invoice_analytics_request(text: str, tokens: set[str]) -> bool:
         '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0438',
         '\u0441\u0440\u0430\u0432\u043d\u0438',
         '\u0442\u0440\u0430\u0432\u0435\u043d\u044c',
+        '\u0442\u0440\u0430\u0432\u043d\u0456',
         '\u043c\u0430\u0439',
+        '\u0431\u0435\u0440\u0435\u0437\u0435\u043d\u044c',
+        '\u0431\u0435\u0440\u0435\u0437\u043d\u0456',
         '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0438\u0445',
         '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
         '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
@@ -256,12 +356,13 @@ def _matches_invoice_analytics_request(text: str, tokens: set[str]) -> bool:
     }
     if tokens.intersection(write_terms):
         return False
-    if bool(tokens.intersection(invoice_terms)) and bool(tokens.intersection(analytics_terms)):
+    if bool(tokens.intersection(invoice_terms)) and (
+        bool(tokens.intersection(analytics_terms)) or bool(tokens.intersection(_MONTH_PERIOD_TERMS))
+    ):
         return True
     has_period_comparison = (
         bool(tokens.intersection({'porovnaj', 'porovnat', 'compare', '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0439', '\u043f\u043e\u0440\u0456\u0432\u043d\u044f\u0438', '\u0441\u0440\u0430\u0432\u043d\u0438'}))
-        and bool(tokens.intersection({'maj', 'may', 'mesiac', 'month', '\u0442\u0440\u0430\u0432\u0435\u043d\u044c', '\u043c\u0430\u0439'}))
-        and len(re.findall(r'(?:19|20)\d{2}', text)) >= 2
+        and bool(tokens.intersection(_MONTH_PERIOD_TERMS))
     )
     return has_period_comparison
 
@@ -537,6 +638,12 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'delete_user_database'
         if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'відправ', 'отправь'}):
             return 'send_invoice'
+        if (
+            'invoice_analytics' in allowed
+            and 'invoice_period_summary' not in allowed
+            and _matches_invoice_period_summary(text, tokens)
+        ):
+            return 'invoice_analytics'
         if 'invoice_period_summary' in allowed and _matches_invoice_period_summary(text, tokens):
             return 'invoice_period_summary'
         if 'invoice_analytics' in allowed and _matches_invoice_analytics_request(text, tokens):
