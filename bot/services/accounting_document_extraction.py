@@ -5,24 +5,54 @@ import json
 from typing import Any
 
 from bot.services.accounting_document_models import (
+    CATEGORY_CONFIDENCE_VALUES,
     DOCUMENT_TYPES,
     PAYMENT_METHODS,
     READABILITY_VALUES,
     AccountingDocumentCandidate,
+    AccountingDocumentCategoryCandidate,
+    AccountingDocumentLineItemCandidate,
     AccountingDocumentQuality,
     AccountingDocumentSource,
+    AccountingDocumentSuggestedCategory,
 )
 
 
-_ALLOWED_TOP_LEVEL_KEYS = {'document_type', 'source', 'business', 'quality', 'trace'}
-_SIDE_EFFECT_TOP_LEVEL_KEYS = {'id', 'db_id', 'saved_path', 'status', 'confirmed', 'final_category'}
+_ALLOWED_TOP_LEVEL_KEYS = {
+    'document_type',
+    'source',
+    'business',
+    'quality',
+    'trace',
+    'document_category_candidate',
+    'suggested_new_categories',
+    'line_items',
+}
+_SIDE_EFFECT_KEYS = {
+    'id',
+    'db_id',
+    'saved_path',
+    'status',
+    'confirmed',
+    'final_category',
+    'saved_category',
+    'category_created',
+    'saved_path',
+    'registry_mutation',
+    'category',
+}
+_SAFE_FALLBACK_CATEGORY_ID = 'unknown_review'
 
 
 class AccountingDocumentExtractionParseError(ValueError):
     pass
 
 
-def parse_accounting_document_extraction(raw_json: str) -> AccountingDocumentCandidate:
+def parse_accounting_document_extraction(
+    raw_json: str,
+    *,
+    allowed_category_ids: set[str] | frozenset[str] | None = None,
+) -> AccountingDocumentCandidate:
     """
     Parse LMM extraction output into a candidate model.
 
@@ -38,6 +68,7 @@ def parse_accounting_document_extraction(raw_json: str) -> AccountingDocumentCan
     if not isinstance(payload, dict):
         raise AccountingDocumentExtractionParseError('extraction_not_object')
 
+    _reject_forbidden_fields(payload)
     _reject_top_level_fields(payload)
 
     document_type = _normalized_string(payload.get('document_type'))
@@ -47,6 +78,12 @@ def parse_accounting_document_extraction(raw_json: str) -> AccountingDocumentCan
     source = _parse_source(payload.get('source'))
     business = _expect_object(payload.get('business'), 'business_required')
     quality = _parse_quality(payload.get('quality'))
+    document_category_candidate = _parse_category_candidate(
+        payload.get('document_category_candidate'),
+        allowed_category_ids=allowed_category_ids,
+    )
+    suggested_new_categories = _parse_suggested_categories(payload.get('suggested_new_categories'))
+    line_items = _parse_line_items(payload.get('line_items'), allowed_category_ids=allowed_category_ids)
 
     payment_method = _nullable_normalized_string(business.get('payment_method'))
     if payment_method is not None and payment_method not in PAYMENT_METHODS:
@@ -68,18 +105,30 @@ def parse_accounting_document_extraction(raw_json: str) -> AccountingDocumentCan
         payment_method=payment_method,
         purchase_subject=_nullable_string(business.get('purchase_subject'))
         or _nullable_string(business.get('category_candidate')),
+        document_category_candidate=document_category_candidate,
+        suggested_new_categories=suggested_new_categories,
+        line_items=line_items,
         quality=quality,
         source=source,
     )
 
 
 def _reject_top_level_fields(payload: dict[str, Any]) -> None:
-    side_effect_keys = set(payload) & _SIDE_EFFECT_TOP_LEVEL_KEYS
-    if side_effect_keys:
-        raise AccountingDocumentExtractionParseError(f'side_effect_field_forbidden:{sorted(side_effect_keys)[0]}')
     unexpected_keys = set(payload) - _ALLOWED_TOP_LEVEL_KEYS
     if unexpected_keys:
         raise AccountingDocumentExtractionParseError(f'unexpected_top_level_field:{sorted(unexpected_keys)[0]}')
+
+
+def _reject_forbidden_fields(value: Any) -> None:
+    if isinstance(value, dict):
+        forbidden = set(value) & _SIDE_EFFECT_KEYS
+        if forbidden:
+            raise AccountingDocumentExtractionParseError(f'side_effect_field_forbidden:{sorted(forbidden)[0]}')
+        for nested in value.values():
+            _reject_forbidden_fields(nested)
+    elif isinstance(value, list):
+        for item in value:
+            _reject_forbidden_fields(item)
 
 
 def _parse_source(value: Any) -> AccountingDocumentSource:
@@ -103,6 +152,84 @@ def _parse_quality(value: Any) -> AccountingDocumentQuality:
         missing_fields=missing_fields,
         warnings=warnings,
     )
+
+
+def _parse_category_candidate(
+    value: Any,
+    *,
+    allowed_category_ids: set[str] | frozenset[str] | None,
+) -> AccountingDocumentCategoryCandidate | None:
+    if value is None:
+        return None
+    candidate = _expect_object(value, 'category_candidate_invalid')
+    category_id = _nullable_normalized_string(candidate.get('category_id'))
+    forced_unknown_review = False
+    if category_id is not None and allowed_category_ids is not None and category_id not in allowed_category_ids:
+        category_id = _SAFE_FALLBACK_CATEGORY_ID
+        forced_unknown_review = True
+    confidence = _nullable_normalized_string(candidate.get('confidence')) or 'low'
+    if confidence not in CATEGORY_CONFIDENCE_VALUES:
+        raise AccountingDocumentExtractionParseError('category_confidence_unsupported')
+    if forced_unknown_review:
+        confidence = 'low'
+    review_required = True if forced_unknown_review else bool(candidate.get('review_required', category_id == _SAFE_FALLBACK_CATEGORY_ID))
+    reason = _nullable_string(candidate.get('reason'))
+    return AccountingDocumentCategoryCandidate(
+        category_id=category_id,
+        confidence=confidence,
+        review_required=review_required,
+        reason=reason,
+    )
+
+
+def _parse_suggested_categories(value: Any) -> list[AccountingDocumentSuggestedCategory]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise AccountingDocumentExtractionParseError('suggested_new_categories_invalid')
+    suggestions: list[AccountingDocumentSuggestedCategory] = []
+    for item in value[:3]:
+        suggestion = _expect_object(item, 'suggested_new_categories_invalid')
+        if suggestion.get('category_id') is not None:
+            raise AccountingDocumentExtractionParseError('suggested_new_category_id_forbidden')
+        label = _nullable_string(suggestion.get('label_sk'))
+        if label is None:
+            raise AccountingDocumentExtractionParseError('suggested_new_category_label_required')
+        suggestions.append(
+            AccountingDocumentSuggestedCategory(
+                label_sk=label,
+                reason=_nullable_string(suggestion.get('reason')),
+            )
+        )
+    return suggestions
+
+
+def _parse_line_items(
+    value: Any,
+    *,
+    allowed_category_ids: set[str] | frozenset[str] | None,
+) -> list[AccountingDocumentLineItemCandidate]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise AccountingDocumentExtractionParseError('line_items_invalid')
+    line_items: list[AccountingDocumentLineItemCandidate] = []
+    for item in value:
+        line_item = _expect_object(item, 'line_item_invalid')
+        line_items.append(
+            AccountingDocumentLineItemCandidate(
+                description=_nullable_string(line_item.get('description')),
+                amount=_nullable_decimal(line_item.get('amount'), 'line_item_amount_invalid'),
+                currency=_nullable_normalized_string(line_item.get('currency'), uppercase=True),
+                vat_amount=_nullable_decimal(line_item.get('vat_amount'), 'line_item_vat_amount_invalid'),
+                category_candidate=_parse_category_candidate(
+                    line_item.get('category_candidate'),
+                    allowed_category_ids=allowed_category_ids,
+                ),
+                suggested_new_categories=_parse_suggested_categories(line_item.get('suggested_new_categories')),
+            )
+        )
+    return line_items
 
 
 def _expect_object(value: Any, error: str) -> dict[str, Any]:

@@ -4,12 +4,19 @@ The input is a receipt or incoming invoice candidate. Return candidate metadata 
 Python validates the result. The user confirms before anything is saved.
 
 Extract raw facts visible on the document.
-Do not classify the expense into an accounting category.
-Do not guess business, tax, or bookkeeping category.
 For purchase_subject, use the document's factual item/service description.
 If the document has multiple line items, return a concise factual summary of what was purchased.
 For vignettes, tolls, and road fees, include country and relevant vehicle/type if visible.
 If no purchased item/service can be extracted, return null.
+
+You may return category candidates only.
+Use only category_id values provided in the user payload allowed_categories.
+If no allowed category fits, return category_id "unknown_review" and review_required true.
+Do not invent category IDs.
+Do not decide final accounting category.
+Do not decide tax deductibility, VAT treatment, bookkeeping class, or accounting approval.
+Suggested new category labels are non-final hints only, maximum 3.
+Suggested labels must not include IDs and must not claim a category was created.
 
 Return strict JSON only with this top-level shape:
 {
@@ -33,6 +40,38 @@ Return strict JSON only with this top-level shape:
     "payment_method": "cash|card|bank_transfer|unknown|null",
     "purchase_subject": "string|null"
   },
+  "document_category_candidate": {
+    "category_id": "allowed category_id|unknown_review|null",
+    "confidence": "high|medium|low",
+    "review_required": true,
+    "reason": "short reason|null"
+  },
+  "suggested_new_categories": [
+    {
+      "label_sk": "short Slovak label",
+      "reason": "short reason|null"
+    }
+  ],
+  "line_items": [
+    {
+      "description": "string|null",
+      "amount": 0.0,
+      "currency": "EUR|null",
+      "vat_amount": 0.0,
+      "category_candidate": {
+        "category_id": "allowed category_id|unknown_review|null",
+        "confidence": "high|medium|low",
+        "review_required": true,
+        "reason": "short reason|null"
+      },
+      "suggested_new_categories": [
+        {
+          "label_sk": "short Slovak label",
+          "reason": "short reason|null"
+        }
+      ]
+    }
+  ],
   "quality": {
     "readability": "good|partial|poor",
     "missing_fields": ["field_name"],
@@ -50,6 +89,10 @@ Forbidden top-level fields:
 - status
 - confirmed
 - final_category
+- saved_category
+- category_created
+- registry_mutation
+- category
 
 Do not return forbidden fields.
 Do not create IDs.
@@ -57,7 +100,8 @@ Do not create paths.
 Do not claim save status.
 Do not claim user confirmation.
 Do not decide final accounting category.
-Do not return category, category_candidate, or final_category.
+Do not return category, saved_category, category_created, registry_mutation, or final_category.
+Do not mutate a category registry.
 Do not execute or describe business actions.
 Do not return Markdown.
 Do not return explanations outside JSON.

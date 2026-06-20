@@ -12,8 +12,12 @@ from bot.config import Config
 from bot.handlers.accounting_document_intake import (
     AccountingDocumentIntakeStates,
     _enqueue_archive_after_confirmed_save,
+    accounting_document_category_selection,
     accounting_document_duplicate_decision,
+    accounting_document_new_category_confirm,
+    accounting_document_new_category_label,
     accounting_document_preview_decision,
+    accounting_document_unknown_category_decision,
     accounting_document_upload,
     accounting_document_waiting_upload,
     cmd_accounting_document_intake,
@@ -23,12 +27,14 @@ from bot.handlers.voice import handle_voice
 from bot.services.accounting_document_classifier import AccountingDocumentClassification
 from bot.services.accounting_document_models import (
     AccountingDocumentCandidate,
+    AccountingDocumentCategoryCandidate,
     AccountingDocumentQuality,
     AccountingDocumentSource,
+    AccountingDocumentSuggestedCategory,
 )
 from bot.services.accounting_document_archive_service import AccountingDocumentArchiveService
 from bot.services.archive_job_service import ARCHIVE_JOB_PENDING
-from bot.services.decision_resolver import resolve_approve_edit_cancel
+from bot.services.decision_resolver import resolve_accounting_document_category_preview_decision
 from bot.services.temp_intake_session import build_intake_session_metadata
 
 
@@ -225,6 +231,49 @@ def _receipt_candidate() -> AccountingDocumentCandidate:
     )
 
 
+def _unknown_category_receipt_candidate() -> AccountingDocumentCandidate:
+    return AccountingDocumentCandidate(
+        document_type='receipt',
+        vendor_name='Tesco Slovensko s.r.o.',
+        issue_date='2026-05-01',
+        total_amount='24.90',
+        currency='EUR',
+        payment_method='card',
+        purchase_subject='Nejasný nákup',
+        document_category_candidate=AccountingDocumentCategoryCandidate(
+            category_id='unknown_review',
+            confidence='low',
+            review_required=True,
+            reason='unclear purchase',
+        ),
+        suggested_new_categories=[
+            AccountingDocumentSuggestedCategory(label_sk='Špeciálny nákup', reason='visible text'),
+        ],
+        quality=AccountingDocumentQuality(readability='good'),
+        source=AccountingDocumentSource(input_type='photo', original_filename='photo.jpg'),
+    )
+
+
+def _categorized_receipt_candidate() -> AccountingDocumentCandidate:
+    return AccountingDocumentCandidate(
+        document_type='receipt',
+        vendor_name='Papier s.r.o.',
+        issue_date='2026-05-01',
+        total_amount='24.90',
+        currency='EUR',
+        payment_method='card',
+        purchase_subject='Kancelárske potreby',
+        document_category_candidate=AccountingDocumentCategoryCandidate(
+            category_id='office_supplies',
+            confidence='medium',
+            review_required=False,
+            reason='paper and office text',
+        ),
+        quality=AccountingDocumentQuality(readability='good'),
+        source=AccountingDocumentSource(input_type='photo', original_filename='photo.jpg'),
+    )
+
+
 def _incoming_invoice_candidate() -> AccountingDocumentCandidate:
     return AccountingDocumentCandidate(
         document_type='incoming_invoice',
@@ -326,7 +375,111 @@ def test_upload_receipt_photo_active_state_saves_temp_and_shows_preview(monkeypa
     assert 'Typ: Bloček' in message.answers[-1]
     assert 'Dodávateľ: Tesco Slovensko s.r.o.' in message.answers[-1]
     assert 'Predmet nákupu: Kancelárske potreby' in message.answers[-1]
-    assert 'Kategória' not in message.answers[-1]
+    assert 'Navrhovaná kategória: nezistená' in message.answers[-1]
+
+
+def test_upload_passes_allowed_categories_to_lmm(monkeypatch, tmp_path: Path) -> None:
+    captured_allowed_categories: list[list[dict]] = []
+
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        captured_allowed_categories.append(kwargs['allowed_categories'])
+        return _categorized_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(photo=[_DummyPhoto()], from_user_id=111001)
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
+
+    assert captured_allowed_categories
+    assert any(item['category_id'] == 'office_supplies' for item in captured_allowed_categories[0])
+    assert any(item['category_id'] == 'unknown_review' for item in captured_allowed_categories[0])
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert 'Navrhovaná kategória: office_supplies' in message.answers[-1]
+
+
+def test_unknown_category_candidate_prompts_before_preview(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _unknown_category_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(photo=[_DummyPhoto()])
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_unknown_category_decision.state
+    assert 'Najprv skúste vybrať existujúcu kategóriu.' in message.answers[-1]
+    assert 'Špeciálny nákup' in message.answers[-1]
+    assert not (tmp_path / 'workspaces').exists()
+
+
+def test_unknown_category_create_cancel_does_not_create_category_or_save(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _unknown_category_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    asyncio.run(accounting_document_unknown_category_decision(_DummyMessage(text='vytvoriť novú kategóriu'), state, config))
+    asyncio.run(accounting_document_new_category_label(_DummyMessage(text='Moja nová kategória'), state, config))
+    asyncio.run(accounting_document_new_category_confirm(_DummyMessage(text='nie'), state, config))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert not list((tmp_path / 'workspaces').rglob('categories.json'))
+    assert not list((tmp_path / 'workspaces').rglob('receipts/metadata/*.json'))
+
+
+def test_create_new_category_then_save_persists_confirmed_snapshot(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _unknown_category_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()], from_user_id=111001), state, config, _DummyBot()))
+    asyncio.run(accounting_document_unknown_category_decision(_DummyMessage(text='vytvoriť novú kategóriu', from_user_id=111001), state, config))
+    asyncio.run(accounting_document_new_category_label(_DummyMessage(text='Klientske náklady', from_user_id=111001), state, config))
+    asyncio.run(accounting_document_new_category_confirm(_DummyMessage(text='áno', from_user_id=111001), state, config))
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert 'Klientske náklady' in state.data['accounting_document_candidate']['category']['label_snapshot']
+
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='uložiť s kategóriou', from_user_id=111001), state, config))
+
+    metadata_path = next((tmp_path / 'workspaces').rglob('receipts/metadata/*.json'))
+    metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+    assert metadata['category']['label_snapshot'] == 'Klientske náklady'
+    assert metadata['category']['category_id'].startswith('workspace_klientske_naklady')
+
+
+def test_change_document_category_updates_preview_only_until_save(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _categorized_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='zmeniť kategóriu'), state, config))
+    asyncio.run(accounting_document_category_selection(_DummyMessage(text='materials'), state, config))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert state.data['accounting_document_candidate']['category']['category_id'] == 'materials'
+    assert not list((tmp_path / 'workspaces').rglob('receipts/metadata/*.json'))
+
+    asyncio.run(accounting_document_preview_decision(_DummyMessage(text='uložiť s kategóriou'), state, config))
+    metadata_path = next((tmp_path / 'workspaces').rglob('receipts/metadata/*.json'))
+    metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+    assert metadata['category']['category_id'] == 'materials'
 
 
 def test_duplicate_found_shows_warning_and_does_not_save_new_document(monkeypatch, tmp_path: Path) -> None:
@@ -373,9 +526,9 @@ def test_duplicate_yes_then_preview_approve_saves_new_document(monkeypatch, tmp_
     asyncio.run(accounting_document_duplicate_decision(_DummyMessage(text='áno'), state, config))
 
     async def _resolver(**kwargs) -> str:
-        return 'approve'
+        return 'save_with_category'
 
-    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_accounting_document_category_preview_decision', _resolver)
     asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť'), state, config))
 
     assert state.current_state is None
@@ -455,14 +608,14 @@ def test_schvalit_approves_via_shared_resolver_and_confirmed_saves(monkeypatch, 
     async def _resolver(**kwargs) -> str:
         captured['context_name'] = kwargs['context_name']
         captured['user_input_text'] = kwargs['user_input_text']
-        return 'approve'
+        return 'save_with_category'
 
-    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_accounting_document_category_preview_decision', _resolver)
     decision_message = _DummyMessage(text='schváliť')
     asyncio.run(accounting_document_preview_decision(decision_message, state, config))
 
     assert captured == {
-        'context_name': 'accounting_document_intake_preview',
+        'context_name': 'accounting_document_category_preview_decision',
         'user_input_text': 'schváliť',
     }
     assert state.current_state is None
@@ -496,9 +649,9 @@ def test_confirmed_receipt_save_enqueues_one_pending_archive_job(monkeypatch, tm
     )
 
     async def _resolver(**kwargs) -> str:
-        return 'approve'
+        return 'save_with_category'
 
-    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_accounting_document_category_preview_decision', _resolver)
     asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
 
     metadata_files = list((tmp_path / 'workspaces').rglob('*.json'))
@@ -549,9 +702,9 @@ def test_confirmed_incoming_invoice_save_enqueues_one_pending_archive_job(monkey
     )
 
     async def _resolver(**kwargs) -> str:
-        return 'approve'
+        return 'save_with_category'
 
-    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_accounting_document_category_preview_decision', _resolver)
     asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
 
     metadata_files = list((tmp_path / 'workspaces').rglob('incoming_invoices/metadata/*.json'))
@@ -627,12 +780,12 @@ def test_failed_confirmed_save_does_not_enqueue_archive_job(monkeypatch, tmp_pat
     )
 
     async def _resolver(**kwargs) -> str:
-        return 'approve'
+        return 'save_with_category'
 
     def _failing_save(**kwargs):
         raise OSError('disk full')
 
-    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_accounting_document_category_preview_decision', _resolver)
     monkeypatch.setattr('bot.handlers.accounting_document_intake.save_confirmed_accounting_document', _failing_save)
     asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
 
@@ -656,9 +809,9 @@ def test_repeated_archive_enqueue_for_confirmed_document_is_idempotent(monkeypat
     )
 
     async def _resolver(**kwargs) -> str:
-        return 'approve'
+        return 'save_with_category'
 
-    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_accounting_document_category_preview_decision', _resolver)
     asyncio.run(accounting_document_preview_decision(_DummyMessage(text='schváliť', from_user_id=111001), state, config))
 
     metadata_path = next((tmp_path / 'workspaces').rglob('*.json'))
@@ -694,7 +847,7 @@ def test_archive_enqueue_failure_keeps_confirmed_document_without_google_or_clea
     )
 
     async def _resolver(**kwargs) -> str:
-        return 'approve'
+        return 'save_with_category'
 
     def _failing_enqueue(self, **kwargs):
         raise RuntimeError(f'archive unavailable at {tmp_path / "secret-path"} with sk-test-token')
@@ -702,7 +855,7 @@ def test_archive_enqueue_failure_keeps_confirmed_document_without_google_or_clea
     def _capture_warning(message: str, *args, **kwargs) -> None:
         log_calls.append((message, args, kwargs))
 
-    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_approve_edit_cancel', _resolver)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.resolve_accounting_document_category_preview_decision', _resolver)
     monkeypatch.setattr(
         'bot.handlers.accounting_document_intake.AccountingDocumentArchiveService.enqueue_confirmed_document',
         _failing_enqueue,
@@ -760,20 +913,20 @@ def test_unknown_decision_asks_for_clarification(monkeypatch, tmp_path: Path) ->
     asyncio.run(accounting_document_preview_decision(message, state, config))
 
     assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
-    assert 'schváliť, upraviť alebo zrušiť' in message.answers[-1]
+    assert 'uložiť s kategóriou, zmeniť kategóriu, uložiť bez kategórie alebo zrušiť' in message.answers[-1]
     assert 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.' in message.answers[-1]
 
 
-def test_upravit_keeps_accounting_preview_state_without_save(monkeypatch, tmp_path: Path) -> None:
+def test_upravit_opens_accounting_document_category_selection_without_save(monkeypatch, tmp_path: Path) -> None:
     state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
     staged_path = _staged_original_path(tmp_path)
     message = _DummyMessage(text='upraviť')
 
     asyncio.run(accounting_document_preview_decision(message, state, config))
 
-    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_document_category_selection.state
     assert staged_path.exists()
-    assert 'Úprava výdavkového dokladu zatiaľ nie je dostupná.' in message.answers[-1]
+    assert 'Vyberte kategóriu z existujúceho zoznamu.' in message.answers[-1]
     assert not (tmp_path / 'workspaces').exists()
 
 
@@ -784,13 +937,15 @@ def test_upravit_cyrillic_keeps_accounting_preview_state_if_unknown_or_edit(monk
 
     asyncio.run(accounting_document_preview_decision(message, state, config))
 
-    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert state.current_state in {
+        AccountingDocumentIntakeStates.waiting_preview_decision.state,
+        AccountingDocumentIntakeStates.waiting_document_category_selection.state,
+    }
     assert staged_path.exists()
     assert not (tmp_path / 'workspaces').exists()
     assert message.answers[-1] in {
-        'Úprava výdavkového dokladu zatiaľ nie je dostupná. Môžete ho schváliť alebo zrušiť.',
-        'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.',
-    }
+        'Prosím, vyberte: uložiť s kategóriou, zmeniť kategóriu, uložiť bez kategórie alebo zrušiť.\n\nAk chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.',
+    } or 'Vyberte kategóriu z existujúceho zoznamu.' in message.answers[-1]
 
 
 def test_expired_accounting_preview_cleans_temp_and_skips_approve(monkeypatch, tmp_path: Path) -> None:
@@ -859,7 +1014,7 @@ def test_voice_accounting_preview_approve_cancel_use_same_decision_path(
     assert staged_path.exists() is expect_staged_file
 
 
-def test_voice_accounting_preview_edit_keeps_state_and_staging(monkeypatch, tmp_path: Path) -> None:
+def test_voice_accounting_preview_edit_opens_category_selection(monkeypatch, tmp_path: Path) -> None:
     invoice_fallback_calls: list[str] = []
     state, config = _prepare_accounting_preview(monkeypatch, tmp_path)
     staged_path = _staged_original_path(tmp_path)
@@ -869,9 +1024,9 @@ def test_voice_accounting_preview_edit_keeps_state_and_staging(monkeypatch, tmp_
     asyncio.run(handle_voice(message, _DummyBot(), config, state))
 
     assert invoice_fallback_calls == []
-    assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_document_category_selection.state
     assert staged_path.exists()
-    assert 'Úprava výdavkového dokladu zatiaľ nie je dostupná.' in message.answers[-1]
+    assert 'Vyberte kategóriu z existujúceho zoznamu.' in message.answers[-1]
 
 
 def test_voice_accounting_preview_unknown_keeps_state_and_staging(monkeypatch, tmp_path: Path) -> None:
@@ -886,7 +1041,7 @@ def test_voice_accounting_preview_unknown_keeps_state_and_staging(monkeypatch, t
     assert invoice_fallback_calls == []
     assert state.current_state == AccountingDocumentIntakeStates.waiting_preview_decision.state
     assert staged_path.exists()
-    assert 'schváliť, upraviť alebo zrušiť' in message.answers[-1]
+    assert 'uložiť s kategóriou, zmeniť kategóriu, uložiť bez kategórie alebo zrušiť' in message.answers[-1]
     assert 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.' in message.answers[-1]
 
 
@@ -1026,16 +1181,16 @@ def test_poor_readability_cleans_temp_and_asks_for_better_file(monkeypatch, tmp_
 
 def test_accounting_document_decision_context_supports_slovak_aliases() -> None:
     assert asyncio.run(
-        resolve_approve_edit_cancel(
-            context_name='accounting_document_intake_preview',
+        resolve_accounting_document_category_preview_decision(
+            context_name='accounting_document_category_preview_decision',
             user_input_text='schváliť',
             api_key=None,
             model='gpt-4o',
         )
-    ) == 'approve'
+    ) == 'save_with_category'
     assert asyncio.run(
-        resolve_approve_edit_cancel(
-            context_name='accounting_document_intake_preview',
+        resolve_accounting_document_category_preview_decision(
+            context_name='accounting_document_category_preview_decision',
             user_input_text='zrušiť',
             api_key=None,
             model='gpt-4o',

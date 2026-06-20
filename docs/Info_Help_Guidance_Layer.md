@@ -197,11 +197,15 @@ business wording alone.
 - Simple current/previous/explicit calendar-year count/total questions are
   supported as an internal deterministic fast path under invoice analytics, not
   as a separate competing top-level user-facing capability.
+- Receipt/incoming-invoice categories are partial. InfoHelp may say that
+  categories can be reviewed inside the existing upload preview flow and that
+  the model only suggests bounded candidates from Python-provided categories.
+  It must also say this is not a standalone top-level action, not tax advice,
+  not accounting export, and not analytics.
 - Receipt/blocek analytics is not implemented. InfoHelp must not confuse
-  "analyze/categorize receipts" with the existing add/upload receipt intake
-  flow. It should explain that receipt categorization must come first:
-  taxonomy, suggestion, Python validation, confirmation/deterministic rule,
-  category storage, source/confidence, tests, and Product Truth.
+  "analyze receipts" or "expense totals by category" with the category capture
+  layer. Category totals/reporting still require a separate read-only
+  analytics contract, tests, and Product Truth.
 - Unsupported but plausible expense/receipt analytics questions should offer
   the confirmation-gated customization/admin-review request path when safe.
 - Bank, cashflow, VAT, tax, and full accounting analytics are unsupported

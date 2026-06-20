@@ -568,10 +568,14 @@ current code before runtime claims:
   count/total fast path for simple yearly questions;
 - yearly invoice summary: supported only as an internal deterministic strategy
   under `invoice_analytics`, not as a competing user-facing top-level action;
-- receipt/blocek analytics: planned/not implemented; receipt category
-  taxonomy, suggestion, Python validation, confirmation/deterministic rule,
-  category storage, source/confidence, tests, and Product Truth must exist
-  before analytics over receipts can be claimed;
+- receipt/incoming-invoice categories: partial; controlled category candidates,
+  workspace category creation, Python validation, user confirmation, and
+  confirmed metadata snapshots exist only inside the accounting Document Intake
+  preview flow, not as a standalone top-level action or broad category manager;
+- receipt/blocek analytics: planned/not implemented; controlled categories are
+  only prerequisite metadata and do not imply category totals, spending
+  analytics, tax deductibility, VAT reporting, bank matching, or accounting
+  export;
 - incoming invoice analytics: unsupported unless a separate runtime contract,
   data model, Product Truth, and tests prove otherwise;
 - bank/cashflow/VAT/tax/full accounting analytics: unsupported unless a

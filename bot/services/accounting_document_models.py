@@ -17,6 +17,7 @@ DOCUMENT_TYPES = {
 
 PAYMENT_METHODS = {'cash', 'card', 'bank_transfer', 'unknown'}
 READABILITY_VALUES = {'good', 'partial', 'poor'}
+CATEGORY_CONFIDENCE_VALUES = {'low', 'medium', 'high'}
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,41 @@ class AccountingDocumentQuality:
 
 
 @dataclass(frozen=True)
+class AccountingDocumentCategoryCandidate:
+    category_id: str | None = None
+    confidence: str = 'low'
+    review_required: bool = False
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class AccountingDocumentSuggestedCategory:
+    label_sk: str
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class AccountingDocumentConfirmedCategory:
+    category_id: str
+    label_snapshot: str
+    source: str = 'user_confirmed'
+    candidate_source: str | None = 'lmm'
+    confidence: str | None = None
+    review_required: bool = False
+
+
+@dataclass(frozen=True)
+class AccountingDocumentLineItemCandidate:
+    description: str | None = None
+    amount: Decimal | str | int | float | None = None
+    currency: str | None = None
+    vat_amount: Decimal | str | int | float | None = None
+    category_candidate: AccountingDocumentCategoryCandidate | None = None
+    suggested_new_categories: list[AccountingDocumentSuggestedCategory] = field(default_factory=list)
+    category: AccountingDocumentConfirmedCategory | None = None
+
+
+@dataclass(frozen=True)
 class AccountingDocumentCandidate:
     document_type: str
     vendor_name: str | None = None
@@ -50,6 +86,10 @@ class AccountingDocumentCandidate:
     variable_symbol: str | None = None
     payment_method: str | None = None
     purchase_subject: str | None = None
+    document_category_candidate: AccountingDocumentCategoryCandidate | None = None
+    suggested_new_categories: list[AccountingDocumentSuggestedCategory] = field(default_factory=list)
+    line_items: list[AccountingDocumentLineItemCandidate] = field(default_factory=list)
+    category: AccountingDocumentConfirmedCategory | None = None
     quality: AccountingDocumentQuality = field(default_factory=AccountingDocumentQuality)
     source: AccountingDocumentSource = field(default_factory=lambda: AccountingDocumentSource(input_type='unknown'))
 
@@ -67,7 +107,7 @@ def candidate_to_metadata_dict(candidate: AccountingDocumentCandidate) -> dict[s
             return None
         return str(value)
 
-    return {
+    payload: dict[str, Any] = {
         'document_type': candidate.document_type,
         'source': {
             'input_type': candidate.source.input_type,
@@ -96,3 +136,59 @@ def candidate_to_metadata_dict(candidate: AccountingDocumentCandidate) -> dict[s
             'warnings': list(candidate.quality.warnings),
         },
     }
+    if candidate.document_category_candidate is not None:
+        payload['document_category_candidate'] = _category_candidate_dict(candidate.document_category_candidate)
+    if candidate.suggested_new_categories:
+        payload['suggested_new_categories'] = [
+            _suggested_category_dict(suggestion) for suggestion in candidate.suggested_new_categories[:3]
+        ]
+    if candidate.category is not None:
+        payload['category'] = _confirmed_category_dict(candidate.category)
+    if candidate.line_items:
+        payload['line_items'] = [_line_item_dict(item) for item in candidate.line_items]
+    return payload
+
+
+def _category_candidate_dict(candidate: AccountingDocumentCategoryCandidate) -> dict[str, Any]:
+    return {
+        'category_id': candidate.category_id,
+        'confidence': candidate.confidence,
+        'review_required': candidate.review_required,
+        'reason': candidate.reason,
+    }
+
+
+def _suggested_category_dict(suggestion: AccountingDocumentSuggestedCategory) -> dict[str, Any]:
+    return {
+        'label_sk': suggestion.label_sk,
+        'reason': suggestion.reason,
+    }
+
+
+def _confirmed_category_dict(category: AccountingDocumentConfirmedCategory) -> dict[str, Any]:
+    return {
+        'category_id': category.category_id,
+        'label_snapshot': category.label_snapshot,
+        'source': category.source,
+        'candidate_source': category.candidate_source,
+        'confidence': category.confidence,
+        'review_required': category.review_required,
+    }
+
+
+def _line_item_dict(item: AccountingDocumentLineItemCandidate) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        'description': item.description,
+        'amount': str(item.amount) if item.amount is not None else None,
+        'currency': item.currency,
+        'vat_amount': str(item.vat_amount) if item.vat_amount is not None else None,
+    }
+    if item.category_candidate is not None:
+        payload['category_candidate'] = _category_candidate_dict(item.category_candidate)
+    if item.suggested_new_categories:
+        payload['suggested_new_categories'] = [
+            _suggested_category_dict(suggestion) for suggestion in item.suggested_new_categories[:3]
+        ]
+    if item.category is not None:
+        payload['category'] = _confirmed_category_dict(item.category)
+    return payload

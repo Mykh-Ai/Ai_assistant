@@ -9,8 +9,13 @@ from aiogram.types import Message
 from bot.config import Config
 from bot.handlers.accounting_document_intake import (
     AccountingDocumentIntakeStates,
+    handle_accounting_document_category_selection_text,
     handle_accounting_document_duplicate_decision_text,
+    handle_accounting_document_line_item_selection_text,
+    handle_accounting_document_new_category_confirm_text,
     handle_accounting_document_preview_decision_text,
+    handle_accounting_document_similar_category_decision_text,
+    handle_accounting_document_unknown_category_decision_text,
 )
 from bot.handlers.access_admin import (
     CustomizationRequestAdminResponseStates,
@@ -321,6 +326,52 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             )
         elif current_state == AccountingDocumentIntakeStates.waiting_duplicate_decision.state:
             await handle_accounting_document_duplicate_decision_text(
+                message=message,
+                state=state,
+                config=config,
+                decision_text=recognized_text,
+            )
+        elif current_state == AccountingDocumentIntakeStates.waiting_unknown_category_decision.state:
+            await handle_accounting_document_unknown_category_decision_text(
+                message=message,
+                state=state,
+                config=config,
+                decision_text=recognized_text,
+            )
+        elif current_state == AccountingDocumentIntakeStates.waiting_document_category_selection.state:
+            await handle_accounting_document_category_selection_text(
+                message=message,
+                state=state,
+                config=config,
+                selection_text=recognized_text,
+                target='document',
+            )
+        elif current_state == AccountingDocumentIntakeStates.waiting_line_item_selection.state:
+            await handle_accounting_document_line_item_selection_text(
+                message=message,
+                state=state,
+                config=config,
+                selection_text=recognized_text,
+            )
+        elif current_state == AccountingDocumentIntakeStates.waiting_line_item_category_selection.state:
+            await handle_accounting_document_category_selection_text(
+                message=message,
+                state=state,
+                config=config,
+                selection_text=recognized_text,
+                target='line_item',
+            )
+        elif current_state == AccountingDocumentIntakeStates.waiting_new_category_label.state:
+            await message.answer('Názov novej kategórie prosím napíšte textom.')
+        elif current_state == AccountingDocumentIntakeStates.waiting_new_category_confirm.state:
+            await handle_accounting_document_new_category_confirm_text(
+                message=message,
+                state=state,
+                config=config,
+                decision_text=recognized_text,
+            )
+        elif current_state == AccountingDocumentIntakeStates.waiting_similar_category_decision.state:
+            await handle_accounting_document_similar_category_decision_text(
                 message=message,
                 state=state,
                 config=config,

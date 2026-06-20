@@ -11,6 +11,10 @@ import pytest
 from bot.handlers import accounting_document_intake, invoice, officeflow_attachment_router, voice
 from bot.services.decision_resolver import (
     is_global_cancel_text,
+    resolve_accounting_document_category_preview_decision,
+    resolve_accounting_document_category_selection,
+    resolve_accounting_document_category_similar_decision,
+    resolve_accounting_document_category_unknown_decision,
     resolve_approve_edit_cancel,
     resolve_attachment_document_type_choice,
     resolve_attachment_route_choice,
@@ -35,6 +39,23 @@ YES_NO_CONTEXTS = (
     'supplier_profile_edit_confirm',
     'idle_attachment_accounting_proposal',
     'accounting_document_duplicate_save_decision',
+    'accounting_document_category_create_confirm',
+)
+
+ACCOUNTING_CATEGORY_PREVIEW_CONTEXTS = (
+    'accounting_document_category_preview_decision',
+)
+
+ACCOUNTING_CATEGORY_UNKNOWN_CONTEXTS = (
+    'accounting_document_category_unknown_decision',
+)
+
+ACCOUNTING_CATEGORY_SELECTION_CONTEXTS = (
+    'accounting_document_category_selection',
+)
+
+ACCOUNTING_CATEGORY_SIMILAR_CONTEXTS = (
+    'accounting_document_category_similar_decision',
 )
 
 APPROVE_EDIT_CANCEL_CONTEXTS = (
@@ -137,6 +158,115 @@ def test_approve_edit_cancel_context_matrix_exact_mappings(
 ) -> None:
     assert asyncio.run(
         resolve_approve_edit_cancel(
+            context_name=context_name,
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
+
+
+@pytest.mark.parametrize('context_name', ACCOUNTING_CATEGORY_PREVIEW_CONTEXTS)
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('ulozit s kategoriou', 'save_with_category'),
+        ('schvalit', 'save_with_category'),
+        ('ano', 'save_with_category'),
+        ('ok', 'save_with_category'),
+        ('zmenit kategoriu', 'change_document_category'),
+        ('zmenit kategoriu polozky', 'change_line_item_category'),
+        ('ulozit bez kategorie', 'save_without_category'),
+        ('zrusit', 'cancel'),
+        ('nie', 'cancel'),
+        ('random text', 'unknown'),
+    ],
+)
+def test_accounting_category_preview_context_matrix_exact_mappings(
+    context_name: str,
+    user_input: str,
+    expected: str,
+) -> None:
+    assert asyncio.run(
+        resolve_accounting_document_category_preview_decision(
+            context_name=context_name,
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
+
+
+@pytest.mark.parametrize('context_name', ACCOUNTING_CATEGORY_UNKNOWN_CONTEXTS)
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('vybrat existujucu kategoriu', 'choose_existing_category'),
+        ('vytvorit novu kategoriu', 'create_new_category'),
+        ('ulozit ako na kontrolu', 'save_as_unknown_review'),
+        ('zrusit', 'cancel'),
+        ('random text', 'unknown'),
+    ],
+)
+def test_accounting_category_unknown_context_matrix_exact_mappings(
+    context_name: str,
+    user_input: str,
+    expected: str,
+) -> None:
+    assert asyncio.run(
+        resolve_accounting_document_category_unknown_decision(
+            context_name=context_name,
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
+
+
+@pytest.mark.parametrize('context_name', ACCOUNTING_CATEGORY_SELECTION_CONTEXTS)
+def test_accounting_category_selection_context_matches_id_or_label(context_name: str) -> None:
+    allowed_categories = [
+        {'category_id': 'materials', 'label_sk': 'Materiál'},
+        {'category_id': 'workspace_custom_tools', 'label_sk': 'Moje náradie'},
+    ]
+
+    assert asyncio.run(
+        resolve_accounting_document_category_selection(
+            context_name=context_name,
+            user_input_text='Moje naradie',
+            allowed_categories=allowed_categories,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'workspace_custom_tools'
+    assert asyncio.run(
+        resolve_accounting_document_category_selection(
+            context_name=context_name,
+            user_input_text='materials',
+            allowed_categories=allowed_categories,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'materials'
+
+
+@pytest.mark.parametrize('context_name', ACCOUNTING_CATEGORY_SIMILAR_CONTEXTS)
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('pouzit existujucu', 'use_existing_category'),
+        ('vytvorit novu aj tak', 'create_new_anyway'),
+        ('spat', 'back'),
+        ('random text', 'unknown'),
+    ],
+)
+def test_accounting_category_similar_context_matrix_exact_mappings(
+    context_name: str,
+    user_input: str,
+    expected: str,
+) -> None:
+    assert asyncio.run(
+        resolve_accounting_document_category_similar_decision(
             context_name=context_name,
             user_input_text=user_input,
             api_key=None,

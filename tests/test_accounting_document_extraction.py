@@ -149,6 +149,90 @@ def test_side_effect_top_level_fields_rejected() -> None:
         parse_accounting_document_extraction(json.dumps(payload))
 
 
+def test_category_candidates_and_line_items_are_candidate_only() -> None:
+    payload = _receipt_payload()
+    payload['document_category_candidate'] = {
+        'category_id': 'office_supplies',
+        'confidence': 'medium',
+        'review_required': False,
+        'reason': 'visible office supply text',
+    }
+    payload['suggested_new_categories'] = [
+        {'label_sk': 'Špeciálne kancelárske nákupy', 'reason': 'more specific label'},
+        {'label_sk': 'Extra ignored'},
+        {'label_sk': 'Third'},
+        {'label_sk': 'Fourth ignored'},
+    ]
+    payload['line_items'] = [
+        {
+            'description': 'papier',
+            'amount': '12.00',
+            'currency': 'EUR',
+            'vat_amount': '2.00',
+            'category_candidate': {
+                'category_id': 'office_supplies',
+                'confidence': 'high',
+                'review_required': False,
+            },
+        }
+    ]
+
+    candidate = parse_accounting_document_extraction(
+        json.dumps(payload),
+        allowed_category_ids={'office_supplies', 'unknown_review'},
+    )
+
+    assert candidate.document_category_candidate is not None
+    assert candidate.document_category_candidate.category_id == 'office_supplies'
+    assert candidate.document_category_candidate.confidence == 'medium'
+    assert candidate.category is None
+    assert [suggestion.label_sk for suggestion in candidate.suggested_new_categories] == [
+        'Špeciálne kancelárske nákupy',
+        'Extra ignored',
+        'Third',
+    ]
+    assert candidate.line_items[0].description == 'papier'
+    assert candidate.line_items[0].category_candidate is not None
+    assert candidate.line_items[0].category_candidate.category_id == 'office_supplies'
+    assert candidate.line_items[0].category is None
+
+
+def test_invalid_category_candidate_falls_back_to_unknown_review() -> None:
+    payload = _receipt_payload()
+    payload['document_category_candidate'] = {
+        'category_id': 'invented_model_category',
+        'confidence': 'high',
+        'review_required': False,
+    }
+
+    candidate = parse_accounting_document_extraction(
+        json.dumps(payload),
+        allowed_category_ids={'materials', 'unknown_review'},
+    )
+
+    assert candidate.document_category_candidate is not None
+    assert candidate.document_category_candidate.category_id == 'unknown_review'
+    assert candidate.document_category_candidate.confidence == 'low'
+    assert candidate.document_category_candidate.review_required is True
+
+
+@pytest.mark.parametrize('field_name', ['final_category', 'saved_category', 'category_created', 'confirmed', 'db_id'])
+def test_category_side_effect_fields_are_rejected_anywhere(field_name: str) -> None:
+    payload = _receipt_payload()
+    payload['line_items'] = [{'description': 'papier', field_name: 'materials'}]
+
+    with pytest.raises(AccountingDocumentExtractionParseError, match=f'side_effect_field_forbidden:{field_name}'):
+        parse_accounting_document_extraction(json.dumps(payload), allowed_category_ids={'materials'})
+
+
+def test_suggested_new_categories_must_not_create_ids() -> None:
+    payload = _receipt_payload()
+    payload['suggested_new_categories'] = [{'label_sk': 'Nová kategória', 'category_id': 'workspace_new'}]
+
+    with pytest.raises(AccountingDocumentExtractionParseError, match='suggested_new_category_id_forbidden'):
+        parse_accounting_document_extraction(json.dumps(payload))
+
+
 def test_purchase_subject_is_raw_fact_not_category() -> None:
     payload = _receipt_payload()
     payload['business']['purchase_subject'] = 'Kancelárske potreby'
@@ -156,8 +240,8 @@ def test_purchase_subject_is_raw_fact_not_category() -> None:
     candidate = parse_accounting_document_extraction(json.dumps(payload))
 
     assert candidate.purchase_subject == 'Kancelárske potreby'
-    assert not hasattr(candidate, 'category')
-    assert not hasattr(candidate, 'category_candidate')
+    assert candidate.category is None
+    assert candidate.document_category_candidate is None
     assert validate_accounting_document_candidate(candidate).can_save is True
 
 
@@ -169,7 +253,7 @@ def test_legacy_category_candidate_is_read_as_purchase_subject_only() -> None:
     candidate = parse_accounting_document_extraction(json.dumps(payload))
 
     assert candidate.purchase_subject == 'office supplies'
-    assert not hasattr(candidate, 'category_candidate')
+    assert candidate.document_category_candidate is None
 
 
 def test_asfinag_vignette_subject_is_factual_purchase_subject() -> None:
@@ -193,6 +277,6 @@ def test_asfinag_vignette_subject_is_factual_purchase_subject() -> None:
 
     assert candidate.vendor_name == 'ASFINAG'
     assert candidate.purchase_subject == '1-dňová diaľničná známka Rakúsko - osobné vozidlo'
-    assert not hasattr(candidate, 'category')
-    assert not hasattr(candidate, 'category_candidate')
+    assert candidate.category is None
+    assert candidate.document_category_candidate is None
     assert validate_accounting_document_candidate(candidate).can_save is True

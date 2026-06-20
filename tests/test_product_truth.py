@@ -25,6 +25,7 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'contacts',
     'service_aliases',
     'add_receipt_or_incoming_invoice',
+    'accounting_document_categories',
     'show_recent_accounting_documents',
     'officeflow_idle_attachment_router',
     'voice_invoice_intake',
@@ -252,13 +253,30 @@ def test_receipt_analytics_record_is_planned_prerequisite_only() -> None:
     assert entry.canonical_actions == ()
     assert entry.linked_handlers == ()
     assert 'not implemented yet' in entry.summary_for_user
-    assert any('category taxonomy' in limitation for limitation in entry.current_limitations)
-    assert any('Raw OCR or LMM extraction' in limitation for limitation in entry.current_limitations)
+    assert any('category totals/reporting' in limitation for limitation in entry.current_limitations)
+    assert any('Raw OCR, LMM extraction' in limitation for limitation in entry.current_limitations)
     assert any('tax deductibility' in limitation for limitation in entry.current_limitations)
     assert 'docs/llm/Safe_Data_Analyst_Runtime_Checklist.md' in entry.truth_source_refs
     assert 'tests/test_info_help.py' in entry.test_refs
     assert 'I categorized your receipts for analytics.' in entry.forbidden_claims
     assert 'Receipt analytics is implemented.' in entry.forbidden_claims
+
+
+def test_accounting_document_categories_record_is_partial_controlled_runtime() -> None:
+    entry = _registry_by_id()['accounting_document_categories']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert entry.commands == ()
+    assert entry.canonical_actions == ()
+    assert 'controlled document category' in entry.summary_for_user
+    assert 'not a top-level action' in entry.current_limitations[0]
+    assert 'Python-provided allowed categories' in entry.current_limitations[1]
+    assert 'Workspace custom categories' in entry.current_limitations[2]
+    assert 'No tax deductibility' in entry.current_limitations[3]
+    assert 'bot/services/accounting_document_categories.py' in entry.linked_handlers
+    assert 'tests/test_accounting_document_categories.py' in entry.test_refs
+    assert 'The model saved or created a category directly.' in entry.forbidden_claims
+    assert 'I generated receipt analytics from categories.' in entry.forbidden_claims
 
 
 def test_bank_cashflow_tax_analytics_record_is_unsupported() -> None:

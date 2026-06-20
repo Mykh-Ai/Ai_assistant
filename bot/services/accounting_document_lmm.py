@@ -69,6 +69,7 @@ async def extract_accounting_document_metadata(
     *,
     document_input: AccountingDocumentLmmInput,
     document_type_hint: str | None,
+    allowed_categories: list[dict[str, Any]] | None = None,
     api_key: str | None,
     model: str,
     client_factory: ClientFactory | None = None,
@@ -86,9 +87,17 @@ async def extract_accounting_document_metadata(
         api_key=api_key,
         model=model,
         client_factory=client_factory,
-        extra_payload={'document_type_hint': document_type_hint},
+        extra_payload={
+            'document_type_hint': document_type_hint,
+            'allowed_categories': allowed_categories or [],
+        },
     )
-    return parse_accounting_document_extraction(raw)
+    allowed_category_ids = {
+        str(item.get('category_id')).strip()
+        for item in allowed_categories or []
+        if isinstance(item, dict) and item.get('category_id')
+    }
+    return parse_accounting_document_extraction(raw, allowed_category_ids=allowed_category_ids or None)
 
 
 async def _call_json_lmm(

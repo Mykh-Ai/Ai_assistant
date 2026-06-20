@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from bot.services.accounting_document_models import AccountingDocumentCandidate, AccountingDocumentSource
+from bot.services.accounting_document_models import (
+    AccountingDocumentCandidate,
+    AccountingDocumentConfirmedCategory,
+    AccountingDocumentLineItemCandidate,
+    AccountingDocumentSource,
+)
 from bot.services.accounting_document_storage import (
     AccountingDocumentStorageError,
     cleanup_temp_staging_path,
@@ -129,6 +134,55 @@ def test_metadata_json_written_next_to_confirmed_original(tmp_path: Path) -> Non
     assert metadata['business']['vendor_name'] == 'Stredoslovenska energetika'
     assert metadata['business']['total_amount'] == '118.42'
     assert metadata['storage']['original_path'] == str(result.original_path)
+
+
+def test_metadata_json_persists_confirmed_category_snapshots(tmp_path: Path) -> None:
+    source = tmp_path / 'source.jpg'
+    source.write_bytes(b'jpg')
+    candidate = AccountingDocumentCandidate(
+        document_type='receipt',
+        vendor_name='Stavebniny',
+        issue_date='2026-05-01',
+        total_amount=Decimal('12.00'),
+        currency='EUR',
+        category=AccountingDocumentConfirmedCategory(
+            category_id='materials',
+            label_snapshot='Materiál',
+            source='user_confirmed',
+            candidate_source='lmm',
+            confidence='medium',
+            review_required=False,
+        ),
+        line_items=[
+            AccountingDocumentLineItemCandidate(
+                description='skrutky',
+                amount=Decimal('12.00'),
+                currency='EUR',
+                category=AccountingDocumentConfirmedCategory(
+                    category_id='consumables',
+                    label_snapshot='Spotrebný materiál',
+                    source='user_confirmed',
+                    candidate_source='user_selected',
+                    confidence=None,
+                    review_required=False,
+                ),
+            )
+        ],
+        source=AccountingDocumentSource(input_type='photo', original_filename='receipt.jpg'),
+    )
+
+    result = save_confirmed_accounting_document(
+        storage_dir=tmp_path,
+        source_path=source,
+        candidate=candidate,
+        file_unique_id='ABC123',
+    )
+
+    metadata = json.loads(result.metadata_path.read_text(encoding='utf-8'))
+    assert metadata['category']['category_id'] == 'materials'
+    assert metadata['category']['label_snapshot'] == 'Materiál'
+    assert metadata['line_items'][0]['category']['category_id'] == 'consumables'
+    assert metadata['line_items'][0]['category']['label_snapshot'] == 'Spotrebný materiál'
 
 
 def test_confirmed_storage_can_be_scoped_by_supplier_telegram_id(tmp_path: Path) -> None:

@@ -121,6 +121,11 @@ def test_extraction_wrapper_passes_model_json_into_extraction_parser() -> None:
             },
             'quality': {'readability': 'good', 'missing_fields': [], 'warnings': []},
             'trace': {'raw_visible_text_excerpt': 'Faktura 202605001'},
+            'document_category_candidate': {
+                'category_id': 'materials',
+                'confidence': 'medium',
+                'review_required': False,
+            },
         }
     )
 
@@ -128,6 +133,10 @@ def test_extraction_wrapper_passes_model_json_into_extraction_parser() -> None:
         extract_accounting_document_metadata(
             document_input=_document_input(),
             document_type_hint='incoming_invoice',
+            allowed_categories=[
+                {'category_id': 'materials', 'label_sk': 'Materiál', 'review_required': False},
+                {'category_id': 'unknown_review', 'label_sk': 'Na kontrolu', 'review_required': True},
+            ],
             api_key='sk-test',
             model='gpt-4o',
             client_factory=_client_factory(raw, calls),
@@ -139,6 +148,9 @@ def test_extraction_wrapper_passes_model_json_into_extraction_parser() -> None:
     user_payload = json.loads(calls[0]['messages'][1]['content'])
     assert user_payload['document_type_hint'] == 'incoming_invoice'
     assert user_payload['document_input']['original_filename'] == 'doc.pdf'
+    assert user_payload['allowed_categories'][0]['category_id'] == 'materials'
+    assert candidate.document_category_candidate is not None
+    assert candidate.document_category_candidate.category_id == 'materials'
 
 
 def test_image_bytes_are_sent_as_chat_image_url_data_url() -> None:
@@ -306,12 +318,15 @@ def test_prompt_files_exist_and_state_strict_json_only() -> None:
 def test_extraction_prompt_forbids_side_effect_fields() -> None:
     text = Path('prompts/accounting_document_extraction_prompt.txt').read_text(encoding='utf-8')
 
-    for token in ('saved_path', 'status', 'confirmed', 'final_category'):
+    for token in ('saved_path', 'status', 'confirmed', 'final_category', 'saved_category', 'category_created'):
         assert token in text
     assert 'Do not create paths.' in text
     assert 'Do not decide final accounting category.' in text
     assert '"purchase_subject": "string|null"' in text
-    assert 'Do not return category, category_candidate, or final_category.' in text
+    assert 'allowed_categories' in text
+    assert '"document_category_candidate"' in text
+    assert '"category_candidate"' in text
+    assert 'Do not mutate a category registry.' in text
 
 
 def test_wrapper_is_provider_isolated_and_mocked() -> None:

@@ -1009,7 +1009,6 @@ def test_invoice_analytics_capability_question_renders_partial_product_truth() -
     'user_input',
     [
         'Vieš analyzovať bločky?',
-        'Vies kategorizovat blocky?',
         'vydavky podla kategorii z blockov',
         'receipt analytics',
         '\u0430\u043d\u0430\u043b\u0456\u0442\u0438\u043a\u0430 \u0447\u0435\u043a\u0456\u0432',
@@ -1029,16 +1028,41 @@ def test_receipt_analytics_questions_render_planned_prerequisite_answer(user_inp
     assert 'Analytika bločkov' in answer
     assert 'plánované' in answer
     assert 'ešte nie je hotová' in answer
-    assert 'kategórie bločkov' in answer
-    assert 'OCR alebo LMM extrakcia nie je finálna účtovná kategória' in answer
-    assert 'bločky prijímať a ukladať' in answer
+    assert 'Kontrolovaná kategorizácia' in answer
+    assert 'výpočty výdavkov podľa kategórií' in answer.lower()
+    assert 'Analytika výdavkov podľa kategórií' in answer
     assert '/add_blocek' not in answer
     assert '\u0430\u043d\u0430\u043b' not in answer
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Vies kategorizovat blocky?',
+        'Viete priradiť kategóriu bločku?',
+        'Can you categorize receipts?',
+    ],
+)
+def test_accounting_document_category_questions_render_partial_product_truth(user_input: str) -> None:
+    assert classify_info_help_capability(user_input_text=user_input) == 'accounting_document_categories'
+
+    result = classify_info_help_triage(user_input_text=user_input)
+    assert result.triage_class == 'known_product_capability'
+    assert result.capability_id == 'accounting_document_categories'
+
+    answer = build_product_truth_guidance(user_input_text=user_input)
+    assert answer is not None
+    assert 'Kategórie bločkov a prijatých faktúr' in answer
+    assert 'čiastočné' in answer
+    assert 'Nie je to samostatná top-level akcia' in answer
+    assert 'Python validuje' in answer
+    assert 'Analytika bločkov' not in answer
 
 
 def test_receipt_analytics_question_is_not_routed_as_upload_receipt_how_to() -> None:
     assert classify_info_help_capability(user_input_text='Ako pridám bloček?') == 'add_receipt_or_incoming_invoice'
     assert classify_info_help_capability(user_input_text='Vieš analyzovať bločky?') == 'receipt_analytics'
+    assert classify_info_help_capability(user_input_text='Vieš kategorizovať bločky?') == 'accounting_document_categories'
 
 
 @pytest.mark.parametrize(

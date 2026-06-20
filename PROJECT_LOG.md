@@ -1,5 +1,80 @@
 # PROJECT_LOG
 
+## 2026-06-20 - Session 153 - Receipt Category MVP v1
+
+Summary:
+- Implemented controlled receipt/incoming-invoice categories inside the existing
+  accounting Document Intake preview flow, not as a new top-level action.
+- Added system categories plus workspace-scoped custom categories persisted
+  under the workspace master-data category registry.
+- Extended LMM extraction to receive Python-provided `allowed_categories` and
+  return candidate-only document/line-item categories or `unknown_review`.
+- Added category preview decisions, unknown-category handling, existing
+  category selection, confirmation-gated new category creation, similar-label
+  protection, and save-with/save-without-category paths through
+  `bot/services/decision_resolver.py`.
+- Persisted confirmed category metadata as category ids plus `label_snapshot`;
+  old metadata without category remains readable and no storage paths are moved.
+- Synced Product Truth, InfoHelp, TZ, Document Intake docs, in-action registry,
+  eval smoke, changelog, and tests. Receipt analytics remains planned.
+
+Preflight:
+- Docs/contracts read: AGENTS, Product Doctrine 2030, AI Layer Implementation
+  Standards, Product Truth Layer, Product Truth Registry MVP Design,
+  Self-Learning Layer, Evaluation and Smoke Test Standards, Product UX Eval
+  Artifacts, TZ, LLM Orchestrator Contract, Canonical Action Registry,
+  In-Action Response Registry, New Action Design Checklist, Bounded Resolver
+  Prompt Template, Info Help Guidance Layer, Customization Request Layer,
+  Confirmed Semantic Alias Learning Contract, Code Agent Handoff Contract,
+  Implementation Agent Checklist, Data Migration Runbook, Canonical
+  DecisionResolver Contract, OfficeFlow Architecture Framing, OfficeFlow
+  Storage Model Proposal, Document Intake Module Proposal, Document Intake MVP
+  Implementation Plan, User Access Model Roadmap, PROJECT_LOG, CHANGELOG, and
+  the accounting extraction prompt.
+- Touched scopes: LMM extraction prompt/wrapper/parser, accounting document FSM,
+  voice routing for active accounting states, DecisionResolver category
+  families, confirmed metadata shape, workspace storage for category registry,
+  Product Truth, InfoHelp, docs/evals/tests.
+- Not touched: top-level canonical actions, STT implementation, LMM provider
+  calls beyond payload/prompt shape, DB schema, existing confirmed file paths,
+  server runtime, PDF layout, bank/tax/export/Drive integrations, or receipt
+  analytics execution.
+- Current implementation status: `partial` for receipt/incoming-invoice
+  category capture; `planned` for receipt analytics; `unsupported` for tax
+  advice, bank matching, accounting export, and VAT/category totals.
+- AI maturity level: Level 2/4 boundary for bounded candidate extraction and
+  controlled workspace category learning only after user confirmation. This is
+  not analytics, accounting judgment, or adaptive workflow automation.
+- Out of scope: standalone category management, `categorize_receipt` top-level
+  action, broad document categories, data migration, category analytics,
+  Google Drive sync, accounting export, tax/VAT conclusions, or automatic
+  category creation by the model.
+- User journey proof: authorized user starts `/add_blocek`, uploads a
+  receipt/PDF, sees bounded category candidates, resolves unknown categories
+  by choosing existing or confirming a new workspace category, previews changes,
+  and only final save persists category snapshots.
+- Self-learning hooks considered: workspace category creation is controlled,
+  tenant-scoped, confirmation-gated, and reused only through future
+  `allowed_categories` payloads. No action aliases or Product Truth learning
+  were added.
+- Product claim sources: current code/tests, Product Truth entry
+  `accounting_document_categories`, Document Intake docs, TZ, in-action
+  registry, eval smoke, and this log.
+
+Verification:
+- `python -m compileall bot`
+  - passed.
+- `python -m pytest -q tests/test_decision_resolver.py tests/test_accounting_document_extraction.py tests/test_accounting_document_intake_flow.py`
+  - 601 passed.
+- `python -m pytest -q tests/test_accounting_document_extraction.py tests/test_accounting_document_categories.py`
+  - 26 passed.
+- `python -m pytest -q tests/test_accounting_document_intake_flow.py tests/test_accounting_document_lmm.py tests/test_accounting_document_storage.py tests/test_product_truth.py tests/test_info_help.py`
+  - 182 passed.
+- `python -m pytest -q`
+  - 1776 passed, 7 subtests passed.
+- `git diff --check`
+  - passed with line-ending conversion warnings only.
+
 ## 2026-06-20 - Session 152 - Safe analytics checklist failure register
 
 Summary:

@@ -29,6 +29,8 @@ Current implemented behavior:
   - accepts photo/PDF while the accounting intake FSM state is active,
   - classifies only receipts and incoming invoices,
   - extracts candidate metadata through a bounded LMM wrapper,
+  - proposes bounded document category candidates and optional line-item category candidates from Python-provided allowed categories,
+  - supports confirmation-gated workspace category creation inside the preview flow,
   - validates in Python,
   - shows a Slovak preview,
   - saves to confirmed accounting storage only after explicit user approval.
@@ -179,6 +181,25 @@ Recent confirmed accounting documents can be viewed through the lightweight read
 
 New receipt intake can be started through `/add_blocek` or `/dodat_blocek`, which reuse the current accounting Document Intake Phase 1 upload flow. `/doklad` remains a broader legacy/reserved document-intake command and should not be promoted as the primary user-facing blocek command.
 
+### Controlled receipt/incoming-invoice categories
+
+Receipt Category MVP v1 is implemented only inside the existing accounting document intake preview flow. It is not a standalone top-level action and must not add `categorize_receipt` or `manage_categories` to top-level allowed actions.
+
+Runtime rules:
+- Python owns the system/workspace category registry, allowed category payload, validation, confirmation, and persistence;
+- LMM extraction may return only `document_category_candidate`, line-item `category_candidate`, or up to three non-final suggested labels;
+- if no allowed category fits, the candidate is `unknown_review`;
+- unknown category UX first offers existing categories, then new-category creation, then save-as-unknown, then cancel;
+- new categories are workspace-scoped, created only after typed label plus confirmation, and reused in future allowed-category payloads;
+- category changes affect only the FSM preview until final confirmed save writes metadata;
+- confirmed metadata stores category ids plus `label_snapshot` so old labels remain readable.
+
+Non-goals:
+- no DB schema migration;
+- no file move or confirmed path rewrite;
+- no automatic tax/accounting judgment;
+- no category totals, receipt analytics, bank matching, VAT/tax report, accounting export, or Google Drive sync.
+
 ---
 
 ## 7. Integration Points
@@ -188,7 +209,7 @@ Future integration points:
 - FSM states for document type clarification,
 - validation services per document type,
 - storage service for original files and confirmed metadata,
-- optional category dictionary service,
+- workspace-scoped category dictionary service (partial runtime exists for receipts/incoming invoices only),
 - later accounting export/package service.
 
 Runtime integration now starts with a shared idle attachment router foundation, while the broader module remains incremental. The router is intentionally above the existing accounting intake and contact/contract helper and must preserve active FSM state ownership.

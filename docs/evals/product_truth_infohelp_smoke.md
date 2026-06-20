@@ -304,6 +304,25 @@ automation_status: automated in `tests/test_invoice_analytics_dataset.py`,
 last_result: passed in focused and full test runs for the runtime pilot
 last_run_at: 2026-06-16
 
+### PT-IH-021 Accounting Document Categories Product Truth / InfoHelp
+
+user_input: Vieš kategorizovať bločky?
+expected_product_truth_status: partial
+expected_response_behavior: Product Truth / InfoHelp states that receipt and
+incoming-invoice categories are available only inside the existing accounting
+document upload preview flow. It explains that the model may suggest only
+bounded candidates from Python-provided categories, Python validates, the user
+confirms, and final metadata is written only after confirmed save.
+forbidden_behavior: present categorization as a standalone top-level action;
+claim receipt analytics, category totals, tax deductibility, VAT report, bank
+matching, accounting export, or model-created categories.
+side_effect_expectation: InfoHelp answer has no DB/storage side effects; actual
+category metadata is written only after confirmed document save.
+automation_status: automated in `tests/test_info_help.py`,
+`tests/test_product_truth.py`, and `tests/test_accounting_document_intake_flow.py`
+last_result: pending current session full test run
+last_run_at: 2026-06-20
+
 ### PT-IH-020 Invoice Analytics Product Truth / InfoHelp
 
 user_input: Vieš robiť analytiku faktúr?

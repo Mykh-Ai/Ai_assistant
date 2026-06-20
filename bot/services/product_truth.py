@@ -96,7 +96,7 @@ class ProductTruthResult:
         }
 
 
-_LAST_VERIFIED_AT = '2026-06-18'
+_LAST_VERIFIED_AT = '2026-06-20'
 
 
 def _capability(
@@ -545,28 +545,71 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         title='Add receipt or incoming invoice',
         domain='accounting_documents',
         status=ProductTruthStatus.PARTIAL,
-        summary_for_user='Starts accounting document intake for receipts and incoming invoices, then saves only after user approval.',
-        current_limitations=('Upload requires photo/PDF; edit is unavailable; broader document intake remains planned.',),
+        summary_for_user='Starts accounting document intake for receipts and incoming invoices, proposes bounded metadata and category candidates, then saves only after user approval.',
+        current_limitations=(
+            'Upload requires photo/PDF; broader document intake remains planned.',
+            'Category changes update only the preview until the final save confirmation.',
+            'Category support is controlled by the separate accounting_document_categories partial capability.',
+        ),
         runtime_owner='bot/handlers/accounting_document_intake.py',
         commands=('/add_blocek', '/dodat_blocek'),
         canonical_actions=('add_receipt',),
         linked_handlers=('bot/handlers/accounting_document_intake.py',),
-        truth_source_refs=('docs/TZ_FakturaBot.md', 'docs/llm/Canonical_Action_Registry.md'),
-        test_refs=('tests/test_accounting_document_intake_flow.py', 'tests/test_accounting_document_storage.py'),
+        truth_source_refs=('docs/TZ_FakturaBot.md', 'docs/llm/Canonical_Action_Registry.md', 'docs/llm/In_Action_Response_Registry.md'),
+        test_refs=('tests/test_accounting_document_intake_flow.py', 'tests/test_accounting_document_storage.py', 'tests/test_accounting_document_extraction.py'),
         safe_next_steps=('Ask for a photo or PDF and require preview approval before confirmed save.',),
         requires_setup=True,
         setup_state_keys=('authorized_user', 'supplier_profile'),
+    ),
+    _capability(
+        capability_id='accounting_document_categories',
+        title='Receipt and incoming-invoice categories',
+        domain='accounting_documents',
+        status=ProductTruthStatus.PARTIAL,
+        summary_for_user='Receipts and incoming invoices can receive a controlled document category and optional line-item categories during the existing document intake preview.',
+        current_limitations=(
+            'This is not a top-level action; it is available only inside the existing accounting document intake preview.',
+            'The model may suggest only candidates from Python-provided allowed categories or unknown_review; Python validates, the user confirms, and Python persists.',
+            'Workspace custom categories can be created only after confirmation and are scoped to the current workspace.',
+            'No tax deductibility, VAT report, accounting export, spending analytics, bank matching, or category totals are implemented.',
+        ),
+        runtime_owner='bot/handlers/accounting_document_intake.py and bot/services/accounting_document_categories.py',
+        linked_handlers=('bot/handlers/accounting_document_intake.py', 'bot/services/accounting_document_categories.py'),
+        truth_source_refs=(
+            'docs/TZ_FakturaBot.md',
+            'docs/Document_Intake_Module_Proposal.md',
+            'docs/llm/In_Action_Response_Registry.md',
+            'docs/Product_Truth_Layer.md',
+        ),
+        test_refs=(
+            'tests/test_accounting_document_categories.py',
+            'tests/test_accounting_document_intake_flow.py',
+            'tests/test_accounting_document_extraction.py',
+            'tests/test_accounting_document_storage.py',
+            'tests/test_info_help.py',
+        ),
+        safe_next_steps=('Use /add_blocek or /dodat_blocek, upload a receipt or incoming invoice, review the proposed category, and confirm before save.',),
+        requires_setup=True,
+        setup_state_keys=('authorized_user', 'supplier_profile'),
+        forbidden_claims=(
+            'I calculated tax deductibility from this category.',
+            'I generated receipt analytics from categories.',
+            'I exported accounting categories to an accounting system.',
+            'The model saved or created a category directly.',
+            'This is full accounting categorization automation.',
+        ),
+        notes_for_agents='Partial controlled categorization only. Do not add a top-level categorize/manage category action.',
     ),
     _capability(
         capability_id='receipt_analytics',
         title='Receipt analytics',
         domain='accounting_documents',
         status=ProductTruthStatus.PLANNED,
-        summary_for_user='Receipt/blocek analytics is not implemented yet; receipt categorization must be designed, validated, confirmed, stored, and tested first.',
+        summary_for_user='Receipt/blocek analytics is not implemented yet; controlled categorization is only a prerequisite data-capture layer.',
         current_limitations=(
-            'The current runtime can intake and show recent confirmed receipts/incoming invoices only within its implemented partial scope.',
-            'There is no receipt category taxonomy, category suggestion/confirmation flow, category source/confidence storage, or spending analytics runtime yet.',
-            'Raw OCR or LMM extraction is not a final accounting category and must not be treated as tax deductibility or accounting approval.',
+            'The current runtime can intake, categorize, save, and show recent confirmed receipts/incoming invoices only within its implemented partial scope.',
+            'There is no spending analytics runtime, category totals/reporting, incoming-invoice analytics, or evaluated accounting conclusion layer yet.',
+            'Raw OCR, LMM extraction, and even confirmed intake categories must not be treated as tax deductibility or accounting approval.',
             'No broad receipt spending analytics, category totals, incoming-invoice analytics, bank matching, VAT/tax report, or full accounting analytics is implemented.',
         ),
         truth_source_refs=(
@@ -577,7 +620,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         ),
         test_refs=('tests/test_product_truth.py', 'tests/test_info_help.py'),
         safe_next_steps=(
-            'Build category taxonomy, category suggestion, Python validation, confirmation where needed, storage with source/confidence, and tests before any receipt analytics runtime.',
+            'Use controlled categories as captured metadata only; build a separate read-only analytics contract, dataset, evaluator, Product Truth, and tests before any receipt analytics runtime.',
         ),
         customization_allowed=True,
         forbidden_claims=(

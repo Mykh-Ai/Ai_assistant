@@ -39,6 +39,11 @@
   - bounded accounting/contact-route proposals before any save/create side effects.
 - DecisionResolver families for idle attachment route and document-type clarification.
 - `/blocky` read-only recent accounting documents view for the last 5 confirmed receipts/incoming invoices from confirmed metadata only.
+- controlled receipt/incoming-invoice category MVP inside the existing accounting Document Intake preview flow:
+  - system and workspace-scoped category registry with allowed-category payloads;
+  - LMM candidate-only document and line-item category suggestions bounded by Python-provided categories or `unknown_review`;
+  - unknown-category UX for choosing existing, confirmation-gated workspace category creation, save-as-unknown, or cancel;
+  - confirmed metadata category snapshots with no DB/schema migration or file moves.
 
 ### Changed
 - `invoice_period_summary` is no longer offered as a competing top-level
@@ -97,7 +102,7 @@
 - accounting document preview voice confirmations now route through the same Canonical DecisionResolver path as text, with safe edit-unavailable handling.
 - docs-only OfficeFlow architecture framing now reflects Document Intake Phase 1 runtime storage and explicitly preserves outgoing invoice `storage/invoices` + `pdf_path` behavior.
 - docs-only OfficeFlow storage proposal now records future Google Drive sync path rules: storage-relative confirmed accounting paths are canonical, while temp uploads and host-only paths are not.
-- accounting Document Intake now extracts raw `purchase_subject` / `Predmet nákupu` instead of premature accounting category candidates.
+- accounting Document Intake now keeps raw `purchase_subject` / `Predmet nákupu` as factual purchase description while separately handling controlled category candidates and confirmed category snapshots.
 - temporary OfficeFlow/accounting intake sessions now expire after 5 minutes and safely clean only upload staging paths.
 - accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
 
@@ -124,7 +129,7 @@
 - Controlled multi-user dry run remains one backend, one bot token, and one SQLite DB; access is limited to bootstrap allowlisted or admin-approved Telegram users, and this is not full SaaS multi-tenancy.
 - Public automatic signup remains out of scope; unknown users can only request access and must be approved by an admin before onboarding, LLM/STT/LMM, invoices, contacts, or document intake.
 - Legacy supplier SMTP values should be purged after backup with `UPDATE supplier SET smtp_host = NULL, smtp_user = NULL, smtp_pass = NULL;`.
-- Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, Zevs runtime profile, standalone contract save, bank-statement matching, or expense categorization.
+- Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, Zevs runtime profile, standalone contract save, bank-statement matching, receipt analytics, category totals, tax advice, or accounting export.
 
 ## [0.6.1] - 2026-04-12
 

@@ -14,6 +14,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'show_existing_invoice',
     'invoice_analytics',
     'invoice_due_date_reminders',
+    'accounting_document_categories',
     'receipt_analytics',
     'edit_existing_invoice',
     'delete_existing_invoice',
@@ -79,8 +80,14 @@ _SLOVAK_CAPABILITY_COPY = {
     'receipt_analytics': {
         'title': 'Analytika bločkov',
         'summary': 'Analytika bločkov ešte nie je hotová. Aktuálne nejde o podporovaný runtime výpočtov nad výdavkami.',
-        'limitation': 'Najprv treba doplniť kategórie bločkov: návrh kategórie, Python validáciu povolených kategórií, potvrdenie alebo deterministické pravidlo tam, kde treba, uloženie kategórie a zdroj/istotu kategórie. Surové OCR alebo LMM extrakcia nie je finálna účtovná kategória ani daňové posúdenie.',
-        'safe_next': 'Teraz môžete bločky prijímať a ukladať v implementovanom rozsahu, ale analytika výdavkov podľa kategórií príde až po kategorizácii a testoch.',
+        'limitation': 'Kontrolovaná kategorizácia je iba vstupná metadata vrstva. Výpočty výdavkov podľa kategórií, reporty, DPH, dane, bankové párovanie ani účtovné závery ešte nie sú implementované.',
+        'safe_next': 'Teraz môžete bločky/prijaté faktúry prijímať, skontrolovať kategóriu v náhľade a uložiť po potvrdení. Analytika výdavkov podľa kategórií príde až po samostatnom analytickom kontrakte a testoch.',
+    },
+    'accounting_document_categories': {
+        'title': 'Kategórie bločkov a prijatých faktúr',
+        'summary': 'Kategorizácia bločkov a prijatých faktúr je podporovaná čiastočne v existujúcom upload toku.',
+        'limitation': 'Nie je to samostatná top-level akcia. Model môže iba navrhnúť kategóriu z povoleného zoznamu alebo unknown_review; Python validuje, používateľ potvrdí a až finálne uloženie zapíše metadata. Nové pracovné kategórie vznikajú iba po potvrdení.',
+        'safe_next': 'Použite /add_blocek alebo /dodat_blocek, nahrajte fotku/PDF, skontrolujte navrhnutú kategóriu v náhľade a potvrďte uloženie.',
     },
     'invoice_due_date_reminders': {
         'title': 'Pripomienky faktúr po splatnosti',
@@ -221,6 +228,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'invoice_period_summary': 'ročný súhrn v analytike faktúr',
     'invoice_analytics': 'analytika vystavených faktúr',
     'invoice_due_date_reminders': 'pripomienky faktúr po splatnosti',
+    'accounting_document_categories': 'kategórie bločkov a prijatých faktúr',
     'receipt_analytics': 'analytika bločkov',
     'edit_existing_invoice': 'úprava existujúcej faktúry',
     'delete_existing_invoice': 'vymazanie existujúcej faktúry',
@@ -471,6 +479,13 @@ def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageR
             triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
             confidence=0.8,
         )
+    if _mentions_accounting_document_categories(normalized, tokens):
+        return InfoHelpTriageResult(
+            capability_id='accounting_document_categories',
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.82,
+        )
     if _mentions_receipt_analytics_capability(normalized, tokens):
         return InfoHelpTriageResult(
             capability_id='receipt_analytics',
@@ -637,6 +652,8 @@ def classify_info_help_capability(
         return 'invoice_due_date_reminders'
     if 'sms' in tokens or 'esemes' in tokens or 'esemesky' in tokens:
         return 'sms_reminders'
+    if _mentions_accounting_document_categories(normalized, tokens):
+        return 'accounting_document_categories'
     if _mentions_receipt_analytics_capability(normalized, tokens):
         return 'receipt_analytics'
     if _mentions_bank_cashflow_tax_analytics(normalized, tokens):
@@ -960,6 +977,50 @@ def _mentions_receipt_how_to(normalized: str, tokens: set[str]) -> bool:
     if not bool(tokens.intersection({'blocek', 'blocky', 'doklad', 'receipt', 'prijatu'})):
         return False
     return bool(tokens.intersection({'ako', 'how', 'pridam', 'nahrat', 'nahram', 'upload'}))
+
+
+def _mentions_accounting_document_categories(normalized: str, tokens: set[str]) -> bool:
+    receipt_terms = {
+        'blocek',
+        'blocku',
+        'blocky',
+        'blockov',
+        'doklad',
+        'doklady',
+        'receipt',
+        'receipts',
+        'prijatu',
+        'fakturu',
+        'invoice',
+    }
+    category_terms = {
+        'kategoria',
+        'kategoriu',
+        'kategorie',
+        'kategorii',
+        'kategorizovat',
+        'kategorizacia',
+        'categorize',
+        'categorise',
+        'category',
+        'categories',
+    }
+    analytics_terms = {
+        'analytika',
+        'analytiku',
+        'analyzovat',
+        'analytics',
+        'report',
+        'prehlad',
+        'vykaz',
+        'vydavky',
+        'vydavkov',
+        'spending',
+        'expenses',
+    }
+    if not (tokens.intersection(receipt_terms) and tokens.intersection(category_terms)):
+        return False
+    return not bool(tokens.intersection(analytics_terms))
 
 
 def _mentions_receipt_analytics_capability(normalized: str, tokens: set[str]) -> bool:

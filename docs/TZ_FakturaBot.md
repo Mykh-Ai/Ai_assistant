@@ -95,19 +95,19 @@ Final business answers in end-user flows must use Slovak business language by
 default. User input language or planner metadata must not override that policy
 unless a future Python-owned product decision explicitly changes it.
 
-Receipt/blocek analytics must not be built before all of these exist:
+Controlled receipt/incoming-invoice categories are now partially implemented inside the existing `/add_blocek` / `/dodat_blocek` accounting Document Intake preview flow. This is not a standalone top-level action. Python owns the category registry, allowed-category payload, validation, confirmation, and persistence. The LMM may suggest only bounded candidates from Python-provided categories or `unknown_review`; it must not create categories, decide tax treatment, or execute side effects. Workspace categories are created only after typed label plus explicit confirmation, and confirmed metadata stores category ids with `label_snapshot`.
 
-1. category taxonomy;
-2. category suggestion;
-3. Python validation of allowed categories;
-4. user or deterministic confirmation where needed;
-5. category storage;
-6. category source/confidence;
-7. tests and Product Truth.
+Receipt/blocek analytics must not be built or claimed before all of these exist:
 
-Raw OCR/LMM extraction of a receipt is not final accounting truth, a final
-category, tax deductibility evidence, or a basis for spending analytics unless
-the above controls exist.
+1. a separate read-only analytics contract and dataset;
+2. evaluated category aggregation semantics;
+3. Python validation of allowed analytics questions;
+4. tenant-scoped execution without writes;
+5. Product Truth and InfoHelp status for analytics;
+6. tests and product UX smoke for category totals/reporting;
+7. explicit no-tax-advice and no-accounting-export boundaries.
+
+Raw OCR/LMM extraction and confirmed intake categories are not tax deductibility evidence, accounting approval, accounting export data, or a basis for spending analytics until a separate analytics layer proves those controls.
 
 ---
 
@@ -1173,13 +1173,13 @@ Python повинен перевіряти:
 - OCR pipeline,
 - broad Document Intake beyond current receipt/incoming-invoice Phase 1,
 - bank statement intake,
-- document categories,
+- broad document categories beyond the partial receipt/incoming-invoice intake category flow,
 - e-faktura 2027,
 - extended reports.
 
 Active status correction 2026-05-17:
-- Accounting Document Intake Phase 1 is implemented/partial for confirmed receipt (`blocek`) and incoming-invoice (`prijata faktura`) intake, duplicate preview, user approval, confirmed metadata storage, idle attachment routing, and recent document view where current code/tests prove it.
-- Broader Document Intake remains planned/not implemented for standalone contract archive, bank statements, broad OCR for arbitrary scanned documents, broad categories, accounting software export, Google Drive sync, and full OfficeFlow workspace runtime unless later code/docs prove otherwise.
+- Accounting Document Intake Phase 1 is implemented/partial for confirmed receipt (`blocek`) and incoming-invoice (`prijata faktura`) intake, bounded category candidates, workspace category creation after confirmation, duplicate preview, user approval, confirmed metadata storage, idle attachment routing, and recent document view where current code/tests prove it.
+- Broader Document Intake remains planned/not implemented for standalone contract archive, bank statements, broad OCR for arbitrary scanned documents, broad category administration, receipt analytics, accounting software export, Google Drive sync, and full OfficeFlow workspace runtime unless later code/docs prove otherwise.
 
 ---
 
