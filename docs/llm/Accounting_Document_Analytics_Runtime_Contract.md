@@ -41,7 +41,7 @@ Python owns:
 - tenant-scoped metadata scanning;
 - dataframe construction and column selection;
 - current runtime date injection;
-- allowed dataset catalog;
+- allowed dataset catalog, including allowed category ids and category aliases;
 - unsupported-domain guard before planning;
 - LLM plan validation;
 - AST validation and restricted code execution;
@@ -133,6 +133,15 @@ code.
 They are not tax deductibility, accounting approval, VAT classification, or
 export mapping.
 
+For category questions, Python must provide an `allowed_categories` catalog with
+active `category_id` values, display labels, and safe aliases. Python may also
+provide `category_filter_hints` resolved from the user question, for example
+`pálne` / `palivo` / `fuel` / `pohonné látky` / `пальне` ->
+`vehicle_fuel`. Generated code must filter categories primarily by `category_id`
+signaled by this Python-provided catalog. LLM must not invent translated category labels
+or filter by guessed labels such as `pohonné látky` when the catalog contains
+`vehicle_fuel` / `Palivo`.
+
 ## Current Date
 
 Python injects `current_date` and sends `current_date_iso` to the planner.
@@ -175,7 +184,7 @@ Allowed analysis patterns:
 - sum totals by currency;
 - filter by issue/tax/due date;
 - compare periods;
-- group by vendor, category, document type, currency, month, or year;
+- group by vendor, Python-provided category_id, document type, currency, month, or year;
 - bounded list of matching receipts/incoming invoices;
 - average/top-N style read-only summaries.
 
@@ -258,5 +267,7 @@ Tests/evals must prove:
 - voice can reach the top-level analytics action;
 - generated code rejects imports, SQL/DB access, file/network/system calls,
   and write-style operations;
+- multilingual category wording resolves through Python-provided category ids,
+  not invented translated category labels;
 - Product Truth and InfoHelp report the capability as partial, not full
   accounting analytics.

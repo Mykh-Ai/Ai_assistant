@@ -54,6 +54,11 @@
   - reply-button UX for category preview choices, unknown-category recovery, duplicate/new-category yes-no confirmations, similar-category decisions, and reasonable category selection lists.
 
 ### Changed
+- Accounting document analytics now supplies Python-owned `allowed_categories` and
+  `category_filter_hints` to the planner, and rejects category plans that do not
+  use the hinted `category_id`, preventing invented translated category-label
+  filters such as `pohonné látky` when confirmed metadata uses `vehicle_fuel` /
+  `Palivo`.
 - `invoice_period_summary` is no longer offered as a competing top-level
   user-facing resolver action. Simple calendar-year invoice count/total
   questions now route through `invoice_analytics`, which may use the existing

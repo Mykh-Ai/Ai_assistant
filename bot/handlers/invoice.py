@@ -617,7 +617,11 @@ async def _run_accounting_document_analytics(
             plan = await plan_accounting_document_analytics_code(
                 user_question=user_question,
                 current_date_iso=current_date_iso,
-                data_catalog=build_accounting_document_analytics_data_catalog(),
+                data_catalog=build_accounting_document_analytics_data_catalog(
+                    storage_dir=config.storage_dir,
+                    workspace_key=workspace_key,
+                    user_question=user_question,
+                ),
                 api_key=config.openai_api_key,
                 model=config.openai_llm_model,
                 repair_feedback=repair_feedback,

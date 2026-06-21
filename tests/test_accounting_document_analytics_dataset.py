@@ -108,3 +108,21 @@ def test_accounting_document_analytics_dataset_empty_workspace_has_stable_column
 
     assert dataframe.empty
     assert tuple(dataframe.columns) == ACCOUNTING_DOCUMENT_ANALYTICS_COLUMNS
+
+
+def test_accounting_document_analytics_catalog_resolves_multilingual_category_aliases(tmp_path: Path) -> None:
+    from bot.services.accounting_document_analytics_dataset import build_accounting_document_analytics_data_catalog
+
+    catalog = build_accounting_document_analytics_data_catalog(
+        storage_dir=tmp_path,
+        workspace_key='telegram-111',
+        user_question='Скільки я витратив на пальне в березні?',
+    )
+
+    assert any(item['category_id'] == 'vehicle_fuel' for item in catalog['allowed_categories'])
+    assert {'category_id': 'vehicle_fuel', 'label_sk': 'Palivo', 'matched_alias': 'пальне'} in catalog[
+        'category_filter_hints'
+    ]
+    vehicle_fuel = next(item for item in catalog['allowed_categories'] if item['category_id'] == 'vehicle_fuel')
+    assert 'pohonne latky' in vehicle_fuel['aliases']
+    assert 'пальне' in vehicle_fuel['aliases']

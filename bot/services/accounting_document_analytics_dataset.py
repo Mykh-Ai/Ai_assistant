@@ -3,10 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
+import unicodedata
 from typing import Any
 
 import pandas as pd
 
+from bot.services.accounting_document_categories import allowed_categories_payload
 from bot.services.accounting_document_models import DOCUMENT_TYPE_INCOMING_INVOICE, DOCUMENT_TYPE_RECEIPT
 from bot.services.accounting_document_registry import CONFIRMED_ACCOUNTING_DOCUMENT_FOLDERS
 from bot.services.accounting_document_storage import workspace_key_for_supplier
@@ -183,7 +186,105 @@ def _float_value(value: Any) -> float:
         return 0.0
 
 
-def build_accounting_document_analytics_data_catalog() -> dict[str, Any]:
+_CATEGORY_ALIASES_BY_ID = {
+    'materials': ('material', 'materiál', 'матеріал', 'материалы'),
+    'tools': ('naradie', 'náradie', 'tools', 'інструмент', 'инструмент'),
+    'small_equipment': ('drobne vybavenie', 'drobné vybavenie', 'small equipment'),
+    'protective_equipment': ('ochranne pomocky', 'ochranné pomôcky', 'ppe'),
+    'consumables': ('spotrebny material', 'spotrebný materiál', 'rozchodniky', 'расходники', 'розхідники'),
+    'vehicle_fuel': (
+        'palivo',
+        'pohonne latky',
+        'pohonné látky',
+        'fuel',
+        'benzín',
+        'benzin',
+        'diesel',
+        'nafta',
+        'phm',
+        'pálne',
+        'пальне',
+        'паливо',
+        'топливо',
+    ),
+    'vehicle_service_labor': ('servis auta', 'auto servis', 'praca servis', 'práca servis'),
+    'vehicle_parts': ('auto diely', 'autodiely', 'car parts'),
+    'vehicle_consumables': ('auto kvapaliny', 'prevadzkove kvapaliny', 'prevádzkové kvapaliny'),
+    'vehicle_wash_parking_toll': (
+        'parkovanie',
+        'parking',
+        'umyvanie',
+        'umývanie',
+        'dialnica',
+        'diaľnica',
+        'myto',
+        'mýto',
+        'toll',
+    ),
+    'office_supplies': ('kancelarske potreby', 'kancelárske potreby', 'office supplies'),
+    'software_subscriptions': ('softver', 'softvér', 'subscription', 'predplatne', 'predplatné'),
+    'phone_internet': ('telefon', 'telefón', 'internet', 'phone'),
+    'travel_accommodation': ('cestovanie', 'ubytovanie', 'travel', 'accommodation'),
+    'food_refreshments': ('jedlo', 'voda', 'obcerstvenie', 'občerstvenie', 'food', 'refreshments'),
+    'bank_fees': ('bankove poplatky', 'bankové poplatky', 'bank fees'),
+    'client_project_expense': ('zakazka', 'zákazka', 'klient', 'project expense'),
+    'personal_or_non_business': ('osobne', 'osobné', 'nefiremne', 'nefiremné', 'personal'),
+    'mixed_business_expense': ('zmiesany', 'zmiešaný', 'mixed'),
+    'unknown_review': ('na kontrolu', 'unknown', 'review'),
+}
+
+
+def _analytics_alias_key(value: str) -> str:
+    normalized = unicodedata.normalize('NFKD', str(value).casefold().strip())
+    without_diacritics = ''.join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r'\s+', ' ', re.sub(r'[^\w]+', ' ', without_diacritics, flags=re.UNICODE)).strip('_ ')
+
+
+def _category_alias_payload(item: dict[str, Any]) -> dict[str, Any]:
+    category_id = str(item.get('category_id') or '').strip()
+    label = str(item.get('label_sk') or category_id).strip()
+    aliases = {_analytics_alias_key(label), _analytics_alias_key(category_id)}
+    aliases.update(_analytics_alias_key(value) for value in _CATEGORY_ALIASES_BY_ID.get(category_id, ()))
+    aliases.discard('')
+    return {
+        **item,
+        'aliases': sorted(aliases),
+    }
+
+
+def _resolve_category_filter_hints(user_question: str, categories: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized_question = _analytics_alias_key(user_question)
+    if not normalized_question:
+        return []
+    padded_question = f' {normalized_question} '
+    matches: list[dict[str, Any]] = []
+    for item in categories:
+        for alias in item.get('aliases', []):
+            normalized_alias = _analytics_alias_key(alias)
+            if normalized_alias and f' {normalized_alias} ' in padded_question:
+                matches.append(
+                    {
+                        'category_id': item['category_id'],
+                        'label_sk': item.get('label_sk'),
+                        'matched_alias': normalized_alias,
+                    }
+                )
+                break
+    return matches
+
+
+def build_accounting_document_analytics_data_catalog(
+    *,
+    storage_dir: Path | None = None,
+    workspace_key: str | None = None,
+    user_question: str = '',
+) -> dict[str, Any]:
+    categories: list[dict[str, Any]] = []
+    if storage_dir is not None:
+        categories = [
+            _category_alias_payload(item)
+            for item in allowed_categories_payload(storage_dir=storage_dir, workspace_key=workspace_key)
+        ]
     return {
         'datasets': {
             'accounting_documents_df': {
@@ -213,6 +314,13 @@ def build_accounting_document_analytics_data_catalog() -> dict[str, Any]:
                 },
             }
         },
+        'allowed_categories': categories,
+        'category_filter_hints': _resolve_category_filter_hints(user_question, categories),
+        'category_filter_contract': (
+            'For category questions, use only category_id values listed in allowed_categories. '
+            'If category_filter_hints is non-empty, generated code must filter category_id by those ids. '
+            'Do not invent translated category_label values.'
+        ),
         'forbidden': [
             'No outgoing invoice analytics in this dataset.',
             'No bank movements or bank matching.',

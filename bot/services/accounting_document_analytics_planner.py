@@ -36,11 +36,11 @@ _PLANNER_WORKFLOW_GUIDANCE = (
     '3) identify analysis kind: sum, count, list, comparison, grouping, average, or top ranking; '
     '4) identify the exact period: explicit year, current year, month/months, date range, relative period, or unknown; '
     '5) choose the date column: issue_date by default, tax_date for tax/delivery-date wording, due_date for due-date/splatnost wording; '
-    '6) identify row filters such as document_type, vendor_name, category_id/category_label, currency, month numbers, years, or date range; '
+    '6) identify row filters such as document_type, vendor_name, category_id, currency, month numbers, years, or date range; '
     '7) identify only required accounting_documents_df columns from the data catalog; '
     '8) write sandbox-safe pandas code; '
     '9) self-check that the code answers the normalized question and that result contains facts needed for the final Slovak business answer. '
-    'If the period, vendor, category, or document type is genuinely ambiguous, do not invent it; return result warnings/answer_hints asking for clarification. '
+    'For category filters, use only category_id values from data_catalog.allowed_categories. If data_catalog.category_filter_hints is non-empty, filter category_id with exactly those hinted ids. Never invent translated category_label values such as pohonne latky when the catalog says vehicle_fuel/Palivo. If the period, vendor, category, or document type is genuinely ambiguous, do not invent it; return result warnings/answer_hints asking for clarification. '
     'Put a short Slovak normalized plan in reasoning_summary, including analysis_kind, period, date_column, filters, and output facts.'
 )
 
@@ -101,6 +101,23 @@ def parse_accounting_document_analytics_plan(raw_model_output: str) -> Accountin
     )
 
 
+def _validate_category_filter_contract(plan: AccountingDocumentAnalyticsPlan, data_catalog: dict[str, Any]) -> None:
+    hints = data_catalog.get('category_filter_hints') if isinstance(data_catalog, dict) else None
+    if not isinstance(hints, list) or not hints:
+        return
+    expected_ids = {
+        str(item.get('category_id')).strip()
+        for item in hints
+        if isinstance(item, dict) and item.get('category_id')
+    }
+    if not expected_ids:
+        return
+    if 'category_id' not in plan.analysis_code:
+        raise AccountingDocumentAnalyticsPlanError('missing_required_category_id_filter_column')
+    missing = sorted(category_id for category_id in expected_ids if category_id not in plan.analysis_code)
+    if missing:
+        raise AccountingDocumentAnalyticsPlanError('missing_required_category_id_filter:' + ','.join(missing))
+
 def _normalize_planned_analysis_code(code: str) -> str:
     normalized_lines: list[str] = []
     for line in code.splitlines():
@@ -146,14 +163,14 @@ async def plan_accounting_document_analytics_code(
                     'Allowed variables: accounting_documents_df, pd, current_date. '
                     'pd is already available; do not import pandas. '
                     'current_date is already available from Python; do not import datetime, do not redefine current_date, and never assume the current year from memory. '
-                    'Allowed analysis: counts, sums, grouping, period filters, vendor/category/document_type/currency filters, comparisons, limited lists, averages, and top rankings. '
+                    'Allowed analysis: counts, sums, grouping, period filters, vendor/category_id/document_type/currency filters, comparisons, limited lists, averages, and top rankings. '
                     + _PLANNER_WORKFLOW_GUIDANCE
                     + ' '
                     + _PERIOD_AND_DATE_GUIDANCE
                     + ' '
                     + _SANDBOX_CODE_GUIDANCE
                     + ' '
-                    'Use category_id/category_label only as confirmed intake metadata, not as tax or accounting judgement. '
+                    'Use category_id as the primary category filter. category_label is display metadata only; do not translate user category words into invented labels. Use only category_id values from data_catalog.allowed_categories, and obey data_catalog.category_filter_hints when present. '
                     'If the question asks about outgoing invoices, bank movements, VAT/tax advice, accounting export, category creation, edit, delete, upload, sync, or any write action, return a result that refuses the unsupported/write request in warnings and answer_hints; do not perform a mutation. '
                     'If repair_feedback is provided, fix the previous failure and return a complete replacement analysis_code.'
                 ),
@@ -182,4 +199,6 @@ async def plan_accounting_document_analytics_code(
         ],
     )
     raw = response.choices[0].message.content or '{}'
-    return parse_accounting_document_analytics_plan(raw)
+    plan = parse_accounting_document_analytics_plan(raw)
+    _validate_category_filter_contract(plan, data_catalog)
+    return plan

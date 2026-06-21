@@ -115,3 +115,107 @@ def test_accounting_document_analytics_planner_prompt_is_bounded(monkeypatch) ->
     assert 'No bank movements or bank matching.' in json.dumps(captured['messages'][1]['content'])
     assert 'do not import pandas' in system_prompt
     assert 'tax' in system_prompt.lower()
+
+
+def test_accounting_document_analytics_planner_prompt_carries_category_filter_hints(monkeypatch, tmp_path) -> None:
+    captured: dict = {}
+
+    class _FakeCompletions:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class _Message:
+                content = json.dumps(
+                    {
+                        'analysis_code': (
+                            "df = accounting_documents_df.copy()\n"
+                            "df = df[df['category_id'] == 'vehicle_fuel']\n"
+                            "result = {'summary': {'total': float(df['total_amount'].sum())}, 'tables': {}, 'warnings': [], 'answer_hints': []}"
+                        ),
+                        'answer_language': 'sk',
+                        'reasoning_summary': 'Palivo podla category_id.',
+                    }
+                )
+
+            class _Choice:
+                message = _Message()
+
+            class _Response:
+                choices = [_Choice()]
+
+            return _Response()
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.chat = type('Chat', (), {'completions': _FakeCompletions()})()
+
+    monkeypatch.setattr('bot.services.accounting_document_analytics_planner.AsyncOpenAI', _FakeClient)
+
+    import asyncio
+
+    plan = asyncio.run(
+        plan_accounting_document_analytics_code(
+            user_question='Скільки я витратив на пальне в березні?',
+            current_date_iso='2026-06-21',
+            data_catalog=build_accounting_document_analytics_data_catalog(
+                storage_dir=tmp_path,
+                workspace_key='telegram-111',
+                user_question='Скільки я витратив на пальне в березні?',
+            ),
+            api_key='sk-test',
+            model='gpt-test',
+        )
+    )
+
+    payload = json.loads(captured['messages'][1]['content'])
+    assert payload['data_catalog']['category_filter_hints'][0]['category_id'] == 'vehicle_fuel'
+    assert 'vehicle_fuel' in plan.analysis_code
+    assert 'Use category_id as the primary category filter' in captured['messages'][0]['content']
+
+
+def test_accounting_document_analytics_planner_rejects_plan_missing_python_category_hint(monkeypatch, tmp_path) -> None:
+    class _FakeCompletions:
+        async def create(self, **kwargs):
+            class _Message:
+                content = json.dumps(
+                    {
+                        'analysis_code': (
+                            "df = accounting_documents_df.copy()\n"
+                            "df = df[df['category_label'].str.lower() == 'pohonné látky']\n"
+                            "result = {'summary': {'total': float(df['total_amount'].sum())}, 'tables': {}, 'warnings': [], 'answer_hints': []}"
+                        ),
+                        'answer_language': 'sk',
+                        'reasoning_summary': 'Wrong invented label.',
+                    }
+                )
+
+            class _Choice:
+                message = _Message()
+
+            class _Response:
+                choices = [_Choice()]
+
+            return _Response()
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.chat = type('Chat', (), {'completions': _FakeCompletions()})()
+
+    monkeypatch.setattr('bot.services.accounting_document_analytics_planner.AsyncOpenAI', _FakeClient)
+
+    import asyncio
+
+    with pytest.raises(AccountingDocumentAnalyticsPlanError, match='missing_required_category_id_filter_column'):
+        asyncio.run(
+            plan_accounting_document_analytics_code(
+                user_question='Скільки я витратив на пальне в березні?',
+                current_date_iso='2026-06-21',
+                data_catalog=build_accounting_document_analytics_data_catalog(
+                    storage_dir=tmp_path,
+                    workspace_key='telegram-111',
+                    user_question='Скільки я витратив на пальне в березні?',
+                ),
+                api_key='sk-test',
+                model='gpt-test',
+            )
+        )

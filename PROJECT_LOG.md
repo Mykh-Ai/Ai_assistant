@@ -1,3 +1,26 @@
+## 2026-06-21 - Session 159 - Accounting document analytics category contract hardening
+
+### Goal
+Fix the receipt/incoming-invoice analytics planner gap where category questions could be planned with model-invented translated `category_label` filters instead of Python-provided confirmed `category_id` values.
+
+### Changes
+- Added Python-provided `allowed_categories`, category aliases, and `category_filter_hints` to the accounting document analytics data catalog.
+- Passed workspace storage, workspace key, and the user question into the planner catalog from the runtime handler.
+- Tightened the planner prompt so category filters must use `category_id` from `data_catalog.allowed_categories` and obey `category_filter_hints` when present.
+- Added planner validation that rejects plans missing the hinted `category_id` filter column/id before execution.
+- Added multilingual regression tests for Ukrainian/Slovak category wording such as `пальне`, `palivo`, and `pohonné látky` resolving to `vehicle_fuel`.
+- Updated `docs/llm/Accounting_Document_Analytics_Runtime_Contract.md` to make Python-owned category semantics explicit.
+
+### Verification
+- Focused analytics tests passed locally after the hardening patch.
+- Live prompt smoke over representative category questions verified that the planner selected `vehicle_fuel`, `materials`, and `tools` category ids instead of invented labels.
+
+### Notes
+- This was a contract gap in the first accounting document analytics rollout: previous smoke coverage proved top-level routing/action separation, but did not prove semantic category normalization inside generated analytics plans.
+- No DB schema changes.
+- No storage writes or migrations.
+- No analytics expansion beyond confirmed receipt/incoming-invoice metadata.
+
 # PROJECT_LOG
 
 ## 2026-06-21 - Session 158 - Accounting analytics action-boundary smoke hardening
