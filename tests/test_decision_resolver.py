@@ -248,6 +248,24 @@ def test_accounting_category_selection_context_matches_id_or_label(context_name:
             model='gpt-4o',
         )
     ) == 'materials'
+    assert asyncio.run(
+        resolve_accounting_document_category_selection(
+            context_name=context_name,
+            user_input_text='vytvorit novu kategoriu',
+            allowed_categories=allowed_categories,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'create_new_category'
+    assert asyncio.run(
+        resolve_accounting_document_category_selection(
+            context_name=context_name,
+            user_input_text='spat',
+            allowed_categories=allowed_categories,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'back'
 
 
 @pytest.mark.parametrize('context_name', ACCOUNTING_CATEGORY_SIMILAR_CONTEXTS)

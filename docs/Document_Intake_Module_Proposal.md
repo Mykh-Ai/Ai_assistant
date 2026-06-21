@@ -189,7 +189,7 @@ Runtime rules:
 - Python owns the system/workspace category registry, allowed category payload, validation, confirmation, and persistence;
 - LMM extraction may return only `document_category_candidate`, line-item `category_candidate`, or up to three non-final suggested labels;
 - if no allowed category fits, the candidate is `unknown_review`;
-- unknown category UX first offers existing categories, then new-category creation, then save-as-unknown, then cancel;
+- unknown category UX first offers existing categories, then new-category creation, then save-as-unknown, then cancel; the existing-category list also offers create-new/back controls so the user can recover when no listed category fits;
 - new categories are workspace-scoped, created only after typed label plus confirmation, and reused in future allowed-category payloads;
 - category changes affect only the FSM preview until final confirmed save writes metadata;
 - Telegram reply keyboards may show the same bounded category decisions, yes/no confirmations, similar-category choices, and reasonable existing-category label choices; button taps are ordinary text inputs that still resolve through the DecisionResolver-backed handlers;

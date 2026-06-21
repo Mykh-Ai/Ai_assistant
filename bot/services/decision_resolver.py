@@ -255,7 +255,11 @@ async def resolve_accounting_document_category_selection(
     normalized = _normalize_text(user_input_text)
     if not normalized:
         return _UNKNOWN
-    if normalized in {'zrusit', 'cancel', 'spat', 'naspat'}:
+    if 'vytvor' in normalized or 'create new categor' in normalized:
+        return 'create_new_category'
+    if normalized in {'spat', 'naspat', 'back'}:
+        return 'back'
+    if normalized in {'zrusit', 'cancel'}:
         return 'cancel'
     for category in allowed_categories:
         category_id = str(category.get('category_id') or '').strip()

@@ -1,10 +1,35 @@
 # PROJECT_LOG
 
+## 2026-06-21 - Session 155 - Receipt category selection recovery controls
+
+Summary:
+- Added create-new/back controls at the end of existing-category selection during receipt/incoming-invoice categorization.
+- `create_new_category` reuses the existing typed-label plus confirmation flow; no category is persisted from the list button alone.
+- `back` returns an unknown-category document back to the previous unknown-category menu instead of trapping the user in the existing-category list.
+
+Preflight:
+- Docs/contracts read: AGENTS, Canonical DecisionResolver Contract, Document Intake Module Proposal, In-Action Response Registry.
+- Touched scopes: accounting document category FSM, DecisionResolver category-selection family, docs, changelog, tests.
+- Not touched: DB schema, migrations, storage paths, LMM extraction payload, top-level canonical actions, analytics, tax/accounting export, bank matching.
+- Current implementation status: `partial` receipt/incoming-invoice category UX recovery inside existing preview flow only.
+- AI maturity level: Level 1/2 UX hardening around existing Python-gated category selection; no new AI authority.
+- Out of scope: standalone category management, analytics, automatic category creation, or persistence without typed label and explicit confirmation.
+
+Verification:
+- `python -m pytest -q tests/test_accounting_document_intake_flow.py tests/test_decision_resolver.py`
+  - 605 passed.
+- `python -m compileall bot`
+  - passed.
+- `git diff --check`
+  - passed.
+- `PYTHONIOENCODING=utf-8 python -m pytest -q`
+  - 1786 passed, 7 subtests passed.
+
 ## 2026-06-21 - Session 154 - Receipt intake button UX follow-up
 
 Summary:
-- Made the deterministic duplicate warning visually loud with `POZOR! Tento doklad u? je ulo?en?!!!!` and explicit `Prida? in? blo?ek`, `Ulo?i? aj tak`, and `/menu` reply buttons.
-- Added explicit `?no` / `Nie` reply buttons to the idle photo/PDF receipt proposal before entering accounting document preview processing.
+- Made the deterministic duplicate warning visually loud with `POZOR! Tento doklad už je uložený!!!!` and explicit `Pridať iný bloček`, `Uložiť aj tak`, and `/menu` reply buttons.
+- Added explicit `Áno` / `Nie` reply buttons to the idle photo/PDF receipt proposal before entering accounting document preview processing.
 - Kept both confirmation-like paths routed through `bot/services/decision_resolver.py`; buttons send visible bounded text into the active FSM and do not add a top-level action.
 
 Preflight:
@@ -14,7 +39,7 @@ Preflight:
 - Current implementation status: `partial` for receipt/incoming-invoice document intake UX; no new analytics or accounting judgment capability.
 - AI maturity level: Level 1/2 UX hardening around existing deterministic Python-gated flows.
 - Out of scope: receipt analytics, category management top-level action, automatic duplicate deletion, automatic save, or server data migration.
-- User journey proof: authorized user sends a receipt photo, sees explicit `?no` / `Nie` proposal buttons, and duplicate receipts show a loud warning before any save-anyway path.
+- User journey proof: authorized user sends a receipt photo, sees explicit `Áno` / `Nie` proposal buttons, and duplicate receipts show a loud warning before any save-anyway path.
 
 Verification:
 - `python -m compileall bot`

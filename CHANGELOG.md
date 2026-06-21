@@ -110,6 +110,8 @@
 - accounting Document Intake duplicate warnings now use loud `POZOR! Tento doklad už je uložený!!!!` wording with explicit `Pridať iný bloček` / `Uložiť aj tak` / `/menu` buttons instead of looking like the ordinary yes/no path.
 - idle photo/PDF receipt proposals now show explicit `Áno` / `Nie` reply buttons before entering accounting document preview processing.
 
+- existing-category selection during receipt categorization now ends with create-new/back controls so users can recover when no listed category fits.
+
 ### Fixed
 - Ukrainian current-year invoice summary wording such as `цього року` now
   resolves through bounded period-value canonicalization to the yearly invoice

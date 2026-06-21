@@ -166,9 +166,9 @@ def _category_selection_keyboard(allowed: list[dict[str, Any]]) -> ReplyKeyboard
     ]
     visible = [label for label in visible if label]
     if len(visible) > _CATEGORY_BUTTON_LIMIT:
-        return _reply_keyboard([[_BACK_BUTTON]])
+        return _reply_keyboard([[_UNKNOWN_CREATE_NEW], [_BACK_BUTTON]])
     rows = [[label] for label in visible]
-    rows.append([_BACK_BUTTON])
+    rows.extend([[_UNKNOWN_CREATE_NEW], [_BACK_BUTTON]])
     return _reply_keyboard(rows)
 
 
@@ -579,6 +579,12 @@ async def handle_accounting_document_category_selection_text(
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
     )
+    if decision == 'create_new_category':
+        await _ask_new_category_label(message=message, state=state, target=target)
+        return
+    if decision == 'back':
+        await _return_from_category_selection(message=message, state=state, target=target)
+        return
     if decision == 'cancel':
         await _return_to_preview(message=message, state=state)
         return
@@ -793,6 +799,15 @@ async def _return_to_preview(*, message: Message, state: FSMContext) -> None:
     candidate = _candidate_from_state_payload((await state.get_data()).get(_STATE_CANDIDATE_KEY, {}))
     await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
     await message.answer(_format_accounting_document_preview(candidate), reply_markup=_preview_decision_keyboard(candidate))
+
+
+async def _return_from_category_selection(*, message: Message, state: FSMContext, target: str) -> None:
+    candidate = _candidate_from_state_payload((await state.get_data()).get(_STATE_CANDIDATE_KEY, {}))
+    if target == 'document' and _candidate_needs_unknown_category_decision(candidate):
+        await state.set_state(AccountingDocumentIntakeStates.waiting_unknown_category_decision)
+        await message.answer(_unknown_category_message(candidate), reply_markup=_unknown_category_keyboard())
+        return
+    await _return_to_preview(message=message, state=state)
 
 
 async def _cancel_accounting_document_preview(*, message: Message, state: FSMContext, config: Config) -> None:

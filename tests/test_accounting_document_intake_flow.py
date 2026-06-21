@@ -1279,6 +1279,50 @@ def test_category_selection_reply_keyboard_uses_display_labels(monkeypatch, tmp_
     assert 'materials' not in buttons
 
 
+def test_unknown_category_existing_selection_can_continue_to_create_new(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _unknown_category_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    asyncio.run(accounting_document_unknown_category_decision(_DummyMessage(text='vybrat existujucu kategoriu'), state, config))
+    selection_message = _DummyMessage(text='vytvorit novu kategoriu')
+    asyncio.run(accounting_document_category_selection(selection_message, state, config))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_new_category_label.state
+    assert state.data['accounting_document_category_target'] == 'document'
+    assert 'Zadajte' in selection_message.answers[-1]
+    assert 'textom' in selection_message.answers[-1]
+    assert _is_keyboard_removed(selection_message.reply_markups[-1])
+
+
+def test_unknown_category_existing_selection_back_returns_to_unknown_menu(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _unknown_category_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    asyncio.run(accounting_document_unknown_category_decision(_DummyMessage(text='vybrat existujucu kategoriu'), state, config))
+    back_message = _DummyMessage(text='spat')
+    asyncio.run(accounting_document_category_selection(back_message, state, config))
+
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_unknown_category_decision.state
+    assert 'Najprv' in back_message.answers[-1]
+    assert 'existuj' in back_message.answers[-1]
+    back_buttons = _keyboard_texts(back_message.reply_markups[-1])
+    assert len(back_buttons) >= 4
+    assert any('existuj' in button for button in back_buttons)
+    assert any('Vytvori' in button for button in back_buttons)
+
+
 def test_new_category_and_similar_decision_reply_keyboards(monkeypatch, tmp_path: Path) -> None:
     async def _extract(**kwargs) -> AccountingDocumentCandidate:
         return _unknown_category_receipt_candidate()
