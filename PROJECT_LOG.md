@@ -1,5 +1,21 @@
 # PROJECT_LOG
 
+## 2026-06-21 - Session 156 - README receipt category truth sync
+
+Summary:
+- Synced README with the deployed receipt/incoming-invoice category MVP: category preview, bounded category changes, workspace category creation after typed-label confirmation, and category metadata snapshots.
+- Removed the stale README claim that receipt/bloček categorization is not implemented; kept receipt analytics/category totals/reporting as not implemented.
+
+Preflight:
+- Docs/contracts checked: README, TZ, Document Intake Module Proposal, In-Action Response Registry, Product Truth/InfoHelp evidence from runtime tests.
+- Touched scopes: docs only.
+- Not touched: runtime code, tests, DB, server storage, Product Truth code, InfoHelp code, analytics, tax/accounting export, bank matching.
+- Current implementation status: `partial` receipt/incoming-invoice categorization inside existing Document Intake preview flow; receipt analytics remains planned/unsupported.
+
+Verification:
+- `git diff --check`
+  - passed.
+
 ## 2026-06-21 - Session 155 - Receipt category selection recovery controls
 
 Summary:

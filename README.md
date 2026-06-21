@@ -235,9 +235,12 @@ domains and must not be answered from outgoing invoice data.
   upload photo/PDF
   LMM classification/extraction
   duplicate warning if matched
-  preview
-    save
-    edit unavailable in current runtime
+  category preview
+    save with category
+    change document category
+    change line-item category when line items exist
+    create workspace category only after typed label + confirmation
+    save without category / save as review
     cancel
 
 /blocek
@@ -249,7 +252,9 @@ Supported document types:
 - receipt / bloček;
 - incoming invoice / prijatá faktúra.
 
-Accounting documents are external source documents. They are not edited like generated invoices. If recognition is wrong, the correction path is better photo/PDF re-upload; arbitrary manual accounting-document editing is not implemented.
+Accounting documents are external source documents. They are not edited like generated invoices. Category handling is partial and controlled: Python provides allowed categories, LMM may suggest only bounded candidate category ids or `unknown_review`, the user confirms in preview, and final save stores category ids with label snapshots. Workspace categories are created only after explicit typed-label confirmation. If recognition is wrong, the correction path is better photo/PDF re-upload; arbitrary manual accounting-document editing is not implemented.
+
+Current category metadata is not receipt analytics, tax/accounting judgement, bank matching, VAT reporting, accounting export, or category totals/reporting.
 
 Voice support:
 - top-level show recent documents: yes;
