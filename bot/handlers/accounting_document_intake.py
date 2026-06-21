@@ -10,7 +10,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from bot.config import Config
 from bot.services.accounting_document_duplicates import DuplicateMatch, find_duplicate_accounting_document
@@ -82,10 +82,87 @@ _STATE_CATEGORY_TARGET_KEY = 'accounting_document_category_target'
 _STATE_PENDING_CATEGORY_LABEL_KEY = 'accounting_document_pending_category_label'
 _STATE_SIMILAR_CATEGORY_ID_KEY = 'accounting_document_similar_category_id'
 _ACCOUNTING_INTAKE_RECOVERY_HINT = 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.'
+_CATEGORY_BUTTON_LIMIT = 20
+
+_PREVIEW_SAVE_WITH_CATEGORY = '✅ Uložiť s kategóriou'
+_PREVIEW_CHANGE_CATEGORY = '✏️ Zmeniť kategóriu'
+_PREVIEW_CHANGE_LINE_ITEM_CATEGORY = '✏️ Zmeniť kategóriu položky'
+_PREVIEW_SAVE_WITHOUT_CATEGORY = '📎 Uložiť bez kategórie'
+_CANCEL_BUTTON = '❌ Zrušiť'
+_YES_BUTTON = '✅ Áno'
+_NO_BUTTON = '❌ Nie'
+_UNKNOWN_CHOOSE_EXISTING = '📂 Vybrať existujúcu kategóriu'
+_UNKNOWN_CREATE_NEW = '➕ Vytvoriť novú kategóriu'
+_UNKNOWN_SAVE_AS_REVIEW = '📎 Uložiť ako Na kontrolu'
+_SIMILAR_USE_EXISTING = '✅ Použiť existujúcu'
+_SIMILAR_CREATE_ANYWAY = '➕ Vytvoriť novú aj tak'
+_BACK_BUTTON = '↩️ Späť'
 
 
 def _with_accounting_intake_recovery_hint(text: str) -> str:
     return f'{text}\n\n{_ACCOUNTING_INTAKE_RECOVERY_HINT}'
+
+
+def _reply_keyboard(rows: list[list[str]]) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=label) for label in row] for row in rows],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def _remove_keyboard() -> ReplyKeyboardRemove:
+    return ReplyKeyboardRemove(remove_keyboard=True)
+
+
+def _yes_no_reply_keyboard() -> ReplyKeyboardMarkup:
+    return _reply_keyboard([[_YES_BUTTON, _NO_BUTTON]])
+
+
+def _preview_decision_keyboard(candidate: AccountingDocumentCandidate) -> ReplyKeyboardMarkup:
+    rows = [
+        [_PREVIEW_SAVE_WITH_CATEGORY],
+        [_PREVIEW_CHANGE_CATEGORY],
+    ]
+    if candidate.line_items:
+        rows.append([_PREVIEW_CHANGE_LINE_ITEM_CATEGORY])
+    rows.extend([[_PREVIEW_SAVE_WITHOUT_CATEGORY], [_CANCEL_BUTTON]])
+    return _reply_keyboard(rows)
+
+
+def _unknown_category_keyboard() -> ReplyKeyboardMarkup:
+    return _reply_keyboard(
+        [
+            [_UNKNOWN_CHOOSE_EXISTING],
+            [_UNKNOWN_CREATE_NEW],
+            [_UNKNOWN_SAVE_AS_REVIEW],
+            [_CANCEL_BUTTON],
+        ]
+    )
+
+
+def _similar_category_keyboard() -> ReplyKeyboardMarkup:
+    return _reply_keyboard(
+        [
+            [_SIMILAR_USE_EXISTING],
+            [_SIMILAR_CREATE_ANYWAY],
+            [_BACK_BUTTON],
+        ]
+    )
+
+
+def _category_selection_keyboard(allowed: list[dict[str, Any]]) -> ReplyKeyboardMarkup:
+    visible = [
+        str(item.get('label_sk') or item.get('category_id') or '').strip()
+        for item in allowed
+        if item.get('category_id')
+    ]
+    visible = [label for label in visible if label]
+    if len(visible) > _CATEGORY_BUTTON_LIMIT:
+        return _reply_keyboard([[_BACK_BUTTON]])
+    rows = [[label] for label in visible]
+    rows.append([_BACK_BUTTON])
+    return _reply_keyboard(rows)
 
 
 def _message_supplier_telegram_id(message: Message) -> int | None:
@@ -108,7 +185,7 @@ class AccountingDocumentIntakeStates(StatesGroup):
 @router.message(Command('doklad', 'expense', 'intake', 'add_blocek', 'dodat_blocek'))
 async def cmd_accounting_document_intake(message: Message, state: FSMContext) -> None:
     if hasattr(message, 'from_user') and message.from_user is None:
-        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        await message.answer('Nepodarilo sa identifikovať používateľa.', reply_markup=_remove_keyboard())
         return
     await state.clear()
     await state.set_state(AccountingDocumentIntakeStates.waiting_upload)
@@ -134,7 +211,7 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
 
     if hasattr(message, 'from_user') and message.from_user is None:
         await state.clear()
-        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        await message.answer('Nepodarilo sa identifikovať používateľa.', reply_markup=_remove_keyboard())
         return
 
     supplier_telegram_id = _message_supplier_telegram_id(message)
@@ -218,7 +295,7 @@ async def process_staged_accounting_document(
 ) -> None:
     if hasattr(message, 'from_user') and message.from_user is None:
         await state.clear()
-        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        await message.answer('Nepodarilo sa identifikovať používateľa.', reply_markup=_remove_keyboard())
         return
 
     supplier_telegram_id = _message_supplier_telegram_id(message)
@@ -356,7 +433,7 @@ async def handle_accounting_document_duplicate_decision_text(
         model=config.openai_llm_model,
     )
     if decision == 'unknown':
-        await message.answer(_with_accounting_intake_recovery_hint('Prosím, odpovedzte áno alebo nie.'))
+        await message.answer(_with_accounting_intake_recovery_hint('Prosím, odpovedzte áno alebo nie.'), reply_markup=_yes_no_reply_keyboard())
         return
 
     data = await state.get_data()
@@ -365,13 +442,13 @@ async def handle_accounting_document_duplicate_decision_text(
         if isinstance(source_path_value, str):
             _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
         await state.clear()
-        await message.answer('Spracovanie dokladu bolo zrušené.')
+        await message.answer('Spracovanie dokladu bolo zrušené.', reply_markup=_remove_keyboard())
         return
 
     candidate = _candidate_from_state_payload(data.get(_STATE_CANDIDATE_KEY) if isinstance(data.get(_STATE_CANDIDATE_KEY), dict) else {})
     if not isinstance(source_path_value, str):
         await state.clear()
-        await message.answer('Návrh dokladu už nie je dostupný. Spustite /doklad znova.')
+        await message.answer('Návrh dokladu už nie je dostupný. Spustite /doklad znova.', reply_markup=_remove_keyboard())
         return
 
     await state.update_data(
@@ -431,7 +508,7 @@ async def handle_accounting_document_preview_decision_text(
         if isinstance(source_path_value, str):
             _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
         await state.clear()
-        await message.answer('Spracovanie dokladu bolo zrušené.')
+        await message.answer('Spracovanie dokladu bolo zrušené.', reply_markup=_remove_keyboard())
         return
 
     await _save_accounting_document_from_state(
@@ -458,7 +535,10 @@ async def handle_accounting_document_unknown_category_decision_text(
         model=config.openai_llm_model,
     )
     if decision == 'unknown':
-        await message.answer(_unknown_category_message(_candidate_from_state_payload((await state.get_data()).get(_STATE_CANDIDATE_KEY, {}))))
+        await message.answer(
+            _unknown_category_message(_candidate_from_state_payload((await state.get_data()).get(_STATE_CANDIDATE_KEY, {}))),
+            reply_markup=_unknown_category_keyboard(),
+        )
         return
     if decision == 'cancel':
         await _cancel_accounting_document_preview(message=message, state=state, config=config)
@@ -496,7 +576,7 @@ async def handle_accounting_document_category_selection_text(
         await _return_to_preview(message=message, state=state)
         return
     if decision == 'unknown':
-        await message.answer(_format_category_selection_prompt(allowed))
+        await message.answer(_format_category_selection_prompt(allowed), reply_markup=_category_selection_keyboard(allowed))
         return
     await _apply_category_to_state(message=message, state=state, config=config, category_id=decision, target=target)
 
@@ -517,7 +597,8 @@ async def handle_accounting_document_line_item_selection_text(
         return
     await state.update_data(**{_STATE_SELECTED_LINE_ITEM_INDEX_KEY: index, _STATE_CATEGORY_TARGET_KEY: 'line_item'})
     await state.set_state(AccountingDocumentIntakeStates.waiting_line_item_category_selection)
-    await message.answer(_format_category_selection_prompt(_allowed_categories_for_message(message=message, config=config)))
+    allowed = _allowed_categories_for_message(message=message, config=config)
+    await message.answer(_format_category_selection_prompt(allowed), reply_markup=_category_selection_keyboard(allowed))
 
 
 async def handle_accounting_document_new_category_label_text(
@@ -548,11 +629,15 @@ async def handle_accounting_document_new_category_label_text(
         await message.answer(
             f'Podobná kategória už existuje: {similar.display_label}.\n'
             'Chcete použiť túto kategóriu?\n\n'
-            'Odpovedzte: použiť existujúcu, vytvoriť novú aj tak, alebo späť.'
+            'Odpovedzte: použiť existujúcu, vytvoriť novú aj tak, alebo späť.',
+            reply_markup=_similar_category_keyboard(),
         )
         return
     await state.set_state(AccountingDocumentIntakeStates.waiting_new_category_confirm)
-    await message.answer(f'Vytvoriť novú kategóriu „{label}“?\n\nOdpovedzte: áno / nie.')
+    await message.answer(
+        f'Vytvoriť novú kategóriu „{label}“?\n\nOdpovedzte: áno / nie.',
+        reply_markup=_yes_no_reply_keyboard(),
+    )
 
 
 async def handle_accounting_document_new_category_confirm_text(
@@ -571,7 +656,7 @@ async def handle_accounting_document_new_category_confirm_text(
         model=config.openai_llm_model,
     )
     if decision == 'unknown':
-        await message.answer('Prosím, odpovedzte áno alebo nie.')
+        await message.answer('Prosím, odpovedzte áno alebo nie.', reply_markup=_yes_no_reply_keyboard())
         return
     if decision == 'no':
         await _return_to_preview(message=message, state=state)
@@ -606,7 +691,7 @@ async def handle_accounting_document_similar_category_decision_text(
     )
     data = await state.get_data()
     if decision == 'unknown':
-        await message.answer('Odpovedzte: použiť existujúcu, vytvoriť novú aj tak, alebo späť.')
+        await message.answer('Odpovedzte: použiť existujúcu, vytvoriť novú aj tak, alebo späť.', reply_markup=_similar_category_keyboard())
         return
     if decision == 'back':
         await _return_to_preview(message=message, state=state)
@@ -639,22 +724,23 @@ async def _send_category_entry_or_preview(
 ) -> None:
     if _candidate_needs_unknown_category_decision(candidate):
         await state.set_state(AccountingDocumentIntakeStates.waiting_unknown_category_decision)
-        await message.answer(_unknown_category_message(candidate))
+        await message.answer(_unknown_category_message(candidate), reply_markup=_unknown_category_keyboard())
         return
     await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
-    await message.answer(_format_accounting_document_preview(candidate))
+    await message.answer(_format_accounting_document_preview(candidate), reply_markup=_preview_decision_keyboard(candidate))
 
 
 async def _ask_document_category_selection(*, message: Message, state: FSMContext, config: Config) -> None:
     await state.update_data(**{_STATE_CATEGORY_TARGET_KEY: 'document'})
     await state.set_state(AccountingDocumentIntakeStates.waiting_document_category_selection)
-    await message.answer(_format_category_selection_prompt(_allowed_categories_for_message(message=message, config=config)))
+    allowed = _allowed_categories_for_message(message=message, config=config)
+    await message.answer(_format_category_selection_prompt(allowed), reply_markup=_category_selection_keyboard(allowed))
 
 
 async def _ask_line_item_selection(*, message: Message, state: FSMContext) -> None:
     candidate = _candidate_from_state_payload((await state.get_data()).get(_STATE_CANDIDATE_KEY, {}))
     if not candidate.line_items:
-        await message.answer('Na doklade nie sú rozpoznané samostatné položky. Môžete zmeniť hlavnú kategóriu.')
+        await message.answer('Na doklade nie sú rozpoznané samostatné položky. Môžete zmeniť hlavnú kategóriu.', reply_markup=_preview_decision_keyboard(candidate))
         return
     await state.set_state(AccountingDocumentIntakeStates.waiting_line_item_selection)
     await message.answer(_format_line_item_selection_prompt(candidate))
@@ -666,7 +752,8 @@ async def _ask_new_category_label(*, message: Message, state: FSMContext, target
     candidate = _candidate_from_state_payload((await state.get_data()).get(_STATE_CANDIDATE_KEY, {}))
     suggestions = _format_suggested_labels(candidate)
     await message.answer(
-        f'{suggestions}\nZadajte názov novej kategórie textom.'.strip()
+        f'{suggestions}\nZadajte názov novej kategórie textom.'.strip(),
+        reply_markup=_remove_keyboard(),
     )
 
 
@@ -692,13 +779,13 @@ async def _apply_category_to_state(
     updated = _apply_category(candidate, category=category, target=target, state_data=data)
     await state.update_data(**{_STATE_CANDIDATE_KEY: candidate_to_metadata_dict(updated)})
     await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
-    await message.answer(_format_accounting_document_preview(updated))
+    await message.answer(_format_accounting_document_preview(updated), reply_markup=_preview_decision_keyboard(updated))
 
 
 async def _return_to_preview(*, message: Message, state: FSMContext) -> None:
     candidate = _candidate_from_state_payload((await state.get_data()).get(_STATE_CANDIDATE_KEY, {}))
     await state.set_state(AccountingDocumentIntakeStates.waiting_preview_decision)
-    await message.answer(_format_accounting_document_preview(candidate))
+    await message.answer(_format_accounting_document_preview(candidate), reply_markup=_preview_decision_keyboard(candidate))
 
 
 async def _cancel_accounting_document_preview(*, message: Message, state: FSMContext, config: Config) -> None:
@@ -707,7 +794,7 @@ async def _cancel_accounting_document_preview(*, message: Message, state: FSMCon
     if isinstance(source_path_value, str):
         _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
     await state.clear()
-    await message.answer('Spracovanie dokladu bolo zrušené.')
+    await message.answer('Spracovanie dokladu bolo zrušené.', reply_markup=_remove_keyboard())
 
 
 async def _save_accounting_document_from_state(
@@ -724,12 +811,12 @@ async def _save_accounting_document_from_state(
     extension = state_data.get(_STATE_EXTENSION_KEY)
     if not isinstance(candidate_payload, dict) or not isinstance(source_path_value, str) or not isinstance(file_unique_id, str):
         await state.clear()
-        await message.answer('Návrh dokladu už nie je dostupný. Spustite /doklad znova.')
+        await message.answer('Návrh dokladu už nie je dostupný. Spustite /doklad znova.', reply_markup=_remove_keyboard())
         return
 
     if hasattr(message, 'from_user') and message.from_user is None:
         await state.clear()
-        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        await message.answer('Nepodarilo sa identifikovať používateľa.', reply_markup=_remove_keyboard())
         return
 
     supplier_telegram_id = _message_supplier_telegram_id(message)
@@ -749,7 +836,7 @@ async def _save_accounting_document_from_state(
             supplier_telegram_id=supplier_telegram_id,
         )
     except (AccountingDocumentStorageError, OSError, ValueError):
-        await message.answer('Doklad sa nepodarilo uložiť. Skúste /doklad znova.')
+        await message.answer('Doklad sa nepodarilo uložiť. Skúste /doklad znova.', reply_markup=_remove_keyboard())
         return
 
     _enqueue_archive_after_confirmed_save(
@@ -760,7 +847,17 @@ async def _save_accounting_document_from_state(
     )
     _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
     await state.clear()
-    await message.answer(f'Doklad bol uložený.\nMetadata: {result.metadata_path}')
+    await message.answer(_format_post_save_next_steps(), reply_markup=_remove_keyboard())
+
+
+def _format_post_save_next_steps() -> str:
+    return (
+        'Doklad bol uložený.\n\n'
+        'Ďalšie kroky:\n'
+        '➕ /add_blocek — pridať ďalší bloček\n'
+        '📄 /blocek — zobraziť posledné doklady\n'
+        '🏠 /menu — hlavné menu / hotovo'
+    )
 
 
 def _extract_supported_attachment(message: Message) -> dict[str, str] | None:
@@ -921,7 +1018,7 @@ async def _store_preview_or_duplicate_state(
     if hasattr(message, 'from_user') and message.from_user is None:
         _cleanup_temp_quietly(config.storage_dir, staged_path)
         await state.clear()
-        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        await message.answer('Nepodarilo sa identifikovať používateľa.', reply_markup=_remove_keyboard())
         return
 
     supplier_telegram_id = _message_supplier_telegram_id(message)
@@ -937,7 +1034,7 @@ async def _store_preview_or_duplicate_state(
         state_payload[_STATE_DUPLICATE_MATCH_KEY] = duplicate.to_dict()
         await state.update_data(**state_payload)
         await state.set_state(AccountingDocumentIntakeStates.waiting_duplicate_decision)
-        await message.answer(_format_duplicate_warning(duplicate))
+        await message.answer(_format_duplicate_warning(duplicate), reply_markup=_yes_no_reply_keyboard())
         return
 
     await state.update_data(**state_payload)
@@ -956,9 +1053,10 @@ async def _handle_accounting_processing_failure(
     _cleanup_temp_quietly(config.storage_dir, staged_path)
     if failure_state is None:
         await state.clear()
+        await message.answer(text, reply_markup=_remove_keyboard())
     else:
         await state.set_state(failure_state)
-    await message.answer(text)
+        await message.answer(text)
 
 
 def _with_upload_source(candidate: AccountingDocumentCandidate, attachment: dict[str, str]) -> AccountingDocumentCandidate:

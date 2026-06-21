@@ -738,3 +738,37 @@ def test_attachment_document_type_choice_canonical_outputs(user_input: str, expe
             model='gpt-4o',
         )
     ) == expected
+
+def test_accounting_category_button_labels_resolve_to_canonical_decisions() -> None:
+    assert asyncio.run(
+        resolve_accounting_document_category_preview_decision(
+            context_name='accounting_document_category_preview_decision',
+            user_input_text='✅ Uložiť s kategóriou',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'save_with_category'
+    assert asyncio.run(
+        resolve_accounting_document_category_unknown_decision(
+            context_name='accounting_document_category_unknown_decision',
+            user_input_text='📂 Vybrať existujúcu kategóriu',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'choose_existing_category'
+    assert asyncio.run(
+        resolve_accounting_document_category_similar_decision(
+            context_name='accounting_document_category_similar_decision',
+            user_input_text='➕ Vytvoriť novú aj tak',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'create_new_anyway'
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='accounting_document_category_create_confirm',
+            user_input_text='✅ Áno',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'yes'

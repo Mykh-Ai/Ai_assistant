@@ -192,6 +192,8 @@ Runtime rules:
 - unknown category UX first offers existing categories, then new-category creation, then save-as-unknown, then cancel;
 - new categories are workspace-scoped, created only after typed label plus confirmation, and reused in future allowed-category payloads;
 - category changes affect only the FSM preview until final confirmed save writes metadata;
+- Telegram reply keyboards may show the same bounded category decisions, yes/no confirmations, similar-category choices, and reasonable existing-category label choices; button taps are ordinary text inputs that still resolve through the DecisionResolver-backed handlers;
+- after confirmed save, ordinary user-facing output shows a clean saved message plus next steps (`/add_blocek`, `/blocek`, `/menu`) and does not expose internal metadata paths;
 - confirmed metadata stores category ids plus `label_snapshot` so old labels remain readable.
 
 Non-goals:

@@ -43,7 +43,8 @@
   - system and workspace-scoped category registry with allowed-category payloads;
   - LMM candidate-only document and line-item category suggestions bounded by Python-provided categories or `unknown_review`;
   - unknown-category UX for choosing existing, confirmation-gated workspace category creation, save-as-unknown, or cancel;
-  - confirmed metadata category snapshots with no DB/schema migration or file moves.
+  - confirmed metadata category snapshots with no DB/schema migration or file moves;
+  - reply-button UX for category preview choices, unknown-category recovery, duplicate/new-category yes-no confirmations, similar-category decisions, and reasonable category selection lists.
 
 ### Changed
 - `invoice_period_summary` is no longer offered as a competing top-level
@@ -105,6 +106,7 @@
 - accounting Document Intake now keeps raw `purchase_subject` / `Predmet nákupu` as factual purchase description while separately handling controlled category candidates and confirmed category snapshots.
 - temporary OfficeFlow/accounting intake sessions now expire after 5 minutes and safely clean only upload staging paths.
 - accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
+- confirmed accounting document saves now show clean Slovak next steps (`/add_blocek`, `/blocek`, `/menu`) instead of exposing the internal metadata path to ordinary users.
 
 ### Fixed
 - Ukrainian current-year invoice summary wording such as `цього року` now

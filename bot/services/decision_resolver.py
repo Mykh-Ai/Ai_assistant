@@ -305,4 +305,5 @@ def _resolve_accounting_category_preview_fallback(normalized: str) -> str:
 def _normalize_text(value: str) -> str:
     normalized = unicodedata.normalize('NFKD', value.strip().casefold())
     without_diacritics = ''.join(ch for ch in normalized if not unicodedata.combining(ch))
-    return re.sub(r'\s+', ' ', without_diacritics).strip()
+    without_button_prefix = re.sub(r'^[^\w]+', '', without_diacritics).strip()
+    return re.sub(r'\s+', ' ', without_button_prefix).strip()

@@ -83,12 +83,14 @@ class _DummyMessage:
         self.document = document
         self.voice = voice
         self.answers: list[str] = []
+        self.reply_markups: list[object] = []
         self.message_id = 77
         if from_user_id is not None:
             self.from_user = _DummyUser(from_user_id)
 
-    async def answer(self, text: str) -> None:
+    async def answer(self, text: str, **kwargs) -> None:
         self.answers.append(text)
+        self.reply_markups.append(kwargs.get('reply_markup'))
 
 
 class _DummyState:
@@ -128,6 +130,17 @@ class _DummyBot:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b'accounting-document')
         self.downloads.append(destination)
+
+
+def _keyboard_texts(markup: object | None) -> list[str]:
+    keyboard = getattr(markup, 'keyboard', None)
+    if keyboard is None:
+        return []
+    return [getattr(button, 'text', '') for row in keyboard for button in row]
+
+
+def _is_keyboard_removed(markup: object | None) -> bool:
+    return bool(getattr(markup, 'remove_keyboard', False))
 
 
 def _config(tmp_path: Path) -> Config:
@@ -1196,3 +1209,122 @@ def test_accounting_document_decision_context_supports_slovak_aliases() -> None:
             model='gpt-4o',
         )
     ) == 'cancel'
+
+def test_category_preview_reply_keyboard_offers_standard_decisions(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(photo=[_DummyPhoto()])
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
+
+    buttons = _keyboard_texts(message.reply_markups[-1])
+    assert '✅ Uložiť s kategóriou' in buttons
+    assert '✏️ Zmeniť kategóriu' in buttons
+    assert '📎 Uložiť bez kategórie' in buttons
+    assert '❌ Zrušiť' in buttons
+    assert '✏️ Zmeniť kategóriu položky' not in buttons
+
+
+def test_unknown_category_reply_keyboard_prioritizes_existing_category(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _unknown_category_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(photo=[_DummyPhoto()])
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
+
+    buttons = _keyboard_texts(message.reply_markups[-1])
+    assert buttons[:4] == [
+        '📂 Vybrať existujúcu kategóriu',
+        '➕ Vytvoriť novú kategóriu',
+        '📎 Uložiť ako Na kontrolu',
+        '❌ Zrušiť',
+    ]
+
+
+def test_duplicate_prompt_reply_keyboard_offers_yes_no(monkeypatch, tmp_path: Path) -> None:
+    _write_duplicate_metadata(tmp_path)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    message = _DummyMessage(photo=[_DummyPhoto()])
+
+    asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
+
+    assert _keyboard_texts(message.reply_markups[-1]) == ['✅ Áno', '❌ Nie']
+
+
+def test_category_selection_reply_keyboard_uses_display_labels(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _categorized_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    message = _DummyMessage(text='zmeniť kategóriu')
+
+    asyncio.run(accounting_document_preview_decision(message, state, config))
+
+    buttons = _keyboard_texts(message.reply_markups[-1])
+    assert 'Materiál' in buttons
+    assert 'Kancelárske potreby' in buttons
+    assert '↩️ Späť' in buttons
+    assert 'materials' not in buttons
+
+
+def test_new_category_and_similar_decision_reply_keyboards(monkeypatch, tmp_path: Path) -> None:
+    async def _extract(**kwargs) -> AccountingDocumentCandidate:
+        return _unknown_category_receipt_candidate()
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    asyncio.run(accounting_document_unknown_category_decision(_DummyMessage(text='vytvoriť novú kategóriu'), state, config))
+
+    label_message = _DummyMessage(text='Unikátna kategória')
+    asyncio.run(accounting_document_new_category_label(label_message, state, config))
+    assert _keyboard_texts(label_message.reply_markups[-1]) == ['✅ Áno', '❌ Nie']
+
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    asyncio.run(accounting_document_unknown_category_decision(_DummyMessage(text='vytvoriť novú kategóriu'), state, config))
+    similar_message = _DummyMessage(text='Kancelárske potreby')
+    asyncio.run(accounting_document_new_category_label(similar_message, state, config))
+    assert _keyboard_texts(similar_message.reply_markups[-1]) == [
+        '✅ Použiť existujúcu',
+        '➕ Vytvoriť novú aj tak',
+        '↩️ Späť',
+    ]
+
+
+def test_success_and_cancel_remove_category_reply_keyboard(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
+    monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    config = _config(tmp_path)
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()], from_user_id=111001), state, config, _DummyBot()))
+
+    save_message = _DummyMessage(text='uložiť s kategóriou', from_user_id=111001)
+    asyncio.run(accounting_document_preview_decision(save_message, state, config))
+
+    assert 'Doklad bol uložený.' in save_message.answers[-1]
+    assert 'Ďalšie kroky:' in save_message.answers[-1]
+    assert '/add_blocek' in save_message.answers[-1]
+    assert '/blocek' in save_message.answers[-1]
+    assert '/menu' in save_message.answers[-1]
+    assert 'Metadata:' not in save_message.answers[-1]
+    assert _is_keyboard_removed(save_message.reply_markups[-1])
+
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state)
+    asyncio.run(accounting_document_upload(_DummyMessage(photo=[_DummyPhoto()]), state, config, _DummyBot()))
+    cancel_message = _DummyMessage(text='zrušiť')
+    asyncio.run(accounting_document_preview_decision(cancel_message, state, config))
+    assert _is_keyboard_removed(cancel_message.reply_markups[-1])
