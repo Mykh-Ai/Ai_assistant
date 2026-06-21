@@ -13,6 +13,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'create_invoice',
     'show_existing_invoice',
     'invoice_analytics',
+    'accounting_document_analytics',
     'invoice_due_date_reminders',
     'accounting_document_categories',
     'receipt_analytics',
@@ -77,11 +78,17 @@ _SLOVAK_CAPABILITY_COPY = {
         'limitation': 'Pilot pracuje iba s odoslanými faktúrami aktuálneho dodávateľa. Používa normalizovaný stav úhrady v bota, nie surový lifecycle status faktúry. Nepočíta bločky, prijaté faktúry, bankové pohyby, dane ani všeobecné účtovné závery a nič nemení v databáze.',
         'safe_next': 'Môžete sa opýtať napríklad na faktúry za máj, porovnanie dvoch období, neuhradené/zaplatené faktúry alebo top odberateľov podľa sumy faktúr.',
     },
+    'accounting_document_analytics': {
+        'title': 'Analytika bločkov a prijatých faktúr',
+        'summary': 'Analytika bločkov a prijatých faktúr je podporovaná čiastočne ako read-only pilot nad potvrdenými účtovnými dokladmi aktuálneho workspace.',
+        'limitation': 'Pracuje iba s potvrdenými bločkami a prijatými faktúrami. Vie robiť ohraničené počty, sumy, kategórie, dodávateľov, obdobia a zoznamy. Nerobí banku, cashflow, DPH/daňový report, účtovný export ani plné účtovné závery a nič nemení v databáze.',
+        'safe_next': 'Môžete sa opýtať napríklad: Koľko som minul na palivo tento mesiac?, Koľko bolo bločkov v kategórii materiál?, Ukáž sumy podľa kategórií za jún alebo Koľko som minul v BAUHAUS?',
+    },
     'receipt_analytics': {
         'title': 'Analytika bločkov',
-        'summary': 'Analytika bločkov ešte nie je hotová. Aktuálne nejde o podporovaný runtime výpočtov nad výdavkami.',
-        'limitation': 'Kontrolovaná kategorizácia je iba vstupná metadata vrstva. Výpočty výdavkov podľa kategórií, reporty, DPH, dane, bankové párovanie ani účtovné závery ešte nie sú implementované.',
-        'safe_next': 'Teraz môžete bločky/prijaté faktúry prijímať, skontrolovať kategóriu v náhľade a uložiť po potvrdení. Analytika výdavkov podľa kategórií príde až po samostatnom analytickom kontrakte a testoch.',
+        'summary': 'Analytika bločkov je podporovaná čiastočne cez širší read-only runtime analytiky bločkov a prijatých faktúr.',
+        'limitation': 'Počíta iba potvrdené bločky v aktuálnom workspace a podľa otázky aj prijaté faktúry ako výdavkové doklady. Kategórie sú metadata z príjmu dokladu, nie daňové alebo účtovné schválenie. Banka, cashflow, DPH, dane, účtovný export a plná účtovná analytika nie sú implementované.',
+        'safe_next': 'Môžete sa pýtať na súčty, počty, kategórie, dodávateľov, mesiace alebo obmedzené zoznamy potvrdených bločkov.',
     },
     'accounting_document_categories': {
         'title': 'Kategórie bločkov a prijatých faktúr',
@@ -227,6 +234,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'show_existing_invoice': 'zobrazenie existujúcej faktúry',
     'invoice_period_summary': 'ročný súhrn v analytike faktúr',
     'invoice_analytics': 'analytika vystavených faktúr',
+    'accounting_document_analytics': 'analytika bločkov a prijatých faktúr',
     'invoice_due_date_reminders': 'pripomienky faktúr po splatnosti',
     'accounting_document_categories': 'kategórie bločkov a prijatých faktúr',
     'receipt_analytics': 'analytika bločkov',
@@ -479,6 +487,20 @@ def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageR
             triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
             confidence=0.8,
         )
+    if _mentions_bank_cashflow_tax_analytics(normalized, tokens):
+        return InfoHelpTriageResult(
+            capability_id='bank_cashflow_tax_analytics',
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.82,
+        )
+    if _mentions_accounting_document_analytics_capability(normalized, tokens):
+        return InfoHelpTriageResult(
+            capability_id='accounting_document_analytics',
+            topic_id='product_capability',
+            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
+            confidence=0.82,
+        )
     if _mentions_accounting_document_categories(normalized, tokens):
         return InfoHelpTriageResult(
             capability_id='accounting_document_categories',
@@ -489,13 +511,6 @@ def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageR
     if _mentions_receipt_analytics_capability(normalized, tokens):
         return InfoHelpTriageResult(
             capability_id='receipt_analytics',
-            topic_id='product_capability',
-            triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
-            confidence=0.82,
-        )
-    if _mentions_bank_cashflow_tax_analytics(normalized, tokens):
-        return InfoHelpTriageResult(
-            capability_id='bank_cashflow_tax_analytics',
             topic_id='product_capability',
             triage_class=TRIAGE_KNOWN_PRODUCT_CAPABILITY,
             confidence=0.82,
@@ -652,12 +667,14 @@ def classify_info_help_capability(
         return 'invoice_due_date_reminders'
     if 'sms' in tokens or 'esemes' in tokens or 'esemesky' in tokens:
         return 'sms_reminders'
+    if _mentions_bank_cashflow_tax_analytics(normalized, tokens):
+        return 'bank_cashflow_tax_analytics'
+    if _mentions_accounting_document_analytics_capability(normalized, tokens):
+        return 'accounting_document_analytics'
     if _mentions_accounting_document_categories(normalized, tokens):
         return 'accounting_document_categories'
     if _mentions_receipt_analytics_capability(normalized, tokens):
         return 'receipt_analytics'
-    if _mentions_bank_cashflow_tax_analytics(normalized, tokens):
-        return 'bank_cashflow_tax_analytics'
     if _mentions_accounting_export(normalized, tokens):
         return 'accounting_export'
     if _mentions_custom_pdf_template(normalized, tokens):
@@ -979,6 +996,61 @@ def _mentions_receipt_how_to(normalized: str, tokens: set[str]) -> bool:
     return bool(tokens.intersection({'ako', 'how', 'pridam', 'nahrat', 'nahram', 'upload'}))
 
 
+def _mentions_accounting_document_analytics_capability(normalized: str, tokens: set[str]) -> bool:
+    document_terms = {
+        'prijata',
+        'prijate',
+        'prijatych',
+        'prijatu',
+        'incoming',
+        'doklad',
+        'doklady',
+        'dokladov',
+        'uctovne',
+        'vydavky',
+        'vydavkov',
+        'naklady',
+        'nakladov',
+        'minul',
+        'minula',
+        'minute',
+        'spent',
+        'expense',
+        'expenses',
+    }
+    invoice_side_terms = {'faktura', 'faktury', 'faktur', 'invoice', 'invoices'}
+    analytics_terms = {
+        'analytika',
+        'analytiku',
+        'analyzovat',
+        'analyzuj',
+        'analytics',
+        'analyze',
+        'analyza',
+        'report',
+        'prehlad',
+        'vykaz',
+        'kolko',
+        'pocet',
+        'pocitaj',
+        'suma',
+        'sumy',
+        'sucet',
+        'ukaz',
+        'kategoria',
+        'kategorie',
+        'kategorii',
+        'category',
+        'categories',
+    }
+    incoming_terms = {'prijata', 'prijate', 'prijatych', 'prijatu', 'incoming'}
+    receipt_terms = {'blocek', 'blocky', 'blockov', 'receipt', 'receipts', 'cek', 'ceky', 'cekov'}
+    if tokens.intersection(incoming_terms) and tokens.intersection(invoice_side_terms):
+        return bool(tokens.intersection(analytics_terms))
+    if tokens.intersection(receipt_terms):
+        return False
+    return bool(tokens.intersection(document_terms)) and bool(tokens.intersection(analytics_terms))
+
 def _mentions_accounting_document_categories(normalized: str, tokens: set[str]) -> bool:
     receipt_terms = {
         'blocek',
@@ -1091,6 +1163,17 @@ def _mentions_bank_cashflow_tax_analytics(normalized: str, tokens: set[str]) -> 
         'dane',
         'danovy',
         'danovu',
+        'danovo',
+        'danove',
+        'danova',
+        'uznatelne',
+        'uznatelny',
+        'uznatelna',
+        'bankovymi',
+        'bankovych',
+        'pohyb',
+        'pohyby',
+        'pohybmi',
         'tax',
         'bank',
         'банку',

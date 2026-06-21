@@ -202,13 +202,19 @@ business wording alone.
   the model only suggests bounded candidates from Python-provided categories.
   It must also say this is not a standalone top-level action, not tax advice,
   not accounting export, and not analytics.
-- Receipt/blocek analytics is not implemented. InfoHelp must not confuse
-  "analyze receipts" or "expense totals by category" with the category capture
-  layer. Category totals/reporting still require a separate read-only
-  analytics contract, tests, and Product Truth.
-- Unsupported but plausible expense/receipt analytics questions should offer
-  the confirmation-gated customization/admin-review request path when safe.
-- Bank, cashflow, VAT, tax, and full accounting analytics are unsupported
+- Accounting-document analytics is partial and read-only through
+  `accounting_document_analytics`. InfoHelp may describe bounded analytics over
+  confirmed receipts/bloceky and incoming invoices/prijate faktury in the
+  current workspace: counts, sums, vendor/category/month/document-type grouping,
+  comparisons, limited lists, averages, and top rankings.
+- Receipt/blocek analytics is partial as a receipt-focused alias of that
+  runtime. InfoHelp must not route analytics questions to the add/upload
+  receipt flow.
+- InfoHelp must still distinguish category capture from analytics: categories
+  are confirmed intake metadata, not tax deductibility, VAT reporting, or
+  accounting approval.
+- Bank, cashflow, VAT, tax, accounting export, and full accounting analytics
+  are unsupported
   unless later code/docs add a separate proven implementation.
 - User-facing business answers should be Slovak by default, even when the
   user asks in Ukrainian, Russian, or English.

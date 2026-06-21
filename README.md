@@ -223,9 +223,23 @@ Payment-state analytics use Python-normalized `payment_status_canonical`, not
 raw invoice lifecycle `status`. The final business answer shown to the user is
 Slovak by default. Analytics is read-only: it must not create, edit, delete,
 send, archive, mark paid, generate PDFs, upload to Google Drive, or write any
-invoice/accounting data. Receipt, expense, incoming-invoice, bank, cashflow,
-VAT, tax, and full accounting analytics remain unsupported/planned as separate
-domains and must not be answered from outgoing invoice data.
+invoice/accounting data. Receipt, expense, and incoming-invoice analytics are handled only by the separate partial `accounting_document_analytics` runtime; bank, cashflow, VAT, tax, and full accounting analytics remain unsupported and must not be answered from outgoing invoice data.
+
+### Accounting Document Analytics
+
+`accounting_document_analytics` is implemented as a partial read-only pilot for
+natural-language questions over confirmed receipts/bloceky and incoming
+invoices/prijate faktury in the current accounting workspace.
+
+It can answer bounded questions about counts, sums, vendors, categories,
+months/periods, document type, comparisons, limited lists, averages, and top
+rankings from confirmed metadata only. Old metadata without category remains
+readable as `uncategorized` / `Bez kategorie`.
+
+It does not analyze outgoing invoices, bank movements, cashflow, VAT/tax
+reports, accounting export, or full accounting conclusions. It does not create,
+edit, delete, or persist documents, categories, files, registry entries, DB
+rows, or any side effects.
 
 ### Accounting Documents / Bločky
 
@@ -254,7 +268,7 @@ Supported document types:
 
 Accounting documents are external source documents. They are not edited like generated invoices. Category handling is partial and controlled: Python provides allowed categories, LMM may suggest only bounded candidate category ids or `unknown_review`, the user confirms in preview, and final save stores category ids with label snapshots. Workspace categories are created only after explicit typed-label confirmation. If recognition is wrong, the correction path is better photo/PDF re-upload; arbitrary manual accounting-document editing is not implemented.
 
-Current category metadata is not receipt analytics, tax/accounting judgement, bank matching, VAT reporting, accounting export, or category totals/reporting.
+Current category metadata by itself is not analytics, tax/accounting judgement, bank matching, VAT reporting, accounting export, or a category totals report. Receipt/incoming-invoice analytics is available only through the separate partial read-only `accounting_document_analytics` runtime over confirmed metadata.
 
 Voice support:
 - top-level show recent documents: yes;
@@ -456,9 +470,6 @@ Do not treat these as current runtime:
 - Google Drive sync;
 - bank matching;
 - bank/cashflow analytics;
-- receipt/bloček analytics;
-- receipt/bloček categorization;
-- incoming invoice analytics;
 - tax/VAT advice;
 - full accounting analytics;
 - broad OCR pipeline for arbitrary scanned documents;

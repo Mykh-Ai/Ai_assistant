@@ -37,6 +37,7 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'access_request_approval',
     'invoice_draft_edit_flow',
     'invoice_analytics',
+    'accounting_document_analytics',
     'receipt_analytics',
     'bank_cashflow_tax_analytics',
     'code_agent_handoff',
@@ -244,22 +245,38 @@ def test_invoice_analytics_record_is_partial_read_only_runtime() -> None:
     assert 'This is full accounting analytics.' in entry.forbidden_claims
 
 
-def test_receipt_analytics_record_is_planned_prerequisite_only() -> None:
+def test_accounting_document_analytics_record_is_partial_read_only_runtime() -> None:
+    entry = _registry_by_id()['accounting_document_analytics']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert entry.runtime_owner == 'bot/handlers/invoice.py::_run_accounting_document_analytics'
+    assert entry.commands == ()
+    assert entry.canonical_actions == ('accounting_document_analytics',)
+    assert 'read-only' in entry.summary_for_user
+    assert 'receipts and incoming invoices' in entry.summary_for_user
+    assert 'bot/services/accounting_document_analytics_dataset.py' in entry.linked_handlers
+    assert 'bot/services/accounting_document_analytics_planner.py' in entry.linked_handlers
+    assert 'bot/services/accounting_document_analytics_executor.py' in entry.linked_handlers
+    assert 'tests/test_accounting_document_analytics_dataset.py' in entry.test_refs
+    assert 'tests/test_accounting_document_analytics_planner.py' in entry.test_refs
+    assert any('current workspace' in limitation for limitation in entry.current_limitations)
+    assert any('VAT/tax reports' in limitation for limitation in entry.current_limitations)
+    assert 'I changed a receipt, incoming invoice, category, file, or database row from analytics.' in entry.forbidden_claims
+    assert 'This is full accounting analytics.' in entry.forbidden_claims
+
+
+def test_receipt_analytics_record_is_partial_alias_for_accounting_document_runtime() -> None:
     entry = _registry_by_id()['receipt_analytics']
 
-    assert entry.status == ProductTruthStatus.PLANNED
-    assert entry.runtime_owner is None
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert entry.runtime_owner == 'bot/handlers/invoice.py::_run_accounting_document_analytics'
     assert entry.commands == ()
-    assert entry.canonical_actions == ()
-    assert entry.linked_handlers == ()
-    assert 'not implemented yet' in entry.summary_for_user
-    assert any('category totals/reporting' in limitation for limitation in entry.current_limitations)
-    assert any('Raw OCR, LMM extraction' in limitation for limitation in entry.current_limitations)
-    assert any('tax deductibility' in limitation for limitation in entry.current_limitations)
-    assert 'docs/llm/Safe_Data_Analyst_Runtime_Checklist.md' in entry.truth_source_refs
-    assert 'tests/test_info_help.py' in entry.test_refs
-    assert 'I categorized your receipts for analytics.' in entry.forbidden_claims
-    assert 'Receipt analytics is implemented.' in entry.forbidden_claims
+    assert entry.canonical_actions == ('accounting_document_analytics',)
+    assert 'accounting_document_analytics' in entry.summary_for_user
+    assert 'bot/services/accounting_document_analytics_dataset.py' in entry.linked_handlers
+    assert 'tests/test_accounting_document_analytics_executor.py' in entry.test_refs
+    assert any('No bank matching' in limitation for limitation in entry.current_limitations)
+    assert 'I changed receipt metadata from analytics.' in entry.forbidden_claims
 
 
 def test_accounting_document_categories_record_is_partial_controlled_runtime() -> None:

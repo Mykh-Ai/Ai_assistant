@@ -1313,3 +1313,20 @@ def test_voice_service_display_name_state_rejects_voice(monkeypatch, tmp_path: P
     msg = _DummyMessage()
     asyncio.run(handle_voice(msg, _DummyBot(), _config(tmp_path), _DummyState(ServiceAliasStates.waiting_display_name.state)))
     assert msg.answers[-1] == 'Napíšte plný názov služby textom.'
+
+
+def test_voice_idle_accounting_document_analytics_reaches_top_level_router(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'Koľko som minul v BAUHAUS?'
+
+    calls: list[tuple[str, str]] = []
+
+    async def _invoice_text(**kwargs) -> None:
+        calls.append((kwargs['invoice_text'], kwargs['input_channel']))
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _invoice_text)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+
+    assert calls == [('Koľko som minul v BAUHAUS?', 'voice')]

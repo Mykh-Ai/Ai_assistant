@@ -1463,6 +1463,9 @@ def test_top_level_natural_phrase_uses_bounded_resolver_payload(monkeypatch) -> 
     assert 'internally normalize it to Slovak FakturaBot product semantics' in (
         _TopLevelActionOpenAIFake.last_system_prompt or ''
     )
+    assert 'Apply action_hints boundaries before positive examples' in (
+        _TopLevelActionOpenAIFake.last_system_prompt or ''
+    )
 
 
 def test_top_level_profile_rekvizity_uses_llm_slovak_domain_normalization(monkeypatch) -> None:
@@ -1937,7 +1940,7 @@ def test_process_invoice_text_invoice_analytics_missing_db_returns_empty_answer(
         'Can you analyze my receipts by month?',
     ],
 )
-def test_process_invoice_text_invoice_analytics_rejects_unsupported_expense_domains(
+def test_process_invoice_text_routes_supported_expense_domains_to_accounting_document_analytics_empty_answer(
     tmp_path: Path,
     monkeypatch,
     user_input: str,
@@ -1946,7 +1949,7 @@ def test_process_invoice_text_invoice_analytics_rejects_unsupported_expense_doma
         return 'invoice_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
 
     async def _unexpected_planner(**kwargs) -> InvoiceAnalyticsPlan:
-        raise AssertionError('planner must not run for receipt or expense analytics requests')
+        raise AssertionError('invoice planner must not run for receipt or expense analytics requests')
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
     monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _unexpected_planner)
@@ -1959,20 +1962,13 @@ def test_process_invoice_text_invoice_analytics_rejects_unsupported_expense_doma
     asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
 
     answer = message.answers[-1]
-    assert 'Návrh požiadavky' in answer
-    assert 'Schváliť / Upraviť / Zrušiť' in answer
-    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
-    assert state.cleared is False
-    draft = state.data['customization_request_draft']
-    assert draft['source_triage_class'] == 'new_business_feature_request'
-    assert draft['source_capability_id'] == 'receipt_analytics'
-    assert draft['source_topic_id'] == 'receipt_analytics'
-    assert draft['redacted_original_text'] == user_input
+    assert 'nenašiel žiadne potvrdené bločky ani prijaté faktúry' in answer
+    assert 'read-only potvrdené účtovné doklady' in answer
+    assert state.cleared is True
     assert message.documents == []
     assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
 
-
-def test_unsupported_expense_analytics_preview_approval_saves_one_request(
+def test_unsupported_tax_analytics_preview_approval_saves_one_request(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1980,14 +1976,14 @@ def test_unsupported_expense_analytics_preview_approval_saves_one_request(
         return 'invoice_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
 
     async def _unexpected_planner(**kwargs) -> InvoiceAnalyticsPlan:
-        raise AssertionError('planner must not run for receipt or expense analytics requests')
+        raise AssertionError('planner must not run for unsupported tax analytics requests')
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
     monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _unexpected_planner)
 
     config = _config_with_api_key(tmp_path)
     init_db(config.db_path)
-    message = _authorized_message('Ти можеш порахувати видатки згідно чеків по місяцям?', telegram_id=111)
+    message = _authorized_message('Vieš spraviť DPH report z bločkov?', telegram_id=111)
     state = _DummyState()
 
     asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
@@ -2006,8 +2002,8 @@ def test_unsupported_expense_analytics_preview_approval_saves_one_request(
     records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
     assert len(records) == 1
     assert records[0].source_triage_class == 'new_business_feature_request'
-    assert records[0].source_capability_id == 'receipt_analytics'
-    assert records[0].source_topic_id == 'receipt_analytics'
+    assert records[0].source_capability_id == 'bank_cashflow_tax_analytics'
+    assert records[0].source_topic_id == 'bank_cashflow_tax_analytics'
     assert records[0].status == 'confirmed_pending_review'
 
 
@@ -3205,3 +3201,238 @@ def test_postpdf_unknown_reply(tmp_path: Path) -> None:
         )
     )
     assert message.answers[-1] == 'Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.'
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Koľko som minul na palivo tento mesiac?',
+        'Koľko bolo bločkov v kategórii materiál?',
+        'Ukáž sumy podľa kategórií za jún',
+        'Koľko som minul v BAUHAUS?',
+        'Koľko mám prijatých faktúr za jún?',
+    ],
+)
+def test_accounting_document_analytics_resolves_as_separate_read_only_top_level_action(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=[
+                'create_invoice',
+                'invoice_analytics',
+                'accounting_document_analytics',
+                'add_receipt',
+                'show_recent_accounting_documents',
+                'unknown',
+            ],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'accounting_document_analytics'
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Vies spravit DPH report z blockov?',
+        'Spocitaj danovo uznatelne vydavky z blockov.',
+        'Porovnaj blocky s bankovymi pohybmi.',
+        'Exportuj vydavky z blockov do uctovnictva.',
+    ],
+)
+def test_unsupported_receipt_analytics_requests_route_to_guarded_python_path(user_input: str) -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=[
+                'create_invoice',
+                'show_existing_invoice',
+                'invoice_analytics',
+                'accounting_document_analytics',
+                'add_receipt',
+                'show_recent_accounting_documents',
+                'unknown',
+            ],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'accounting_document_analytics'
+
+def test_process_invoice_text_runs_accounting_document_analytics_runtime_without_invoice_side_effects(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'invoice_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
+
+    async def _unexpected_invoice_planner(**kwargs) -> InvoiceAnalyticsPlan:
+        raise AssertionError('outgoing invoice analytics planner must not run for receipt analytics')
+
+    metadata_dir = tmp_path / 'workspaces' / 'telegram-111' / 'years' / '2026' / 'expenses' / '06' / 'receipts' / 'metadata'
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    (metadata_dir / 'receipt-1.json').write_text(
+        json.dumps(
+            {
+                'document_type': 'receipt',
+                'business': {
+                    'issue_date': '2026-06-10',
+                    'vendor_name': 'BAUHAUS',
+                    'total_amount': 13.83,
+                    'currency': 'EUR',
+                },
+                'category': {
+                    'category_id': 'material',
+                    'label_snapshot': 'Materiál',
+                    'source': 'confirmed_existing',
+                },
+            }
+        ),
+        encoding='utf-8',
+    )
+
+    planner_calls: list[dict] = []
+    executor_calls: list[dict] = []
+
+    async def _planner(**kwargs):
+        planner_calls.append(kwargs)
+        return SimpleNamespace(
+            analysis_code="df = accounting_documents_df.copy()\nresult = {'summary': {'count': len(df)}}",
+            answer_language='uk',
+            reasoning_summary='Pocet bločkov.',
+        )
+
+    def _execute(**kwargs):
+        executor_calls.append(kwargs)
+        dataframe = kwargs['accounting_documents_df']
+        assert len(dataframe) == 1
+        assert dataframe.iloc[0]['vendor_name'] == 'BAUHAUS'
+        assert dataframe.iloc[0]['category_id'] == 'material'
+        return SimpleNamespace(result={'summary': {'count': 1, 'total': 13.83}}, warnings=())
+
+    async def _answer(**kwargs) -> str:
+        assert kwargs['answer_language'] == 'sk'
+        assert kwargs['dataset_metadata']['row_count'] == 1
+        return 'Našiel som 1 potvrdený bloček v sume 13.83 EUR.'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _unexpected_invoice_planner)
+    monkeypatch.setattr('bot.handlers.invoice.plan_accounting_document_analytics_code', _planner)
+    monkeypatch.setattr('bot.handlers.invoice.execute_accounting_document_analytics_code', _execute)
+    monkeypatch.setattr('bot.handlers.invoice.answer_accounting_document_analytics', _answer)
+
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Koľko som minul v BAUHAUS?', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert len(planner_calls) == 1
+    assert len(executor_calls) == 1
+    assert message.answers[-1] == 'Našiel som 1 potvrdený bloček v sume 13.83 EUR.'
+    assert state.cleared is True
+    assert message.documents == []
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected_action'),
+    [
+        ('Koľko som minul na palivo tento mesiac?', 'accounting_document_analytics'),
+        ('Koľko bolo bločkov v kategórii materiál?', 'accounting_document_analytics'),
+        ('Ukáž sumy podľa kategórií za jún', 'accounting_document_analytics'),
+        ('Koľko som minul v BAUHAUS?', 'accounting_document_analytics'),
+        ('Koľko mám prijatých faktúr za jún?', 'accounting_document_analytics'),
+        ('Koľko mám vystavených faktúr za jún?', 'invoice_analytics'),
+        ('Koľko som vystavil faktúr za jún?', 'invoice_analytics'),
+        ('Top klientov podľa sumy faktúr', 'invoice_analytics'),
+        ('Pridaj bloček', 'add_receipt'),
+        ('Chcem nahrať prijatú faktúru', 'add_receipt'),
+        ('Ukáž posledné bločky', 'show_recent_accounting_documents'),
+        ('Otvor faktúru 04', 'show_existing_invoice'),
+    ],
+)
+def test_smoke_analytics_action_boundaries_do_not_steal_existing_routes(
+    user_input: str,
+    expected_action: str,
+) -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=[
+                'create_invoice',
+                'show_existing_invoice',
+                'invoice_analytics',
+                'accounting_document_analytics',
+                'add_receipt',
+                'show_recent_accounting_documents',
+                'unknown',
+            ],
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected_action
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Vieš spraviť DPH report z bločkov?',
+        'Spočítaj daňovo uznateľné výdavky z bločkov.',
+        'Porovnaj bločky s bankovými pohybmi.',
+        'Exportuj výdavky z bločkov do účtovníctva.',
+    ],
+)
+def test_smoke_unsupported_accounting_document_analytics_never_reaches_planner(
+    tmp_path: Path,
+    monkeypatch,
+    user_input: str,
+) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'accounting_document_analytics' if kwargs['context_name'] == 'top_level_action' else 'unknown'
+
+    async def _unexpected_accounting_planner(**kwargs):
+        raise AssertionError('accounting-document analytics planner must not run for bank/tax/export requests')
+
+    async def _unexpected_invoice_planner(**kwargs) -> InvoiceAnalyticsPlan:
+        raise AssertionError('invoice analytics planner must not run for bank/tax/export receipt requests')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_accounting_document_analytics_code', _unexpected_accounting_planner)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _unexpected_invoice_planner)
+
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message(user_input, telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert state.cleared is False
+    draft = state.data['customization_request_draft']
+    assert draft['source_capability_id'] == 'bank_cashflow_tax_analytics'
+    assert draft['source_topic_id'] == 'bank_cashflow_tax_analytics'
+    assert message.documents == []
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected_capability'),
+    [
+        ('Vieš analyzovať bločky?', 'receipt_analytics'),
+        ('Vieš analyzovať bločky a prijaté faktúry?', 'accounting_document_analytics'),
+        ('Vieš robiť analytiku vystavených faktúr?', 'invoice_analytics'),
+        ('Vieš kategorizovať bločky?', 'accounting_document_categories'),
+        ('Vieš DPH report z bločkov?', 'bank_cashflow_tax_analytics'),
+    ],
+)
+def test_smoke_infohelp_distinguishes_analytics_capability_questions(
+    user_input: str,
+    expected_capability: str,
+) -> None:
+    from bot.services.info_help import classify_info_help_capability
+
+    assert classify_info_help_capability(user_input_text=user_input) == expected_capability

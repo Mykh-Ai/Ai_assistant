@@ -1,5 +1,98 @@
 # PROJECT_LOG
 
+## 2026-06-21 - Session 158 - Accounting analytics action-boundary smoke hardening
+
+Summary:
+- Added smoke/regression tests proving `accounting_document_analytics` does not
+  steal existing outgoing invoice analytics, add-receipt, recent-document, or
+  show-existing-invoice routes, and `invoice_analytics` does not answer
+  bloček/incoming-invoice expense questions.
+- Added handler-level smoke coverage proving unsupported bank/DPH/tax/export
+  wording over bločky enters the customization preview and never reaches either
+  analytics planner.
+- Fixed guard vocabulary for Slovak `daňovo uznateľné`, `bankové/bankovými`,
+  and `pohyby/pohybmi`, and made InfoHelp classify bank/DPH/tax analytics before
+  receipt/accounting-document analytics.
+
+Preflight:
+- Contracts checked: Safe Data Analyst Runtime Checklist and Canonical Action
+  Registry boundaries for analytics actions.
+- Touched scopes: semantic routing tests, InfoHelp capability order,
+  unsupported-domain guard terms, changelog, project log. Not touched: DB,
+  storage, LMM extraction, migrations, server/deploy, category persistence, or
+  analytics write behavior.
+- Current implementation status remains `partial` for read-only accounting
+  document analytics and `unsupported` for bank/cashflow/DPH/tax/export/full
+  accounting analytics.
+- AI maturity level unchanged: Level 2 bounded analytics with Python-owned
+  scope, validation, and no side effects.
+
+Verification:
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py::test_smoke_analytics_action_boundaries_do_not_steal_existing_routes tests/test_invoice_intent_prerouter.py::test_smoke_unsupported_accounting_document_analytics_never_reaches_planner tests/test_invoice_intent_prerouter.py::test_smoke_infohelp_distinguishes_analytics_capability_questions`
+  - 21 passed.
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py tests/test_info_help.py tests/test_product_truth.py tests/test_voice_state_routing.py tests/test_accounting_document_analytics_dataset.py tests/test_accounting_document_analytics_planner.py tests/test_accounting_document_analytics_executor.py tests/test_accounting_document_analytics_answerer.py`
+  - 407 passed.
+- `git diff --check`
+  - passed with Windows LF-to-CRLF warnings only.
+
+## 2026-06-21 - Session 157 - Accounting document analytics runtime pilot
+
+Summary:
+- Added canonical top-level action `accounting_document_analytics` as a partial
+  read-only runtime pilot for confirmed receipts/bloceky and incoming
+  invoices/prijate faktury.
+- Added workspace-scoped sanitized metadata dataframe construction, planner
+  bounds, process-isolated AST-validated execution, and Slovak final-answer
+  grounding for expense-side accounting document analytics.
+- Synced Product Truth, InfoHelp, canonical registry, orchestrator contract,
+  TZ, README, eval smoke artifact, tests, changelog, and project log.
+
+Preflight:
+- Docs/contracts read: AGENTS, Product Doctrine, AI Layer Standards, Safe Data
+  Analyst Runtime Checklist, Product Truth Layer/Registry, Self-Learning,
+  Evaluation and Smoke Test Standards, Product UX Eval Artifacts, TZ,
+  Orchestrator Contract, Canonical Action Registry, In-Action Response Registry,
+  New Action Checklist, Bounded Resolver Prompt, InfoHelp, Customization
+  Request Layer, DecisionResolver, OfficeFlow/Document Intake docs, User Access,
+  and the existing invoice analytics runtime contract.
+- Touched scopes: routing, LLM planner prompt, analytics executor sandbox,
+  final answerer, storage metadata reads, Product Truth, InfoHelp, docs,
+  tests. Not touched: STT provider, LMM extraction, DB schema, migrations,
+  server/deploy, runtime storage writes, PDF layout, bank/tax/export flows.
+- Current implementation status: `partial` for read-only accounting document
+  analytics; `partial` for receipt analytics as a Product Truth alias of that
+  runtime; `unsupported` for bank/cashflow/VAT/tax/accounting export/full
+  accounting analytics.
+- AI maturity level: Level 2 bounded analytics interpretation/explanation with
+  Python-owned data scope, validation, sandboxed execution, and no side effects.
+- Explicitly out of scope: category creation/management from analytics,
+  tax/accounting judgement, VAT reporting, bank matching, accounting export,
+  DB/storage migrations, and automatic persistence of suggested labels.
+- Product journey proof: an authorized idle user can ask a natural text/voice
+  question such as `Koľko som minul v BAUHAUS?`, Python reads only confirmed
+  current-workspace receipt/incoming-invoice metadata, executes a bounded
+  read-only analysis, returns a Slovak answer, clears state, and creates no
+  DB/file/category side effect.
+- Self-learning hooks considered: no learning was added; analytics questions
+  remain bounded by canonical action routing and Python-provided dataframe
+  schema, not learned aliases or mutable registries.
+- Product claim sources: current code/tests, Product Truth entries
+  `accounting_document_analytics` and `receipt_analytics`,
+  `docs/llm/Accounting_Document_Analytics_Runtime_Contract.md`, canonical
+  registry, TZ, README, eval smoke artifact, and this log.
+
+Verification:
+- `python -m pytest -q tests/test_accounting_document_analytics_dataset.py tests/test_accounting_document_analytics_planner.py tests/test_accounting_document_analytics_executor.py tests/test_accounting_document_analytics_answerer.py`
+  - 18 passed.
+- `python -m pytest -q tests/test_product_truth.py`
+  - 23 passed.
+- `python -m pytest -q tests/test_info_help.py`
+  - 98 passed.
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py`
+  - 192 passed.
+- `python -m pytest -q tests/test_voice_state_routing.py::test_voice_idle_accounting_document_analytics_reaches_top_level_router tests/test_voice_state_routing.py::test_voice_idle_invoice_analytics_reaches_top_level_router tests/test_voice_state_routing.py::test_voice_idle_recent_accounting_documents_routes_to_existing_view`
+  - 3 passed.
+
 ## 2026-06-21 - Session 156 - README receipt category truth sync
 
 Summary:

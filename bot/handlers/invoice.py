@@ -44,6 +44,21 @@ from bot.services.info_help import (
     render_info_help_triage_result,
     resolve_info_help_triage_result_with_llm,
 )
+from bot.services.accounting_document_analytics_answerer import answer_accounting_document_analytics
+from bot.services.accounting_document_analytics_dataset import (
+    AccountingDocumentAnalyticsDatasetService,
+    build_accounting_document_analytics_data_catalog,
+)
+from bot.services.accounting_document_analytics_executor import (
+    AccountingDocumentAnalyticsCodeValidationError,
+    AccountingDocumentAnalyticsExecutionError,
+    execute_accounting_document_analytics_code,
+)
+from bot.services.accounting_document_analytics_planner import (
+    AccountingDocumentAnalyticsPlanError,
+    plan_accounting_document_analytics_code,
+)
+from bot.services.accounting_document_storage import workspace_key_for_supplier
 from bot.services.invoice_analytics_answerer import answer_invoice_analytics
 from bot.services.invoice_analytics_dataset import (
     InvoiceAnalyticsDatasetService,
@@ -84,8 +99,10 @@ _CREATE_INVOICE_INTENT = 'create_invoice'
 _SHOW_EXISTING_INVOICE_INTENT = 'show_existing_invoice'
 _INVOICE_PERIOD_SUMMARY_INTENT = 'invoice_period_summary'
 _INVOICE_ANALYTICS_INTENT = 'invoice_analytics'
+_ACCOUNTING_DOCUMENT_ANALYTICS_INTENT = 'accounting_document_analytics'
 _INVOICE_ANALYTICS_FINAL_ANSWER_LANGUAGE = 'sk'
 _INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS = 2
+_ACCOUNTING_DOCUMENT_ANALYTICS_MAX_PLANNER_ATTEMPTS = 2
 _INVOICE_ANALYTICS_WHOLE_YEAR_SUMMARY = 'whole_calendar_year_summary'
 _INVOICE_ANALYTICS_SAFE_RUNTIME = 'safe_analytics_runtime'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
@@ -226,6 +243,34 @@ def _unsupported_invoice_analytics_capability_id(text: str) -> str:
     return 'invoice_analytics'
 
 
+
+_ACCOUNTING_DOCUMENT_ANALYTICS_DOMAIN_TERMS = {
+    'vydavky', 'vydavkov', 'naklady', 'minul', 'minula', 'minuli',
+    'spend', 'spent', 'expense', 'expenses',
+    'blocek', 'blocky', 'blockov', 'doklad', 'doklady', 'uctenka', 'uctenky',
+    'receipt', 'receipts', 'check', 'checks',
+    'prijata', 'prijate', 'prijatych', 'dodavatelska', 'dodavatelske',
+    'kategoria', 'kategorie', 'kategorii', 'category', 'categories',
+    'palivo', 'material', 'bauhaus',
+    '\u0432\u0438\u0442\u0440\u0430\u0442\u0438', '\u0432\u0438\u0434\u0430\u0442\u043a\u0438', '\u0432\u0438\u0434\u0430\u0442\u043a\u0456\u0432', '\u0447\u0435\u043a', '\u0447\u0435\u043a\u0438', '\u0447\u0435\u043a\u0456\u0432', '\u0440\u0430\u0441\u0445\u043e\u0434\u044b',
+}
+
+_ACCOUNTING_DOCUMENT_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS = {
+    'bank', 'bankove', 'bankovy', 'cashflow', 'vat', 'dph', 'dan', 'dane',
+    'tax', 'danovo', 'danove', 'danova', 'uznatelne', 'uznatelny', 'uznatelna',
+    'bankove', 'bankovy', 'bankovymi', 'bankovych', 'pohyb', 'pohyby', 'pohybmi',
+    'export', 'exportuj', 'exportovat', 'uctovnictvo', 'uctovnictva', 'uctovny', 'google', 'drive',
+}
+
+
+def _is_accounting_document_analytics_domain(text: str) -> bool:
+    tokens = _invoice_analytics_tokens(text)
+    return bool(tokens.intersection(_ACCOUNTING_DOCUMENT_ANALYTICS_DOMAIN_TERMS))
+
+
+def _is_unsupported_accounting_document_analytics_domain(text: str) -> bool:
+    tokens = _invoice_analytics_tokens(text)
+    return bool(tokens.intersection(_ACCOUNTING_DOCUMENT_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS))
 def _has_invoice_summary_terms(text: str) -> bool:
     tokens = _invoice_analytics_tokens(text)
     invoice_terms = {
@@ -516,6 +561,128 @@ async def _run_invoice_yearly_summary_fast_path(
     await state.clear()
     return True
 
+
+async def _run_accounting_document_analytics(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    user_question: str,
+    source_channel: str = 'text',
+) -> None:
+    supplier_telegram_id = _message_supplier_telegram_id(message)
+    if supplier_telegram_id is None:
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        await state.clear()
+        return
+
+    if _is_unsupported_accounting_document_analytics_domain(user_question):
+        await _start_customization_request_preview(
+            message=message,
+            state=state,
+            requester_telegram_id=supplier_telegram_id,
+            user_input_text=user_question,
+            source_channel=source_channel,
+            triage_class=TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+            capability_id='bank_cashflow_tax_analytics',
+            topic_id='bank_cashflow_tax_analytics',
+            confidence=0.85,
+        )
+        return
+
+    current_date = date.today()
+    current_date_iso = current_date.isoformat()
+    workspace_key = workspace_key_for_supplier(supplier_telegram_id)
+    dataset_service = AccountingDocumentAnalyticsDatasetService(config.storage_dir)
+    accounting_documents_df = dataset_service.build_dataframe_for_workspace(workspace_key=workspace_key)
+    metadata = {
+        'row_count': int(len(accounting_documents_df)),
+        'columns': list(accounting_documents_df.columns),
+        'current_date_iso': current_date_iso,
+        'scope': 'confirmed_receipts_and_incoming_invoices_current_workspace_only',
+        'workspace_key': workspace_key,
+    }
+    if accounting_documents_df.empty:
+        await message.answer(
+            'Vo vašom účte som nenašiel žiadne potvrdené bločky ani prijaté faktúry na analýzu.\n\n'
+            'Počítam iba read-only potvrdené účtovné doklady aktuálneho pracovného priestoru.'
+        )
+        await state.clear()
+        return
+
+    repair_feedback: dict[str, object] | None = None
+    for attempt in range(1, _ACCOUNTING_DOCUMENT_ANALYTICS_MAX_PLANNER_ATTEMPTS + 1):
+        plan = None
+        try:
+            plan = await plan_accounting_document_analytics_code(
+                user_question=user_question,
+                current_date_iso=current_date_iso,
+                data_catalog=build_accounting_document_analytics_data_catalog(),
+                api_key=config.openai_api_key,
+                model=config.openai_llm_model,
+                repair_feedback=repair_feedback,
+            )
+            execution = execute_accounting_document_analytics_code(
+                code=plan.analysis_code,
+                accounting_documents_df=accounting_documents_df,
+                current_date=current_date,
+            )
+            computed_result = dict(execution.result)
+            if execution.warnings:
+                warnings = list(computed_result.get('warnings') or [])
+                warnings.extend(execution.warnings)
+                computed_result['warnings'] = warnings
+            answer = await answer_accounting_document_analytics(
+                user_question=user_question,
+                current_date_iso=current_date_iso,
+                computed_result=computed_result,
+                dataset_metadata=metadata,
+                api_key=config.openai_api_key,
+                model=config.openai_llm_model,
+                answer_language=_INVOICE_ANALYTICS_FINAL_ANSWER_LANGUAGE,
+            )
+            await message.answer(answer)
+            await state.clear()
+            return
+        except AccountingDocumentAnalyticsPlanError as exc:
+            logger.warning(
+                'Accounting document analytics planning stopped: message_id=%s source_channel=%s row_count=%s attempt=%s max_attempts=%s reason=%s',
+                getattr(message, 'message_id', None), source_channel, metadata.get('row_count'), attempt,
+                _ACCOUNTING_DOCUMENT_ANALYTICS_MAX_PLANNER_ATTEMPTS, str(exc),
+            )
+            if attempt >= _ACCOUNTING_DOCUMENT_ANALYTICS_MAX_PLANNER_ATTEMPTS:
+                await message.answer(
+                    'Analytickú otázku som teraz nevedel bezpečne naplánovať. '
+                    'Táto pilotná funkcia je read-only a pracuje iba s potvrdenými bločkami a prijatými faktúrami.'
+                )
+                await state.clear()
+                return
+            repair_feedback = {
+                'stage': 'planning',
+                'error_type': type(exc).__name__,
+                'error_reason': str(exc),
+                'instruction': 'Return strict JSON with valid analysis_code assigning result. Keep the same user question.',
+            }
+        except (AccountingDocumentAnalyticsCodeValidationError, AccountingDocumentAnalyticsExecutionError) as exc:
+            logger.warning(
+                'Accounting document analytics execution stopped: message_id=%s source_channel=%s row_count=%s attempt=%s max_attempts=%s error_type=%s reason=%s',
+                getattr(message, 'message_id', None), source_channel, metadata.get('row_count'), attempt,
+                _ACCOUNTING_DOCUMENT_ANALYTICS_MAX_PLANNER_ATTEMPTS, type(exc).__name__, str(exc),
+            )
+            if attempt >= _ACCOUNTING_DOCUMENT_ANALYTICS_MAX_PLANNER_ATTEMPTS:
+                await message.answer(
+                    'Analytický výpočet som zastavil, pretože neprešiel bezpečnostnou kontrolou. '
+                    'Žiadne doklady, kategórie, súbory ani databázové údaje som nezmenil.'
+                )
+                await state.clear()
+                return
+            repair_feedback = {
+                'stage': 'execution',
+                'error_type': type(exc).__name__,
+                'error_reason': str(exc),
+                'previous_analysis_code': plan.analysis_code if plan is not None else '',
+                'instruction': 'Return a complete replacement analysis_code that avoids the validation/runtime error and still answers the same user question.',
+            }
 
 async def _run_invoice_analytics(
     *,
@@ -3050,6 +3217,7 @@ async def process_invoice_text(
             _CREATE_INVOICE_INTENT,
             _SHOW_EXISTING_INVOICE_INTENT,
             _INVOICE_ANALYTICS_INTENT,
+            _ACCOUNTING_DOCUMENT_ANALYTICS_INTENT,
             _SHOW_SUPPLIER_PROFILE_INTENT,
             _EDIT_SUPPLIER_INTENT,
             _ADD_CONTACT_INTENT,
@@ -3099,6 +3267,24 @@ async def process_invoice_text(
                     'view recent accounting receipts',
                 ],
             },
+            _ACCOUNTING_DOCUMENT_ANALYTICS_INTENT: {
+                'meaning': (
+                    'user asks a read-only analytical, statistical, reporting, comparison, listing, grouping, category, vendor, period, average, or total/count question about already confirmed expense-side accounting documents: receipts/bločeks, vendors, expense categories, spending/minul som questions, and incoming invoices/prijate faktury; Python builds a sanitized workspace-scoped dataframe, validates read-only analysis code, and returns computed facts'
+                ),
+                'positive_examples': [
+                    'kolko som minul na palivo tento mesiac',
+                    'sumy podla kategorii za jun',
+                    'kolko bolo blockov v kategorii material',
+                    'kolko som minul v BAUHAUS',
+                    'kolko mam prijatych faktur za jun',
+                ],
+                'not_this': [
+                    'do not use for outgoing invoices/vystavene faktury/vystavenych faktur, revenue, customers, paid or unpaid invoice status; use invoice_analytics',
+                    'do not use for adding/uploading a receipt; use add_receipt',
+                    'do not use for recent document list; use show_recent_accounting_documents',
+                    'do not use for bank, cashflow, VAT/DPH, tax/accounting judgement, accounting export/exportuj do uctovnictva, sync, edit, or delete requests',
+                ],
+            },
             _INVOICE_ANALYTICS_INTENT: {
                 'meaning': (
                     'user asks a read-only analytical, statistical, reporting, comparison, listing, grouping, paid/unpaid/overdue, '
@@ -3111,6 +3297,7 @@ async def process_invoice_text(
                     'compare May 2026 and May 2025',
                     'how many unpaid invoices do I have',
                     'top customers by invoice amount',
+                    'kolko mam vystavenych faktur za jun',
                 ],
                 'not_this': [
                     'create invoice',
@@ -3118,7 +3305,7 @@ async def process_invoice_text(
                     'delete invoice',
                     'send invoice',
                     'mark invoice as paid',
-                    'receipt or incoming invoice analytics',
+                    'receipt, blocek, expense, vendor spending, category, or incoming invoice analytics',
                     'bank movement or tax advice',
                 ],
             },
@@ -3327,6 +3514,17 @@ async def process_invoice_text(
         )
         await message.answer(_format_invoice_period_summary(summary, period_label=period_label))
         await state.clear()
+        return
+    if top_level_intent == _ACCOUNTING_DOCUMENT_ANALYTICS_INTENT or (
+        top_level_intent == _INVOICE_ANALYTICS_INTENT and _is_accounting_document_analytics_domain(invoice_text)
+    ):
+        await _run_accounting_document_analytics(
+            message=message,
+            state=state,
+            config=config,
+            user_question=invoice_text,
+            source_channel=input_channel,
+        )
         return
     if top_level_intent == _INVOICE_ANALYTICS_INTENT:
         await _run_invoice_analytics(

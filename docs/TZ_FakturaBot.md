@@ -16,7 +16,7 @@ Approved users may ask read-only questions about already saved outgoing invoices
 
 Persisted invoice editing remains the separate canonical action `edit_existing_invoice`. User wording that means edit/change/correct an invoice by number may enter the bounded invoice edit FSM after Python supplier-scoped lookup.
 
-System/read-only surfaces are stateless interruptions: `/start`, `/menu`, `/moj_profil` when the profile exists, `/blocek`, `show_existing_invoice`, and read-only `invoice_analytics` answers may clear the current FSM state and show their result without leaving the user in a workflow.
+System/read-only surfaces are stateless interruptions: `/start`, `/menu`, `/moj_profil` when the profile exists, `/blocek`, `show_existing_invoice`, read-only `invoice_analytics`, and read-only `accounting_document_analytics` answers may clear the current FSM state and show their result without leaving the user in a workflow.
 
 Global state cancellation is supported through `/cancel` and shared DecisionResolver-backed cancel wording in text or voice transcripts, such as `zrušiť`, `скасувати`, `відмінити`, `відминити`, `отменить`, and “почни з початку”. Cancellation must be state-aware: temporary Document Intake/OfficeFlow staging is cleaned; draft invoice states are cleared; newly generated unconfirmed post-PDF invoices keep the existing cancel cleanup behavior; persisted invoice edit cancellation only exits edit mode and must not delete the already stored invoice. Voice cancellation must not bypass exact typed destructive confirmations.
 
@@ -108,6 +108,36 @@ Receipt/blocek analytics must not be built or claimed before all of these exist:
 7. explicit no-tax-advice and no-accounting-export boundaries.
 
 Raw OCR/LMM extraction and confirmed intake categories are not tax deductibility evidence, accounting approval, accounting export data, or a basis for spending analytics until a separate analytics layer proves those controls.
+
+---
+
+## 2026-06-21 Addendum: accounting document analytics runtime pilot
+
+Approved users may ask read-only analytics questions over confirmed
+receipts/bloceky and incoming invoices/prijate faktury through canonical
+top-level action `accounting_document_analytics`.
+
+This runtime is separate from `invoice_analytics`. `invoice_analytics` covers
+saved outgoing invoices and income-side questions. `accounting_document_analytics`
+covers expense-side accounting documents only: confirmed receipts and incoming
+invoices stored in the current accounting workspace.
+
+Python owns the workspace scope, metadata scan, dataframe schema, current-date
+injection, code validation, process-isolated execution, and final Slovak answer
+grounding. LLM may only plan bounded pandas code over Python-provided
+`accounting_documents_df` and cannot access DB/storage/files/network or cause
+side effects.
+
+Supported partial questions include counts, sums, vendor/category/month or
+period grouping, document-type grouping, comparisons, limited lists, averages,
+and top rankings from confirmed metadata. Old metadata without category remains
+readable as `uncategorized` / `Bez kategorie`.
+
+The pilot must not create, edit, delete, save, or persist documents,
+categories, files, registry entries, DB rows, suggested labels, or any other
+side effect. It must not answer outgoing invoice analytics, bank/cashflow,
+VAT/tax reports, accounting export, tax deductibility, settlement, or full
+accounting judgement from this dataset.
 
 ---
 
@@ -1179,7 +1209,7 @@ Python повинен перевіряти:
 
 Active status correction 2026-05-17:
 - Accounting Document Intake Phase 1 is implemented/partial for confirmed receipt (`blocek`) and incoming-invoice (`prijata faktura`) intake, bounded category candidates, workspace category creation after confirmation, duplicate preview, user approval, confirmed metadata storage, idle attachment routing, and recent document view where current code/tests prove it.
-- Broader Document Intake remains planned/not implemented for standalone contract archive, bank statements, broad OCR for arbitrary scanned documents, broad category administration, receipt analytics, accounting software export, Google Drive sync, and full OfficeFlow workspace runtime unless later code/docs prove otherwise.
+- Broader Document Intake remains planned/not implemented for standalone contract archive, bank statements, broad OCR for arbitrary scanned documents, broad category administration, accounting software export, Google Drive sync, and full OfficeFlow workspace runtime unless later code/docs prove otherwise. Receipt/incoming-invoice analytics is supported only by the separate partial read-only `accounting_document_analytics` runtime over confirmed metadata.
 
 ---
 

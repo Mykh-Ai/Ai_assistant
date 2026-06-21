@@ -86,6 +86,23 @@ _INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS = {
     'dan',
     'dane',
     'tax',
+    'danovo',
+    'danove',
+    'danova',
+    'uznatelne',
+    'uznatelny',
+    'uznatelna',
+    'bankovymi',
+    'bankovych',
+    'pohyb',
+    'pohyby',
+    'pohybmi',
+    'export',
+    'exportuj',
+    'exportovat',
+    'uctovnictvo',
+    'uctovnictva',
+    'uctovny',
     'kategoria',
     'kategorie',
     'category',
@@ -114,6 +131,35 @@ _INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS = {
 def _mentions_unsupported_invoice_analytics_domain(tokens: set[str]) -> bool:
     return bool(tokens.intersection(_INVOICE_ANALYTICS_UNSUPPORTED_DOMAIN_TERMS))
 
+
+
+_ACCOUNTING_DOCUMENT_ANALYTICS_DOMAIN_TERMS = {
+    'vydavky', 'vydavkov', 'naklady', 'minul', 'minula', 'minuli',
+    'spend', 'spent', 'expense', 'expenses',
+    'blocek', 'blocky', 'blockov', 'doklad', 'doklady', 'uctenka', 'uctenky',
+    'receipt', 'receipts', 'check', 'checks',
+    'prijata', 'prijate', 'prijatych', 'incoming', 'dodavatelska', 'dodavatelske',
+    'kategoria', 'kategorie', 'kategorii', 'category', 'categories',
+    'palivo', 'material', 'bauhaus',
+    '\u0432\u0438\u0442\u0440\u0430\u0442\u0438', '\u0432\u0438\u0442\u0440\u0430\u0442', '\u0432\u0438\u0434\u0430\u0442\u043a\u0438',
+    '\u0447\u0435\u043a', '\u0447\u0435\u043a\u0438', '\u0447\u0435\u043a\u0456\u0432', '\u0440\u0430\u0441\u0445\u043e\u0434\u044b',
+}
+
+_ACCOUNTING_DOCUMENT_ANALYTICS_METRIC_TERMS = {
+    'kolko', 'suma', 'sumu', 'sumy', 'celkom', 'spolu', 'prehlad', 'report',
+    'analytika', 'analyzovat', 'porovnaj', 'compare', 'top', 'priemer',
+    'spocitaj', 'vypocitaj', 'vyrataj', 'exportuj', 'exportovat',
+    'count', 'total', 'amount', 'sum', 'show', 'ukaz', 'zobraz',
+    '\u0441\u043a\u0456\u043b\u044c\u043a\u0438', '\u0441\u043a\u043e\u043b\u044c\u043a\u043e', '\u0430\u043d\u0430\u043b\u0456\u0442\u0438\u043a\u0430',
+}
+
+
+def _matches_accounting_document_analytics_request(tokens: set[str]) -> bool:
+    return bool(tokens.intersection(_ACCOUNTING_DOCUMENT_ANALYTICS_DOMAIN_TERMS)) and (
+        bool(tokens.intersection(_ACCOUNTING_DOCUMENT_ANALYTICS_METRIC_TERMS))
+        or bool(tokens.intersection(_MONTH_PERIOD_TERMS))
+        or bool(tokens.intersection({'kategoria', 'kategorie', 'kategorii', 'category', 'categories'}))
+    )
 
 def _matches_top_level_delete_invoice(tokens: set[str]) -> bool:
     delete_verbs = {
@@ -670,6 +716,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'invoice_analytics'
         if 'invoice_period_summary' in allowed and _matches_invoice_period_summary(text, tokens):
             return 'invoice_period_summary'
+        if 'accounting_document_analytics' in allowed and _matches_accounting_document_analytics_request(tokens):
+            return 'accounting_document_analytics'
         if 'invoice_analytics' in allowed and _matches_invoice_analytics_request(text, tokens):
             return 'invoice_analytics'
         if 'edit_existing_invoice' in allowed and _matches_top_level_edit_existing_invoice(tokens):
@@ -1193,6 +1241,7 @@ async def resolve_semantic_action(
         'show_existing_invoice',
         'invoice_period_summary',
         'invoice_analytics',
+        'accounting_document_analytics',
         'edit_supplier',
         'show_recent_accounting_documents',
         'delete_user_database',
@@ -1220,6 +1269,10 @@ async def resolve_semantic_action(
                             'Then choose exactly one allowed canonical action or "unknown". '
                             'Do not require literal command, alias, or example matching. '
                             'Action hints describe product meaning; any examples are illustrative only and never a whitelist. '
+                            'Apply action_hints boundaries before positive examples: if a request contains bank, cashflow, DPH/VAT, tax/accounting judgement, danovo/danove/dane/uznatelne expense judgement, accounting export, sync, edit, or delete semantics, do not choose receipt or invoice analytics unless a specific allowed action explicitly covers that unsupported domain. '
+                            'If allowed_actions includes an unsupported-domain action for bank/cashflow/tax/accounting-export analytics, choose that action for those requests even when the text also mentions receipts, bloceky, expenses, or accounting documents. '
+                            'For top-level business analytics, expense-side spending questions such as "kolko som minul", vendor spending, categories, receipts, bloceky, and prijate/incoming invoices belong to accounting-document analytics when that action is allowed. '
+                            'Outgoing/vystavene invoice totals, counts, customers, paid/unpaid, and revenue belong to invoice analytics when that action is allowed. '
                             'Return "unknown" only when the normalized meaning is genuinely unclear or no allowed action fits.'
                         ),
                     },

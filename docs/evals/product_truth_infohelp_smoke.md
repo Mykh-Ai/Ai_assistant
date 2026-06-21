@@ -314,7 +314,7 @@ document upload preview flow. It explains that the model may suggest only
 bounded candidates from Python-provided categories, Python validates, the user
 confirms, and final metadata is written only after confirmed save.
 forbidden_behavior: present categorization as a standalone top-level action;
-claim receipt analytics, category totals, tax deductibility, VAT report, bank
+claim analytics from category capture alone, tax deductibility, VAT report, bank
 matching, accounting export, or model-created categories.
 side_effect_expectation: InfoHelp answer has no DB/storage side effects; actual
 category metadata is written only after confirmed document save.
@@ -330,7 +330,7 @@ expected_product_truth_status: partial
 expected_response_behavior: Product Truth / InfoHelp states that invoice
 analytics is a partial read-only pilot over saved outgoing invoices only,
 scoped to the current supplier. It names current limitations and does not claim
-full accounting analytics, receipt analytics, bank matching, tax advice, or
+full accounting analytics, accounting-document analytics from outgoing invoice data, bank matching, tax advice, or
 write capability.
 forbidden_behavior: answer only with `/menu`; mark invoice analytics as fully
 supported accounting analytics; offer fake external integrations or unsupported
@@ -340,3 +340,38 @@ automation_status: automated in `tests/test_product_truth.py` and
 `tests/test_info_help.py`
 last_result: passed in focused and full test runs for the runtime pilot
 last_run_at: 2026-06-16
+
+---
+
+case_id: accounting_document_analytics_partial_runtime
+surface: idle text/voice top-level action
+user_input_examples:
+- Koľko som minul na palivo tento mesiac?
+- Koľko bolo bločkov v kategórii materiál?
+- Ukáž sumy podľa kategórií za jún
+- Koľko som minul v BAUHAUS?
+- Koľko mám prijatých faktúr za jún?
+expected_product_truth_status: partial
+expected_response_behavior: Direct runtime requests route to
+`accounting_document_analytics`, not `invoice_analytics` and not InfoHelp, when
+the user is authorized and idle. Python reads only confirmed receipt/incoming
+invoice metadata from the current accounting workspace, builds a sanitized
+`accounting_documents_df`, maps old metadata without category to
+`uncategorized`, injects the current runtime date, validates generated analysis
+code in a timeout-killed child process, and answers from computed results in
+Slovak business language.
+forbidden_behavior: answer from outgoing invoice data; create/edit/delete
+receipts, incoming invoices, categories, files, DB rows, or registry entries;
+persist suggested labels; inspect storage paths; claim tax deductibility, VAT
+reporting, bank matching, accounting export, settlement, or full accounting
+judgement.
+side_effect_expectation: no DB, file, category, registry, storage, PDF, or
+external-service write.
+automation_status: automated in
+`tests/test_accounting_document_analytics_dataset.py`,
+`tests/test_accounting_document_analytics_planner.py`,
+`tests/test_accounting_document_analytics_executor.py`,
+`tests/test_accounting_document_analytics_answerer.py`,
+`tests/test_invoice_intent_prerouter.py`, `tests/test_product_truth.py`,
+`tests/test_info_help.py`, and `tests/test_voice_state_routing.py`
+last_result: passed in focused runtime and contract tests for the pilot

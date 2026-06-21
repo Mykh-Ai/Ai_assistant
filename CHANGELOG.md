@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- `accounting_document_analytics` top-level read-only runtime pilot for natural
+  text/voice questions over confirmed receipts/bloceky and incoming
+  invoices/prijate faktury, with workspace-scoped sanitized metadata dataframe
+  reads, legacy uncategorized metadata compatibility, current-date injection,
+  process-isolated validated analysis code execution, and Product Truth/InfoHelp
+  status as partial rather than full accounting analytics.
+
 - `invoice_analytics` top-level read-only runtime pilot for natural text/voice
   questions over saved outgoing invoices, with supplier-scoped sanitized
   dataframe reads, normalized bot payment-status fields, current-date
@@ -51,13 +58,13 @@
   user-facing resolver action. Simple calendar-year invoice count/total
   questions now route through `invoice_analytics`, which may use the existing
   deterministic yearly summary as an internal read-only fast path.
-- Invoice analytics now guards receipt/expense/incoming-invoice/bank/cashflow
+- Invoice analytics now redirects receipt/expense/incoming-invoice analytics to `accounting_document_analytics` and still guards bank/cashflow
   /VAT/tax wording before calculation and refuses to answer those domains from
   outgoing invoice data. Safe unsupported business analytics requests enter the
   existing confirmation-gated customization/admin-review preview flow instead
   of implying a request was created from plain text.
 - Product Truth, InfoHelp, README, and technical docs now distinguish partial
-  read-only invoice analytics from planned receipt/bloček analytics and
+  read-only invoice analytics from partial accounting-document/receipt analytics and
   unsupported bank/cashflow/VAT/tax/full accounting analytics; this is a truth
   sync, not a new analytics runtime.
 - `invoice_analytics` final LLM-written answers now use Python-controlled
@@ -113,7 +120,10 @@
 - existing-category selection during receipt categorization now ends with create-new/back controls so users can recover when no listed category fits.
 
 ### Fixed
-- Ukrainian current-year invoice summary wording such as `цього року` now
+- Analytics action-boundary smoke coverage now guards `invoice_analytics`,
+  `accounting_document_analytics`, add/show receipt routes, InfoHelp capability
+  questions, and unsupported bank/DPH/tax/export wording so those requests do
+  not reach the wrong planner.- Ukrainian current-year invoice summary wording such as `цього року` now
   resolves through bounded period-value canonicalization to the yearly invoice
   summary instead of the generic supported-year guidance message.
 - Invoice draft creation now honors an explicitly stated issue date (`Dátum
@@ -135,7 +145,7 @@
 - Controlled multi-user dry run remains one backend, one bot token, and one SQLite DB; access is limited to bootstrap allowlisted or admin-approved Telegram users, and this is not full SaaS multi-tenancy.
 - Public automatic signup remains out of scope; unknown users can only request access and must be approved by an admin before onboarding, LLM/STT/LMM, invoices, contacts, or document intake.
 - Legacy supplier SMTP values should be purged after backup with `UPDATE supplier SET smtp_host = NULL, smtp_user = NULL, smtp_pass = NULL;`.
-- Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, Zevs runtime profile, standalone contract save, bank-statement matching, receipt analytics, category totals, tax advice, or accounting export.
+- Document Intake remains incremental: no bank matching, Telegram button callbacks, Google Drive sync, Zevs runtime profile, standalone contract save, bank-statement matching, tax advice, accounting export, or full accounting analytics. Narrow receipt/incoming-invoice analytics is handled only by the separate partial read-only `accounting_document_analytics` runtime.
 
 ## [0.6.1] - 2026-04-12
 

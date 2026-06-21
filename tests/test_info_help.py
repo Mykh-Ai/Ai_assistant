@@ -1016,7 +1016,7 @@ def test_invoice_analytics_capability_question_renders_partial_product_truth() -
         '\u0430\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430 \u0447\u0435\u043a\u043e\u0432',
     ],
 )
-def test_receipt_analytics_questions_render_planned_prerequisite_answer(user_input: str) -> None:
+def test_receipt_analytics_questions_render_partial_runtime_answer(user_input: str) -> None:
     assert classify_info_help_capability(user_input_text=user_input) == 'receipt_analytics'
 
     result = classify_info_help_triage(user_input_text=user_input)
@@ -1026,13 +1026,35 @@ def test_receipt_analytics_questions_render_planned_prerequisite_answer(user_inp
     answer = build_product_truth_guidance(user_input_text=user_input)
     assert answer is not None
     assert 'Analytika bločkov' in answer
-    assert 'plánované' in answer
-    assert 'ešte nie je hotová' in answer
-    assert 'Kontrolovaná kategorizácia' in answer
-    assert 'výpočty výdavkov podľa kategórií' in answer.lower()
-    assert 'Analytika výdavkov podľa kategórií' in answer
+    assert 'čiastočné' in answer
+    assert 'read-only runtime' in answer
+    assert 'DPH' in answer
+    assert 'Analytika vystavených faktúr' not in answer
     assert '/add_blocek' not in answer
     assert '\u0430\u043d\u0430\u043b' not in answer
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Vieš analyzovať bločky a prijaté faktúry?',
+        'Vieš robiť analytiku prijatých faktúr?',
+        'výdavky podľa kategórií z účtovných dokladov',
+    ],
+)
+def test_accounting_document_analytics_questions_render_partial_product_truth(user_input: str) -> None:
+    assert classify_info_help_capability(user_input_text=user_input) == 'accounting_document_analytics'
+
+    result = classify_info_help_triage(user_input_text=user_input)
+    assert result.triage_class == 'known_product_capability'
+    assert result.capability_id == 'accounting_document_analytics'
+
+    answer = build_product_truth_guidance(user_input_text=user_input)
+    assert answer is not None
+    assert 'Analytika bločkov a prijatých faktúr' in answer
+    assert 'čiastočné' in answer
+    assert 'read-only pilot' in answer
+    assert 'banku' in answer or 'cashflow' in answer
+    assert 'Analytika vystavených faktúr' not in answer
 
 
 @pytest.mark.parametrize(

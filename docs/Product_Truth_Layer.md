@@ -572,12 +572,16 @@ current code before runtime claims:
   workspace category creation, Python validation, user confirmation, and
   confirmed metadata snapshots exist only inside the accounting Document Intake
   preview flow, not as a standalone top-level action or broad category manager;
-- receipt/blocek analytics: planned/not implemented; controlled categories are
-  only prerequisite metadata and do not imply category totals, spending
-  analytics, tax deductibility, VAT reporting, bank matching, or accounting
-  export;
-- incoming invoice analytics: unsupported unless a separate runtime contract,
-  data model, Product Truth, and tests prove otherwise;
+- accounting-document analytics: partial read-only pilot over confirmed
+  receipts/bloceky and incoming invoices/prijate faktury in the current
+  workspace through `accounting_document_analytics`; it may answer bounded
+  counts, sums, vendor/category/month/document-type grouping, comparisons,
+  limited lists, averages, and top rankings from sanitized metadata only;
+- receipt/blocek analytics: partial as a receipt-focused Product Truth alias of
+  `accounting_document_analytics`, not the upload/add receipt flow;
+- incoming invoice analytics: partial only inside the same
+  `accounting_document_analytics` runtime and only for confirmed incoming
+  invoice metadata in the current workspace;
 - bank/cashflow/VAT/tax/full accounting analytics: unsupported unless a
   separate implementation with data sources, validation rules, Product Truth,
   and tests proves otherwise;
