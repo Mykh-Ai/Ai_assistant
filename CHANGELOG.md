@@ -107,6 +107,8 @@
 - temporary OfficeFlow/accounting intake sessions now expire after 5 minutes and safely clean only upload staging paths.
 - accounting Document Intake now warns about deterministic metadata duplicates before preview while still requiring explicit preview approval before save.
 - confirmed accounting document saves now show clean Slovak next steps (`/add_blocek`, `/blocek`, `/menu`) instead of exposing the internal metadata path to ordinary users.
+- accounting Document Intake duplicate warnings now use loud `POZOR! Tento doklad už je uložený!!!!` wording with explicit `Pridať iný bloček` / `Uložiť aj tak` / `/menu` buttons instead of looking like the ordinary yes/no path.
+- idle photo/PDF receipt proposals now show explicit `Áno` / `Nie` reply buttons before entering accounting document preview processing.
 
 ### Fixed
 - Ukrainian current-year invoice summary wording such as `цього року` now

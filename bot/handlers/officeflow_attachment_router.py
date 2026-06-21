@@ -6,7 +6,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from bot.config import Config
 from bot.handlers.accounting_document_intake import process_staged_accounting_document
@@ -42,6 +42,8 @@ _STATE_ATTACHMENT_METADATA = 'officeflow_attachment_metadata'
 _STATE_CLASSIFICATION = 'officeflow_attachment_classification'
 _STATE_EXTRACTED_PDF_TEXT = 'officeflow_attachment_extracted_pdf_text'
 _OFFICEFLOW_ATTACHMENT_RECOVERY_HINT = 'Ak nechcete pokračovať, napíšte „zrušiť“.'
+_YES_BUTTON = '✅ Áno'
+_NO_BUTTON = '❌ Nie'
 
 
 def _with_officeflow_attachment_recovery_hint(text: str) -> str:
@@ -52,6 +54,21 @@ class OfficeFlowAttachmentRouterStates(StatesGroup):
     accounting_proposal = State()
     route_choice = State()
     unknown_clarification = State()
+
+
+def _yes_no_reply_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=_YES_BUTTON), KeyboardButton(text=_NO_BUTTON)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+        input_field_placeholder='Vyberte možnosť',
+    )
+
+
+def _remove_keyboard() -> ReplyKeyboardRemove:
+    return ReplyKeyboardRemove()
 
 
 @router.message(StateFilter(None), F.photo | F.document)
@@ -113,13 +130,16 @@ async def handle_officeflow_accounting_proposal_text(
         model=config.openai_llm_model,
     )
     if decision == 'unknown':
-        await message.answer(_with_officeflow_attachment_recovery_hint('Prosím, odpovedzte áno alebo nie.'))
+        await message.answer(
+            _with_officeflow_attachment_recovery_hint('Prosím, odpovedzte áno alebo nie.'),
+            reply_markup=_yes_no_reply_keyboard(),
+        )
         return
 
     if decision == 'no':
         await _cleanup_state_attachment(config=config, state=state)
         await state.clear()
-        await message.answer('Spracovanie prílohy bolo zrušené.')
+        await message.answer('Spracovanie prílohy bolo zrušené.', reply_markup=_remove_keyboard())
         return
 
     data = await state.get_data()
@@ -128,7 +148,7 @@ async def handle_officeflow_accounting_proposal_text(
     classification = data.get(_STATE_CLASSIFICATION)
     if not isinstance(staged_path_value, str) or not isinstance(metadata, dict):
         await state.clear()
-        await message.answer('Návrh prílohy už nie je dostupný. Pošlite dokument znova.')
+        await message.answer('Návrh prílohy už nie je dostupný. Pošlite dokument znova.', reply_markup=_remove_keyboard())
         return
 
     document_type_hint = classification.get('document_type') if isinstance(classification, dict) else None
@@ -180,7 +200,7 @@ async def handle_officeflow_route_choice_text(
     if decision == 'cancel':
         await _cleanup_state_attachment(config=config, state=state)
         await state.clear()
-        await message.answer('Spracovanie prílohy bolo zrušené.')
+        await message.answer('Spracovanie prílohy bolo zrušené.', reply_markup=_remove_keyboard())
         return
 
     if decision == 'save_contract':
@@ -229,7 +249,7 @@ async def handle_officeflow_unknown_clarification_text(
     if decision == 'cancel':
         await _cleanup_state_attachment(config=config, state=state)
         await state.clear()
-        await message.answer('Spracovanie prílohy bolo zrušené.')
+        await message.answer('Spracovanie prílohy bolo zrušené.', reply_markup=_remove_keyboard())
         return
 
     await _ask_for_document_type_route(message=message, state=state, document_type=decision)
@@ -241,7 +261,8 @@ async def _ask_for_document_type_route(*, message: Message, state: FSMContext, d
         await message.answer(
             'Vyzerá to ako bloček/prijatá faktúra. '
             'Chcete ju spracovať ako výdavkový doklad?\n'
-            'Odpovedzte: áno / nie.'
+            'Vyberte možnosť:',
+            reply_markup=_yes_no_reply_keyboard(),
         )
         return
 

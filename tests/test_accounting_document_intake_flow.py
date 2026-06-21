@@ -505,8 +505,9 @@ def test_duplicate_found_shows_warning_and_does_not_save_new_document(monkeypatc
     asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
 
     assert state.current_state == AccountingDocumentIntakeStates.waiting_duplicate_decision.state
-    assert 'Podobný doklad už existuje' in message.answers[-1]
-    assert 'Odpovedzte: áno / nie.' in message.answers[-1]
+    assert 'POZOR! Tento doklad už je uložený!!!!' in message.answers[-1]
+    assert 'Ak je to ten istý bloček, nepridávajte ho znova.' in message.answers[-1]
+    assert '/menu' in message.answers[-1]
     assert _staged_original_path(tmp_path).exists()
     assert len(list((tmp_path / 'workspaces').rglob('*.json'))) == 1
 
@@ -1246,7 +1247,7 @@ def test_unknown_category_reply_keyboard_prioritizes_existing_category(monkeypat
     ]
 
 
-def test_duplicate_prompt_reply_keyboard_offers_yes_no(monkeypatch, tmp_path: Path) -> None:
+def test_duplicate_prompt_reply_keyboard_offers_loud_duplicate_choices(monkeypatch, tmp_path: Path) -> None:
     _write_duplicate_metadata(tmp_path)
     monkeypatch.setattr('bot.handlers.accounting_document_intake.classify_accounting_document', _fake_classify)
     monkeypatch.setattr('bot.handlers.accounting_document_intake.extract_accounting_document_metadata', _fake_extract)
@@ -1255,7 +1256,7 @@ def test_duplicate_prompt_reply_keyboard_offers_yes_no(monkeypatch, tmp_path: Pa
 
     asyncio.run(accounting_document_upload(message, state, _config(tmp_path), _DummyBot()))
 
-    assert _keyboard_texts(message.reply_markups[-1]) == ['✅ Áno', '❌ Nie']
+    assert _keyboard_texts(message.reply_markups[-1]) == ['➕ Pridať iný bloček', '⚠️ Uložiť aj tak', '🏠 /menu']
 
 
 def test_category_selection_reply_keyboard_uses_display_labels(monkeypatch, tmp_path: Path) -> None:

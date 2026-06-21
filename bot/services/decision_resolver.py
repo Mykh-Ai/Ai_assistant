@@ -114,6 +114,12 @@ async def resolve_yes_no(
     model: str,
     diagnostics: dict[str, Any] | None = None,
 ) -> YesNoDecision:
+    normalized = _normalize_text(user_input_text)
+    if context_name == 'accounting_document_duplicate_save_decision':
+        if 'ulozit aj tak' in normalized or 'save anyway' in normalized:
+            return 'yes'
+        if 'pridat iny blocek' in normalized or 'pridat iny' in normalized or 'add another receipt' in normalized or normalized == 'menu':
+            return 'no'
     legacy = await resolve_bounded_confirmation_reply(
         context_name=context_name,
         expected_reply_type='yes_no_confirmation',

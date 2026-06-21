@@ -772,3 +772,29 @@ def test_accounting_category_button_labels_resolve_to_canonical_decisions() -> N
             model='gpt-4o',
         )
     ) == 'yes'
+
+def test_accounting_duplicate_loud_button_labels_resolve_through_yes_no_family() -> None:
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='accounting_document_duplicate_save_decision',
+            user_input_text='➕ Pridať iný bloček',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'no'
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='accounting_document_duplicate_save_decision',
+            user_input_text='⚠️ Uložiť aj tak',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'yes'
+    assert asyncio.run(
+        resolve_yes_no(
+            context_name='accounting_document_duplicate_save_decision',
+            user_input_text='🏠 /menu',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'no'

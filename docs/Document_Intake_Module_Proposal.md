@@ -39,7 +39,7 @@ Current implemented behavior:
   - stages photo/PDF originals in neutral temporary storage,
   - classifies `receipt`, `incoming_invoice`, `contract`, `contact_source`, or `unknown`,
   - maps document type to a Python-owned proposal,
-  - asks before entering accounting or contact processing.
+  - asks before entering accounting or contact processing; receipt/incoming-invoice proposals may show explicit yes/no reply buttons while still resolving through `DecisionResolver`.
 
 Current behavior is not:
 - bank statement parsing,
@@ -170,7 +170,7 @@ Accounting Document Intake Phase 1 duplicate detection is metadata-based:
 - filename is not the canonical duplicate key because confirmed filenames include a unique Telegram-derived suffix;
 - Slice 1 matching is deterministic only: document type, issue date, normalized vendor name, total amount, and currency;
 - no AI, fuzzy matching, image comparison, or PDF content comparison is used;
-- a duplicate warning is advisory, not blocking;
+- duplicate warning is intentionally loud (`POZOR! Tento doklad už je uložený!!!!`) and asks the user to either add a different receipt, explicitly save anyway, or return to `/menu`;
 - if the user chooses to continue, the normal Slovak preview and explicit approval step are still required before saving.
 
 Recent confirmed accounting documents can be viewed through the lightweight read-only `/blocek` command; legacy `/blocky` remains supported:

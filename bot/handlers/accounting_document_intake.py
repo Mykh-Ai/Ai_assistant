@@ -91,6 +91,9 @@ _PREVIEW_SAVE_WITHOUT_CATEGORY = '📎 Uložiť bez kategórie'
 _CANCEL_BUTTON = '❌ Zrušiť'
 _YES_BUTTON = '✅ Áno'
 _NO_BUTTON = '❌ Nie'
+_DUPLICATE_ADD_OTHER = '➕ Pridať iný bloček'
+_DUPLICATE_SAVE_ANYWAY = '⚠️ Uložiť aj tak'
+_DUPLICATE_MENU = '🏠 /menu'
 _UNKNOWN_CHOOSE_EXISTING = '📂 Vybrať existujúcu kategóriu'
 _UNKNOWN_CREATE_NEW = '➕ Vytvoriť novú kategóriu'
 _UNKNOWN_SAVE_AS_REVIEW = '📎 Uložiť ako Na kontrolu'
@@ -117,6 +120,10 @@ def _remove_keyboard() -> ReplyKeyboardRemove:
 
 def _yes_no_reply_keyboard() -> ReplyKeyboardMarkup:
     return _reply_keyboard([[_YES_BUTTON, _NO_BUTTON]])
+
+
+def _duplicate_warning_keyboard() -> ReplyKeyboardMarkup:
+    return _reply_keyboard([[_DUPLICATE_ADD_OTHER], [_DUPLICATE_SAVE_ANYWAY], [_DUPLICATE_MENU]])
 
 
 def _preview_decision_keyboard(candidate: AccountingDocumentCandidate) -> ReplyKeyboardMarkup:
@@ -1034,7 +1041,7 @@ async def _store_preview_or_duplicate_state(
         state_payload[_STATE_DUPLICATE_MATCH_KEY] = duplicate.to_dict()
         await state.update_data(**state_payload)
         await state.set_state(AccountingDocumentIntakeStates.waiting_duplicate_decision)
-        await message.answer(_format_duplicate_warning(duplicate), reply_markup=_yes_no_reply_keyboard())
+        await message.answer(_format_duplicate_warning(duplicate), reply_markup=_duplicate_warning_keyboard())
         return
 
     await state.update_data(**state_payload)
@@ -1330,14 +1337,14 @@ def _format_duplicate_warning(match: DuplicateMatch) -> str:
     purchase_subject = match.purchase_subject or 'nezistené'
     vendor = match.vendor_name or 'nezistené'
     return (
-        'Podobný doklad už existuje:\n\n'
+        'POZOR! Tento doklad už je uložený!!!!\n\n'
         f'Typ: {document_type_label}\n'
         f'Dodávateľ: {vendor}\n'
         f'Dátum: {match.issue_date}\n'
         f'Suma: {amount} {match.currency}\n'
         f'Predmet nákupu: {purchase_subject}\n\n'
-        'Chcete nový doklad aj napriek tomu spracovať?\n'
-        'Odpovedzte: áno / nie.'
+        'Ak je to ten istý bloček, nepridávajte ho znova.\n'
+        'Vyberte: pridať iný bloček, uložiť aj tak alebo /menu.'
     )
 
 

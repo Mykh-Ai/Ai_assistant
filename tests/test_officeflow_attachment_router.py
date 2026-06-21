@@ -79,9 +79,11 @@ class _DummyMessage:
         self.voice = voice
         self.from_user = _DummyUser()
         self.answers: list[str] = []
+        self.reply_markups: list[object] = []
 
-    async def answer(self, text: str) -> None:
+    async def answer(self, text: str, **kwargs) -> None:
         self.answers.append(text)
+        self.reply_markups.append(kwargs.get('reply_markup'))
 
 
 class _DummyState:
@@ -118,6 +120,16 @@ class _DummyBot:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b'officeflow-attachment')
 
+
+
+
+def _keyboard_texts(markup: object) -> list[str]:
+    keyboard = getattr(markup, 'keyboard', []) or []
+    return [str(getattr(button, 'text', button)) for row in keyboard for button in row]
+
+
+def _is_keyboard_removed(markup: object) -> bool:
+    return markup.__class__.__name__ == 'ReplyKeyboardRemove'
 
 def _config(tmp_path: Path) -> Config:
     return Config(
@@ -216,7 +228,8 @@ def test_idle_photo_receipt_stages_and_asks_accounting_proposal(monkeypatch, tmp
     assert staged_path.exists()
     assert state.current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state
     assert 'výdavkový doklad' in message.answers[-1]
-    assert 'Odpovedzte: áno / nie.' in message.answers[-1]
+    assert 'Vyberte možnosť:' in message.answers[-1]
+    assert _keyboard_texts(message.reply_markups[-1]) == ['✅ Áno', '❌ Nie']
     assert not (tmp_path / 'workspaces').exists()
 
 
@@ -232,6 +245,7 @@ def test_idle_pdf_incoming_invoice_asks_accounting_proposal(monkeypatch, tmp_pat
 
     assert state.current_state == OfficeFlowAttachmentRouterStates.accounting_proposal.state
     assert 'bloček/prijatá faktúra' in message.answers[-1]
+    assert _keyboard_texts(message.reply_markups[-1]) == ['✅ Áno', '❌ Nie']
     assert not (tmp_path / 'workspaces').exists()
 
 
