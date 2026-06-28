@@ -1230,3 +1230,18 @@ def test_info_help_service_has_no_runtime_side_effect_imports() -> None:
     )
     for fragment in forbidden_fragments:
         assert fragment not in source
+
+
+def test_mark_existing_invoice_paid_question_renders_supported_manual_status() -> None:
+    answer = build_product_truth_guidance(user_input_text='Mozem oznacit fakturu 06 ako uhradenu?')
+    assert answer is not None
+    assert 'supported' in answer.lower() or 'podporovan' in answer.lower()
+    assert 'bank' in answer.lower()
+    assert 'google drive' in answer.lower()
+
+
+def test_mark_existing_invoice_paid_capability_classifier() -> None:
+    assert (
+        classify_info_help_capability(user_input_text='Ako mozem oznacit fakturu ako uhradenu?')
+        == 'mark_existing_invoice_paid'
+    )

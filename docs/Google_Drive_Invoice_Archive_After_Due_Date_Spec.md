@@ -156,6 +156,10 @@ Archivacia na Google Drive este nie je aktivna. Faktura ostava ulozena
 lokalne. Po zapnuti Drive integracie ju bude mozne archivovat podla pravidiel.
 ```
 
+## Manual Mark-Paid Entry Point
+
+`mark_existing_invoice_paid` reuses the same local follow-up state effect as the reminder card's "mark as paid" decision after supplier-scoped invoice lookup and explicit confirmation. It is a manual top-level entry point, not a bank integration. It may record the local archive stub after marking paid, but it must not claim that a real Google Drive upload/archive happened.
+
 ## Future Phase 2 Requirements
 
 Before real Google Drive upload can be called supported:

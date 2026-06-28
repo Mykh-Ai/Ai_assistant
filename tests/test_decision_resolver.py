@@ -35,6 +35,7 @@ YES_NO_CONTEXTS = (
     'contact_intake_confirm',
     'onboarding_confirm',
     'delete_existing_invoice_confirm',
+    'mark_existing_invoice_paid_confirm',
     'invoice_customer_alias_confirm',
     'supplier_profile_edit_confirm',
     'idle_attachment_accounting_proposal',

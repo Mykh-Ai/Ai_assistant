@@ -273,7 +273,19 @@ automation_status: automated in `tests/test_invoice_followup_service.py`,
 last_result: passed in focused and full test runs after automatic scheduler correction
 last_run_at: 2026-06-15
 
-### PT-IH-019 Invoice Analytics Runtime Pilot
+### PT-IH-019 Manual Mark Existing Invoice Paid
+
+Input: `Can I mark invoice 06 as paid?`
+
+Expected:
+- Product Truth capability: `mark_existing_invoice_paid`.
+- Status: `supported` MVP.
+- Guidance states that the user can say/type `oznac fakturu 06 ako uhradenu` and confirm with the button.
+- Guidance explicitly says this is bot-local state, not bank confirmation, bank matching, or real Google Drive upload.
+
+Last result: covered by `tests/test_product_truth.py` and `tests/test_info_help.py` in the 2026-06-22 runtime slice.
+
+## PT-IH-020 Invoice Analytics Runtime Pilot
 
 user_inputs:
 - Koľko mám neuhradených faktúr?
@@ -286,8 +298,9 @@ expected_response_behavior: Direct runtime requests route to
 `invoice_analytics`, not InfoHelp, when the user is authorized and idle. Python
 reads only the current supplier's saved outgoing invoices, builds the sanitized
 dataframe, injects the current runtime date, normalizes bot payment state from
-follow-up state plus due dates, validates generated analysis code in a
-timeout-killed child process, and answers from computed results.
+follow-up state plus due dates, treats unpaid/not-paid wording as pending plus
+overdue bot states even when reminders are muted, validates generated analysis
+code in a timeout-killed child process, and answers from computed results.
 forbidden_behavior: mutate invoice rows/statuses/PDFs/contacts/receipts or
 accounting documents; expose `pdf_path`, absolute storage paths, tenant ids, or
 raw invoice lifecycle status as payment truth; run SQL; let the LLM access

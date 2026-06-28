@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- `mark_existing_invoice_paid` top-level text/voice action for manually marking one saved outgoing invoice as paid/uhradena after supplier-scoped lookup and confirmation buttons, storing only bot-local payment state.
 - `accounting_document_analytics` top-level read-only runtime pilot for natural
   text/voice questions over confirmed receipts/bloceky and incoming
   invoices/prijate faktury, with workspace-scoped sanitized metadata dataframe
@@ -125,6 +126,7 @@
 - existing-category selection during receipt categorization now ends with create-new/back controls so users can recover when no listed category fits.
 
 ### Fixed
+- Invoice analytics now treats unpaid/not-paid outgoing invoice questions as both `pending_payment` and `overdue`, including muted reminders that are still not marked paid; the planner receives Python-owned payment-status filter hints and rejects plans that drop `overdue`.
 - Analytics action-boundary smoke coverage now guards `invoice_analytics`,
   `accounting_document_analytics`, add/show receipt routes, InfoHelp capability
   questions, and unsupported bank/DPH/tax/export wording so those requests do

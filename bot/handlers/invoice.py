@@ -20,7 +20,7 @@ from bot.handlers.accounting_documents import cmd_blocky
 from bot.handlers.contacts import start_add_contact_intake
 from bot.handlers.delete_user_database import DELETE_USER_DATABASE_INTENT, start_delete_user_database_flow
 from bot.handlers.onboarding import cmd_moj_profil, cmd_upravit_profil
-from bot.handlers.start import cmd_start
+from bot.handlers.start import cmd_menu, cmd_start
 from bot.handlers.supplier import start_add_service_alias_intake
 from bot.keyboards.decision import (
     answer_with_decision_keyboard,
@@ -68,6 +68,8 @@ from bot.services.invoice_analytics_planner import (
     InvoiceAnalyticsPlanError,
     plan_invoice_analytics_code,
 )
+from bot.services.google_drive_archive_stub import GoogleDriveArchiveStubService
+from bot.services.invoice_followup_service import InvoiceFollowupService
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoicePeriodSummary, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
@@ -108,6 +110,7 @@ _INVOICE_ANALYTICS_SAFE_RUNTIME = 'safe_analytics_runtime'
 _EDIT_INVOICE_INTENT = 'edit_invoice'
 _EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
 _DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
+_MARK_EXISTING_INVOICE_PAID_INTENT = 'mark_existing_invoice_paid'
 _SEND_INVOICE_INTENT = 'send_invoice'
 _ADD_CONTACT_INTENT = 'add_contact'
 _ADD_SERVICE_ALIAS_INTENT = 'add_service_alias'
@@ -754,7 +757,7 @@ async def _run_invoice_analytics(
             plan = await plan_invoice_analytics_code(
                 user_question=user_question,
                 current_date_iso=current_date_iso,
-                data_catalog=build_invoice_analytics_data_catalog(),
+                data_catalog=build_invoice_analytics_data_catalog(user_question=user_question),
                 api_key=config.openai_api_key,
                 model=config.openai_llm_model,
                 repair_feedback=repair_feedback,
@@ -898,6 +901,7 @@ class InvoiceStates(StatesGroup):
     waiting_edit_description_value = State()
     waiting_edit_item_numeric_value = State()
     waiting_delete_existing_invoice_confirm = State()
+    waiting_mark_existing_invoice_paid_confirm = State()
 
 
 class CustomizationRequestStates(StatesGroup):
@@ -3232,6 +3236,7 @@ async def process_invoice_text(
             _SEND_INVOICE_INTENT,
             _EDIT_EXISTING_INVOICE_INTENT,
             _DELETE_EXISTING_INVOICE_INTENT,
+            _MARK_EXISTING_INVOICE_PAID_INTENT,
             _EDIT_INVOICE_INTENT,
             _UNKNOWN_INVOICE_INTENT,
         ],
@@ -3388,6 +3393,19 @@ async def process_invoice_text(
                     'this is invoice-scoped deletion and Python keeps the existing manual confirmation gate'
                 ),
                 'not_this': ['cancel current draft preview', 'delete the whole user database/account'],
+            },
+            _MARK_EXISTING_INVOICE_PAID_INTENT: {
+                'meaning': (
+                    'user wants to mark one already saved outgoing invoice as paid/uhradena by invoice number/reference; '
+                    'Python resolves the invoice under current supplier scope and asks confirmation before writing bot-local payment state'
+                ),
+                'not_this': [
+                    'ask how many invoices are paid',
+                    'invoice analytics about paid/unpaid status',
+                    'bank payment matching',
+                    'edit invoice content',
+                    'delete an invoice',
+                ],
             },
             _EDIT_INVOICE_INTENT: {
                 'meaning': (
@@ -3569,6 +3587,42 @@ async def process_invoice_text(
             state=state,
             config=config,
             invoice_id=matched_invoice.id,
+        )
+        return
+    if top_level_intent == _MARK_EXISTING_INVOICE_PAID_INTENT:
+        if hasattr(message, 'from_user') and message.from_user is None:
+            await message.answer('Nepodarilo sa identifikovat pouzivatela.')
+            return
+        invoice_reference = _extract_invoice_reference(invoice_text)
+        if not invoice_reference:
+            await message.answer('Napiste cislo faktury, ktoru chcete oznacit ako uhradenu.')
+            return
+        invoice_matches = InvoiceService(config.db_path).find_invoices_for_supplier_by_number_reference(
+            supplier_telegram_id=message.from_user.id,
+            invoice_reference=invoice_reference,
+        )
+        if not invoice_matches:
+            await message.answer('Fakturu s tymto cislom som nenasiel.')
+            return
+        if len(invoice_matches) > 1:
+            await message.answer('Nasiel som viac faktur. Napiste viac poslednych cislic alebo cele cislo faktury.')
+            return
+        matched_invoice = invoice_matches[0]
+        await state.update_data(
+            pending_mark_paid_invoice_id=matched_invoice.id,
+            pending_mark_paid_invoice_number=matched_invoice.invoice_number,
+        )
+        await state.set_state(InvoiceStates.waiting_mark_existing_invoice_paid_confirm)
+        await answer_with_decision_keyboard(
+            message,
+            (
+                f'Chcete oznacit fakturu {matched_invoice.invoice_number} ako uhradenu?\n\n'
+                'Ulozim iba stav v bote. Nie je to bankove potvrdenie ani parovanie platby.'
+            ),
+            yes_no_keyboard(
+                yes_label='Označiť ako uhradenú',
+                no_label='Späť do hlavného menu',
+            ),
         )
         return
     if top_level_intent == _DELETE_EXISTING_INVOICE_INTENT:
@@ -4619,6 +4673,77 @@ async def invoice_pdf_decision(message: Message, state: FSMContext, config: Conf
         state=state,
         config=config,
         decision_text=(message.text or ''),
+    )
+
+
+@router.message(InvoiceStates.waiting_mark_existing_invoice_paid_confirm)
+async def invoice_mark_existing_invoice_paid_confirm(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    if canonical_decision is None:
+        answer = await resolve_yes_no(
+            context_name='mark_existing_invoice_paid_confirm',
+            user_input_text=(message.text or ''),
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+        )
+    else:
+        answer = canonical_decision if canonical_decision in {'yes', 'no', 'unknown'} else 'unknown'
+
+    if answer == 'unknown':
+        await answer_with_decision_keyboard(
+            message,
+            'Prosim, vyberte jednu moznost.',
+            yes_no_keyboard(
+                yes_label='Označiť ako uhradenú',
+                no_label='Späť do hlavného menu',
+            ),
+        )
+        return
+
+    if answer == 'no':
+        await cmd_menu(message=message, config=config, state=state)
+        return
+
+    data = await state.get_data()
+    invoice_id = data.get('pending_mark_paid_invoice_id')
+    invoice_number = str(data.get('pending_mark_paid_invoice_number') or '')
+    if not isinstance(invoice_id, int) or not invoice_number:
+        await state.clear()
+        await message.answer('Nepodarilo sa dokoncit oznacenie faktury. Spustite /invoice znova.')
+        return
+
+    if hasattr(message, 'from_user') and message.from_user is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa overit vlastnika faktury. Oznacenie bolo zastavene.')
+        return
+
+    supplier_telegram_id = message.from_user.id
+    invoice = InvoiceService(config.db_path).get_invoice_for_supplier_by_id(
+        supplier_telegram_id=supplier_telegram_id,
+        invoice_id=invoice_id,
+    )
+    if invoice is None or invoice.invoice_number != invoice_number:
+        await state.clear()
+        await message.answer('Fakturu uz neviem bezpecne najst v tomto ucte. Oznacenie bolo zastavene.')
+        return
+
+    InvoiceFollowupService(config.db_path).mark_paid(
+        invoice_id=invoice_id,
+        supplier_telegram_id=supplier_telegram_id,
+    )
+    archive_result = GoogleDriveArchiveStubService(config.db_path).request_invoice_archive_stub(
+        invoice_id=invoice_id,
+        supplier_telegram_id=supplier_telegram_id,
+    )
+    await state.clear()
+    await message.answer(
+        f'Fakturu {invoice_number} som oznacil ako uhradenu.\n\n'
+        f'{archive_result.user_message}\n\n'
+        'Je to stav ulozeny v bote, nie bankove potvrdenie platby.'
     )
 
 

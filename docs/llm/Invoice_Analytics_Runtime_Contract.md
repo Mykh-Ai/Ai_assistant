@@ -115,6 +115,15 @@ with source `derived_missing_followup_state`. This is the bot's stored/derived
 payment state, not bank-confirmed settlement; bank reconciliation is not
 implemented in this pilot.
 
+Payment-status wording is Python-owned. Questions meaning unpaid/not paid,
+including `neuhradene`, `nezaplatene`, and Ukrainian/Russian equivalents such
+as `neoplacheni`, must filter `payment_status_canonical` by both
+`pending_payment` and `overdue`. They must not be implemented as
+`pending_payment` only. Questions specifically about overdue / `po splatnosti`
+filter `overdue` only. Reminder mute/snooze state is not payment truth: a muted
+invoice with `invoice_followup_state.payment_status = unpaid` remains unpaid
+and may still be `overdue` for analytics.
+
 ## Current Date
 
 Python injects `current_date` and sends `current_date_iso` to the planner.
@@ -181,6 +190,8 @@ Allowed analysis patterns:
 - compare periods;
 - group by customer, currency, `payment_status_canonical`, month, or year;
 - count or sum invoices by `pending_payment`, `paid`, `overdue`, or `unknown`;
+- list unpaid/not-paid invoices by filtering `payment_status_canonical` with
+  `pending_payment` plus `overdue`;
 - list a bounded number of matching outgoing invoices.
 
 Write requests such as mark paid, edit, delete, send, archive, upload, or
@@ -290,4 +301,6 @@ Tests/evals must prove:
 - generated code rejects imports, SQL/DB access, file/network/system calls, and
   write-style operations;
 - Product Truth and InfoHelp report the capability as partial, not supported
-  full accounting analytics.
+  full accounting analytics;
+- unpaid/not-paid wording returns both `pending_payment` and `overdue` invoices,
+  including muted reminders that are still not marked paid.

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from bot.services.invoice_analytics_dataset import build_invoice_analytics_data_catalog
 from bot.services.invoice_analytics_planner import (
     InvoiceAnalyticsPlanError,
     parse_invoice_analytics_plan,
@@ -39,10 +40,11 @@ def test_invoice_analytics_plan_strips_common_forbidden_import_boilerplate() -> 
 
 class _PlannerOpenAICompletionsFake:
     last_kwargs: dict | None = None
+    next_content: str | None = None
 
     async def create(self, **kwargs):
         _PlannerOpenAICompletionsFake.last_kwargs = kwargs
-        content = json.dumps(
+        content = _PlannerOpenAICompletionsFake.next_content or json.dumps(
             {
                 'analysis_code': (
                     'df = invoices_df.copy()\n'
@@ -67,6 +69,7 @@ class _PlannerOpenAIFake:
 
 def test_invoice_analytics_planner_prompt_declares_python_owned_runtime_policy(monkeypatch) -> None:
     _PlannerOpenAICompletionsFake.last_kwargs = None
+    _PlannerOpenAICompletionsFake.next_content = None
     monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
 
     plan = asyncio.run(
@@ -103,11 +106,81 @@ def test_invoice_analytics_planner_prompt_declares_python_owned_runtime_policy(m
     assert 'pd.to_datetime' in system_prompt
     assert '.dt.month.isin' in system_prompt
     assert 'For totals across currencies, group by currency' in system_prompt
+    assert 'payment_status_filter_hints' in system_prompt
+    assert 'pending_payment' in system_prompt
+    assert 'overdue' in system_prompt
+    assert 'do not use only pending_payment' in system_prompt
     assert 'If repair_feedback is provided' in system_prompt
+
+
+def test_invoice_analytics_planner_obeys_unpaid_filter_hints(monkeypatch) -> None:
+    _PlannerOpenAICompletionsFake.last_kwargs = None
+    _PlannerOpenAICompletionsFake.next_content = json.dumps(
+        {
+            'analysis_code': (
+                'df = invoices_df.copy()\n'
+                'filtered = df[df["payment_status_canonical"].isin(["pending_payment", "overdue"])]\n'
+                'rows = filtered[["invoice_number", "payment_status_canonical"]].to_dict(orient="records")\n'
+                'result = {"summary": {"count": int(len(filtered))}, "tables": {"unpaid_invoices": rows}, "warnings": [], "answer_hints": []}'
+            ),
+            'answer_language': 'uk',
+            'reasoning_summary': 'zoznam neuhradenych faktur; filter pending_payment + overdue',
+        }
+    )
+    monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
+
+    plan = asyncio.run(
+        plan_invoice_analytics_code(
+            user_question='\u043f\u043e\u043a\u0430\u0436\u0438 \u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456 \u0444\u0430\u043a\u0442\u0443\u0440\u0438',
+            current_date_iso='2026-06-28',
+            data_catalog=build_invoice_analytics_data_catalog(
+                user_question='\u043f\u043e\u043a\u0430\u0436\u0438 \u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456 \u0444\u0430\u043a\u0442\u0443\u0440\u0438'
+            ),
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert 'payment_status_canonical' in plan.analysis_code
+    assert 'pending_payment' in plan.analysis_code
+    assert 'overdue' in plan.analysis_code
+    user_payload = json.loads(_PlannerOpenAICompletionsFake.last_kwargs['messages'][1]['content'])
+    assert user_payload['data_catalog']['payment_status_filter_hints'][0]['canonical_values'] == [
+        'pending_payment',
+        'overdue',
+    ]
+
+
+def test_invoice_analytics_planner_rejects_unpaid_plan_missing_overdue_hint(monkeypatch) -> None:
+    _PlannerOpenAICompletionsFake.last_kwargs = None
+    _PlannerOpenAICompletionsFake.next_content = json.dumps(
+        {
+            'analysis_code': (
+                'df = invoices_df.copy()\n'
+                'filtered = df[df["payment_status_canonical"] == "pending_payment"]\n'
+                'result = {"summary": {"count": int(len(filtered))}, "tables": {}, "warnings": [], "answer_hints": []}'
+            ),
+            'answer_language': 'sk',
+            'reasoning_summary': 'bad unpaid filter',
+        }
+    )
+    monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
+
+    with pytest.raises(InvoiceAnalyticsPlanError, match='missing_required_payment_status_filter:overdue'):
+        asyncio.run(
+            plan_invoice_analytics_code(
+                user_question='ktore faktury su neuhradene?',
+                current_date_iso='2026-06-28',
+                data_catalog=build_invoice_analytics_data_catalog(user_question='ktore faktury su neuhradene?'),
+                api_key='sk-test',
+                model='gpt-4o',
+            )
+        )
 
 
 def test_invoice_analytics_planner_passes_repair_feedback_to_model(monkeypatch) -> None:
     _PlannerOpenAICompletionsFake.last_kwargs = None
+    _PlannerOpenAICompletionsFake.next_content = None
     monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
 
     asyncio.run(

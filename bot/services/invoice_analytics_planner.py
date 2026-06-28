@@ -40,6 +40,8 @@ _PLANNER_WORKFLOW_GUIDANCE = (
     '6) identify only the required invoices_df columns from the data catalog; '
     '7) write sandbox-safe pandas code; '
     '8) self-check that the code answers the normalized question and that result contains the facts needed for the final Slovak business answer. '
+    'If data_catalog.payment_status_filter_hints is non-empty, generated code must filter payment_status_canonical with exactly those hinted canonical_values. '
+    'For unpaid/not paid/neuhradene/nezaplatene/neoplatene wording, unpaid means both pending_payment and overdue; never filter only pending_payment. '
     'If the period or required filter is genuinely ambiguous, do not invent it; return result warnings/answer_hints asking for clarification. '
     'Put a short Slovak normalized plan in reasoning_summary, including analysis_kind, period, date_column, filters, and output facts.'
 )
@@ -103,6 +105,26 @@ def parse_invoice_analytics_plan(raw_model_output: str) -> InvoiceAnalyticsPlan:
     )
 
 
+def _validate_payment_status_filter_contract(plan: InvoiceAnalyticsPlan, data_catalog: dict[str, Any]) -> None:
+    hints = data_catalog.get('payment_status_filter_hints') if isinstance(data_catalog, dict) else None
+    if not isinstance(hints, list) or not hints:
+        return
+    expected_values: set[str] = set()
+    for item in hints:
+        if not isinstance(item, dict):
+            continue
+        values = item.get('canonical_values')
+        if isinstance(values, list):
+            expected_values.update(str(value).strip() for value in values if str(value).strip())
+    if not expected_values:
+        return
+    if 'payment_status_canonical' not in plan.analysis_code:
+        raise InvoiceAnalyticsPlanError('missing_required_payment_status_filter_column')
+    missing = sorted(value for value in expected_values if value not in plan.analysis_code)
+    if missing:
+        raise InvoiceAnalyticsPlanError('missing_required_payment_status_filter:' + ','.join(missing))
+
+
 def _normalize_planned_analysis_code(code: str) -> str:
     normalized_lines: list[str] = []
     for line in code.splitlines():
@@ -154,6 +176,7 @@ async def plan_invoice_analytics_code(
                     + _SANDBOX_CODE_GUIDANCE
                     + ' '
                     'Use payment_status_canonical for paid, pending payment, and overdue questions; do not treat invoice_status_raw as bank-confirmed payment truth. '
+                    'Obey data_catalog.payment_status_filter_hints when present. For unpaid/not paid/neuhradene/nezaplatene/neoplatene questions, use payment_status_canonical.isin(["pending_payment", "overdue"]); do not use only pending_payment. '
                     'If repair_feedback is provided, fix the previous failure and return a complete replacement analysis_code. '
                     'If the question asks to edit, delete, send, mark paid, or otherwise mutate invoices, return a result that refuses the write request in warnings and answer_hints; do not perform a mutation.'
                 ),
@@ -182,4 +205,6 @@ async def plan_invoice_analytics_code(
         ],
     )
     raw = response.choices[0].message.content or '{}'
-    return parse_invoice_analytics_plan(raw)
+    plan = parse_invoice_analytics_plan(raw)
+    _validate_payment_status_filter_contract(plan, data_catalog)
+    return plan

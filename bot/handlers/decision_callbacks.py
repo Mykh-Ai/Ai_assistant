@@ -16,6 +16,7 @@ from bot.handlers.invoice import (
     InvoiceStates,
     customization_request_preview_decision,
     invoice_delete_existing_invoice_confirm,
+    invoice_mark_existing_invoice_paid_confirm,
     process_invoice_customer_alias_confirm,
     process_invoice_preview_confirmation,
 )
@@ -168,6 +169,18 @@ async def _dispatch_decision_token(
         DECISION_NO,
     }:
         await invoice_delete_existing_invoice_confirm(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision=token,
+        )
+        return True
+
+    if current_state == InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state and token in {
+        DECISION_YES,
+        DECISION_NO,
+    }:
+        await invoice_mark_existing_invoice_paid_confirm(
             message=message,
             state=state,
             config=config,

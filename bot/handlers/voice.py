@@ -28,6 +28,7 @@ from bot.handlers.invoice import (
     InvoiceStates,
     customization_request_preview_decision,
     invoice_delete_existing_invoice_confirm,
+    invoice_mark_existing_invoice_paid_confirm,
     invoice_edit_invoice_action,
     invoice_edit_invoice_date_value,
     invoice_edit_item_action,
@@ -216,6 +217,12 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             )
         elif current_state == InvoiceStates.waiting_delete_existing_invoice_confirm.state:
             await invoice_delete_existing_invoice_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state:
+            await invoice_mark_existing_invoice_paid_confirm(
                 message=text_message,
                 state=state,
                 config=config,

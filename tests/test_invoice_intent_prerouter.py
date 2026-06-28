@@ -3436,3 +3436,62 @@ def test_smoke_infohelp_distinguishes_analytics_capability_questions(
     from bot.services.info_help import classify_info_help_capability
 
     assert classify_info_help_capability(user_input_text=user_input) == expected_capability
+
+def test_top_level_resolver_routes_mark_existing_invoice_paid_before_analytics() -> None:
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'invoice_analytics', 'mark_existing_invoice_paid', 'unknown'],
+            user_input_text='Oznac fakturu 06 ako uhradenu',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'mark_existing_invoice_paid'
+
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'invoice_analytics', 'mark_existing_invoice_paid', 'unknown'],
+            user_input_text='Kolko mam uhradenych faktur?',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'invoice_analytics'
+
+
+def test_process_invoice_text_mark_existing_invoice_paid_enters_confirmation(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    invoice_id = InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        invoice_number='20260006',
+        issue_date='2026-06-01',
+        delivery_date='2026-06-01',
+        due_date='2026-06-15',
+        due_days=14,
+        total_amount=100.0,
+        currency='EUR',
+        status='saved',
+        contact_id=1,
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='servis',
+                description_normalized='Servis',
+                item_description_raw=None,
+                quantity=1.0,
+                unit='ks',
+                unit_price=100.0,
+                total_price=100.0,
+            )
+        ],
+    )
+    assert invoice_id > 0
+    message = _authorized_message('Oznac fakturu 06 ako uhradenu', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == InvoiceStates.waiting_mark_existing_invoice_paid_confirm
+    assert state.data['pending_mark_paid_invoice_id'] == invoice_id
+    assert state.data['pending_mark_paid_invoice_number'] == '20260006'
+    assert any('bankove potvrdenie' in answer.lower() for answer in message.answers)

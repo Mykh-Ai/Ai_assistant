@@ -6,6 +6,8 @@ from bot.services.db import init_db, managed_connection
 from bot.services.invoice_analytics_dataset import (
     INVOICE_ANALYTICS_COLUMNS,
     InvoiceAnalyticsDatasetService,
+    build_invoice_analytics_data_catalog,
+    resolve_payment_status_filter_hints,
 )
 from bot.services.invoice_followup_service import InvoiceFollowupService
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
@@ -57,6 +59,7 @@ def _insert_followup_state(
     invoice_id: int,
     supplier_telegram_id: int,
     payment_status: str,
+    reminder_status: str = 'active',
 ) -> None:
     with managed_connection(db_path) as connection:
         connection.execute(
@@ -66,7 +69,7 @@ def _insert_followup_state(
                 'drive_archive_status, created_at, updated_at) '
                 'VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
             ),
-            (invoice_id, supplier_telegram_id, payment_status, 'active', 'stub_not_uploaded'),
+            (invoice_id, supplier_telegram_id, payment_status, reminder_status, 'stub_not_uploaded'),
         )
         connection.commit()
 
@@ -175,6 +178,16 @@ def test_invoice_analytics_dataset_normalizes_payment_statuses(tmp_path: Path) -
         total_amount=400,
         status='created',
     )
+    muted_unpaid_id = _seed_invoice(
+        db_path,
+        supplier_telegram_id=111,
+        contact_id=404,
+        invoice_number='20260014',
+        issue_date='2026-05-25',
+        due_date='2026-06-16',
+        total_amount=3840,
+        status='pripravena',
+    )
     other_supplier_id = _seed_invoice(
         db_path,
         supplier_telegram_id=222,
@@ -205,6 +218,13 @@ def test_invoice_analytics_dataset_normalizes_payment_statuses(tmp_path: Path) -
     )
     _insert_followup_state(
         db_path,
+        invoice_id=muted_unpaid_id,
+        supplier_telegram_id=111,
+        payment_status='unpaid',
+        reminder_status='muted',
+    )
+    _insert_followup_state(
+        db_path,
         invoice_id=other_supplier_id,
         supplier_telegram_id=222,
         payment_status='paid',
@@ -223,6 +243,8 @@ def test_invoice_analytics_dataset_normalizes_payment_statuses(tmp_path: Path) -
     assert by_number['20260012']['payment_status_source'] == 'derived_missing_followup_state'
     assert by_number['20260013']['payment_status_canonical'] == 'unknown'
     assert by_number['20260013']['payment_status_source'] == 'missing_payment_status'
+    assert by_number['20260014']['payment_status_canonical'] == 'overdue'
+    assert by_number['20260014']['payment_status_source'] == 'invoice_followup_state'
     assert by_number['20260011']['invoice_status_raw'] == 'archived_raw_lifecycle_value'
     assert '20260099' not in by_number
 
@@ -303,3 +325,31 @@ def test_invoice_analytics_dataset_missing_contact_and_missing_db_are_safe(tmp_p
     )
     assert list(missing.columns) == list(INVOICE_ANALYTICS_COLUMNS)
     assert missing.empty
+
+def test_invoice_analytics_payment_status_filter_hints_define_unpaid_as_pending_plus_overdue() -> None:
+    hints = resolve_payment_status_filter_hints('\u043f\u043e\u043a\u0430\u0436\u0438 \u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456 \u0444\u0430\u043a\u0442\u0443\u0440\u0438')
+
+    assert hints == [
+        {
+            'filter_group': 'unpaid',
+            'canonical_values': ['pending_payment', 'overdue'],
+            'matched_alias': '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
+        }
+    ]
+
+    catalog = build_invoice_analytics_data_catalog(user_question='ktore faktury su neuhradene?')
+    assert catalog['payment_status_filter_hints'][0]['filter_group'] == 'unpaid'
+    assert catalog['payment_status_filter_hints'][0]['canonical_values'] == ['pending_payment', 'overdue']
+    assert 'pending_payment only' in catalog['payment_status_filter_contract']
+
+
+def test_invoice_analytics_payment_status_filter_hints_keep_overdue_specific() -> None:
+    hints = resolve_payment_status_filter_hints('ktore faktury su po splatnosti?')
+
+    assert hints == [
+        {
+            'filter_group': 'overdue',
+            'canonical_values': ['overdue'],
+            'matched_alias': 'po splatnosti',
+        }
+    ]

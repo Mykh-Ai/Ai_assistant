@@ -1,3 +1,59 @@
+## 2026-06-28 - Session 161 - Invoice analytics unpaid filter semantics
+
+### Goal
+Fix the analytics-layer gap where a muted but still unpaid overdue outgoing invoice could disappear from user questions asking for unpaid/not-paid invoices.
+
+### Preflight
+- Docs/contracts read: AGENTS.md, Invoice Analytics Runtime Contract, Product Truth/InfoHelp references, eval smoke artifact, and prior follow-up/reminder specs from the current session.
+- Touched scopes: read-only invoice analytics dataset catalog, planner prompt/validation, existing analytics handler catalog call, Product Truth/InfoHelp wording, eval/docs, tests, changelog.
+- Current status: `partial` invoice analytics runtime, corrected semantic filter contract; no DB schema, storage, server, reminder callback, or paid-state write behavior changed.
+- AI maturity: unchanged bounded analytics layer; Python owns status semantics and validates planner output.
+- Out of scope: marking invoices paid, migrations, server deploy, bank reconciliation, real payment confirmation, and Google Drive upload.
+
+### Changes
+- Added Python-owned payment-status filter groups and multilingual filter hints to `build_invoice_analytics_data_catalog(user_question=...)`.
+- Defined unpaid/not-paid/neuhradene/nezaplatene/neoplatene semantics as `payment_status_canonical` in `pending_payment` plus `overdue`; `overdue` wording remains overdue-only.
+- Tightened the invoice analytics planner prompt and added validation that rejects hinted payment-status plans missing required canonical values, especially `overdue` for unpaid questions.
+- Passed the user question into the invoice analytics data catalog from `_run_invoice_analytics(...)`.
+- Documented that muted/snoozed reminders are not payment truth and updated Product Truth, InfoHelp, eval smoke, and changelog.
+
+### Verification
+- `python -m pytest -q tests/test_invoice_analytics_dataset.py tests/test_invoice_analytics_planner.py tests/test_safe_python_analytics_executor.py tests/test_product_truth.py tests/test_info_help.py` - 173 passed.
+- `python -m pytest -q` - 1874 passed, 7 subtests passed.
+- `git diff --check` - passed.
+
+### Notes
+- Live/server inspection before this patch showed invoice `20260006` had `payment_status=unpaid`, `reminder_status=muted`, and an overdue due date; the stored state was correct. The bug was the analytics filter semantics, not the reminder callback.
+
+## 2026-06-22 - Session 160 - Manual mark existing invoice paid MVP
+
+### Goal
+Implement the MVP top-level action for marking one saved outgoing invoice as paid/uhradena after explicit confirmation.
+
+### Preflight
+- Docs/contracts read: AGENTS.md, Product Doctrine, AI Layer standards, Product Truth, InfoHelp, Evaluation/UX standards, LLM orchestrator contract, canonical/in-action registries, New Action checklist, bounded resolver template, DecisionResolver contract, TZ, Drive archive stub spec, and PROJECT_LOG.md.
+- Touched scopes: routing, confirmation, voice/STT routing, FSM, existing DB write service, Product Truth, InfoHelp, docs, tests.
+- Current status: supported MVP for manual bot-local paid state; no bank matching, no bank confirmation, no real Google Drive upload.
+- AI maturity: bounded top-level action canonicalization plus Product Truth-backed guidance; deterministic Python owns all side effects.
+- Out of scope: DB schema changes, PDF layout/content edits, invoice deletion/editing, bank integrations, server/deploy, migrations, external services.
+
+### Changes
+- Added canonical `mark_existing_invoice_paid` top-level action with supplier-scoped invoice lookup and `mark_existing_invoice_paid_confirm` DecisionResolver confirmation.
+- Added confirmation buttons: `Ozna?i? ako uhraden?` and `Sp?? do hlavn?ho menu`.
+- Routed text, voice, and decision callbacks to the same handler.
+- Persisted only `invoice_followup_state.payment_status=paid` through `InvoiceFollowupService.mark_paid()` and recorded the existing local Drive archive stub.
+- Updated Product Truth, InfoHelp, canonical/in-action docs, TZ, Drive stub spec, eval smoke, changelog, and tests.
+
+### Verification
+- `python -m compileall -q bot tests` - passed.
+- Focused new mark-paid tests - 9 passed.
+- `python -m pytest -q tests/test_invoice_intent_prerouter.py tests/test_invoice_state_decisions.py tests/test_decision_callbacks.py tests/test_decision_resolver.py tests/test_voice_state_routing.py tests/test_product_truth.py tests/test_info_help.py` - 1060 passed.
+- `python -m pytest -q` - 1869 passed, 7 subtests passed.
+
+### Notes
+- No DB schema, storage layout, PDF path, or invoice content changes.
+- No real Google Drive, bank matching, or bank-confirmed payment claim was added.
+
 ## 2026-06-21 - Session 159 - Accounting document analytics category contract hardening
 
 ### Goal

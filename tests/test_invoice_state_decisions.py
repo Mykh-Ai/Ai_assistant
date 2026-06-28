@@ -22,6 +22,7 @@ from bot.handlers.invoice import (
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
     invoice_delete_existing_invoice_confirm,
+    invoice_mark_existing_invoice_paid_confirm,
     process_invoice_text,
     start_invoice_edit_flow,
 )
@@ -3044,3 +3045,87 @@ def test_preview_failure_db_cleanup_happens_even_when_unlink_fails(tmp_path: Pat
 
     assert state.cleared is True
     assert service.get_invoice_by_number('20260001') is None
+
+
+def test_mark_existing_invoice_paid_confirmation_marks_followup_state(tmp_path: Path) -> None:
+    telegram_id = 1
+    db_path = tmp_path / 'mark-paid.db'
+    init_db(db_path)
+    invoice_id = _create_invoice_with_pdf(db_path, tmp_path / 'invoice.pdf', supplier_telegram_id=telegram_id)
+    invoice_number = InvoiceService(db_path).get_invoice_for_supplier_by_id(
+        supplier_telegram_id=telegram_id,
+        invoice_id=invoice_id,
+    ).invoice_number
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    state = _DummyState(
+        {
+            'pending_mark_paid_invoice_id': invoice_id,
+            'pending_mark_paid_invoice_number': invoice_number,
+        }
+    )
+    message = _DummyMessage(telegram_id, 'ano')
+
+    asyncio.run(
+        invoice_mark_existing_invoice_paid_confirm(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision='yes',
+        )
+    )
+
+    with managed_connection(db_path) as connection:
+        row = connection.execute(
+            'SELECT payment_status, reminder_status, paid_at, drive_archive_status '
+            'FROM invoice_followup_state WHERE invoice_id = ?',
+            (invoice_id,),
+        ).fetchone()
+    assert row is not None
+    assert row[0] == 'paid'
+    assert row[1] == 'muted'
+    assert row[2]
+    assert row[3] == 'stub_requested_after_paid'
+    assert state.cleared is True
+    assert any('oznacil ako uhradenu' in answer.lower() for answer in message.answers)
+    assert any('nie bankove potvrdenie' in answer.lower() for answer in message.answers)
+
+
+def test_mark_existing_invoice_paid_confirmation_no_returns_to_menu(tmp_path: Path) -> None:
+    telegram_id = 1
+    db_path = tmp_path / 'mark-paid-no.db'
+    init_db(db_path)
+    invoice_id = _create_invoice_with_pdf(db_path, tmp_path / 'invoice.pdf', supplier_telegram_id=telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    state = _DummyState({'pending_mark_paid_invoice_id': invoice_id, 'pending_mark_paid_invoice_number': '20260001'})
+    message = _DummyMessage(telegram_id, 'nie')
+
+    asyncio.run(
+        invoice_mark_existing_invoice_paid_confirm(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision='no',
+        )
+    )
+
+    with managed_connection(db_path) as connection:
+        row = connection.execute('SELECT * FROM invoice_followup_state WHERE invoice_id = ?', (invoice_id,)).fetchone()
+    assert row is None
+    assert state.cleared is True
+    assert any('/invoice' in answer for answer in message.answers)

@@ -50,6 +50,16 @@ file is uploaded, and no local PDF is deleted.
 
 ---
 
+## 2026-06-22 Addendum: manual mark-paid action for saved outgoing invoices
+
+Approved users may mark one already saved outgoing invoice as paid/uhradena through canonical top-level action `mark_existing_invoice_paid`. Natural text or voice such as `Oznac fakturu 06 ako uhradenu` resolves only to a bounded intent; Python still performs supplier-scoped invoice lookup, handles ambiguity, shows a confirmation step, and writes state only after the user confirms.
+
+The action writes bot-local payment/follow-up state through `invoice_followup_state` and `InvoiceFollowupService.mark_paid()`. It does not edit invoice content, change invoice PDF paths, delete PDFs, confirm bank settlement, perform bank matching, or upload/archive the invoice to real Google Drive. The existing local Google Drive archive stub may be recorded after paid marking and must continue to state that no Drive upload happened.
+
+Voice may start the action and may answer the bounded confirmation. Confirmation uses shared `yes_no` DecisionResolver context `mark_existing_invoice_paid_confirm`, with buttons `Označiť ako uhradenú` and `Späť do hlavného menu`.
+
+---
+
 ## 2026-06-16 Addendum: invoice analytics runtime pilot
 
 Approved users may ask broader read-only analytics questions over their saved

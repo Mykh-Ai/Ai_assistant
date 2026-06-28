@@ -1330,3 +1330,30 @@ def test_voice_idle_accounting_document_analytics_reaches_top_level_router(monke
     asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
 
     assert calls == [('Koľko som minul v BAUHAUS?', 'voice')]
+
+def test_voice_mark_existing_invoice_paid_confirmation_routes_to_mark_paid_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ano'
+
+    async def _mark_paid(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    async def _generic(**kwargs) -> None:
+        raise AssertionError('generic invoice routing should not run for mark-paid confirmation state')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.invoice_mark_existing_invoice_paid_confirm', _mark_paid)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _generic)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state),
+        )
+    )
+
+    assert calls == ['ano']

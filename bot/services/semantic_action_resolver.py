@@ -193,6 +193,52 @@ def _matches_top_level_delete_invoice(tokens: set[str]) -> bool:
     return bool(tokens.intersection(delete_verbs)) and bool(tokens.intersection(invoice_targets))
 
 
+def _matches_top_level_mark_invoice_paid(tokens: set[str]) -> bool:
+    mark_verbs = {
+        'oznac',
+        'oznacit',
+        'pozna?',
+        'poznac',
+        'pozna?it',
+        'poznacit',
+        'mark',
+        'set',
+        '\u043f\u043e\u0437\u043d\u0430\u0447',
+        '\u043f\u043e\u0437\u043d\u0430\u0447\u0438\u0442\u0438',
+        '\u043e\u0442\u043c\u0435\u0442\u044c',
+        '\u043e\u0442\u043c\u0435\u0442\u0438\u0442\u044c',
+    }
+    invoice_targets = {
+        'fakturu',
+        'faktura',
+        'faktury',
+        'invoice',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0443',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u0430',
+        '\u0444\u0430\u043a\u0442\u0443\u0440\u044b',
+    }
+    paid_terms = {
+        'uhradena',
+        'uhradenu',
+        'uhradene',
+        'uhradenych',
+        'zaplatena',
+        'zaplatenu',
+        'zaplatene',
+        'paid',
+        '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0430',
+        '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0443',
+        '\u0443\u0445\u0432\u0430\u043b\u0435\u043d\u0430',
+        '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u043d\u043e\u0439',
+        '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u043d\u0443\u044e',
+    }
+    return (
+        bool(tokens.intersection(mark_verbs))
+        and bool(tokens.intersection(invoice_targets))
+        and bool(tokens.intersection(paid_terms))
+    )
+
+
 def _matches_top_level_show_invoice(tokens: set[str]) -> bool:
     show_verbs = {
         'ukaz',
@@ -692,6 +738,12 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         has_existing_invoice_reference = _has_existing_invoice_number_reference(normalized_text)
         if (
             has_existing_invoice_reference
+            and 'mark_existing_invoice_paid' in allowed
+            and _matches_top_level_mark_invoice_paid(tokens)
+        ):
+            return 'mark_existing_invoice_paid'
+        if (
+            has_existing_invoice_reference
             and 'edit_existing_invoice' in allowed
             and _matches_top_level_edit_existing_invoice(tokens)
         ):
@@ -720,6 +772,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'accounting_document_analytics'
         if 'invoice_analytics' in allowed and _matches_invoice_analytics_request(text, tokens):
             return 'invoice_analytics'
+        if 'mark_existing_invoice_paid' in allowed and _matches_top_level_mark_invoice_paid(tokens):
+            return 'mark_existing_invoice_paid'
         if 'edit_existing_invoice' in allowed and _matches_top_level_edit_existing_invoice(tokens):
             return 'edit_existing_invoice'
         if 'delete_existing_invoice' in allowed and _matches_top_level_delete_invoice(tokens):
@@ -1247,6 +1301,7 @@ async def resolve_semantic_action(
         'delete_user_database',
         'edit_existing_invoice',
         'delete_existing_invoice',
+        'mark_existing_invoice_paid',
     }:
         return local_priority
 

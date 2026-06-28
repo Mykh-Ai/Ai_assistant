@@ -710,3 +710,26 @@ def test_contact_save_and_cancel_buttons(tmp_path: Path) -> None:
     assert manual_state.cleared is True
     assert ContactService(config.db_path).get_by_name(AUTHORIZED_ID, 'Manual ZS s.r.o.') is None
     assert '/contact' in cancel_message.answers[-1]
+
+
+def test_button_yes_on_mark_existing_invoice_paid_routes_to_same_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _mark_paid(**kwargs) -> None:
+        calls.append(kwargs['canonical_decision'])
+
+    monkeypatch.setattr('bot.handlers.decision_callbacks.invoice_mark_existing_invoice_paid_confirm', _mark_paid)
+    state = _DummyState(current_state=InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state)
+
+    handled = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_YES,
+            current_state=InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state,
+            message=_DummyMessage(),
+            state=state,
+            config=_config(tmp_path),
+        )
+    )
+
+    assert handled is True
+    assert calls == [DECISION_YES]

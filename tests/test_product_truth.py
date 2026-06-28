@@ -12,6 +12,7 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'show_existing_invoice',
     'edit_existing_invoice',
     'delete_existing_invoice',
+    'mark_existing_invoice_paid',
     'invoice_due_date_reminders',
     'invoice_pdf_generation',
     'invoice_pdf_custom_template',
@@ -398,3 +399,12 @@ def test_product_truth_module_has_no_runtime_side_effect_imports() -> None:
     assert not any(module == 'bot.services.speech_to_text' for module in imported_modules)
     assert not any(module == 'bot.services.officeflow_attachment_lmm' for module in imported_modules)
     assert not any(module == 'bot.services.accounting_document_lmm' for module in imported_modules)
+
+
+def test_mark_existing_invoice_paid_record_is_supported_confirmation_gated_runtime() -> None:
+    entry = _registry_by_id()['mark_existing_invoice_paid']
+    assert entry.status.value == 'supported'
+    assert entry.canonical_actions == ('mark_existing_invoice_paid',)
+    assert 'InvoiceFollowupService.mark_paid' in entry.runtime_owner
+    assert any('bot-local payment state' in limitation for limitation in entry.current_limitations)
+    assert any('bank payment' in claim.lower() or 'bank data' in claim.lower() for claim in entry.forbidden_claims)

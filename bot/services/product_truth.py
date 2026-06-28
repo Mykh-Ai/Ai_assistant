@@ -96,7 +96,7 @@ class ProductTruthResult:
         }
 
 
-_LAST_VERIFIED_AT = '2026-06-21'
+_LAST_VERIFIED_AT = '2026-06-22'
 
 
 def _capability(
@@ -233,6 +233,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'Pilot scope is outgoing invoices only, current supplier only, and read-only.',
             'It can answer bounded analytical questions such as counts, sums, lists, period comparisons, grouping by customer, normalized bot payment status, or currency, and simple averages.',
             'Payment status means the bot stored/derived state from invoice follow-up data and due date, not bank-confirmed settlement.',
+            'Unpaid/not-paid invoice questions include both pending_payment and overdue bot states; muted reminders are still unpaid until marked paid.',
             'Final user-facing business answers are Slovak by default; planner answer_language metadata must not override that policy.',
             'It does not analyze receipts, incoming invoices, bank movements, tax advice, or arbitrary accounting conclusions.',
             'It must not change invoice status, edit/delete/send invoices, generate PDFs, browse files, execute SQL, or read cross-tenant data.',
@@ -321,6 +322,46 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         safe_next_steps=('Ask for a specific invoice reference and continue through the bounded existing-invoice edit FSM.',),
         requires_setup=True,
         setup_state_keys=('authorized_user', 'supplier_profile'),
+    ),
+    _capability(
+        capability_id='mark_existing_invoice_paid',
+        title='Mark existing invoice as paid',
+        domain='invoices',
+        status=ProductTruthStatus.SUPPORTED,
+        summary_for_user='Marks one already saved outgoing invoice as paid/uhradena after supplier-scoped lookup and explicit confirmation.',
+        current_limitations=(
+            'This stores bot-local payment state only; it is not bank-confirmed settlement and does not match bank movements.',
+            'The user must provide a concrete invoice reference and confirm the action before any state is written.',
+            'The action may record only the existing local Google Drive archive stub; it does not upload a PDF to real Google Drive.',
+        ),
+        runtime_owner='bot/handlers/invoice.py::process_invoice_text and bot/services/invoice_followup_service.py::InvoiceFollowupService.mark_paid',
+        canonical_actions=('mark_existing_invoice_paid',),
+        linked_handlers=('bot/handlers/invoice.py', 'bot/services/invoice_followup_service.py', 'bot/services/google_drive_archive_stub.py'),
+        truth_source_refs=(
+            'docs/llm/Canonical_Action_Registry.md',
+            'docs/llm/In_Action_Response_Registry.md',
+            'docs/FakturaBot_LLM_Orchestrator_Contract.md',
+            'docs/TZ_FakturaBot.md',
+            'PROJECT_LOG.md',
+        ),
+        test_refs=(
+            'tests/test_invoice_intent_prerouter.py',
+            'tests/test_invoice_state_decisions.py',
+            'tests/test_decision_callbacks.py',
+            'tests/test_voice_state_routing.py',
+            'tests/test_product_truth.py',
+            'tests/test_info_help.py',
+        ),
+        safe_next_steps=('Say or type: oznac fakturu 04 ako uhradenu, then confirm with the provided button.',),
+        requires_setup=True,
+        setup_state_keys=('authorized_user', 'supplier_profile'),
+        forbidden_claims=(
+            'I confirmed the bank payment.',
+            'I matched the invoice with bank data.',
+            'I uploaded the invoice to Google Drive.',
+            'I marked the invoice as paid without confirmation.',
+        ),
+        notes_for_agents='Supported MVP is manual confirmation-gated bot-local payment state only. Do not claim bank matching or real Drive archive.',
     ),
     _capability(
         capability_id='delete_existing_invoice',

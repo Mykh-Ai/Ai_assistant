@@ -124,6 +124,18 @@ def test_payment_status_count_uses_normalized_canonical_column() -> None:
     assert result['summary']['payment_status_counts'] == {'overdue': 1, 'paid': 1, 'pending_payment': 1}
 
 
+def test_unpaid_filter_includes_pending_payment_and_overdue() -> None:
+    result = _execute(
+        'df = invoices_df.copy()\n'
+        'unpaid = df[df["payment_status_canonical"].isin(["pending_payment", "overdue"])]\n'
+        'rows = unpaid[["invoice_number", "payment_status_canonical"]].to_dict(orient="records")\n'
+        'result = {"summary": {"count": int(len(unpaid))}, "tables": {"unpaid_invoices": rows}, "warnings": [], "answer_hints": []}'
+    )
+
+    assert result['summary']['count'] == 2
+    assert [row['invoice_number'] for row in result['tables']['unpaid_invoices']] == ['20260001', '20260002']
+
+
 @pytest.mark.parametrize(
     'code',
     [

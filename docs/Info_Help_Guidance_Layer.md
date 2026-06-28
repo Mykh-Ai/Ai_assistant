@@ -256,6 +256,18 @@ InfoHelp must not:
   debug logs;
 - let the LLM invent actions, product status, or setup state.
 
+### Mark Invoice Paid
+
+User: "Can I mark invoice 06 as paid?"
+
+Expected guidance:
+
+- classify as `mark_existing_invoice_paid`;
+- answer from Product Truth as `supported` MVP;
+- explain that it stores bot-local paid/uhradena state only;
+- explicitly avoid claiming bank confirmation, bank matching, or real Google Drive upload;
+- suggest: "oznac fakturu 06 ako uhradenu" and confirm with the provided button.
+
 ## InfoHelp Answer Obligation For Implemented Capabilities
 
 Every user-facing capability that exists in runtime must be explainable through

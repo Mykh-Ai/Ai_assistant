@@ -15,6 +15,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'invoice_analytics',
     'accounting_document_analytics',
     'invoice_due_date_reminders',
+    'mark_existing_invoice_paid',
     'accounting_document_categories',
     'receipt_analytics',
     'edit_existing_invoice',
@@ -75,7 +76,7 @@ _SLOVAK_CAPABILITY_COPY = {
     'invoice_analytics': {
         'title': 'Analytika vystavených faktúr',
         'summary': 'Analytika vystavených faktúr je podporovaná čiastočne ako read-only pilot nad uloženými odoslanými faktúrami.',
-        'limitation': 'Pilot pracuje iba s odoslanými faktúrami aktuálneho dodávateľa. Používa normalizovaný stav úhrady v bota, nie surový lifecycle status faktúry. Nepočíta bločky, prijaté faktúry, bankové pohyby, dane ani všeobecné účtovné závery a nič nemení v databáze.',
+        'limitation': 'Pilot pracuje iba s odoslanými faktúrami aktuálneho dodávateľa. Používa normalizovaný stav úhrady v bota, nie surový lifecycle status faktúry. Neuhradené faktúry znamenajú čakajúce aj po splatnosti; stíšená pripomienka ešte nie je úhrada. Nepočíta bločky, prijaté faktúry, bankové pohyby, dane ani všeobecné účtovné závery a nič nemení v databáze.',
         'safe_next': 'Môžete sa opýtať napríklad na faktúry za máj, porovnanie dvoch období, neuhradené/zaplatené faktúry alebo top odberateľov podľa sumy faktúr.',
     },
     'accounting_document_analytics': {
@@ -198,6 +199,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'limitation': 'Číslo faktúry a presné upravované hodnoty sú citlivé na presnosť a patria do textu.',
         'safe_next': 'Napíšte, ktorú faktúru chcete upraviť, a pokračujte cez existujúci edit flow.',
     },
+    'mark_existing_invoice_paid': {
+        'title': 'Označenie faktúry ako uhradenej',
+        'summary': 'Jednu uloženú vystavenú faktúru možno po vyhľadaní označiť ako uhradenú.',
+        'limitation': 'Je to len stav uložený v bote. Nie je to bankové potvrdenie, párovanie platby ani reálny Google Drive upload.',
+        'safe_next': 'Napíšte alebo povedzte napríklad: „označ faktúru 04 ako uhradenú“ a potvrďte tlačidlom.',
+    },
     'delete_existing_invoice': {
         'title': 'Vymazanie jednej faktúry',
         'summary': 'Jednu uloženú faktúru možno vymazať len po vyhľadaní a explicitnom potvrdení.',
@@ -236,6 +243,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'invoice_analytics': 'analytika vystavených faktúr',
     'accounting_document_analytics': 'analytika bločkov a prijatých faktúr',
     'invoice_due_date_reminders': 'pripomienky faktúr po splatnosti',
+    'mark_existing_invoice_paid': 'označenie faktúry ako uhradenej',
     'accounting_document_categories': 'kategórie bločkov a prijatých faktúr',
     'receipt_analytics': 'analytika bločkov',
     'edit_existing_invoice': 'úprava existujúcej faktúry',
@@ -699,6 +707,8 @@ def classify_info_help_capability(
         return 'delete_user_database'
     if _mentions_invoice_period_summary_capability(normalized, tokens) or _mentions_invoice_analytics_capability(normalized, tokens):
         return 'invoice_analytics'
+    if _mentions_mark_existing_invoice_paid(normalized, tokens):
+        return 'mark_existing_invoice_paid'
     if _mentions_delete_existing_invoice_how_to(normalized, tokens):
         return 'delete_existing_invoice'
     if _mentions_edit_existing_invoice_how_to(normalized, tokens):
@@ -1231,6 +1241,14 @@ def _mentions_edit_existing_invoice_how_to(normalized: str, tokens: set[str]) ->
     mentions_invoice = bool(tokens.intersection({'fakturu', 'faktura', 'invoice'}))
     mentions_edit = bool(tokens.intersection({'upravim', 'upravit', 'edit', 'zmenim', 'zmenit'}))
     return mentions_invoice and mentions_edit and bool(tokens.intersection({'ako', 'mozem', 'da'}))
+
+
+def _mentions_mark_existing_invoice_paid(normalized: str, tokens: set[str]) -> bool:
+    mentions_invoice = bool(tokens.intersection({'fakturu', 'faktura', 'faktury', 'invoice'}))
+    mentions_mark = bool(tokens.intersection({'oznac', 'oznacit', 'poznac', 'poznacit', 'mark'}))
+    mentions_paid = bool(tokens.intersection({'uhradenu', 'uhradena', 'uhradene', 'zaplatenu', 'zaplatena', 'paid'}))
+    help_like = bool(tokens.intersection({'ako', 'mozem', 'da', 'vies', 'viete'})) or '?' in normalized
+    return mentions_invoice and mentions_mark and mentions_paid and help_like
 
 
 def _mentions_delete_existing_invoice_how_to(normalized: str, tokens: set[str]) -> bool:

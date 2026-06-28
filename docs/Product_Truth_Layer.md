@@ -564,8 +564,10 @@ current code before runtime claims:
 - invoice analytics over saved outgoing invoices: partial read-only pilot over
   the current supplier's persisted outgoing invoice rows only, with Slovak
   business answers by default, Python-normalized bot payment status rather
-  than raw invoice lifecycle status, and an internal deterministic calendar-year
+  than raw invoice lifecycle status, unpaid/not-paid wording that includes both
+  pending and overdue bot states, and an internal deterministic calendar-year
   count/total fast path for simple yearly questions;
+- `mark_existing_invoice_paid`: supported MVP. A user can mark one saved outgoing invoice as paid/uhradena after supplier-scoped lookup and explicit confirmation. This stores bot-local state only; it is not bank matching, bank confirmation, or real Google Drive upload.
 - yearly invoice summary: supported only as an internal deterministic strategy
   under `invoice_analytics`, not as a competing user-facing top-level action;
 - receipt/incoming-invoice categories: partial; controlled category candidates,

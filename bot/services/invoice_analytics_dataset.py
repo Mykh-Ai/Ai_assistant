@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+import re
 import sqlite3
 from typing import Any
+import unicodedata
 
 import pandas as pd
 
@@ -33,6 +35,70 @@ _PAYMENT_STATUS_LABELS = {
     'paid': 'uhradena',
     'overdue': 'po splatnosti',
     'unknown': 'neznamy stav',
+}
+
+PAYMENT_STATUS_FILTER_GROUPS = {
+    'unpaid': ('pending_payment', 'overdue'),
+    'pending_payment': ('pending_payment',),
+    'overdue': ('overdue',),
+    'paid': ('paid',),
+    'unknown': ('unknown',),
+}
+
+_PAYMENT_STATUS_FILTER_ALIASES = {
+    'overdue': (
+        'overdue',
+        'po splatnosti',
+        'po termine splatnosti',
+        'omeskanie',
+        'omeskanim',
+        'meska',
+        '\u043f\u0440\u043e\u0441\u0442\u0440\u043e\u0447\u0435\u043d\u0456',
+        '\u043f\u0440\u043e\u0441\u0442\u0440\u043e\u0447\u0435\u043d\u0456\u0457',
+        '\u043f\u0440\u043e\u0441\u0440\u043e\u0447\u0435\u043d\u043d\u044b\u0435',
+    ),
+    'pending_payment': (
+        'pending payment',
+        'caka na uhradu',
+        'cakaju na uhradu',
+        'pred splatnostou',
+        'este v splatnosti',
+    ),
+    'unpaid': (
+        'unpaid',
+        'not paid',
+        'not-paid',
+        'unsettled',
+        'nezaplatene',
+        'nezaplatena',
+        'nezaplatenych',
+        'neuhradene',
+        'neuhradena',
+        'neuhradenych',
+        'neplatene',
+        '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
+        '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456\u0457',
+        '\u043d\u0435\u0441\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
+        '\u043d\u0435\u0437\u0430\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
+        '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u043d\u044b\u0435',
+        '\u043d\u0435\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u043d\u044b\u0445',
+    ),
+    'paid': (
+        'paid',
+        'uhradene',
+        'uhradena',
+        'uhradenych',
+        'zaplatene',
+        'zaplatenych',
+        '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
+        '\u0441\u043f\u043b\u0430\u0447\u0435\u043d\u0456',
+        '\u043e\u043f\u043b\u0430\u0447\u0435\u043d\u043d\u044b\u0435',
+    ),
+    'unknown': (
+        'unknown status',
+        'neznamy stav',
+        'nejasny stav',
+    ),
 }
 
 
@@ -161,7 +227,32 @@ def _parse_iso_date(value: Any) -> date | None:
         return None
 
 
-def build_invoice_analytics_data_catalog() -> dict[str, Any]:
+def _analytics_alias_key(value: str) -> str:
+    normalized = unicodedata.normalize('NFKD', str(value).casefold().strip())
+    without_diacritics = ''.join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r'\s+', ' ', re.sub(r'[^\w]+', ' ', without_diacritics, flags=re.UNICODE)).strip('_ ')
+
+
+def resolve_payment_status_filter_hints(user_question: str) -> list[dict[str, Any]]:
+    normalized_question = _analytics_alias_key(user_question)
+    if not normalized_question:
+        return []
+    padded_question = f' {normalized_question} '
+    for filter_group in ('overdue', 'pending_payment', 'unpaid', 'paid', 'unknown'):
+        for alias in _PAYMENT_STATUS_FILTER_ALIASES[filter_group]:
+            normalized_alias = _analytics_alias_key(alias)
+            if normalized_alias and f' {normalized_alias} ' in padded_question:
+                return [
+                    {
+                        'filter_group': filter_group,
+                        'canonical_values': list(PAYMENT_STATUS_FILTER_GROUPS[filter_group]),
+                        'matched_alias': normalized_alias,
+                    }
+                ]
+    return []
+
+
+def build_invoice_analytics_data_catalog(*, user_question: str = '') -> dict[str, Any]:
     return {
         'datasets': {
             'invoices_df': {
@@ -194,6 +285,20 @@ def build_invoice_analytics_data_catalog() -> dict[str, Any]:
                 },
             }
         },
+        'payment_status_filter_groups': [
+            {
+                'filter_group': key,
+                'canonical_values': list(values),
+            }
+            for key, values in PAYMENT_STATUS_FILTER_GROUPS.items()
+        ],
+        'payment_status_filter_hints': resolve_payment_status_filter_hints(user_question),
+        'payment_status_filter_contract': (
+            'For unpaid/not paid/neuhradene/nezaplatene/neoplatene questions, filter '
+            'payment_status_canonical by both pending_payment and overdue. Do not implement unpaid as '
+            'pending_payment only. For overdue/po splatnosti questions, filter overdue only. '
+            'For paid/uhradene questions, filter paid only. Reminder mute/snooze state is not payment truth.'
+        ),
         'forbidden': [
             'No receipts or incoming invoices.',
             'No bank movements.',
