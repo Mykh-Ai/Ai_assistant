@@ -133,7 +133,7 @@ class GoogleOAuthTokenExchanger:
         token_type = _optional_response_text(response, 'token_type') or 'Bearer'
         id_token = _optional_response_text(response, 'id_token')
         granted_scopes = _response_scopes(response, requested_scopes)
-        if any(scope not in set(granted_scopes) for scope in self._required_scopes):
+        if any(not _scope_is_granted(scope, granted_scopes) for scope in self._required_scopes):
             raise GoogleOAuthTokenExchangeError(GOOGLE_DRIVE_ERROR_SCOPE_MISSING)
         subject, email = _safe_id_token_metadata(id_token)
         return GoogleOAuthTokenBundle(
@@ -146,6 +146,18 @@ class GoogleOAuthTokenExchanger:
             google_subject=subject,
             google_email=email,
         )
+
+
+
+def _scope_is_granted(required_scope: str, granted_scopes: tuple[str, ...]) -> bool:
+    granted = set(granted_scopes)
+    if required_scope in granted:
+        return True
+    aliases = {
+        'email': {'https://www.googleapis.com/auth/userinfo.email'},
+        'profile': {'https://www.googleapis.com/auth/userinfo.profile'},
+    }
+    return bool(aliases.get(required_scope, set()) & granted)
 
 
 def _raise_for_provider_error(response: dict[str, object], status: int) -> None:

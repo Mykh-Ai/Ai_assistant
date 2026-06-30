@@ -186,6 +186,26 @@ def test_success_validates_full_drive_scope() -> None:
     _assert_safe_exception(excinfo.value)
 
 
+
+def test_success_accepts_google_userinfo_scope_aliases() -> None:
+    http_client = FakeHTTPClient(
+        payload=_success_payload(
+            scope=(
+                'openid '
+                'https://www.googleapis.com/auth/userinfo.email '
+                'https://www.googleapis.com/auth/userinfo.profile '
+                'https://www.googleapis.com/auth/drive'
+            )
+        )
+    )
+
+    bundle = _exchange(http_client)
+
+    assert GOOGLE_DRIVE_FULL_SCOPE in bundle.scope
+    assert 'https://www.googleapis.com/auth/userinfo.email' in bundle.scope
+    assert 'https://www.googleapis.com/auth/userinfo.profile' in bundle.scope
+
+
 def test_scope_defaults_to_requested_scopes_when_response_omits_scope() -> None:
     payload = _success_payload()
     payload.pop('scope')
