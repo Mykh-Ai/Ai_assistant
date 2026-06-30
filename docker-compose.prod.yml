@@ -12,5 +12,6 @@ services:
     volumes:
       - ./data/storage:/bot/data/storage
       - ./logs:/bot/logs
+      - /bot/secrets:/bot/secrets:ro
     working_dir: /app
     command: python -m bot.main

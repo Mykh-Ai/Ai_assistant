@@ -31,7 +31,7 @@ Use empty placeholders in committed examples only:
 ```env
 GOOGLE_DRIVE_ENABLED=0
 GOOGLE_DRIVE_MODE=service_account
-GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH=
+GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH=/bot/secrets/fakturabot-google-drive-service-account.json
 GOOGLE_DRIVE_ROOT_FOLDER_ID=
 GOOGLE_DRIVE_ROOT_FOLDER_NAME=FakturaBot
 GOOGLE_DRIVE_DELETE_LOCAL_RECEIPT_ORIGINAL_AFTER_UPLOAD=1
@@ -41,8 +41,10 @@ GOOGLE_DRIVE_ARCHIVE_WORKER_INTERVAL_SECONDS=60
 GOOGLE_DRIVE_ARCHIVE_WORKER_BATCH_SIZE=5
 ```
 
-Never commit the service-account JSON file. Keep it outside the repository or in
-an ignored runtime-only path.
+Never commit the service-account JSON file. Keep it outside the repository. In
+the production Docker setup, store it on the VPS under `/bot/secrets/` and use
+the same absolute path inside the container; `docker-compose.prod.yml` mounts
+that directory read-only.
 
 ## Owner Setup
 
@@ -50,7 +52,8 @@ an ignored runtime-only path.
 2. Create or choose the owner Drive folder, for example `FakturaBot`.
 3. Share that Drive folder with the service-account email as editor.
 4. Copy the folder id into `GOOGLE_DRIVE_ROOT_FOLDER_ID`.
-5. Set `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH` to the server-local JSON path.
+5. Set `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH` to the container-visible JSON
+   path, for example `/bot/secrets/fakturabot-google-drive-service-account.json`.
 6. Set `GOOGLE_DRIVE_ENABLED=1` and restart the bot runtime.
 
 The bot creates/finds the year/type/month folders under the shared root folder.

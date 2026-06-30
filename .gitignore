@@ -49,3 +49,9 @@ storage/**/*.pdf
 *service-account*.json
 *service_account*.json
 google-drive-service-account*.json
+*google-drive*key*.json
+*gdrive*key*.json
+*drive*service*key*.json
+*gdrive*.json
+*drive-key*.json
+/secrets/
