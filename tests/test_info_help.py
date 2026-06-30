@@ -99,7 +99,7 @@ def test_google_drive_question_renders_external_limitation() -> None:
     assert answer is not None
     assert 'Ukladanie fakt' in answer
     assert '\u010diasto\u010dn\u00e9' in answer
-    assert 'service-account' in answer
+    assert 'owner OAuth' in answer
     assert 'extern' in answer
 
 def test_invoice_due_date_reminder_question_renders_partial_automatic_status() -> None:
@@ -111,7 +111,7 @@ def test_invoice_due_date_reminder_question_renders_partial_automatic_status() -
     assert '/kontrola_splatnosti' not in answer
     assert 'background scheduler' in answer
     assert 'Google Drive' in answer
-    assert 'owner-run service-account' in answer
+    assert 'owner OAuth' in answer
 
 def test_google_drive_after_due_date_archive_question_renders_partial_owner_run_status() -> None:
     answer = build_product_truth_guidance(
@@ -121,7 +121,7 @@ def test_google_drive_after_due_date_archive_question_renders_partial_owner_run_
     assert answer is not None
     assert 'Archiv' in answer and 'Google Drive po splatnosti' in answer
     assert '\u010diasto\u010dn\u00e9' in answer
-    assert 'owner-run Drive' in answer
+    assert 'owner OAuth Drive' in answer
     assert 'lok' in answer and 'stub' in answer
     assert '\u00faspech sa nesmie tvrdi\u0165 pred stavom uploaded' in answer
     assert 'PDF fakt' in answer and 'MVP nema' in answer

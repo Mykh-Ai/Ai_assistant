@@ -27,7 +27,7 @@ from bot.services.google_drive_oauth_callback_service import (
 )
 from bot.services.google_drive_oauth_state_service import DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES
 from bot.services.google_oauth_token_exchanger import (
-    GOOGLE_DRIVE_FILE_SCOPE,
+    GOOGLE_DRIVE_FULL_SCOPE,
     GOOGLE_OAUTH_TOKEN_ENDPOINT,
     GoogleOAuthTokenExchanger,
 )
@@ -84,7 +84,7 @@ def _success_payload(**overrides: object) -> dict[str, object]:
         'access_token': ACCESS_TOKEN,
         'refresh_token': REFRESH_TOKEN,
         'expires_in': 3600,
-        'scope': 'openid email profile https://www.googleapis.com/auth/drive.file',
+        'scope': 'openid email profile https://www.googleapis.com/auth/drive',
         'token_type': 'Bearer',
         'id_token': _id_token_payload(),
     }
@@ -148,7 +148,7 @@ def test_success_exchange_returns_normalized_token_bundle() -> None:
         'openid',
         'email',
         'profile',
-        GOOGLE_DRIVE_FILE_SCOPE,
+        GOOGLE_DRIVE_FULL_SCOPE,
     )
     assert bundle.token_type == 'Bearer'
     assert bundle.google_subject == 'google-subject-1'
@@ -176,7 +176,7 @@ def test_success_requires_refresh_token() -> None:
     _assert_safe_exception(excinfo.value)
 
 
-def test_success_validates_drive_file_scope() -> None:
+def test_success_validates_full_drive_scope() -> None:
     http_client = FakeHTTPClient(payload=_success_payload(scope='openid email profile'))
 
     with pytest.raises(GoogleOAuthTokenExchangeError) as excinfo:
@@ -193,7 +193,7 @@ def test_scope_defaults_to_requested_scopes_when_response_omits_scope() -> None:
 
     bundle = _exchange(http_client)
 
-    assert GOOGLE_DRIVE_FILE_SCOPE in bundle.scope
+    assert GOOGLE_DRIVE_FULL_SCOPE in bundle.scope
 
 
 @pytest.mark.parametrize('invalid_expires_in', ['not-an-int raw_google_response', 0, -1])
@@ -446,7 +446,7 @@ def test_product_truth_and_infohelp_reflect_service_account_not_oauth() -> None:
     assert result.capability.status == ProductTruthStatus.PARTIAL
     assert result.capability.runtime_owner is not None
     assert answer is not None
-    assert 'service-account' in answer
+    assert 'owner OAuth' in answer
 
 
 def test_env_examples_contain_oauth_client_secret_placeholder_only() -> None:

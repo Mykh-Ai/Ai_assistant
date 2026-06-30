@@ -1,3 +1,57 @@
+## 2026-06-30 - Google Drive owner OAuth archive MVP switch
+
+Summary:
+- Switched the Google Drive MVP direction from service-account personal My Drive upload to single-owner OAuth mode.
+- Added manual/local owner OAuth bootstrap for authorization URL generation and code exchange into encrypted refresh-token storage.
+- Added an owner OAuth archive provider that refreshes credentials and uploads through the existing archive worker contract.
+- Preserved archive job/retention semantics: receipt and incoming originals are deleted only after confirmed upload plus DB state `uploaded`; metadata JSON and invoice PDFs remain local.
+- Product Truth/InfoHelp/docs now classify Google Drive archive as `partial`, `requires_setup`, `requires_admin`, and `requires_external_credentials`, with service-account personal My Drive marked unsupported unless Workspace/Shared Drive is configured later.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/Product_Doctrine_2030.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Product_Truth_Registry_MVP_Design.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Self_Learning_Layer.md`
+- `docs/Evaluation_and_Smoke_Test_Standards.md`
+- `docs/Product_UX_Eval_Artifacts.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/FakturaBot_Data_Migration_Runbook.md`
+- `docs/Google_Drive_Token_Crypto_Operations.md`
+- `docs/Google_Drive_Service_Account_Owner_Run_MVP.md`
+- `docs/Google_Drive_Invoice_Archive_After_Due_Date_Spec.md`
+
+Touched scopes:
+- runtime/config: yes, Drive mode default and owner OAuth provider/bootstrap;
+- routing/top-action: no new top-level action;
+- confirmation: no new confirmation family;
+- LLM/STT/LMM: no model calls or prompt authority changes;
+- FSM: no active FSM changes;
+- storage/DB: existing `google_drive_connections` encrypted token row and existing `archive_jobs`; no schema migration;
+- access: setup remains owner/admin controlled;
+- PDF/layout: no PDF layout changes; local invoice PDFs remain local;
+- Product Truth/InfoHelp/evals/docs: updated.
+
+Implementation status:
+- `partial`: single-owner Google Drive archive via owner OAuth for configured deployments.
+- `unsupported`: service-account personal My Drive archive without Workspace/Shared Drive, per-client OAuth Drive, SaaS Drive sync, bank matching, bank-confirmed settlement, local invoice PDF deletion.
+- AI maturity: Level 2 Product Truth/InfoHelp truth update for this capability; runtime integration remains deterministic Python-owned with no LLM execution authority.
+
+Safety and retention:
+- No OAuth secrets, authorization codes, access tokens, refresh tokens, encrypted token blobs, or service-account JSON are logged or documented as real values.
+- Missing OAuth credentials/token/root folder/API dependency produces bounded not-configured/retry behavior without deleting local files.
+- Manual smoke requires real owner credentials; unit tests must fake Google API calls.
+
+Verification:
+- `python -m compileall bot tests` -> passed.
+- `python -m pytest -q tests\test_google_drive_service_account_archive.py tests\test_archive_worker.py tests\test_archive_job_service.py tests\test_accounting_document_archive_service.py tests\test_invoice_followup_handler.py tests\test_invoice_followup_service.py tests\test_google_oauth_token_exchanger.py tests\test_google_drive_connection_service.py tests\test_google_drive_oauth_state_service.py tests\test_google_drive_oauth_callback_service.py tests\test_google_drive_oauth_callback_app.py tests\test_google_drive_setup_commands.py tests\test_product_truth.py tests\test_info_help.py` -> 356 passed before adding explicit fail-closed owner OAuth tests.
+- `python -m pytest -q tests\test_google_drive_service_account_archive.py` -> 12 passed after adding explicit owner OAuth missing connection/client-secret/folder-id fail-closed tests.
+- `git diff --check` -> passed.
+- Full `python -m pytest -q` -> passed locally before final audit; rerun after log update before commit.
+
 ## 2026-06-30 - Google Drive owner-run service-account archive MVP
 
 Summary:

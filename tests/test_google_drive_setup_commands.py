@@ -130,6 +130,7 @@ def _assert_no_status_internals(answer: str) -> None:
         'auth code',
         'openid',
         'drive.file',
+        'googleapis',
         'scope',
     )
 

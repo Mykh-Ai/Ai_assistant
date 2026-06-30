@@ -14,10 +14,16 @@ from bot.services.archive_worker import (
     ArchiveWorker,
     ArchiveWorkerResult,
 )
+from bot.services.google_drive_owner_oauth import build_google_token_crypto_provider
+from bot.services.google_drive_owner_oauth_client import (
+    GoogleDriveOwnerOAuthArchiveProvider,
+    GoogleDriveOwnerOAuthClientConfig,
+)
 from bot.services.google_drive_service_account_client import (
     GoogleDriveServiceAccountArchiveProvider,
     GoogleDriveServiceAccountClientConfig,
 )
+from bot.services.token_crypto import TokenCryptoError
 
 
 logger = logging.getLogger(__name__)
@@ -40,15 +46,31 @@ class GoogleDriveArchiveRunResult:
 def build_google_drive_archive_provider(config: Config) -> ArchiveUploadProvider | None:
     if not config.google_drive_enabled:
         return None
-    if config.google_drive_mode != "service_account":
-        return None
-    return GoogleDriveServiceAccountArchiveProvider(
-        GoogleDriveServiceAccountClientConfig(
-            service_account_json_path=config.google_drive_service_account_json_path,
-            root_folder_id=config.google_drive_root_folder_id,
-            root_folder_name=config.google_drive_root_folder_name,
+    if config.google_drive_mode == "owner_oauth":
+        try:
+            crypto_provider = build_google_token_crypto_provider(config)
+        except TokenCryptoError:
+            return None
+        return GoogleDriveOwnerOAuthArchiveProvider(
+            GoogleDriveOwnerOAuthClientConfig(
+                db_path=config.db_path,
+                crypto_provider=crypto_provider,
+                owner_workspace_id=config.google_drive_owner_workspace_id,
+                client_id=config.google_oauth_client_id,
+                client_secret=config.google_oauth_client_secret,
+                root_folder_id=config.google_drive_root_folder_id,
+                root_folder_name=config.google_drive_root_folder_name,
+            )
         )
-    )
+    if config.google_drive_mode == "service_account":
+        return GoogleDriveServiceAccountArchiveProvider(
+            GoogleDriveServiceAccountClientConfig(
+                service_account_json_path=config.google_drive_service_account_json_path,
+                root_folder_id=config.google_drive_root_folder_id,
+                root_folder_name=config.google_drive_root_folder_name,
+            )
+        )
+    return None
 
 
 def retention_policy_from_config(config: Config) -> ArchiveLocalRetentionPolicy:

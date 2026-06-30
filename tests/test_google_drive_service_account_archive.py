@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 import sqlite3
 
+import pytest
+
 from bot.config import Config, load_config
 from bot.services.accounting_document_archive_service import AccountingDocumentArchiveService
 from bot.services.contact_service import ContactProfile, ContactService
@@ -12,6 +14,7 @@ from bot.services.archive_job_service import ARCHIVE_JOB_RETRY_WAIT, ARCHIVE_JOB
 from bot.services.archive_worker import (
     ARCHIVE_ERROR_NOT_CONFIGURED,
     ArchiveLocalRetentionPolicy,
+    ArchiveUploadNotConfiguredError,
     ArchiveWorker,
 )
 from bot.services.google_drive_archive_scheduler import process_google_drive_archive_once
@@ -22,10 +25,21 @@ from bot.services.invoice_followup_service import (
 )
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.supplier_service import SupplierProfile, SupplierService
+from bot.services.google_drive_connection_service import GoogleDriveConnectionService
+from bot.services.google_drive_oauth_callback_service import GoogleOAuthTokenBundle
+from bot.services.google_drive_owner_oauth import (
+    OWNER_GOOGLE_DRIVE_OAUTH_SCOPES,
+    serialize_google_oauth_token_bundle,
+)
+from bot.services.google_drive_owner_oauth_client import (
+    GoogleDriveOwnerOAuthArchiveProvider,
+    GoogleDriveOwnerOAuthClientConfig,
+)
 from bot.services.google_drive_service_account_client import (
     GoogleDriveServiceAccountArchiveProvider,
     GoogleDriveServiceAccountClientConfig,
 )
+from bot.services.token_crypto import DeterministicFakeTokenCryptoProvider
 
 
 NOW = datetime(2026, 6, 30, 10, 0, tzinfo=UTC)
@@ -142,6 +156,8 @@ def _set_base_env(monkeypatch, tmp_path: Path) -> None:
         "GOOGLE_DRIVE_ENABLED",
         "GOOGLE_DRIVE_MODE",
         "GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH",
+        "GOOGLE_DRIVE_OWNER_WORKSPACE_ID",
+        "GOOGLE_TOKEN_CRYPTO_SECRET",
         "GOOGLE_DRIVE_ROOT_FOLDER_ID",
         "GOOGLE_DRIVE_ROOT_FOLDER_NAME",
         "GOOGLE_DRIVE_DELETE_LOCAL_RECEIPT_ORIGINAL_AFTER_UPLOAD",
@@ -157,8 +173,9 @@ def test_google_drive_config_defaults_disabled(monkeypatch, tmp_path: Path) -> N
     config = load_config()
 
     assert config.google_drive_enabled is False
-    assert config.google_drive_mode == "service_account"
+    assert config.google_drive_mode == "owner_oauth"
     assert config.google_drive_service_account_json_path is None
+    assert config.google_drive_owner_workspace_id == "owner"
     assert config.google_drive_root_folder_id is None
     assert config.google_drive_root_folder_name == "FakturaBot"
     assert config.google_drive_delete_local_receipt_original_after_upload is True
@@ -184,6 +201,7 @@ def test_google_drive_config_parses_owner_run_service_account_env(monkeypatch, t
     assert config.google_drive_service_account_json_path == json_path.resolve()
     assert config.google_drive_root_folder_id == "root-folder"
     assert config.google_drive_root_folder_name == "OwnerArchive"
+    assert config.google_drive_owner_workspace_id == "owner"
     assert config.google_drive_delete_local_receipt_original_after_upload is False
     assert config.google_drive_delete_local_incoming_invoice_original_after_upload is True
 
@@ -212,6 +230,7 @@ def test_disabled_mode_does_not_start_upload(monkeypatch, tmp_path: Path) -> Non
 def test_missing_service_account_config_sets_not_configured_and_keeps_original(monkeypatch, tmp_path: Path) -> None:
     _set_base_env(monkeypatch, tmp_path)
     monkeypatch.setenv("GOOGLE_DRIVE_ENABLED", "1")
+    monkeypatch.setenv("GOOGLE_DRIVE_MODE", "service_account")
     config = load_config()
     db_path, record, original, metadata = _enqueue(tmp_path, db_path=config.db_path)
 
@@ -307,7 +326,7 @@ def _config_object(tmp_path: Path, *, google_drive_enabled: bool = True) -> Conf
         db_path=tmp_path / "invoice-drive.db",
         storage_dir=tmp_path,
         google_drive_enabled=google_drive_enabled,
-        google_drive_mode="service_account",
+        google_drive_mode="owner_oauth",
         google_drive_service_account_json_path=tmp_path / "service-account.json",
         google_drive_root_folder_id="root-folder",
     )
@@ -412,3 +431,154 @@ def test_paid_invoice_pdf_archive_upload_keeps_local_pdf_and_updates_followup_st
     assert state.drive_archive_status == DRIVE_ARCHIVE_STATUS_UPLOADED
     assert pdf_path.exists()
 
+
+
+def _store_owner_oauth_connection(
+    db_path: Path,
+    *,
+    workspace_id: str = "owner",
+    root_folder_id: str = "root-folder",
+) -> DeterministicFakeTokenCryptoProvider:
+    crypto = DeterministicFakeTokenCryptoProvider()
+    token_bundle = GoogleOAuthTokenBundle(
+        access_token="owner-access-token",
+        refresh_token="owner-refresh-token",
+        expires_at="2026-06-30T09:00:00+00:00",
+        scope=OWNER_GOOGLE_DRIVE_OAUTH_SCOPES,
+        token_type="Bearer",
+        id_token=None,
+        google_subject="owner-subject",
+        google_email="owner@example.test",
+    )
+    GoogleDriveConnectionService(db_path, crypto).create_or_update_connection(
+        workspace_id=workspace_id,
+        telegram_id=TELEGRAM_ID,
+        scopes_granted=token_bundle.scope,
+        token_plaintext=serialize_google_oauth_token_bundle(token_bundle),
+        google_subject=token_bundle.google_subject,
+        google_email=token_bundle.google_email,
+        root_folder_id=root_folder_id,
+        root_folder_path="FakturaBot",
+        now=NOW,
+    )
+    return crypto
+
+
+def test_owner_oauth_provider_uses_encrypted_connection_and_uploads_file(tmp_path: Path) -> None:
+    db_path = _db_path(tmp_path)
+    crypto = _store_owner_oauth_connection(db_path)
+    original, _metadata = _confirmed_paths(tmp_path)
+    fake_drive = _FakeDriveService()
+    provider = GoogleDriveOwnerOAuthArchiveProvider(
+        GoogleDriveOwnerOAuthClientConfig(
+            db_path=db_path,
+            crypto_provider=crypto,
+            owner_workspace_id="owner",
+            client_id="client-id",
+            client_secret="client-secret",
+            root_folder_id=None,
+        ),
+        drive_service=fake_drive,
+        media_file_upload_factory=lambda *_args, **_kwargs: object(),
+    )
+
+    result = provider.upload_file(
+        local_file_path=original,
+        target_folder_path=None,
+        document_type="receipt",
+        metadata={"document_id": "receipt-001"},
+    )
+
+    assert result.drive_file_id == "file-1"
+    assert result.drive_folder_id == "folder-3"
+    assert [folder["name"] for folder in fake_drive.files_resource.created_folders] == [
+        "2026",
+        "blocky",
+        "2026-06",
+    ]
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT token_ciphertext, root_folder_id, google_email FROM google_drive_connections WHERE workspace_id = ?",
+            ("owner",),
+        ).fetchone()
+    assert row is not None
+    assert row[1] == "root-folder"
+    assert row[2] == "owner@example.test"
+    assert b"owner-refresh-token" not in bytes(row[0])
+    assert "owner-refresh-token" not in repr(provider)
+
+
+def test_owner_oauth_provider_without_connection_is_not_configured(tmp_path: Path) -> None:
+    original, _metadata = _confirmed_paths(tmp_path)
+    provider = GoogleDriveOwnerOAuthArchiveProvider(
+        GoogleDriveOwnerOAuthClientConfig(
+            db_path=_db_path(tmp_path),
+            crypto_provider=DeterministicFakeTokenCryptoProvider(),
+            owner_workspace_id="owner",
+            client_id="client-id",
+            client_secret="client-secret",
+            root_folder_id="root-folder",
+        ),
+        drive_service=_FakeDriveService(),
+        media_file_upload_factory=lambda *_args, **_kwargs: object(),
+    )
+
+    with pytest.raises(ArchiveUploadNotConfiguredError):
+        provider.upload_file(
+            local_file_path=original,
+            target_folder_path=None,
+            document_type="receipt",
+            metadata={"document_id": "receipt-001"},
+        )
+
+
+def test_owner_oauth_provider_without_client_secret_is_not_configured(tmp_path: Path) -> None:
+    db_path = _db_path(tmp_path)
+    crypto = _store_owner_oauth_connection(db_path)
+    original, _metadata = _confirmed_paths(tmp_path)
+    provider = GoogleDriveOwnerOAuthArchiveProvider(
+        GoogleDriveOwnerOAuthClientConfig(
+            db_path=db_path,
+            crypto_provider=crypto,
+            owner_workspace_id="owner",
+            client_id="client-id",
+            client_secret=None,
+            root_folder_id="root-folder",
+        ),
+        drive_service=_FakeDriveService(),
+        media_file_upload_factory=lambda *_args, **_kwargs: object(),
+    )
+
+    with pytest.raises(ArchiveUploadNotConfiguredError):
+        provider.upload_file(
+            local_file_path=original,
+            target_folder_path=None,
+            document_type="receipt",
+            metadata={"document_id": "receipt-001"},
+        )
+
+
+def test_owner_oauth_provider_without_folder_id_is_not_configured(tmp_path: Path) -> None:
+    db_path = _db_path(tmp_path)
+    crypto = _store_owner_oauth_connection(db_path, root_folder_id="")
+    original, _metadata = _confirmed_paths(tmp_path)
+    provider = GoogleDriveOwnerOAuthArchiveProvider(
+        GoogleDriveOwnerOAuthClientConfig(
+            db_path=db_path,
+            crypto_provider=crypto,
+            owner_workspace_id="owner",
+            client_id="client-id",
+            client_secret="client-secret",
+            root_folder_id=None,
+        ),
+        drive_service=_FakeDriveService(),
+        media_file_upload_factory=lambda *_args, **_kwargs: object(),
+    )
+
+    with pytest.raises(ArchiveUploadNotConfiguredError):
+        provider.upload_file(
+            local_file_path=original,
+            target_folder_path=None,
+            document_type="receipt",
+            metadata={"document_id": "receipt-001"},
+        )

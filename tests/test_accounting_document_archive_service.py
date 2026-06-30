@@ -294,7 +294,7 @@ def test_google_drive_product_truth_is_partial_owner_run_service_account() -> No
     assert result.capability.requires_external_credentials is True
     assert answer is not None
     assert '\u010diasto\u010dn\u00e9' in answer
-    assert 'service-account' in answer
+    assert 'owner OAuth' in answer
 
 def test_accounting_archive_service_has_no_google_or_network_imports() -> None:
     source = inspect.getsource(accounting_document_archive_service)

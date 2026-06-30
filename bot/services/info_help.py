@@ -100,7 +100,7 @@ _SLOVAK_CAPABILITY_COPY = {
     'invoice_due_date_reminders': {
         'title': 'Pripomienky faktúr po splatnosti',
         'summary': 'Pripomienky faktúr po splatnosti sú podporované čiastočne cez automatickú kontrolu v Telegrame.',
-        'limitation': 'Automatická kontrola beží ako interný background scheduler s predvolenou dennou kontrolou. Emailové/SMS pripomienky a bankové párovanie nie sú zapnuté. Google Drive archivácia funguje iba v owner-run service-account režime, ak je nasadenie nakonfigurované.',
+        'limitation': 'Automatická kontrola beží ako interný background scheduler s predvolenou dennou kontrolou. Emailové/SMS pripomienky a bankové párovanie nie sú zapnuté. Google Drive archivácia funguje iba v owner OAuth režime pre jedno nakonfigurované vlastnícke Google konto.',
         'safe_next': 'Keď bot nájde faktúru po splatnosti, pošle Telegram kartu. Pri každej faktúre môžete zvoliť označiť ako zaplatenú, pripomenúť neskôr alebo viac nepripomínať.',
     },
     'send_invoice_email': {
@@ -111,13 +111,13 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'google_drive_invoice_storage': {
         'title': 'Ukladanie faktúr na Google Drive',
-        'summary': 'Google Drive archivácia je podporovaná čiastočne v owner-run service-account režime pre nakonfigurované nasadenie.',
-        'limitation': 'Nie je to per-client OAuth ani všeobecná SaaS synchronizácia. Vyžaduje service-account JSON, root folder zdieľaný so service accountom a zapnutý worker. PDF faktúr ostáva lokálne v bote.',
-        'safe_next': 'Správca musí nastaviť GOOGLE_DRIVE_ENABLED=1, cestu k service-account JSON a GOOGLE_DRIVE_ROOT_FOLDER_ID. Potom worker nahráva potvrdené doklady a vybrané faktúry do Drive archívu.',
+        'summary': 'Google Drive archivácia je podporovaná čiastočne v owner OAuth režime pre jedno nakonfigurované vlastnícke Google konto.',
+        'limitation': 'Nie je to per-client OAuth ani všeobecná SaaS synchronizácia. Vyžaduje OAuth client credentials, GOOGLE_TOKEN_CRYPTO_SECRET, jednorazový owner OAuth bootstrap, encrypted refresh token, root folder id v osobnom My Drive a zapnutý worker. Service-account režim nie je podporovaný pre personal My Drive bez Workspace/Shared Drive. PDF faktúr ostáva lokálne v bote.',
+        'safe_next': 'Správca musí nastaviť GOOGLE_DRIVE_ENABLED=1, owner OAuth credentials, GOOGLE_TOKEN_CRYPTO_SECRET, uložiť encrypted refresh token cez bootstrap a nastaviť GOOGLE_DRIVE_ROOT_FOLDER_ID. Potom worker nahráva potvrdené doklady a vybrané faktúry do Drive archívu.',
     },
     'google_drive_invoice_archive_after_due_date': {
         'title': 'Archivácia faktúry na Google Drive po splatnosti',
-        'summary': 'Po potvrdenom rozhodnutí pri faktúre po splatnosti, napríklad po označení ako uhradená, vie nakonfigurovaný owner-run Drive režim zaradiť PDF do archívu.',
+        'summary': 'Po potvrdenom rozhodnutí pri faktúre po splatnosti, napríklad po označení ako uhradená, vie nakonfigurovaný owner OAuth Drive režim zaradiť PDF do archívu.',
         'limitation': 'Ak Drive nie je nakonfigurovaný, ostáva iba lokálny stub a nič sa nenahráva. Upload prebieha cez worker; úspech sa nesmie tvrdiť pred stavom uploaded. Lokálny PDF faktúry sa v tomto MVP nemaže.',
         'safe_next': 'Najprv potvrďte stav faktúry. Pri zapnutom Drive režime sa PDF zaradí do fronty; pri vypnutom režime zostáva lokálne bez tvrdenia o uploade.',
     },

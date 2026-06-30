@@ -215,7 +215,7 @@ def test_invoice_due_date_reminders_record_is_partial_automatic_runtime() -> Non
     assert 'background scheduler' in entry.current_limitations[0]
     assert 'invoice_followup_scheduler.py' in (entry.runtime_owner or '')
     assert 'No email, SMS' in entry.current_limitations[2]
-    assert 'owner-run service-account' in entry.current_limitations[2]
+    assert 'owner OAuth' in entry.current_limitations[2]
     assert 'Overdue invoice reminders use email or SMS.' in entry.forbidden_claims
     assert 'I archived the invoice to Google Drive.' in entry.forbidden_claims
 
@@ -311,21 +311,22 @@ def test_bank_cashflow_tax_analytics_record_is_unsupported() -> None:
     assert 'This is full accounting analytics.' in entry.forbidden_claims
 
 
-def test_google_drive_after_due_date_archive_record_is_partial_owner_run_service_account() -> None:
+def test_google_drive_after_due_date_archive_record_is_partial_owner_oauth() -> None:
     entry = _registry_by_id()['google_drive_invoice_archive_after_due_date']
 
     assert entry.status == ProductTruthStatus.PARTIAL
     assert entry.requires_external_credentials is True
     assert entry.requires_admin is True
     assert 'invoice_drive_archive_service.py' in (entry.runtime_owner or '')
-    assert 'service-account JSON' in entry.current_limitations[0]
+    assert 'owner OAuth credentials' in entry.current_limitations[0]
     assert 'old local stub' in entry.current_limitations[1]
     assert 'not deleted locally' in entry.current_limitations[2]
     assert 'The invoice was uploaded to Drive before the worker reports uploaded.' in entry.forbidden_claims
-    assert 'This is per-user Google OAuth Drive storage.' in entry.forbidden_claims
+    assert 'This is per-client Google OAuth Drive storage.' in entry.forbidden_claims
+    assert 'Service-account mode works with personal My Drive.' in entry.forbidden_claims
 
 
-def test_google_drive_invoice_storage_record_is_partial_owner_run_service_account() -> None:
+def test_google_drive_invoice_storage_record_is_partial_owner_oauth() -> None:
     entry = _registry_by_id()['google_drive_invoice_storage']
 
     assert entry.status == ProductTruthStatus.PARTIAL
@@ -335,7 +336,9 @@ def test_google_drive_invoice_storage_record_is_partial_owner_run_service_accoun
     assert 'not per-client OAuth' in entry.current_limitations[0]
     assert 'generated PDFs remain stored locally' in entry.current_limitations[1]
     assert 'Receipts and incoming invoices' in entry.current_limitations[2]
+    assert any('Service-account mode is unsupported' in limitation for limitation in entry.current_limitations)
     assert 'This is per-client Google OAuth Drive storage.' in entry.forbidden_claims
+    assert 'Service-account mode works with personal My Drive.' in entry.forbidden_claims
 
 
 def test_create_invoice_returns_supported_with_account_setup_requirement() -> None:

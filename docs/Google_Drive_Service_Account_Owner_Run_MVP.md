@@ -1,12 +1,13 @@
-# Google Drive Service Account Owner-Run MVP
+# Google Drive Owner OAuth MVP
 
 Status: partial runtime integration, owner-run only.
 
 ## Scope
 
-This MVP is not per-client Google OAuth and not SaaS Drive sync. One owner-managed
-Google service account uploads files from the bot runtime into one Google Drive
-root folder that the owner manually shares with the service-account email.
+This MVP is not per-client OAuth and not SaaS Drive sync. One owner Google
+account authorizes the bot once through a manual/local OAuth bootstrap. The bot
+stores an encrypted refresh token and uploads archive files into one configured
+personal My Drive root folder. Uploads consume the owner Google account quota.
 
 Implemented runtime paths:
 
@@ -18,11 +19,11 @@ Implemented runtime paths:
 
 Not implemented:
 
-- per-user OAuth connection and per-client Drive ownership;
-- SaaS multi-client Drive provisioning;
+- per-client Drive OAuth or SaaS multi-client Drive provisioning;
+- domain/web callback production UX for Drive archive setup;
 - deleting local outgoing invoice PDFs;
 - bank-confirmed settlement or bank matching;
-- real manual smoke without service-account credentials.
+- service-account personal My Drive archive. Service-account mode is unsupported for personal My Drive unless a future Google Workspace/Shared Drive setup is explicitly configured.
 
 ## Environment
 
@@ -30,10 +31,13 @@ Use empty placeholders in committed examples only:
 
 ```env
 GOOGLE_DRIVE_ENABLED=0
-GOOGLE_DRIVE_MODE=service_account
-GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH=/bot/secrets/fakturabot-google-drive-service-account.json
+GOOGLE_DRIVE_MODE=owner_oauth
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_TOKEN_CRYPTO_SECRET=
 GOOGLE_DRIVE_ROOT_FOLDER_ID=
 GOOGLE_DRIVE_ROOT_FOLDER_NAME=FakturaBot
+GOOGLE_DRIVE_OWNER_WORKSPACE_ID=owner
 GOOGLE_DRIVE_DELETE_LOCAL_RECEIPT_ORIGINAL_AFTER_UPLOAD=1
 GOOGLE_DRIVE_DELETE_LOCAL_INCOMING_INVOICE_ORIGINAL_AFTER_UPLOAD=1
 GOOGLE_DRIVE_DELETE_LOCAL_INVOICE_PDF_AFTER_UPLOAD=0
@@ -41,35 +45,34 @@ GOOGLE_DRIVE_ARCHIVE_WORKER_INTERVAL_SECONDS=60
 GOOGLE_DRIVE_ARCHIVE_WORKER_BATCH_SIZE=5
 ```
 
-Never commit the service-account JSON file. Keep it outside the repository. In
-the production Docker setup, store it on the VPS under `/bot/secrets/` and use
-the same absolute path inside the container; `docker-compose.prod.yml` mounts
-that directory read-only.
+Never commit OAuth client secrets, token crypto secrets, authorization codes,
+access tokens, refresh tokens, or stored encrypted token blobs in logs, docs,
+Telegram replies, or Git.
 
 ## Owner Setup
 
-1. Create a Google Cloud service account and download its JSON key outside Git.
-2. Create or choose the owner Drive folder, for example `FakturaBot`.
-3. Share that Drive folder with the service-account email as editor.
-4. Copy the folder id into `GOOGLE_DRIVE_ROOT_FOLDER_ID`.
-5. Set `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH` to the container-visible JSON
-   path, for example `/bot/secrets/fakturabot-google-drive-service-account.json`.
-6. Set `GOOGLE_DRIVE_ENABLED=1` and restart the bot runtime.
+1. Create or choose the owner personal My Drive folder, for example `FakturaBot`.
+2. Copy the folder id into `GOOGLE_DRIVE_ROOT_FOLDER_ID`.
+3. Configure `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_TOKEN_CRYPTO_SECRET` outside Git.
+4. Run `python -m bot.google_drive_owner_oauth_bootstrap authorize --telegram-id <admin_telegram_id>`.
+5. Open the printed authorization URL as the owner Google account and copy the returned authorization code.
+6. Run `python -m bot.google_drive_owner_oauth_bootstrap exchange --state-token <state> --code <code> --root-folder-id <folder_id>`.
+7. Set `GOOGLE_DRIVE_ENABLED=1`, `GOOGLE_DRIVE_MODE=owner_oauth`, and restart the bot runtime.
+8. Run a manual smoke upload only with real owner credentials.
 
-The bot creates/finds the year/type/month folders under the shared root folder.
-If credentials, folder id, dependency, or access is missing, jobs stay retryable
-or fail boundedly; local files are not deleted on failed upload.
+The bot creates/finds the year/type/month folders under the configured root
+folder. If OAuth credentials, encrypted token, folder id, dependency, quota, or
+access is missing, jobs stay retryable/failed boundedly; local files are not
+deleted on failed upload.
 
 ## Runtime Owner
 
-- `bot/services/google_drive_service_account_client.py` isolates Google API calls.
-- `bot/services/archive_worker.py` owns job claiming, retry/failure transitions,
-  state updates, and post-upload retention.
-- `bot/services/google_drive_archive_scheduler.py` starts the in-process worker
-  only when `GOOGLE_DRIVE_ENABLED=1`.
-- `bot/services/invoice_drive_archive_service.py` enqueues invoice PDFs after
-  mark-paid/control events or falls back to the honest local stub when Drive is
-  disabled.
+- `bot/google_drive_owner_oauth_bootstrap.py` owns manual owner authorization and encrypted token storage.
+- `bot/services/google_drive_owner_oauth_client.py` isolates owner OAuth Google API calls.
+- `bot/services/google_drive_connection_service.py` stores the encrypted owner token bundle.
+- `bot/services/archive_worker.py` owns job claiming, retry/failure transitions, state updates, and post-upload retention.
+- `bot/services/google_drive_archive_scheduler.py` starts the in-process worker only when `GOOGLE_DRIVE_ENABLED=1`.
+- `bot/services/invoice_drive_archive_service.py` enqueues invoice PDFs after mark-paid/control events or falls back to the honest local stub when Drive is disabled.
 
 ## Test Evidence
 

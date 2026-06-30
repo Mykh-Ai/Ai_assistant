@@ -371,4 +371,4 @@ def test_google_drive_product_truth_is_partial_service_account_not_oauth() -> No
     assert result.capability.runtime_owner is not None
     assert answer is not None
     assert '\u010diasto\u010dn\u00e9' in answer
-    assert 'service-account' in answer
+    assert 'owner OAuth' in answer

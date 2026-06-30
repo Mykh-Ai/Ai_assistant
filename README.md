@@ -375,23 +375,25 @@ Production-like owner-run baseline:
 - `scripts/update_repo.sh`
 - `scripts/deploy_owner_run.sh`
 
-Google Drive owner-run service-account archive:
-- partial runtime integration, not per-client OAuth and not SaaS Drive sync;
-- enabled only with `GOOGLE_DRIVE_ENABLED=1`;
-- uses `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH` and `GOOGLE_DRIVE_ROOT_FOLDER_ID`;
-- the root Drive folder, for example `FakturaBot`, must be shared manually with the service-account email;
+Google Drive owner OAuth archive:
+- partial runtime integration for one owner Google account, not per-client OAuth and not SaaS Drive sync;
+- enabled only with `GOOGLE_DRIVE_ENABLED=1` and `GOOGLE_DRIVE_MODE=owner_oauth`;
+- requires `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_TOKEN_CRYPTO_SECRET`, `GOOGLE_DRIVE_ROOT_FOLDER_ID`, and a stored encrypted owner refresh token;
+- one-time owner bootstrap command: `python -m bot.google_drive_owner_oauth_bootstrap authorize --telegram-id <admin_telegram_id>`, then `python -m bot.google_drive_owner_oauth_bootstrap exchange --state-token <state> --code <code> --root-folder-id <folder_id>`;
+- uploads consume the owner Google account quota in personal My Drive;
 - confirmed receipts upload under `FakturaBot/<year>/blocky/<year-month>/`;
 - confirmed incoming invoices upload under `FakturaBot/<year>/prijate_faktury/<year-month>/`;
 - outgoing invoice PDFs are enqueued after mark-paid/control events under `FakturaBot/<year>/faktury/<year-month>/`;
 - local outgoing invoice PDFs are not deleted in this MVP;
 - receipt/incoming originals may be deleted only after upload success and DB state `uploaded`; metadata JSON stays local;
+- service-account mode is unsupported for personal My Drive unless a future Google Workspace/Shared Drive setup is explicitly configured;
 - setup details are in `docs/Google_Drive_Service_Account_Owner_Run_MVP.md`.
 
 Google Drive OAuth callback skeleton:
 - separate process, not `bot/main.py` polling;
-- fake exchanger only through injected test services in the current slice;
-- production token exchanger foundation exists, but it is not wired into this callback runtime yet;
-- OAuth is not the active owner-run archive path;
+- production token exchanger foundation exists;
+- owner archive uses the manual/local bootstrap command today;
+- domain/web callback UX remains a later production improvement;
 - command: `python -m bot.google_drive_oauth_callback_app`;
 - `GOOGLE_OAUTH_CLIENT_SECRET` is a placeholder for future token exchange; do not commit a real value.
 - `GOOGLE_TOKEN_CRYPTO_SECRET` is a placeholder for future encrypted token storage; do not commit a real value.
@@ -473,7 +475,7 @@ Do not treat these as current runtime:
 - full SaaS multi-tenancy;
 - per-client bot/VPS/container/DB provisioning;
 - standalone contract archive/save runtime;
-- full/per-client Google Drive sync; owner-run service-account archive is partial and requires setup;
+- full/per-client Google Drive sync; owner OAuth Drive archive is partial, single-owner, and requires setup;
 - bank matching;
 - bank/cashflow analytics;
 - tax/VAT advice;

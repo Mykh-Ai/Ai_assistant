@@ -46,7 +46,7 @@ DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES = (
     'openid',
     'email',
     'profile',
-    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/drive',
 )
 DEFAULT_GOOGLE_DRIVE_OAUTH_TTL_MINUTES = 10
 

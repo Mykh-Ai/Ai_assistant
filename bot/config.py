@@ -32,8 +32,9 @@ class Config:
     google_oauth_callback_use_fake_exchanger: bool = False
     google_token_crypto_secret: str | None = None
     google_drive_enabled: bool = False
-    google_drive_mode: str = 'service_account'
+    google_drive_mode: str = 'owner_oauth'
     google_drive_service_account_json_path: Path | None = None
+    google_drive_owner_workspace_id: str = 'owner'
     google_drive_root_folder_id: str | None = None
     google_drive_root_folder_name: str = 'FakturaBot'
     google_drive_delete_local_receipt_original_after_upload: bool = True
@@ -89,9 +90,12 @@ def load_config() -> Config:
     )
     google_token_crypto_secret = os.getenv('GOOGLE_TOKEN_CRYPTO_SECRET', '').strip() or None
     google_drive_enabled = _parse_bool(os.getenv('GOOGLE_DRIVE_ENABLED', ''))
-    google_drive_mode = os.getenv('GOOGLE_DRIVE_MODE', 'service_account').strip() or 'service_account'
+    google_drive_mode = os.getenv('GOOGLE_DRIVE_MODE', 'owner_oauth').strip() or 'owner_oauth'
     google_drive_service_account_json_path = _parse_optional_path(
         os.getenv('GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH', '')
+    )
+    google_drive_owner_workspace_id = (
+        os.getenv('GOOGLE_DRIVE_OWNER_WORKSPACE_ID', '').strip() or 'owner'
     )
     google_drive_root_folder_id = os.getenv('GOOGLE_DRIVE_ROOT_FOLDER_ID', '').strip() or None
     google_drive_root_folder_name = (
@@ -147,6 +151,7 @@ def load_config() -> Config:
         google_drive_enabled=google_drive_enabled,
         google_drive_mode=google_drive_mode,
         google_drive_service_account_json_path=google_drive_service_account_json_path,
+        google_drive_owner_workspace_id=google_drive_owner_workspace_id,
         google_drive_root_folder_id=google_drive_root_folder_id,
         google_drive_root_folder_name=google_drive_root_folder_name,
         google_drive_delete_local_receipt_original_after_upload=google_drive_delete_local_receipt_original_after_upload,

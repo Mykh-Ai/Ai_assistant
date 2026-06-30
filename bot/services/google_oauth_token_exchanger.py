@@ -25,6 +25,7 @@ from bot.services.google_drive_oauth_state_service import DEFAULT_GOOGLE_DRIVE_O
 
 GOOGLE_OAUTH_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
 GOOGLE_DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+GOOGLE_DRIVE_FULL_SCOPE = 'https://www.googleapis.com/auth/drive'
 
 
 class GoogleOAuthHTTPClient(Protocol):
@@ -73,7 +74,7 @@ class GoogleOAuthTokenExchanger:
         http_client: GoogleOAuthHTTPClient | None = None,
         token_endpoint: str = GOOGLE_OAUTH_TOKEN_ENDPOINT,
         timeout_seconds: float = 10.0,
-        required_scopes: tuple[str, ...] = (GOOGLE_DRIVE_FILE_SCOPE,),
+        required_scopes: tuple[str, ...] = (GOOGLE_DRIVE_FULL_SCOPE,),
         now: datetime | None = None,
     ) -> None:
         self._client_id = _required_text(client_id, 'client_id')
@@ -132,8 +133,6 @@ class GoogleOAuthTokenExchanger:
         token_type = _optional_response_text(response, 'token_type') or 'Bearer'
         id_token = _optional_response_text(response, 'id_token')
         granted_scopes = _response_scopes(response, requested_scopes)
-        if GOOGLE_DRIVE_FILE_SCOPE not in set(granted_scopes):
-            raise GoogleOAuthTokenExchangeError(GOOGLE_DRIVE_ERROR_SCOPE_MISSING)
         if any(scope not in set(granted_scopes) for scope in self._required_scopes):
             raise GoogleOAuthTokenExchangeError(GOOGLE_DRIVE_ERROR_SCOPE_MISSING)
         subject, email = _safe_id_token_metadata(id_token)

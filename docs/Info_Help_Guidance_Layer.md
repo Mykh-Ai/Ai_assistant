@@ -856,16 +856,16 @@ Do not:
 - bypass active FSM ownership;
 - trigger AI calls for unauthorized users.
 
-### Google Drive Owner-Run Partial Runtime - 2026-06-30
+### Google Drive Owner OAuth Partial Runtime - 2026-06-30
 
 InfoHelp must answer Google Drive questions from Product Truth as `partial` when
-referring to the current owner-run service-account archive slice.
+referring to the current owner OAuth archive slice.
 
 Required wording boundaries:
 
-- say it requires admin setup, a service-account JSON file, and a Drive root
-  folder shared with the service account;
-- say it is not per-client OAuth and not full SaaS Drive sync;
+- say it requires admin setup, OAuth client credentials, `GOOGLE_TOKEN_CRYPTO_SECRET`, an encrypted owner refresh token, and a personal My Drive root folder id;
+- say it is single-owner only, not per-client OAuth and not full SaaS Drive sync;
+- say service-account mode is unsupported for personal My Drive unless Workspace/Shared Drive is explicitly configured later;
 - say invoice PDFs remain local in this MVP;
 - say upload success must not be claimed until the worker records `uploaded`;
 - when Drive is disabled/not configured, keep the local stub/no-upload wording.

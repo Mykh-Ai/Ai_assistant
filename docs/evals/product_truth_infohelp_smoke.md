@@ -389,26 +389,30 @@ automation_status: automated in
 `tests/test_info_help.py`, and `tests/test_voice_state_routing.py`
 last_result: passed in focused runtime and contract tests for the pilot
 
-### PT-IH-020 Google Drive Owner-Run Service Account Archive
+### PT-IH-020 Google Drive Owner OAuth Archive
 
 account_state: approved/admin-configured owner-run deployment
 input_channel: text / Telegram callback / archive worker
 user_input: Can you store invoices on Google Drive? / mark invoice paid
 expected_product_truth_status: partial
-expected_response_behavior: Product Truth and InfoHelp say owner-run
-service-account archive is partial, requires admin setup and external Google
-credentials, is not per-client OAuth, and is not full SaaS Drive sync. Mark-paid
-can enqueue the invoice PDF only when Drive is enabled; otherwise the honest
-local stub remains.
-forbidden_behavior: claim per-user OAuth Drive support; claim upload succeeded
-before worker state `uploaded`; delete local invoice PDFs; delete metadata JSON;
-delete receipt/incoming originals before upload success plus DB state update;
-claim bank-confirmed settlement.
+expected_response_behavior: Product Truth and InfoHelp say owner OAuth archive
+is partial, requires admin setup, external Google OAuth credentials,
+`GOOGLE_TOKEN_CRYPTO_SECRET`, encrypted owner refresh-token storage, and a
+personal My Drive root folder id. It is single-owner only, not per-client OAuth,
+and not full SaaS Drive sync. Service-account mode is unsupported for personal
+My Drive unless Workspace/Shared Drive is explicitly configured later.
+Mark-paid can enqueue the invoice PDF only when Drive is enabled; otherwise the
+honest local stub remains.
+forbidden_behavior: claim per-client OAuth Drive support; claim service-account
+personal My Drive support; claim upload succeeded before worker state
+`uploaded`; delete local invoice PDFs; delete metadata JSON; delete
+receipt/incoming originals before upload success plus DB state update; claim
+bank-confirmed settlement.
 side_effect_expectation: informational questions have no side effects; confirmed
 receipt/incoming saves enqueue archive jobs; mark-paid can enqueue invoice PDF
 archive job; worker tests use fakes and no real Google API calls.
 automation_status: covered by `tests/test_google_drive_service_account_archive.py`,
 `tests/test_archive_worker.py`, `tests/test_product_truth.py`, and
 `tests/test_info_help.py`.
-last_result: focused suite passed locally on 2026-06-30; manual Google Drive
-smoke not run because service-account credentials were not provided.
+last_result: focused no-network suite passed locally for owner OAuth switch on
+2026-06-30; manual Google Drive smoke is allowed only with real owner credentials.

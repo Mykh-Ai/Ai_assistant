@@ -1411,14 +1411,15 @@ Operational config:
 
 Out of scope remains public signup, email/password accounts, billing, payments, SaaS dashboard, multiple Telegram bot tokens, per-user bot-token orchestration, Postmark sending, and automatic tenant creation with full privileges.
 
-## Addendum 2026-06-30 - Google Drive Owner-Run Service Account Archive
+## Addendum 2026-06-30 - Google Drive Owner OAuth Archive
 
 Current status: partial runtime integration.
 
 FakturaBot can run an owner-managed Google Drive archive worker when
-`GOOGLE_DRIVE_ENABLED=1`, `GOOGLE_DRIVE_MODE=service_account`, a service-account
-JSON path, and a shared Drive root folder id are configured. This is not
-per-client OAuth and not SaaS Drive sync.
+`GOOGLE_DRIVE_ENABLED=1`, `GOOGLE_DRIVE_MODE=owner_oauth`, Google OAuth client
+credentials, `GOOGLE_TOKEN_CRYPTO_SECRET`, an encrypted owner refresh token, and
+a personal My Drive root folder id are configured. This is not per-client OAuth
+and not SaaS Drive sync. Uploads consume the owner Google account quota.
 
 Runtime behavior:
 
@@ -1433,9 +1434,9 @@ Runtime behavior:
 - receipt/incoming originals are deleted only after successful upload and DB
   state update to `uploaded`, and only when the corresponding retention env flag
   is enabled;
-- failed or not-configured uploads keep local files and move jobs to retry/failed
-  states with bounded error codes.
+- service-account mode is unsupported for personal My Drive unless a future
+  Google Workspace/Shared Drive setup is explicitly configured.
 
-Product Truth status is `partial` with `requires_setup`, `requires_admin`, and
-`requires_external_credentials`. The bot must not claim per-user OAuth Drive,
-SaaS Drive sync, bank-confirmed settlement, or local invoice PDF deletion.
+Setup uses the manual owner OAuth bootstrap command
+`python -m bot.google_drive_owner_oauth_bootstrap authorize --telegram-id <admin_telegram_id>`
+and then `python -m bot.google_drive_owner_oauth_bootstrap exchange --state-token <state> --code <code> --root-folder-id <folder_id>`.

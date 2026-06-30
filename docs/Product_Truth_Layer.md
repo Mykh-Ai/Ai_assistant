@@ -672,21 +672,24 @@ Do not:
 `google_drive_invoice_archive_after_due_date` are `partial`, not fully
 `supported`.
 
-The implemented slice is owner-run service-account archive:
+The implemented slice is owner OAuth archive:
 
-- requires admin/server setup and external Google credentials;
-- uses one service account and one manually shared owner Drive root folder;
+- requires admin/server setup and external Google OAuth credentials;
+- uses one owner Google account, one encrypted refresh token, and one configured personal My Drive root folder;
+- uploads consume the owner Google account quota;
 - uploads confirmed receipts, incoming invoice originals, and selected outgoing
   invoice PDFs through the archive worker;
 - enqueues outgoing invoice PDFs only after a control event such as mark-paid;
 - keeps local invoice PDFs; no invoice PDF deletion is implemented;
 - keeps local accounting metadata JSON;
-- keeps local files on failed/not-configured upload.
+- keeps local files on failed/not-configured upload;
+- service-account mode is unsupported for personal My Drive unless a future Google Workspace/Shared Drive setup is explicitly configured.
 
 Forbidden claims now include:
 
 - per-client OAuth Drive storage is active;
 - full SaaS Google Drive sync is active;
+- service-account mode works with personal My Drive;
 - invoice PDFs are deleted after upload;
 - upload succeeded before the worker state is `uploaded`;
 - marking paid means bank-confirmed settlement.
