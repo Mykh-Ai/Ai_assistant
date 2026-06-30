@@ -94,39 +94,37 @@ def test_email_capability_question_renders_unsupported_product_truth_guidance() 
 
 
 def test_google_drive_question_renders_external_limitation() -> None:
-    answer = build_product_truth_guidance(user_input_text='Vie bot ukladať faktúry na Google Drive?')
+    answer = build_product_truth_guidance(user_input_text='Vie bot ukladat faktury na Google Drive?')
 
     assert answer is not None
-    assert 'Ukladanie faktúr na Google Drive' in answer
-    assert 'nepodporované' in answer
-    assert 'externé prístupy' in answer
-
+    assert 'Ukladanie fakt' in answer
+    assert '\u010diasto\u010dn\u00e9' in answer
+    assert 'service-account' in answer
+    assert 'extern' in answer
 
 def test_invoice_due_date_reminder_question_renders_partial_automatic_status() -> None:
-    answer = build_product_truth_guidance(user_input_text='Vieš mi pripomenúť neuhradené faktúry po splatnosti?')
+    answer = build_product_truth_guidance(user_input_text='Vies mi pripomenut neuhradene faktury po splatnosti?')
 
     assert answer is not None
-    assert 'Pripomienky faktúr po splatnosti' in answer
-    assert 'čiastočné' in answer
+    assert 'Pripomienky fakt' in answer
+    assert '\u010diasto\u010dn\u00e9' in answer
     assert '/kontrola_splatnosti' not in answer
     assert 'background scheduler' in answer
     assert 'Google Drive' in answer
-    assert 'nie sú zapnuté' in answer
+    assert 'owner-run service-account' in answer
 
-
-def test_google_drive_after_due_date_archive_question_renders_stub_only_unsupported_status() -> None:
+def test_google_drive_after_due_date_archive_question_renders_partial_owner_run_status() -> None:
     answer = build_product_truth_guidance(
-        user_input_text='Vieš archivovať zaplatené faktúry po splatnosti na Google Drive?'
+        user_input_text='Vies archivovat zaplatene faktury po splatnosti na Google Drive?'
     )
 
     assert answer is not None
-    assert 'Archivácia faktúry na Google Drive po splatnosti' in answer
-    assert 'nepodporované' in answer
-    assert 'iba lokálny stub' in answer
-    assert 'nič sa nenahráva na Google Drive' in answer
-    assert 'úspešné nahratie' in answer
-    assert 'uploaded' not in answer.lower()
-
+    assert 'Archiv' in answer and 'Google Drive po splatnosti' in answer
+    assert '\u010diasto\u010dn\u00e9' in answer
+    assert 'owner-run Drive' in answer
+    assert 'lok' in answer and 'stub' in answer
+    assert '\u00faspech sa nesmie tvrdi\u0165 pred stavom uploaded' in answer
+    assert 'PDF fakt' in answer and 'MVP nema' in answer
 
 def test_sms_question_renders_external_limitation() -> None:
     answer = build_product_truth_guidance(user_input_text='Viete posielať SMS pripomienky?')

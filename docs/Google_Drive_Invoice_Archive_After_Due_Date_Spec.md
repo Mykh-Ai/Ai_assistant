@@ -173,3 +173,33 @@ Before real Google Drive upload can be called supported:
   be updated;
 - no local PDF deletion may be added without a separate migration/retention
   decision.
+
+## Owner-Run Service Account MVP Update - 2026-06-30
+
+The current runtime is no longer stub-only for configured owner-run deployments.
+`google_drive_invoice_archive_after_due_date` is now `partial`.
+
+Implemented:
+
+- `InvoiceDriveArchiveService` falls back to the old local stub when
+  `GOOGLE_DRIVE_ENABLED=0`;
+- with Drive enabled, mark-paid/control events enqueue the existing local invoice
+  PDF as an `invoice_pdf` archive job;
+- the in-process Google Drive archive scheduler runs only when Drive is enabled;
+- the service-account provider creates/finds Drive folders and uploads through
+  injected/lazy Google API clients;
+- worker failures are bounded and local invoice PDFs remain available;
+- local invoice PDFs are never deleted in this MVP.
+
+Folder policy for invoice PDFs:
+
+```text
+FakturaBot/<issue-year>/faktury/<issue-year>-<issue-month>/
+```
+
+Still not implemented:
+
+- per-client OAuth Drive archive;
+- deleting local invoice PDFs;
+- bank matching or bank-confirmed payment;
+- external cron/worker deployment separate from the bot process.

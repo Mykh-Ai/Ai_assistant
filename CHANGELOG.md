@@ -1,3 +1,22 @@
+# Changelog
+
+## Unreleased
+
+### Added
+- Owner-run Google Drive service-account archive MVP: configurable in-process archive worker, lazy Google Drive provider, folder creation/upload adapter, confirmed receipt/incoming-invoice uploads, and invoice-PDF enqueue after mark-paid/control events.
+- Environment placeholders for `GOOGLE_DRIVE_ENABLED`, `GOOGLE_DRIVE_MODE=service_account`, service-account JSON path, root folder id/name, retention flags, and worker interval/batch size.
+- Product Truth, InfoHelp, docs, and no-network tests for partial Google Drive archive support.
+
+### Changed
+- Google Drive invoice storage/archive Product Truth is now `partial` with setup/admin/external-credential requirements, not unsupported and not fully supported.
+- Mark-paid invoice flow falls back to the old local Drive stub when Drive is disabled, and enqueues a Drive archive job only when owner-run Drive mode is enabled and the PDF exists.
+
+### Notes
+- This is not per-client OAuth or SaaS Drive sync.
+- Local invoice PDFs are not deleted in this MVP.
+- Receipt/incoming originals are deleted only after upload success plus DB state `uploaded`; metadata JSON is kept.
+- Manual Google Drive smoke was not run because service-account credentials were not provided.
+
 # CHANGELOG
 
 ## [Unreleased]

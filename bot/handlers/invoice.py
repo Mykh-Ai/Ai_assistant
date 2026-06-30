@@ -68,7 +68,7 @@ from bot.services.invoice_analytics_planner import (
     InvoiceAnalyticsPlanError,
     plan_invoice_analytics_code,
 )
-from bot.services.google_drive_archive_stub import GoogleDriveArchiveStubService
+from bot.services.invoice_drive_archive_service import InvoiceDriveArchiveService
 from bot.services.invoice_followup_service import InvoiceFollowupService
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoicePeriodSummary, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
@@ -4735,10 +4735,7 @@ async def invoice_mark_existing_invoice_paid_confirm(
         invoice_id=invoice_id,
         supplier_telegram_id=supplier_telegram_id,
     )
-    archive_result = GoogleDriveArchiveStubService(config.db_path).request_invoice_archive_stub(
-        invoice_id=invoice_id,
-        supplier_telegram_id=supplier_telegram_id,
-    )
+    archive_result = InvoiceDriveArchiveService(config).request_after_paid(invoice=invoice)
     await state.clear()
     await message.answer(
         f'Fakturu {invoice_number} som oznacil ako uhradenu.\n\n'

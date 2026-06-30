@@ -1,3 +1,64 @@
+## 2026-06-30 - Google Drive owner-run service-account archive MVP
+
+Summary:
+- Implemented partial owner-run Google Drive archive via service account, not per-client OAuth and not SaaS Drive sync.
+- Added lazy Google Drive adapter, archive scheduler, invoice archive enqueue service, config/env placeholders, and retention policy for confirmed accounting originals.
+- Existing accounting archive jobs now upload receipts/incoming invoices through the worker when Drive is enabled; invoice PDFs are enqueued after mark-paid/control events and remain local.
+- Product Truth/InfoHelp now classify Google Drive invoice storage/archive as `partial` with setup/admin/external-credential requirements.
+
+Contracts read:
+- `AGENTS.md`
+- `README.md`
+- `PROJECT_LOG.md`
+- `CHANGELOG.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/Product_Doctrine_2030.md`
+- `docs/AI_Layer_Implementation_Standards.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Product_Truth_Registry_MVP_Design.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Self_Learning_Layer.md`
+- `docs/Evaluation_and_Smoke_Test_Standards.md`
+- `docs/Product_UX_Eval_Artifacts.md`
+- `docs/Implementation_Agent_Checklist.md`
+- `docs/Code_Agent_Handoff_Contract.md`
+- `docs/FakturaBot_Data_Migration_Runbook.md`
+- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/Document_Intake_MVP_Implementation_Plan.md`
+- `docs/Google_Drive_Invoice_Archive_After_Due_Date_Spec.md`
+- `docs/Google_Drive_Token_Crypto_Operations.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/llm/New_Action_Design_Checklist.md`
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`
+
+Touched scopes:
+- runtime/config: yes, Google Drive owner-run service-account archive config and scheduler;
+- routing/top-action: no new top-level action;
+- confirmation: no new confirmation family; mark-paid keeps existing confirmation gates;
+- LLM/STT/LMM: no model calls or prompt changes;
+- FSM: no active FSM fallthrough changes;
+- storage/DB: additive archive-job document type behavior and follow-up Drive archive status values; no server data migration run;
+- access: no authorization boundary change;
+- PDF/layout: no PDF layout changes; local invoice PDFs remain local;
+- Product Truth/InfoHelp/evals/docs: updated.
+
+Implementation status:
+- `partial`: owner-run Google Drive archive via service account for configured deployments.
+- `unsupported`: per-client OAuth Drive, SaaS Drive sync, bank matching, bank-confirmed settlement, local invoice PDF deletion.
+- AI maturity: Level 2 Product Truth/InfoHelp truth update for this capability; runtime integration remains deterministic Python-owned with no LLM execution authority.
+
+Safety and retention:
+- Service-account JSON must stay out of Git; `.gitignore` excludes common service-account JSON names.
+- Missing credentials/root folder/API dependency produces bounded `google_drive_not_configured` retry state without deleting local files.
+- Receipt/incoming originals are deleted only after upload success and DB state `uploaded`, controlled by env flags.
+- Metadata JSON and invoice PDFs are not deleted by this MVP.
+
+Verification:
+- `python -m compileall bot tests` -> passed.
+- `python -m pytest -q tests\test_google_drive_service_account_archive.py tests\test_archive_worker.py tests\test_archive_job_service.py tests\test_accounting_document_archive_service.py tests\test_invoice_followup_handler.py tests\test_invoice_followup_service.py tests\test_product_truth.py tests\test_info_help.py` -> 217 passed.
+- Manual Google Drive smoke not run: no real service-account credentials or shared Drive root folder were provided in this workspace.
+
 ## 2026-06-28 - Session 161 - Invoice analytics unpaid filter semantics
 
 ### Goal

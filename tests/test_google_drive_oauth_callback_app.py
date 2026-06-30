@@ -403,14 +403,15 @@ def test_callback_runtime_is_not_wired_to_real_token_exchanger() -> None:
     assert 'UrllibGoogleOAuthHTTPClient' not in source
 
 
-def test_google_drive_product_truth_stays_unsupported() -> None:
+def test_google_drive_product_truth_is_partial_service_account_not_oauth() -> None:
     result = get_capability('google_drive_invoice_storage')
     answer = build_product_truth_guidance(user_input_text='Can bot save invoices to Google Drive?')
 
     assert result.capability is not None
-    assert result.capability.status == ProductTruthStatus.UNSUPPORTED
-    assert result.capability.runtime_owner is None
+    assert result.capability.status == ProductTruthStatus.PARTIAL
+    assert result.capability.runtime_owner is not None
     assert answer is not None
+    assert 'service-account' in answer
 
 
 def _config(

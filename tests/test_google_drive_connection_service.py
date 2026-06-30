@@ -362,13 +362,13 @@ def test_google_drive_connection_service_has_no_google_or_network_imports() -> N
     assert not any(name in source for name in forbidden)
 
 
-def test_google_drive_product_truth_stays_unsupported() -> None:
+def test_google_drive_product_truth_is_partial_service_account_not_oauth() -> None:
     result = get_capability('google_drive_invoice_storage')
     answer = build_product_truth_guidance(user_input_text='Vie bot ukladať faktúry na Google Drive?')
 
     assert result.capability is not None
-    assert result.capability.status == ProductTruthStatus.UNSUPPORTED
-    assert result.capability.runtime_owner is None
+    assert result.capability.status == ProductTruthStatus.PARTIAL
+    assert result.capability.runtime_owner is not None
     assert answer is not None
-    assert 'nepodporované' in answer
-    assert 'nie je v aktuálnej verzii implementovaná' in answer
+    assert '\u010diasto\u010dn\u00e9' in answer
+    assert 'service-account' in answer

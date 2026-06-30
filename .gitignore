@@ -44,3 +44,8 @@ storage/**/*.pdf
 .idea/
 .vscode/
 .DS_Store
+
+# Google service-account credentials must stay outside Git.
+*service-account*.json
+*service_account*.json
+google-drive-service-account*.json

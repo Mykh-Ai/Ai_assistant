@@ -665,3 +665,28 @@ Do not:
 - claim guaranteed admin response delivery or automatic retry;
 - update Product Truth without evidence and log entry;
 - let learned aliases bypass Product Truth.
+
+### Current Google Drive Product Truth - 2026-06-30
+
+`google_drive_invoice_storage` and
+`google_drive_invoice_archive_after_due_date` are `partial`, not fully
+`supported`.
+
+The implemented slice is owner-run service-account archive:
+
+- requires admin/server setup and external Google credentials;
+- uses one service account and one manually shared owner Drive root folder;
+- uploads confirmed receipts, incoming invoice originals, and selected outgoing
+  invoice PDFs through the archive worker;
+- enqueues outgoing invoice PDFs only after a control event such as mark-paid;
+- keeps local invoice PDFs; no invoice PDF deletion is implemented;
+- keeps local accounting metadata JSON;
+- keeps local files on failed/not-configured upload.
+
+Forbidden claims now include:
+
+- per-client OAuth Drive storage is active;
+- full SaaS Google Drive sync is active;
+- invoice PDFs are deleted after upload;
+- upload succeeded before the worker state is `uploaded`;
+- marking paid means bank-confirmed settlement.

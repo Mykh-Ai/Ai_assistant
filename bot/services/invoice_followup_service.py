@@ -18,6 +18,10 @@ REMINDER_STATUS_MUTED = 'muted'
 DRIVE_ARCHIVE_STATUS_STUB_NOT_UPLOADED = 'stub_not_uploaded'
 DRIVE_ARCHIVE_STATUS_STUB_REQUESTED_AFTER_PAID = 'stub_requested_after_paid'
 DRIVE_ARCHIVE_STATUS_STUB_SKIPPED_NO_DRIVE_RUNTIME = 'stub_skipped_no_drive_runtime'
+DRIVE_ARCHIVE_STATUS_PENDING = 'pending'
+DRIVE_ARCHIVE_STATUS_UPLOADED = 'uploaded'
+DRIVE_ARCHIVE_STATUS_RETRY_WAIT = 'retry_wait'
+DRIVE_ARCHIVE_STATUS_FAILED = 'failed'
 
 DRIVE_ARCHIVE_STUB_NOTE = (
     'Archivacia na Google Drive este nie je aktivna. Faktura ostava ulozena lokalne. '
@@ -344,10 +348,29 @@ class InvoiceFollowupService:
         status: str,
         note: str,
     ) -> InvoiceFollowupState:
+        return self.record_drive_archive_status(
+            invoice_id=invoice_id,
+            supplier_telegram_id=supplier_telegram_id,
+            status=status,
+            note=note,
+        )
+
+    def record_drive_archive_status(
+        self,
+        *,
+        invoice_id: int,
+        supplier_telegram_id: int,
+        status: str,
+        note: str,
+    ) -> InvoiceFollowupState:
         if status not in {
             DRIVE_ARCHIVE_STATUS_STUB_NOT_UPLOADED,
             DRIVE_ARCHIVE_STATUS_STUB_REQUESTED_AFTER_PAID,
             DRIVE_ARCHIVE_STATUS_STUB_SKIPPED_NO_DRIVE_RUNTIME,
+            DRIVE_ARCHIVE_STATUS_PENDING,
+            DRIVE_ARCHIVE_STATUS_UPLOADED,
+            DRIVE_ARCHIVE_STATUS_RETRY_WAIT,
+            DRIVE_ARCHIVE_STATUS_FAILED,
         }:
             raise ValueError('unsupported_drive_archive_status')
         with managed_connection(self._db_path) as connection:

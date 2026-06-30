@@ -10,6 +10,7 @@ from bot.config import load_config
 from bot.handlers import routers
 from bot.services.authorization import TelegramUserAuthorizationMiddleware
 from bot.services.db import init_db
+from bot.services.google_drive_archive_scheduler import run_google_drive_archive_scheduler
 from bot.services.invoice_followup_scheduler import run_invoice_followup_scheduler
 
 
@@ -38,12 +39,18 @@ async def main() -> None:
         run_invoice_followup_scheduler(bot=bot, config=config),
         name='invoice_followup_scheduler',
     )
+    google_drive_archive_task = asyncio.create_task(
+        run_google_drive_archive_scheduler(config=config),
+        name='google_drive_archive_scheduler',
+    )
     try:
         await dp.start_polling(bot, config=config)
     finally:
-        invoice_followup_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await invoice_followup_task
+        for task in (invoice_followup_task, google_drive_archive_task):
+            task.cancel()
+        for task in (invoice_followup_task, google_drive_archive_task):
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 if __name__ == '__main__':

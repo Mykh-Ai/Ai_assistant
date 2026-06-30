@@ -91,19 +91,28 @@ class ArchiveJobService:
         provider = _required_text(provider, 'provider')
         local_file_path_text = _required_text(str(local_file_path), 'local_file_path')
         metadata_path_text = _optional_text(metadata_path)
-        _validate_confirmed_accounting_path(
-            local_file_path_text,
-            workspace_id=workspace_id,
-            expected_leaf='originals',
-            field_name='local_file_path',
-        )
-        if metadata_path_text is not None:
-            _validate_confirmed_accounting_path(
-                metadata_path_text,
-                workspace_id=workspace_id,
-                expected_leaf='metadata',
-                field_name='metadata_path',
+        if document_type == 'invoice_pdf':
+            _validate_invoice_pdf_path(
+                local_file_path_text,
+                telegram_id=telegram_id,
+                field_name='local_file_path',
             )
+            if metadata_path_text is not None:
+                raise ArchiveJobServiceError('metadata_path_invoice_pdf_rejected')
+        else:
+            _validate_confirmed_accounting_path(
+                local_file_path_text,
+                workspace_id=workspace_id,
+                expected_leaf='originals',
+                field_name='local_file_path',
+            )
+            if metadata_path_text is not None:
+                _validate_confirmed_accounting_path(
+                    metadata_path_text,
+                    workspace_id=workspace_id,
+                    expected_leaf='metadata',
+                    field_name='metadata_path',
+                )
         if telegram_id <= 0:
             raise ArchiveJobServiceError('telegram_id_required')
         if max_attempts <= 0:
@@ -482,6 +491,30 @@ def _ensure_transition(
         raise ArchiveJobServiceError('terminal_job_transition_rejected')
     if current_status not in allowed_from:
         raise ArchiveJobServiceError('invalid_job_status_transition')
+
+
+def _validate_invoice_pdf_path(
+    path_text: str,
+    *,
+    telegram_id: int,
+    field_name: str,
+) -> None:
+    path = Path(path_text)
+    parts = path.parts
+    if not parts or any(part == '..' for part in parts):
+        raise ArchiveJobServiceError(f'{field_name}_invalid_invoice_path')
+    lower_parts = [part.lower() for part in parts]
+    try:
+        index = lower_parts.index('invoices')
+    except ValueError as exc:
+        raise ArchiveJobServiceError(f'{field_name}_invalid_invoice_path') from exc
+    relative = parts[index:]
+    if len(relative) != 3:
+        raise ArchiveJobServiceError(f'{field_name}_invalid_invoice_path')
+    if relative[1] != str(telegram_id):
+        raise ArchiveJobServiceError(f'{field_name}_telegram_mismatch')
+    if Path(relative[2]).suffix.lower() != '.pdf':
+        raise ArchiveJobServiceError(f'{field_name}_invalid_invoice_path')
 
 
 def _validate_confirmed_accounting_path(

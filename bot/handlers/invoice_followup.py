@@ -6,11 +6,12 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.config import Config
-from bot.services.google_drive_archive_stub import GoogleDriveArchiveStubService
+from bot.services.invoice_drive_archive_service import InvoiceDriveArchiveService
 from bot.services.invoice_followup_service import (
     InvoiceFollowupService,
     OverdueInvoiceReminder,
 )
+from bot.services.invoice_service import InvoiceService
 
 
 router = Router(name='invoice_followup')
@@ -40,10 +41,13 @@ async def invoice_followup_callback(callback: CallbackQuery, config: Config) -> 
                 invoice_id=invoice_id,
                 supplier_telegram_id=supplier_telegram_id,
             )
-            stub = GoogleDriveArchiveStubService(config.db_path).request_invoice_archive_stub(
-                invoice_id=invoice_id,
+            invoice = InvoiceService(config.db_path).get_invoice_for_supplier_by_id(
                 supplier_telegram_id=supplier_telegram_id,
+                invoice_id=invoice_id,
             )
+            if invoice is None:
+                raise ValueError('invoice_not_found_for_supplier')
+            stub = InvoiceDriveArchiveService(config).request_after_paid(invoice=invoice)
             await _clear_callback_keyboard(callback)
             await _answer_callback_message(
                 callback,

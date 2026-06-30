@@ -435,7 +435,7 @@ def test_callback_app_remains_fail_closed_and_exchanger_not_wired(tmp_path: Path
     assert 'bot.services.google_oauth_token_exchanger' not in source
 
 
-def test_product_truth_and_infohelp_are_not_changed() -> None:
+def test_product_truth_and_infohelp_reflect_service_account_not_oauth() -> None:
     from bot.services.info_help import build_product_truth_guidance
     from bot.services.product_truth import ProductTruthStatus, get_capability
 
@@ -443,9 +443,10 @@ def test_product_truth_and_infohelp_are_not_changed() -> None:
     answer = build_product_truth_guidance(user_input_text='Can bot save invoices to Google Drive?')
 
     assert result.capability is not None
-    assert result.capability.status == ProductTruthStatus.UNSUPPORTED
-    assert result.capability.runtime_owner is None
+    assert result.capability.status == ProductTruthStatus.PARTIAL
+    assert result.capability.runtime_owner is not None
     assert answer is not None
+    assert 'service-account' in answer
 
 
 def test_env_examples_contain_oauth_client_secret_placeholder_only() -> None:

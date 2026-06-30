@@ -1410,3 +1410,32 @@ Operational config:
 - real Telegram IDs must be configured in environment variables only, not committed or documented with real values.
 
 Out of scope remains public signup, email/password accounts, billing, payments, SaaS dashboard, multiple Telegram bot tokens, per-user bot-token orchestration, Postmark sending, and automatic tenant creation with full privileges.
+
+## Addendum 2026-06-30 - Google Drive Owner-Run Service Account Archive
+
+Current status: partial runtime integration.
+
+FakturaBot can run an owner-managed Google Drive archive worker when
+`GOOGLE_DRIVE_ENABLED=1`, `GOOGLE_DRIVE_MODE=service_account`, a service-account
+JSON path, and a shared Drive root folder id are configured. This is not
+per-client OAuth and not SaaS Drive sync.
+
+Runtime behavior:
+
+- confirmed receipts and incoming invoices already saved through the accounting
+  document intake outbox can be uploaded by the archive worker;
+- receipt originals go to `FakturaBot/<year>/blocky/<year-month>/`;
+- incoming invoice originals go to `FakturaBot/<year>/prijate_faktury/<year-month>/`;
+- outgoing invoice PDFs are enqueued only after a control event such as marking
+  the invoice paid and go to `FakturaBot/<year>/faktury/<year-month>/`;
+- local invoice PDFs remain stored locally and are not deleted in this MVP;
+- confirmed accounting metadata JSON remains local;
+- receipt/incoming originals are deleted only after successful upload and DB
+  state update to `uploaded`, and only when the corresponding retention env flag
+  is enabled;
+- failed or not-configured uploads keep local files and move jobs to retry/failed
+  states with bounded error codes.
+
+Product Truth status is `partial` with `requires_setup`, `requires_admin`, and
+`requires_external_credentials`. The bot must not claim per-user OAuth Drive,
+SaaS Drive sync, bank-confirmed settlement, or local invoice PDF deletion.

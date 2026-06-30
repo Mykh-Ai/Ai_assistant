@@ -284,17 +284,17 @@ def test_accounting_handlers_do_not_call_google_or_archive_worker() -> None:
         assert not any(token in source for token in forbidden), handler_path
 
 
-def test_google_drive_product_truth_stays_unsupported() -> None:
+def test_google_drive_product_truth_is_partial_owner_run_service_account() -> None:
     result = get_capability('google_drive_invoice_storage')
-    answer = build_product_truth_guidance(user_input_text='Vie bot ukladať faktúry na Google Drive?')
+    answer = build_product_truth_guidance(user_input_text='Vie bot ukladat faktury na Google Drive?')
 
     assert result.capability is not None
-    assert result.capability.status == ProductTruthStatus.UNSUPPORTED
-    assert result.capability.runtime_owner is None
+    assert result.capability.status == ProductTruthStatus.PARTIAL
+    assert result.capability.runtime_owner is not None
+    assert result.capability.requires_external_credentials is True
     assert answer is not None
-    assert 'nepodporované' in answer
-    assert 'nie je v aktuálnej verzii implementovaná' in answer
-
+    assert '\u010diasto\u010dn\u00e9' in answer
+    assert 'service-account' in answer
 
 def test_accounting_archive_service_has_no_google_or_network_imports() -> None:
     source = inspect.getsource(accounting_document_archive_service)

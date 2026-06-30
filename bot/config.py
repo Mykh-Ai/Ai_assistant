@@ -31,6 +31,16 @@ class Config:
     google_oauth_callback_port: int = 8080
     google_oauth_callback_use_fake_exchanger: bool = False
     google_token_crypto_secret: str | None = None
+    google_drive_enabled: bool = False
+    google_drive_mode: str = 'service_account'
+    google_drive_service_account_json_path: Path | None = None
+    google_drive_root_folder_id: str | None = None
+    google_drive_root_folder_name: str = 'FakturaBot'
+    google_drive_delete_local_receipt_original_after_upload: bool = True
+    google_drive_delete_local_incoming_invoice_original_after_upload: bool = True
+    google_drive_delete_local_invoice_pdf_after_upload: bool = False
+    google_drive_archive_worker_interval_seconds: int = 60
+    google_drive_archive_worker_batch_size: int = 5
     invoice_followup_scheduler_enabled: bool = True
     invoice_followup_check_interval_seconds: int = 86400
     invoice_followup_notification_cooldown_hours: int = 24
@@ -78,6 +88,32 @@ def load_config() -> Config:
         os.getenv('GOOGLE_OAUTH_CALLBACK_USE_FAKE_EXCHANGER', ''),
     )
     google_token_crypto_secret = os.getenv('GOOGLE_TOKEN_CRYPTO_SECRET', '').strip() or None
+    google_drive_enabled = _parse_bool(os.getenv('GOOGLE_DRIVE_ENABLED', ''))
+    google_drive_mode = os.getenv('GOOGLE_DRIVE_MODE', 'service_account').strip() or 'service_account'
+    google_drive_service_account_json_path = _parse_optional_path(
+        os.getenv('GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON_PATH', '')
+    )
+    google_drive_root_folder_id = os.getenv('GOOGLE_DRIVE_ROOT_FOLDER_ID', '').strip() or None
+    google_drive_root_folder_name = (
+        os.getenv('GOOGLE_DRIVE_ROOT_FOLDER_NAME', '').strip() or 'FakturaBot'
+    )
+    google_drive_delete_local_receipt_original_after_upload = _parse_bool(
+        os.getenv('GOOGLE_DRIVE_DELETE_LOCAL_RECEIPT_ORIGINAL_AFTER_UPLOAD', '1')
+    )
+    google_drive_delete_local_incoming_invoice_original_after_upload = _parse_bool(
+        os.getenv('GOOGLE_DRIVE_DELETE_LOCAL_INCOMING_INVOICE_ORIGINAL_AFTER_UPLOAD', '1')
+    )
+    google_drive_delete_local_invoice_pdf_after_upload = _parse_bool(
+        os.getenv('GOOGLE_DRIVE_DELETE_LOCAL_INVOICE_PDF_AFTER_UPLOAD', '')
+    )
+    google_drive_archive_worker_interval_seconds = _parse_positive_int(
+        os.getenv('GOOGLE_DRIVE_ARCHIVE_WORKER_INTERVAL_SECONDS', '60'),
+        env_name='GOOGLE_DRIVE_ARCHIVE_WORKER_INTERVAL_SECONDS',
+    )
+    google_drive_archive_worker_batch_size = _parse_positive_int(
+        os.getenv('GOOGLE_DRIVE_ARCHIVE_WORKER_BATCH_SIZE', '5'),
+        env_name='GOOGLE_DRIVE_ARCHIVE_WORKER_BATCH_SIZE',
+    )
     invoice_followup_scheduler_enabled = not _parse_bool(
         os.getenv('DISABLE_INVOICE_FOLLOWUP_SCHEDULER', ''),
     )
@@ -108,6 +144,16 @@ def load_config() -> Config:
         google_oauth_callback_port=google_oauth_callback_port,
         google_oauth_callback_use_fake_exchanger=google_oauth_callback_use_fake_exchanger,
         google_token_crypto_secret=google_token_crypto_secret,
+        google_drive_enabled=google_drive_enabled,
+        google_drive_mode=google_drive_mode,
+        google_drive_service_account_json_path=google_drive_service_account_json_path,
+        google_drive_root_folder_id=google_drive_root_folder_id,
+        google_drive_root_folder_name=google_drive_root_folder_name,
+        google_drive_delete_local_receipt_original_after_upload=google_drive_delete_local_receipt_original_after_upload,
+        google_drive_delete_local_incoming_invoice_original_after_upload=google_drive_delete_local_incoming_invoice_original_after_upload,
+        google_drive_delete_local_invoice_pdf_after_upload=google_drive_delete_local_invoice_pdf_after_upload,
+        google_drive_archive_worker_interval_seconds=google_drive_archive_worker_interval_seconds,
+        google_drive_archive_worker_batch_size=google_drive_archive_worker_batch_size,
         invoice_followup_scheduler_enabled=invoice_followup_scheduler_enabled,
         invoice_followup_check_interval_seconds=invoice_followup_check_interval_seconds,
         invoice_followup_notification_cooldown_hours=invoice_followup_notification_cooldown_hours,
@@ -146,3 +192,10 @@ def _parse_positive_int(raw_value: str, *, env_name: str) -> int:
 
 def _parse_bool(raw_value: str) -> bool:
     return raw_value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _parse_optional_path(raw_value: str) -> Path | None:
+    text = raw_value.strip()
+    if not text:
+        return None
+    return Path(text).resolve()

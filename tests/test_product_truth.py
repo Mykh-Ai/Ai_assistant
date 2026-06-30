@@ -48,8 +48,6 @@ REQUIRED_MVP_CAPABILITY_IDS = {
 
 NOT_SUPPORTED_CAPABILITY_IDS = {
     'send_invoice_email',
-    'google_drive_invoice_storage',
-    'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
     'accounting_export',
     'bank_cashflow_tax_analytics',
@@ -131,7 +129,7 @@ def test_external_integrations_have_credential_flags_and_forbidden_claims() -> N
     entries = _registry_by_id()
     for capability_id in EXTERNAL_CREDENTIAL_CAPABILITY_IDS:
         entry = entries[capability_id]
-        assert entry.status == ProductTruthStatus.UNSUPPORTED
+        assert entry.status in {ProductTruthStatus.UNSUPPORTED, ProductTruthStatus.PARTIAL}
         assert entry.requires_external_credentials is True
         assert entry.forbidden_claims
 
@@ -217,7 +215,7 @@ def test_invoice_due_date_reminders_record_is_partial_automatic_runtime() -> Non
     assert 'background scheduler' in entry.current_limitations[0]
     assert 'invoice_followup_scheduler.py' in (entry.runtime_owner or '')
     assert 'No email, SMS' in entry.current_limitations[2]
-    assert 'real Google Drive archive/upload' in entry.current_limitations[2]
+    assert 'owner-run service-account' in entry.current_limitations[2]
     assert 'Overdue invoice reminders use email or SMS.' in entry.forbidden_claims
     assert 'I archived the invoice to Google Drive.' in entry.forbidden_claims
 
@@ -313,16 +311,31 @@ def test_bank_cashflow_tax_analytics_record_is_unsupported() -> None:
     assert 'This is full accounting analytics.' in entry.forbidden_claims
 
 
-def test_google_drive_after_due_date_archive_record_stays_unsupported_stub_only() -> None:
+def test_google_drive_after_due_date_archive_record_is_partial_owner_run_service_account() -> None:
     entry = _registry_by_id()['google_drive_invoice_archive_after_due_date']
 
-    assert entry.status == ProductTruthStatus.UNSUPPORTED
+    assert entry.status == ProductTruthStatus.PARTIAL
     assert entry.requires_external_credentials is True
-    assert entry.runtime_owner is None
-    assert 'only a deterministic local stub' in entry.current_limitations[0]
-    assert 'no upload happened' in entry.current_limitations[1]
-    assert 'I archived this invoice to Google Drive.' in entry.forbidden_claims
-    assert 'The invoice was uploaded to Drive.' in entry.forbidden_claims
+    assert entry.requires_admin is True
+    assert 'invoice_drive_archive_service.py' in (entry.runtime_owner or '')
+    assert 'service-account JSON' in entry.current_limitations[0]
+    assert 'old local stub' in entry.current_limitations[1]
+    assert 'not deleted locally' in entry.current_limitations[2]
+    assert 'The invoice was uploaded to Drive before the worker reports uploaded.' in entry.forbidden_claims
+    assert 'This is per-user Google OAuth Drive storage.' in entry.forbidden_claims
+
+
+def test_google_drive_invoice_storage_record_is_partial_owner_run_service_account() -> None:
+    entry = _registry_by_id()['google_drive_invoice_storage']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert entry.requires_external_credentials is True
+    assert entry.requires_admin is True
+    assert 'google_drive_archive_scheduler.py' in (entry.runtime_owner or '')
+    assert 'not per-client OAuth' in entry.current_limitations[0]
+    assert 'generated PDFs remain stored locally' in entry.current_limitations[1]
+    assert 'Receipts and incoming invoices' in entry.current_limitations[2]
+    assert 'This is per-client Google OAuth Drive storage.' in entry.forbidden_claims
 
 
 def test_create_invoice_returns_supported_with_account_setup_requirement() -> None:

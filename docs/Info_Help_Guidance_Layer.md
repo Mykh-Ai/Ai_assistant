@@ -855,3 +855,20 @@ Do not:
 - expose internal debug data to users;
 - bypass active FSM ownership;
 - trigger AI calls for unauthorized users.
+
+### Google Drive Owner-Run Partial Runtime - 2026-06-30
+
+InfoHelp must answer Google Drive questions from Product Truth as `partial` when
+referring to the current owner-run service-account archive slice.
+
+Required wording boundaries:
+
+- say it requires admin setup, a service-account JSON file, and a Drive root
+  folder shared with the service account;
+- say it is not per-client OAuth and not full SaaS Drive sync;
+- say invoice PDFs remain local in this MVP;
+- say upload success must not be claimed until the worker records `uploaded`;
+- when Drive is disabled/not configured, keep the local stub/no-upload wording.
+
+Questions about marking an invoice paid must still emphasize bot-local payment
+state only: no bank confirmation and no bank matching.
