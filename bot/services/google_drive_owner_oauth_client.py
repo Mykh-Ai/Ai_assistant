@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -27,6 +28,14 @@ from bot.services.token_crypto import TokenCryptoError, TokenCryptoProvider
 
 
 _GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+
+
+def _google_auth_expiry(expires_at: datetime | None) -> datetime | None:
+    if expires_at is None:
+        return None
+    if expires_at.tzinfo is None:
+        return expires_at
+    return expires_at.astimezone(UTC).replace(tzinfo=None)
 
 
 @dataclass(frozen=True)
@@ -154,7 +163,7 @@ class GoogleDriveOwnerOAuthArchiveProvider(ArchiveUploadProvider):
             client_secret=self._config.client_secret,
             scopes=list(token_bundle.scopes),
         )
-        credentials.expiry = token_bundle.expires_at
+        credentials.expiry = _google_auth_expiry(token_bundle.expires_at)
         try:
             if not credentials.valid:
                 credentials.refresh(Request())

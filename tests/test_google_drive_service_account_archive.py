@@ -34,6 +34,7 @@ from bot.services.google_drive_owner_oauth import (
 from bot.services.google_drive_owner_oauth_client import (
     GoogleDriveOwnerOAuthArchiveProvider,
     GoogleDriveOwnerOAuthClientConfig,
+    _google_auth_expiry,
 )
 from bot.services.google_drive_service_account_client import (
     GoogleDriveServiceAccountArchiveProvider,
@@ -582,3 +583,18 @@ def test_owner_oauth_provider_without_folder_id_is_not_configured(tmp_path: Path
             document_type="receipt",
             metadata={"document_id": "receipt-001"},
         )
+
+def test_owner_oauth_google_auth_expiry_is_naive_utc() -> None:
+    aware = datetime(2026, 6, 30, 9, 0, tzinfo=UTC)
+
+    expiry = _google_auth_expiry(aware)
+
+    assert expiry == datetime(2026, 6, 30, 9, 0)
+    assert expiry.tzinfo is None
+
+
+def test_owner_oauth_google_auth_expiry_keeps_naive_datetime() -> None:
+    naive = datetime(2026, 6, 30, 9, 0)
+
+    assert _google_auth_expiry(naive) is naive
+    assert _google_auth_expiry(None) is None
