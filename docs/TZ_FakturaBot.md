@@ -229,6 +229,11 @@ Runtime numbering rule:
 
 Supplier email sending remains optional in the controlled dry run. Legacy local/server SQLite databases with `supplier.smtp_host`, `supplier.smtp_user`, or `supplier.smtp_pass` as `NOT NULL` must be migrated by application bootstrap to the current nullable schema so supplier onboarding can save without SMTP credentials.
 
+## 2026-07-01 Addendum: contact wizard recovery and inactivity timeout
+
+Manual and AI-assisted contact intake is text-first for precision-sensitive company/contact values. The first company-name prompt and contact recovery hints must also expose a clickable `/menu` escape so the user is not trapped if they do not want to continue the contact flow.
+
+Contact intake FSM state expires after five minutes of inactivity. On the next contact-state input after expiry, Python clears the FSM and answers that contact creation ended because of inactivity. Active contact input before expiry refreshes the five-minute window. This does not add voice entry for exact contact values and does not create or delete persisted contact data.
 ## 2026-05-03 Addendum: contact address and optional customer email
 
 Customer/contact onboarding must not require the customer's email address. If the user does not provide it, the contact may still be saved and the local SQLite `contact.email` value may remain an empty string for compatibility with the current schema.

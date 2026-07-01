@@ -1,3 +1,17 @@
+## 2026-07-01 - Contact wizard recovery hint and inactivity timeout
+
+Summary:
+- Added `/menu` to contact creation recovery hints, including the first company-name prompt, so users have a visible clickable escape from the text-first contact wizard.
+- Added a five-minute inactivity timeout for contact FSM states; expired contact sessions clear on the next contact-state input before processing user data.
+- Kept voice exact-value entry out of scope: company/contact identifiers remain text-first, and no new top-level action or DB/storage schema change was added.
+
+Docs/contracts checked or updated:
+- `docs/TZ_FakturaBot.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `CHANGELOG.md`
+
+Verification:
+- `python -m pytest -q tests\test_contact_intake_semantic_flow.py tests\test_voice_state_routing.py tests\test_state_control.py` -> 82 passed.
 ## 2026-07-01 - Google Drive documentation truth sync after live smoke
 
 Summary:

@@ -8,6 +8,7 @@
 - Product Truth, InfoHelp, docs, and no-network tests for partial Google Drive archive support.
 
 ### Changed
+- Contact intake prompts now include a `/menu` escape hint, and contact FSM sessions expire after five minutes of inactivity before processing the next contact-state input.
 - Google Drive invoice storage/archive Product Truth is now `partial` owner OAuth with setup/admin/external-credential requirements, not unsupported and not fully supported.
 - Mark-paid invoice flow falls back to the old local Drive stub when Drive is disabled, and enqueues a Drive archive job only when owner-run Drive mode is enabled and the PDF exists.
 - Service-account mode is marked unsupported for personal My Drive unless Google Workspace/Shared Drive is explicitly configured later.

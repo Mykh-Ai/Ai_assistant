@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from bot.config import Config
@@ -469,9 +470,44 @@ def test_semantic_add_contact_enters_manual_wizard_step_one(tmp_path: Path) -> N
     asyncio.run(start_add_contact_intake(message=message, state=state, config=config))
 
     assert state.current_state == ContactStates.name_hint
-    assert message.answers[-1] == 'V poriadku, vytvoríme nový kontakt. Najprv napíšte názov firmy.'
+    assert message.answers[-1].startswith('V poriadku, vytvoríme nový kontakt. Najprv napíšte názov firmy.')
+    assert '/menu' in message.answers[-1]
 
 
+
+def test_name_hint_expires_after_five_minutes(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    expired_at = datetime.now(UTC) - timedelta(seconds=1)
+    state.current_state = ContactStates.name_hint
+    state.data = {'contact_intake_expires_at': expired_at.isoformat()}
+    message = _DummyMessage()
+    message.text = 'ZS'
+    message.document = None
+
+    asyncio.run(contact_name_hint(message, state, config))
+
+    assert state.current_state is None
+    assert state.data == {}
+    assert message.answers[-1] == 'Vytváranie kontaktu bolo ukončené z dôvodu nečinnosti. Keď budete pripravený, začnite kontakt znova.'
+
+
+def test_name_hint_activity_extends_contact_timeout(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    state.current_state = ContactStates.name_hint
+    state.data = {'contact_intake_expires_at': (datetime.now(UTC) + timedelta(seconds=1)).isoformat()}
+    message = _DummyMessage()
+    message.text = 'ZS'
+    message.document = None
+
+    asyncio.run(contact_name_hint(message, state, config))
+
+    assert state.current_state == ContactStates.source_after_name
+    refreshed = datetime.fromisoformat(state.data['contact_intake_expires_at'])
+    assert refreshed > datetime.now(UTC) + timedelta(minutes=4)
 def test_name_hint_text_moves_to_source_after_name(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _setup_supplier(config.db_path)

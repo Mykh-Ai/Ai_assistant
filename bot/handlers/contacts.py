@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
+from datetime import UTC, datetime, timedelta
 import re
 
 from bot.config import Config
@@ -19,12 +20,61 @@ from bot.services.validation import validate_contact_address, validate_dic, vali
 
 router = Router(name='contacts')
 
-CONTACT_RECOVERY_HINT = 'Ak chcete vytváranie kontaktu zrušiť, napíšte „zrušiť“.'
+CONTACT_INTAKE_TIMEOUT_SECONDS = 5 * 60
+CONTACT_TIMEOUT_MESSAGE = (
+    'Vytváranie kontaktu bolo ukončené z dôvodu nečinnosti. '
+    'Keď budete pripravený, začnite kontakt znova.'
+)
+CONTACT_RECOVERY_HINT = (
+    'Ak chcete vytváranie kontaktu zrušiť, napíšte "zrušiť". '
+    'Alebo sa vráťte do hlavného menu: /menu'
+)
+_CONTACT_EXPIRES_AT_KEY = 'contact_intake_expires_at'
 
 
 def _with_contact_recovery_hint(message: str) -> str:
     return f'{message}\n\n{CONTACT_RECOVERY_HINT}'
 
+
+def _contact_session_metadata(now: datetime | None = None) -> dict[str, str]:
+    expires_at = _utc_now(now) + timedelta(seconds=CONTACT_INTAKE_TIMEOUT_SECONDS)
+    return {_CONTACT_EXPIRES_AT_KEY: expires_at.isoformat()}
+
+
+async def _ensure_contact_session_active(
+    *,
+    message: Message,
+    state: FSMContext,
+    now: datetime | None = None,
+) -> bool:
+    data = await state.get_data()
+    expires_at = _parse_contact_timestamp(data.get(_CONTACT_EXPIRES_AT_KEY))
+    current_time = _utc_now(now)
+    if expires_at is not None and current_time >= expires_at:
+        await state.clear()
+        await message.answer(CONTACT_TIMEOUT_MESSAGE)
+        return False
+
+    await state.update_data(**_contact_session_metadata(now=current_time))
+    return True
+
+
+def _utc_now(now: datetime | None = None) -> datetime:
+    if now is None:
+        return datetime.now(UTC)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=UTC)
+    return now.astimezone(UTC)
+
+
+def _parse_contact_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return _utc_now(parsed)
 
 class ContactStates(StatesGroup):
     name_hint = State()
@@ -130,8 +180,11 @@ async def start_add_contact_intake(
         return
 
     await state.clear()
+    await state.update_data(**_contact_session_metadata())
     await state.set_state(ContactStates.name_hint)
-    await message.answer('V poriadku, vytvoríme nový kontakt. Najprv napíšte názov firmy.')
+    await message.answer(
+        _with_contact_recovery_hint('V poriadku, vytvoríme nový kontakt. Najprv napíšte názov firmy.')
+    )
 
 
 async def _start_add_contact_from_source(
@@ -152,6 +205,7 @@ async def _start_add_contact_from_source(
         model=config.openai_llm_model,
         company_hint=resolved_company_hint,
     )
+    await state.update_data(**_contact_session_metadata())
     if parsed.get('role_ambiguity') == '1':
         partial_draft = {
             'name': resolved_company_hint or parsed.get('company_name') or '',
@@ -375,6 +429,9 @@ async def _process_source_after_name_step(message: Message, state: FSMContext, c
 
 @router.message(ContactStates.name_hint)
 async def contact_name_hint(message: Message, state: FSMContext, config: Config) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     if message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
@@ -407,11 +464,17 @@ async def contact_name_hint(message: Message, state: FSMContext, config: Config)
 
 @router.message(ContactStates.source_after_name)
 async def contact_source_after_name(message: Message, state: FSMContext, config: Config, bot) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     await _process_source_after_name_step(message, state, config, bot)
 
 
 @router.message(ContactStates.ico)
 async def contact_ico(message: Message, state: FSMContext) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     value = (message.text or '').strip()
     if not validate_ico(value):
         await message.answer(_with_contact_recovery_hint('Neplatné ICO. Formát: 8 číslic. Skúste znova:'))
@@ -423,6 +486,9 @@ async def contact_ico(message: Message, state: FSMContext) -> None:
 
 @router.message(ContactStates.dic)
 async def contact_dic(message: Message, state: FSMContext) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     value = (message.text or '').strip()
     if not validate_dic(value):
         await message.answer(_with_contact_recovery_hint('Neplatné DIC. Formát: 10 číslic. Skúste znova:'))
@@ -434,6 +500,9 @@ async def contact_dic(message: Message, state: FSMContext) -> None:
 
 @router.message(ContactStates.ic_dph)
 async def contact_ic_dph(message: Message, state: FSMContext) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     value = (message.text or '').strip()
     if value == '-':
         await state.update_data(ic_dph='')
@@ -451,6 +520,9 @@ async def contact_ic_dph(message: Message, state: FSMContext) -> None:
 
 @router.message(ContactStates.address)
 async def contact_address(message: Message, state: FSMContext) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     value = (message.text or '').strip()
     if not validate_contact_address(value):
         await message.answer(
@@ -464,6 +536,9 @@ async def contact_address(message: Message, state: FSMContext) -> None:
 
 @router.message(ContactStates.email)
 async def contact_email(message: Message, state: FSMContext) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     value = (message.text or '').strip()
     if value == '-':
         await state.update_data(email='')
@@ -480,6 +555,9 @@ async def contact_email(message: Message, state: FSMContext) -> None:
 
 @router.message(ContactStates.contact_person)
 async def contact_person(message: Message, state: FSMContext) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     value = (message.text or '').strip()
     await state.update_data(contact_person='' if value == '-' else value)
 
@@ -495,6 +573,9 @@ async def contact_confirm(
     config: Config,
     canonical_decision: str | None = None,
 ) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     if canonical_decision is None:
         answer = await resolve_yes_no(
             context_name='contact_confirm',
@@ -541,6 +622,9 @@ async def contact_confirm(
 
 @router.message(ContactStates.intake_missing)
 async def contact_intake_missing(message: Message, state: FSMContext) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     await process_contact_missing_fields(
         message=message,
         state=state,
@@ -550,6 +634,9 @@ async def contact_intake_missing(message: Message, state: FSMContext) -> None:
 
 @router.message(ContactStates.intake_confirm)
 async def contact_intake_confirm(message: Message, state: FSMContext, config: Config) -> None:
+    if not await _ensure_contact_session_active(message=message, state=state):
+        return
+
     await process_contact_intake_confirm(
         message=message,
         state=state,
