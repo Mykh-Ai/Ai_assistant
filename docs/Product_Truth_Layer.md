@@ -567,7 +567,7 @@ current code before runtime claims:
   than raw invoice lifecycle status, unpaid/not-paid wording that includes both
   pending and overdue bot states, and an internal deterministic calendar-year
   count/total fast path for simple yearly questions;
-- `mark_existing_invoice_paid`: supported MVP. A user can mark one saved outgoing invoice as paid/uhradena after supplier-scoped lookup and explicit confirmation. This stores bot-local state only; it is not bank matching, bank confirmation, or real Google Drive upload.
+- `mark_existing_invoice_paid`: supported MVP. A user can mark one saved outgoing invoice as paid/uhradena after supplier-scoped lookup and explicit confirmation. This stores bot-local payment/follow-up state; when owner OAuth Drive archive is configured, it may enqueue the existing local PDF for archive-worker upload. It is not bank matching or bank confirmation.
 - yearly invoice summary: supported only as an internal deterministic strategy
   under `invoice_analytics`, not as a competing user-facing top-level action;
 - receipt/incoming-invoice categories: partial; controlled category candidates,
@@ -588,8 +588,7 @@ current code before runtime claims:
   separate implementation with data sources, validation rules, Product Truth,
   and tests proves otherwise;
 - invoice PDF generation: supported in current invoice flow;
-- Google Drive invoice storage: unsupported/planned only unless later runtime
-  code proves otherwise;
+- Google Drive invoice storage/archive: partial owner OAuth runtime integration when configured; not full SaaS/per-client Drive sync;
 - SMS sending: unsupported unless later runtime code proves otherwise;
 - real outbound invoice email sending: unsupported unless later runtime code
   proves otherwise;
@@ -666,7 +665,7 @@ Do not:
 - update Product Truth without evidence and log entry;
 - let learned aliases bypass Product Truth.
 
-### Current Google Drive Product Truth - 2026-06-30
+### Current Google Drive Product Truth - 2026-07-01
 
 `google_drive_invoice_storage` and
 `google_drive_invoice_archive_after_due_date` are `partial`, not fully

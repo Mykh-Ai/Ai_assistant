@@ -37,11 +37,9 @@ notes: First Level 2 wiring answers this from Product Truth and does not execute
 account_state: approved user, normal setup
 input_channel: text
 user_input: Can you store invoices on Google Drive?
-expected_product_truth_status: unsupported
-expected_response_behavior: Future InfoHelp must state that Google Drive
-invoice storage/sync is not implemented and requires external credentials and
-explicit integration work.
-forbidden_behavior: claim that Drive storage or sync is active
+expected_product_truth_status: partial
+expected_response_behavior: InfoHelp must state that owner OAuth Google Drive archive is partially implemented for one configured owner account, requires admin setup/external credentials/token crypto/root folder id, and is not per-client OAuth or full SaaS Drive sync.
+forbidden_behavior: claim full/per-client Drive sync, claim service-account personal My Drive support, or claim upload success before worker state `uploaded`
 side_effect_expectation: no side effects
 notes: First Level 2 wiring answers this from Product Truth and states the external integration limitation.
 
@@ -253,25 +251,20 @@ notes: Phase 1 is an in-process aiogram scheduler, not an external cron/worker
 deployment. Missing follow-up state rows are treated as unpaid/active for
 legacy invoices.
 
-### PT-IH-018 Google Drive Archive Stub After Paid Reminder
+### PT-IH-018 Google Drive Archive After Paid Reminder
 
 account_state: approved user marks overdue invoice as paid from reminder card
 input_channel: Telegram callback
 user_input: Oznacit ako zaplatenu
-expected_product_truth_status: unsupported for real Drive archive
-expected_response_behavior: Bot marks local follow-up payment state as paid and
-shows an honest stub saying Google Drive archive is not active and the invoice
-remains stored locally.
-forbidden_behavior: claim the invoice was uploaded/archived to Drive; call
-Google APIs; create Drive folders; delete local PDF; say Drive sync is active.
-side_effect_expectation: local `invoice_followup_state.drive_archive_status`
-may become `stub_requested_after_paid`; no external network or Drive side
-effect.
+expected_product_truth_status: partial
+expected_response_behavior: Bot marks local follow-up payment state as paid. In configured owner OAuth deployments it enqueues the existing local invoice PDF for archive-worker upload; if Drive is disabled/not configured it shows the honest local stub and does not claim upload.
+forbidden_behavior: claim the invoice was uploaded/archived before worker state `uploaded`; delete local PDF; claim full Drive sync; claim bank-confirmed settlement.
+side_effect_expectation: local `invoice_followup_state.payment_status` becomes `paid`; Drive status becomes `uploaded` only after archive worker success, otherwise the local stub/failure state remains bounded.
 automation_status: automated in `tests/test_invoice_followup_service.py`,
 `tests/test_invoice_followup_handler.py`, `tests/test_product_truth.py`, and
-`tests/test_info_help.py`
-last_result: passed in focused and full test runs after automatic scheduler correction
-last_run_at: 2026-06-15
+`tests/test_info_help.py`; real Drive upload requires manual owner-credential smoke.
+last_result: invoice `20260006` live smoke on 2026-07-01 reached `uploaded`; local PDF remained available.
+last_run_at: 2026-07-01
 
 ### PT-IH-019 Manual Mark Existing Invoice Paid
 
@@ -281,9 +274,9 @@ Expected:
 - Product Truth capability: `mark_existing_invoice_paid`.
 - Status: `supported` MVP.
 - Guidance states that the user can say/type `oznac fakturu 06 ako uhradenu` and confirm with the button.
-- Guidance explicitly says this is bot-local state, not bank confirmation, bank matching, or real Google Drive upload.
+- Guidance explicitly says this is bot-local payment state, not bank confirmation or bank matching. It may mention owner OAuth Drive enqueue/upload only as a configured partial integration and must not claim upload before worker state `uploaded`.
 
-Last result: covered by `tests/test_product_truth.py` and `tests/test_info_help.py` in the 2026-06-22 runtime slice.
+Last result: covered by `tests/test_product_truth.py` and `tests/test_info_help.py`; invoice `20260006` live smoke on 2026-07-01 confirmed mark-paid -> archive job -> Drive uploaded.
 
 ## PT-IH-020 Invoice Analytics Runtime Pilot
 
@@ -415,4 +408,4 @@ automation_status: covered by `tests/test_google_drive_service_account_archive.p
 `tests/test_archive_worker.py`, `tests/test_product_truth.py`, and
 `tests/test_info_help.py`.
 last_result: focused no-network suite passed locally for owner OAuth switch on
-2026-06-30; manual Google Drive smoke is allowed only with real owner credentials.
+2026-06-30; manual live smoke with real owner credentials passed on 2026-07-01 for invoice `20260006`.

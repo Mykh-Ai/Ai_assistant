@@ -1,11 +1,12 @@
 # Google Drive Invoice Archive After Due Date Spec
 
-Status: Phase 1 runtime slice plus future Phase 2 integration boundary.
+Status: partial owner OAuth runtime integration plus historical Phase 1 stub boundary.
 
-## Current Phase 1 Runtime
+## Historical Phase 1 Runtime
 
-Phase 1 implements overdue outgoing-invoice follow-up in Telegram with a local
-Google Drive archive stub only.
+Phase 1 originally implemented overdue outgoing-invoice follow-up in Telegram with a local
+Google Drive archive stub only. Configured owner OAuth deployments now use the
+owner OAuth runtime update documented below.
 
 Implemented:
 
@@ -34,6 +35,8 @@ Not implemented in Phase 1:
 
 ## Product Truth Status
 
+Current Product Truth status after owner OAuth integration:
+
 `invoice_due_date_reminders`: `partial`
 
 Reason: overdue detection, automatic in-process Telegram notification,
@@ -41,12 +44,13 @@ decisions, and persisted state exist. The scheduler runs inside the bot
 process once per day by default, not as a separate external worker/cron
 deployment.
 
-`google_drive_invoice_archive_after_due_date`: `unsupported`
+`google_drive_invoice_archive_after_due_date`: `partial`
 
-Reason: Phase 1 has only a local stub. It records and explains that no Google
-Drive upload happened. It must not be described as Drive archive support.
+Reason: configured owner OAuth deployments enqueue and upload invoice PDFs after
+mark-paid/control events. Unconfigured deployments still fall back to the local
+stub. It must not be described as full SaaS/per-client Drive sync.
 
-Existing `google_drive_invoice_storage` remains `unsupported`.
+`google_drive_invoice_storage`: `partial` owner OAuth archive integration.
 
 ## Data Model
 
@@ -158,35 +162,34 @@ lokalne. Po zapnuti Drive integracie ju bude mozne archivovat podla pravidiel.
 
 ## Manual Mark-Paid Entry Point
 
-`mark_existing_invoice_paid` reuses the same local follow-up state effect as the reminder card's "mark as paid" decision after supplier-scoped invoice lookup and explicit confirmation. It is a manual top-level entry point, not a bank integration. It may record the local archive stub after marking paid, but it must not claim that a real Google Drive upload/archive happened.
+`mark_existing_invoice_paid` reuses the same follow-up state effect as the reminder card's "mark as paid" decision after supplier-scoped invoice lookup and explicit confirmation. It is a manual top-level entry point, not a bank integration. In configured owner OAuth deployments it may enqueue the existing local invoice PDF for archive-worker upload. In unconfigured deployments it records the local archive stub and must not claim that a real Google Drive upload happened.
 
-## Future Phase 2 Requirements
+## Future Full-Support Requirements
 
-Before real Google Drive upload can be called supported:
+Before Google Drive archive can be called fully supported beyond the current partial owner OAuth runtime:
 
-- real OAuth token exchange and production token crypto must be enabled;
-- Drive upload adapter must exist;
-- folder policy and tenant/workspace scope must be defined;
+- per-client or account-specific OAuth setup must be designed if the product moves beyond single-owner deployments;
+- folder policy and tenant/workspace scope must be defined for that wider model;
 - upload failure must keep local invoice PDFs valid;
-- retry and observability behavior must be implemented;
+- retry and observability behavior must remain bounded;
 - Product Truth, InfoHelp, tests, evals, `PROJECT_LOG.md`, and this spec must
-  be updated;
+  be updated for the wider claim;
 - no local PDF deletion may be added without a separate migration/retention
   decision.
 
-## Owner-Run Service Account MVP Update - 2026-06-30
+## Owner OAuth Runtime Update - 2026-06-30/2026-07-01
 
 The current runtime is no longer stub-only for configured owner-run deployments.
-`google_drive_invoice_archive_after_due_date` is now `partial`.
+`google_drive_invoice_archive_after_due_date` is now `partial` owner OAuth runtime integration.
 
 Implemented:
 
 - `InvoiceDriveArchiveService` falls back to the old local stub when
-  `GOOGLE_DRIVE_ENABLED=0`;
-- with Drive enabled, mark-paid/control events enqueue the existing local invoice
+  `GOOGLE_DRIVE_ENABLED=0` or Drive is not configured;
+- with owner OAuth Drive enabled, mark-paid/control events enqueue the existing local invoice
   PDF as an `invoice_pdf` archive job;
 - the in-process Google Drive archive scheduler runs only when Drive is enabled;
-- the service-account provider creates/finds Drive folders and uploads through
+- the owner OAuth provider refreshes credentials, creates/finds Drive folders, and uploads through
   injected/lazy Google API clients;
 - worker failures are bounded and local invoice PDFs remain available;
 - local invoice PDFs are never deleted in this MVP.
@@ -203,3 +206,20 @@ Still not implemented:
 - deleting local invoice PDFs;
 - bank matching or bank-confirmed payment;
 - external cron/worker deployment separate from the bot process.
+
+Live smoke - 2026-07-01:
+
+- invoice `20260006` was marked paid through `mark_existing_invoice_paid`;
+- `invoice_followup_state.payment_status` became `paid`;
+- one `invoice_pdf` `archive_jobs` row was created and uploaded;
+- `drive_archive_status` became `uploaded`;
+- Google Drive returned a file id and target folder id;
+- local PDF stayed present in `/bot/data/storage/invoices/...`;
+- no bank matching, bank confirmation, or local PDF deletion occurred.
+
+Operational incident during receipt backfill:
+
+- two receipt originals/metadata had been classified under 2023 because the model misread or over-inferred the year;
+- the live repair moved metadata, DB archive rows, and Drive files/folders from 2023 to 2026;
+- the current receipt intake validation rejects issue years before 2026 before confirmed save;
+- before 2027, replace the fixed minimum-year guard with an explicit accepted-year/window policy so January can still accept legitimate prior-year receipt backfill while impossible old years fail closed.

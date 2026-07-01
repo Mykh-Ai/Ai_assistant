@@ -387,7 +387,8 @@ Google Drive owner OAuth archive:
 - local outgoing invoice PDFs are not deleted in this MVP;
 - receipt/incoming originals may be deleted only after upload success and DB state `uploaded`; metadata JSON stays local;
 - service-account mode is unsupported for personal My Drive unless a future Google Workspace/Shared Drive setup is explicitly configured;
-- setup details are in `docs/Google_Drive_Service_Account_Owner_Run_MVP.md`.
+- setup details are in `docs/Google_Drive_Service_Account_Owner_Run_MVP.md` (current owner OAuth MVP doc), `docs/Google_Drive_Invoice_Archive_After_Due_Date_Spec.md`, and `docs/Google_Drive_Token_Crypto_Operations.md`;
+- live smoke on 2026-07-01 confirmed invoice `20260006` mark-paid -> `invoice_pdf` archive job -> Google Drive `uploaded` state.
 
 Google Drive OAuth callback skeleton:
 - separate process, not `bot/main.py` polling;

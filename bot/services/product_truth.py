@@ -96,7 +96,7 @@ class ProductTruthResult:
         }
 
 
-_LAST_VERIFIED_AT = '2026-06-22'
+_LAST_VERIFIED_AT = '2026-07-01'
 
 
 def _capability(

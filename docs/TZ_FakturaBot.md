@@ -39,14 +39,13 @@ local invoice PDF generation and `invoice.pdf_path` behavior are unchanged.
 
 Current status is `partial`: automatic Telegram reminders are implemented
 inside the bot process, while email reminders, SMS reminders, bank matching,
-accounting export, external cron/worker deployment, and real Google Drive
-upload/archive remain out of scope.
+accounting export, and external cron/worker deployment remain out of scope.
 
-After marking an invoice as paid, the runtime may show a deterministic Google
-Drive archive stub. This stub records that no upload happened and tells the
-user the invoice remains stored locally. Real Google Drive invoice archive
-after due-date follow-up is still `unsupported`; no Drive folder is created, no
-file is uploaded, and no local PDF is deleted.
+When owner OAuth Google Drive archive is configured, marking an invoice paid or
+using an equivalent due-date control event enqueues the existing local invoice
+PDF for Drive upload through the archive worker. If Drive is disabled or not
+configured, the runtime falls back to the deterministic local Drive archive
+stub. Local invoice PDFs are not deleted in this MVP.
 
 ---
 
@@ -54,7 +53,7 @@ file is uploaded, and no local PDF is deleted.
 
 Approved users may mark one already saved outgoing invoice as paid/uhradena through canonical top-level action `mark_existing_invoice_paid`. Natural text or voice such as `Oznac fakturu 06 ako uhradenu` resolves only to a bounded intent; Python still performs supplier-scoped invoice lookup, handles ambiguity, shows a confirmation step, and writes state only after the user confirms.
 
-The action writes bot-local payment/follow-up state through `invoice_followup_state` and `InvoiceFollowupService.mark_paid()`. It does not edit invoice content, change invoice PDF paths, delete PDFs, confirm bank settlement, perform bank matching, or upload/archive the invoice to real Google Drive. The existing local Google Drive archive stub may be recorded after paid marking and must continue to state that no Drive upload happened.
+The action writes bot-local payment/follow-up state through `invoice_followup_state` and `InvoiceFollowupService.mark_paid()`. It does not edit invoice content, change invoice PDF paths, delete PDFs, confirm bank settlement, or perform bank matching. When owner OAuth Google Drive archive is enabled and configured, the action may enqueue the existing local PDF for Drive upload; otherwise it records the existing local Drive archive stub.
 
 Voice may start the action and may answer the bounded confirmation. Confirmation uses shared `yes_no` DecisionResolver context `mark_existing_invoice_paid_confirm`, with buttons `Označiť ako uhradenú` and `Späť do hlavného menu`.
 
@@ -1415,7 +1414,7 @@ Out of scope remains public signup, email/password accounts, billing, payments, 
 
 ## Addendum 2026-06-30 - Google Drive Owner OAuth Archive
 
-Current status: partial runtime integration.
+Current status: partial runtime integration, live-smoked on 2026-07-01.
 
 FakturaBot can run an owner-managed Google Drive archive worker when
 `GOOGLE_DRIVE_ENABLED=1`, `GOOGLE_DRIVE_MODE=owner_oauth`, Google OAuth client
@@ -1442,3 +1441,17 @@ Runtime behavior:
 Setup uses the manual owner OAuth bootstrap command
 `python -m bot.google_drive_owner_oauth_bootstrap authorize --telegram-id <admin_telegram_id>`
 and then `python -m bot.google_drive_owner_oauth_bootstrap exchange --state-token <state> --code <code> --root-folder-id <folder_id>`.
+
+Live smoke evidence on 2026-07-01:
+
+- invoice `20260006` was marked paid through voice/text intent `mark_existing_invoice_paid`;
+- the bot created one `invoice_pdf` archive job;
+- the archive worker uploaded the PDF to Google Drive and set DB state to `uploaded`;
+- local invoice PDF remained available;
+- no bank confirmation or bank matching was implied.
+
+Receipt date incident noted during Drive backfill:
+
+- two confirmed receipt metadata/archive records were extracted under year 2023 and repaired to 2026 in DB, local metadata paths, and Google Drive file names/folders;
+- current runtime rejects receipt issue dates before 2026 before confirmed save;
+- this fixed floor is a controlled-rollout guard, not a permanent yearly policy. Before the 2027 accounting year, replace it with an explicit configurable accepted-year/window policy, because January may legitimately need backfill of prior-year receipts.

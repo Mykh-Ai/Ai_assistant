@@ -1,3 +1,31 @@
+## 2026-07-01 - Google Drive documentation truth sync after live smoke
+
+Summary:
+- Reconciled Google Drive docs/registries after live owner OAuth smoke.
+- Marked Drive as integrated `partial` owner OAuth runtime when configured, not unsupported/stub-only and not full SaaS/per-client sync.
+- Updated stale mark-paid and due-date follow-up registry text that still claimed real Drive upload never occurs.
+- Added live smoke evidence for invoice `20260006`: mark-paid created an `invoice_pdf` archive job, the archive worker uploaded it to Google Drive, DB status became `uploaded`, and the local PDF remained available.
+- Recorded the receipt-year incident: two receipts were extracted under 2023 and repaired to 2026; current guard rejects receipt issue dates before 2026, but before 2027 this should become an explicit configurable accepted-year/window policy to allow legitimate January prior-year backfill.
+
+Docs/source documents checked or updated:
+- `README.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/Google_Drive_Service_Account_Owner_Run_MVP.md`
+- `docs/Google_Drive_Invoice_Archive_After_Due_Date_Spec.md`
+- `docs/Google_Drive_Faktury_Bloceky_Storage_Policy.md`
+- `docs/Google_Drive_Token_Crypto_Operations.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `bot/services/product_truth.py` (registry already partial; `last_verified_at` updated to 2026-07-01)
+- `bot/services/info_help.py`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/evals/product_truth_infohelp_smoke.md`
+- `CHANGELOG.md`
+
+Verification:
+- Documentation-only sync; runtime smoke evidence came from live DB/log inspection after invoice `20260006` upload.
+
 ## 2026-07-01 - Receipt 2023 year repair and receipt date guard
 
 Summary:

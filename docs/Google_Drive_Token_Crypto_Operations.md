@@ -1,10 +1,11 @@
 # Google Drive Token Crypto Operations
 
-Status: production operations policy for future Google Drive OAuth token storage.
+Status: production operations policy for current owner OAuth token storage.
 
 This document covers `GOOGLE_TOKEN_CRYPTO_SECRET`, the local secret used by
 the token crypto provider foundation. It does not enable Google OAuth, Google
-API calls, Drive uploads, or cleanup by itself.
+API calls, Drive uploads, or cleanup by itself, but the current owner OAuth
+runtime depends on this secret to decrypt stored refresh-token bundles.
 
 ## Purpose
 
@@ -142,7 +143,7 @@ GOOGLE_TOKEN_CRYPTO_SECRET=<generated-fernet-key>
 Do not commit the generated value. Do not paste it into logs, chats, tickets,
 or documentation.
 
-## Checklist Before Real OAuth
+## Checklist Before Enabling Owner OAuth On A Deployment
 
 Before enabling real Google OAuth token exchange:
 
@@ -154,8 +155,9 @@ Before enabling real Google OAuth token exchange:
 - Token persistence uses production crypto, not deterministic fake crypto.
 - Tests prove no plaintext access/refresh/id tokens appear in DB, repr,
   logs, or user-facing output.
-- Product Truth/InfoHelp remains unchanged until real upload/archive behavior
-  works end to end.
+- Product Truth/InfoHelp must remain `partial` and setup-gated unless the deployment
+  has owner OAuth credentials, token crypto, encrypted refresh token, root folder id,
+  archive worker, and smoke evidence.
 
 ## Non-Goals
 

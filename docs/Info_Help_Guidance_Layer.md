@@ -264,8 +264,9 @@ Expected guidance:
 
 - classify as `mark_existing_invoice_paid`;
 - answer from Product Truth as `supported` MVP;
-- explain that it stores bot-local paid/uhradena state only;
-- explicitly avoid claiming bank confirmation, bank matching, or real Google Drive upload;
+- explain that it stores bot-local paid/uhradena state;
+- explain that configured owner OAuth Drive can enqueue/upload the existing local PDF through the worker, while unconfigured Drive falls back to the local stub;
+- explicitly avoid claiming bank confirmation, bank matching, or upload success before worker state `uploaded`;
 - suggest: "oznac fakturu 06 ako uhradenu" and confirm with the provided button.
 
 ## InfoHelp Answer Obligation For Implemented Capabilities
@@ -856,7 +857,7 @@ Do not:
 - bypass active FSM ownership;
 - trigger AI calls for unauthorized users.
 
-### Google Drive Owner OAuth Partial Runtime - 2026-06-30
+### Google Drive Owner OAuth Partial Runtime - 2026-07-01
 
 InfoHelp must answer Google Drive questions from Product Truth as `partial` when
 referring to the current owner OAuth archive slice.
