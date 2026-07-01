@@ -10,7 +10,7 @@ import sqlite3
 import unicodedata
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from bot.services.db import managed_connection
 
@@ -29,13 +29,13 @@ SOURCE_GENERATED_CALENDAR = 'generated_calendar'
 
 
 MONTH_NAMES_SK = {
-    1: 'januar',
-    2: 'februar',
+    1: 'január',
+    2: 'február',
     3: 'marec',
-    4: 'april',
-    5: 'maj',
-    6: 'jun',
-    7: 'jul',
+    4: 'apríl',
+    5: 'máj',
+    6: 'jún',
+    7: 'júl',
     8: 'august',
     9: 'september',
     10: 'oktober',
@@ -277,7 +277,7 @@ class WorkTimeService:
         by_date = {row.work_date: row for row in rows}
         output_dir.mkdir(parents=True, exist_ok=True)
         report_path = output_dir / f'dochadzka_{year:04d}_{month:02d}.xlsx'
-        title = f"Vykaz odpracovanych hodin za {MONTH_NAMES_SK[month]} {year}"
+        title = f"Dochádzka — {MONTH_NAMES_SK[month]} {year}"
 
         workbook = Workbook()
         sheet = workbook.active
@@ -286,9 +286,15 @@ class WorkTimeService:
         sheet['A1'].font = Font(bold=True, size=13)
         sheet.merge_cells('A1:D1')
         sheet.append([])
-        sheet.append(['Datum', 'Prichod', 'Odchod', 'Hodiny'])
+        sheet.append(['Dátum', 'Príchod', 'Odchod', 'Hodiny'])
+        thin_side = Side(style='thin', color='D9E2EC')
+        strong_side = Side(style='medium', color='7A8794')
+        table_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+        header_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=strong_side)
+        total_border = Border(left=thin_side, right=thin_side, top=strong_side, bottom=thin_side)
         for cell in sheet[3]:
             cell.font = Font(bold=True)
+            cell.border = header_border
             cell.alignment = Alignment(horizontal='center')
 
         total_minutes = 0
@@ -306,6 +312,8 @@ class WorkTimeService:
             else:
                 row_values = [current_date.strftime('%d.%m.%Y'), '', '', '']
             sheet.append(row_values)
+            for cell in sheet[sheet.max_row]:
+                cell.border = table_border
             if current_date.weekday() == 6:
                 for cell in sheet[sheet.max_row]:
                     cell.fill = sunday_fill
@@ -313,10 +321,11 @@ class WorkTimeService:
         sheet.append(['Spolu', '', '', _format_duration(total_minutes)])
         for cell in sheet[sheet.max_row]:
             cell.font = Font(bold=True)
-        sheet.column_dimensions['A'].width = 12
-        sheet.column_dimensions['B'].width = 9
-        sheet.column_dimensions['C'].width = 9
-        sheet.column_dimensions['D'].width = 9
+            cell.border = total_border
+        sheet.column_dimensions['A'].width = 14
+        sheet.column_dimensions['B'].width = 11
+        sheet.column_dimensions['C'].width = 11
+        sheet.column_dimensions['D'].width = 14
         sheet.freeze_panes = 'A4'
         sheet.page_setup.fitToWidth = 1
         sheet.page_setup.fitToHeight = 0
@@ -569,8 +578,13 @@ def _parse_time_value(value: str) -> time:
 
 
 def _format_duration(total_minutes: int) -> str:
-    hours, minutes = divmod(int(total_minutes), 60)
-    return f'{hours}:{minutes:02d}'
+    total_minutes = int(total_minutes)
+    hours, minutes = divmod(total_minutes, 60)
+    if minutes == 0:
+        return f'{hours} hod.'
+    decimal_hours = total_minutes / 60
+    value = f'{decimal_hours:.2f}'.rstrip('0').rstrip('.').replace('.', ',')
+    return f'{value} hod.'
 
 
 def _format_date_sk(value: str) -> str:
