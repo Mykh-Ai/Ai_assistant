@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -299,6 +299,35 @@ CREATE TABLE IF NOT EXISTS google_drive_oauth_states (
 );
 """
 
+WORK_TIME_DAY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS work_time_days (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER NOT NULL,
+    work_date TEXT NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    total_minutes INTEGER,
+    status TEXT NOT NULL,
+    source TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(telegram_id, work_date)
+);
+"""
+
+WORK_TIME_EVENT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS work_time_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_time_day_id INTEGER,
+    telegram_id INTEGER,
+    event_type TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    source_message_id INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+"""
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'telegram_id': 'INTEGER NOT NULL UNIQUE',
@@ -828,6 +857,18 @@ def ensure_google_drive_connection_schema(connection: sqlite3.Connection) -> Non
     _ensure_google_drive_connection_indexes(connection)
 
 
+
+def ensure_work_time_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(WORK_TIME_DAY_SCHEMA)
+    connection.execute(WORK_TIME_EVENT_SCHEMA)
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_work_time_days_user_month '
+        'ON work_time_days (telegram_id, work_date, status)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_work_time_events_day_created '
+        'ON work_time_events (work_time_day_id, created_at)'
+    )
 def _ensure_archive_job_additive_columns(connection: sqlite3.Connection) -> None:
     existing_columns = {
         row[1] for row in connection.execute('PRAGMA table_info(archive_jobs)').fetchall()
@@ -903,4 +944,5 @@ def init_db(db_path: Path) -> None:
         _bootstrap_customization_request_table(connection)
         ensure_archive_schema(connection)
         ensure_google_drive_connection_schema(connection)
+        ensure_work_time_schema(connection)
         connection.commit()

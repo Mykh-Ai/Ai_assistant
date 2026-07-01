@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added partial OfficeFlow work-time / dochadzka MVP with top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, and `generate_work_time_report`, additive user-scoped SQLite tables, preview-confirmed time writes, shared DecisionResolver route choices, Product Truth/InfoHelp coverage, and monthly Excel report generation. Payroll, legal HR compliance, multi-employee attendance, export, and automatic time detection remain unsupported.
 
 ### Added
 - Owner OAuth Google Drive archive MVP: manual/local owner authorization bootstrap, encrypted refresh-token storage, lazy owner OAuth Drive provider, confirmed receipt/incoming-invoice uploads, and invoice-PDF enqueue after mark-paid/control events.

@@ -56,6 +56,15 @@ from bot.handlers.officeflow_attachment_router import (
     handle_officeflow_unknown_clarification_text,
 )
 from bot.handlers.state_control import cancel_current_state
+from bot.handlers.work_time import (
+    WorkTimeStates,
+    work_time_close_input,
+    work_time_close_preview_confirm,
+    work_time_manual_range_confirm,
+    work_time_manual_range_input,
+    work_time_missing_days_choice,
+    work_time_open_day_conflict_choice,
+)
 from bot.handlers.supplier import ServiceAliasStates
 from bot.services.decision_resolver import is_global_cancel_text, resolve_global_cancel
 from bot.services.speech_to_text import transcribe_audio
@@ -383,6 +392,42 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 state=state,
                 config=config,
                 decision_text=recognized_text,
+            )
+        elif current_state == WorkTimeStates.waiting_manual_range_input.state:
+            await work_time_manual_range_input(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_manual_range_confirm.state:
+            await work_time_manual_range_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_close_input.state:
+            await work_time_close_input(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_close_preview_confirm.state:
+            await work_time_close_preview_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_open_day_conflict_choice.state:
+            await work_time_open_day_conflict_choice(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_missing_days_choice.state:
+            await work_time_missing_days_choice(
+                message=text_message,
+                state=state,
+                config=config,
             )
         elif current_state == CustomizationRequestStates.waiting_preview_decision.state:
             await customization_request_preview_decision(

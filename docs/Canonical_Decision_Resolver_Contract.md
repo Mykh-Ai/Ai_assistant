@@ -1,4 +1,4 @@
-# Canonical DecisionResolver Contract
+﻿# Canonical DecisionResolver Contract
 
 **Document role:** project-level architecture contract for confirmation-like user decisions.
 
@@ -100,7 +100,27 @@ New families must define:
 
 New families must be documented in `docs/llm/In_Action_Response_Registry.md` before or together with runtime implementation.
 
-### 3.4 Exact typed destructive exception
+### 3.4 `work_time_open_conflict_choice`
+
+Used when the user tries to open a work day while a previous work day is still open.
+
+Canonical outputs:
+- `close_day`
+- `fill_time`
+- `skip_day`
+- `cancel`
+- `unknown`
+
+### 3.5 `work_time_missing_days_choice`
+
+Used for bounded work-time missing-day prompts when the runtime asks whether to fill, skip, or cancel.
+
+Canonical outputs:
+- `fill`
+- `skip`
+- `cancel`
+- `unknown`
+### 3.6 Exact typed destructive exception
 
 `delete_user_database` final confirmation is an explicit exception to the yes/no confirmation pattern. The top-level entry intent may be resolved by the bounded Semantic Action Resolver, but final deletion must not use a yes/no DecisionResolver family and must not be accepted from voice. Runtime requires the exact typed phrase `vymazať databázu`; any other text keeps the confirmation state, and voice in that state is rejected before STT with a typed-text instruction.
 
@@ -262,4 +282,19 @@ This contract does not implement:
 - Document Intake runtime,
 - Telegram button UI,
 - changes to invoice numbering, PDF generation, or `pdf_path`.
+
+
+### 7.2 OfficeFlow Work-Time DecisionResolver Slice - 2026-07-01
+
+Implemented in `bot/services/decision_resolver.py`:
+- `resolve_work_time_open_conflict_choice(...)` returns `close_day`, `fill_time`, `skip_day`, `cancel`, or `unknown`.
+- `resolve_work_time_missing_days_choice(...)` returns `fill`, `skip`, `cancel`, or `unknown`.
+
+Migrated runtime paths:
+- work-time manual range preview uses the shared `approve_edit_cancel` family;
+- work-time close preview uses the shared `approve_edit_cancel` family;
+- open-day conflict choices use `work_time_open_conflict_choice`;
+- missing-day choices use `work_time_missing_days_choice`.
+
+Voice routing sends active work-time FSM transcripts to the same state handlers. Exact time values remain preview-confirmed and Python-validated before any write.
 

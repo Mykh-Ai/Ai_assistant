@@ -1,3 +1,37 @@
+## 2026-07-01 - OfficeFlow Work-Time / Dochadzka MVP
+
+Summary:
+- Added partial OfficeFlow work-time tracking with top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, and `generate_work_time_report`.
+- Added additive SQLite tables `work_time_days` and `work_time_events`, scoped by `telegram_id`; no existing data rewrite or migration repair was performed.
+- Added `/dochadzka`, work-time FSM handlers, preview-confirmed exact time writes, shared DecisionResolver-backed callbacks/voice/text paths, Product Truth and InfoHelp coverage, and monthly Excel report generation.
+- Kept payroll, salary calculation, legal HR attendance compliance, multi-employee attendance, accounting/payroll export, automatic time detection, and official payroll document claims out of scope.
+
+Docs/contracts read:
+- `AGENTS.md`, `docs/Product_Doctrine_2030.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/Product_Truth_Layer.md`, `docs/Product_Truth_Registry_MVP_Design.md`, `docs/Self_Learning_Layer.md`, `docs/Evaluation_and_Smoke_Test_Standards.md`, `docs/Product_UX_Eval_Artifacts.md`, `docs/TZ_FakturaBot.md`, `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `docs/llm/New_Action_Design_Checklist.md`, `docs/llm/Bounded_Resolver_Prompt_Template.md`, `docs/Info_Help_Guidance_Layer.md`, `docs/Customization_Request_Layer.md`, `docs/Canonical_Decision_Resolver_Contract.md`, `docs/User_Access_Model_Roadmap.md`, OfficeFlow intake/storage docs, and `docs/FakturaBot_Data_Migration_Runbook.md` for additive schema safety.
+
+Preflight/status:
+- Touched scopes: routing, FSM, confirmation, voice, DB schema, storage/report file output, Product Truth, InfoHelp, docs, tests.
+- Current implementation status: `partial`.
+- AI maturity level: Level 2 capability-aware Product Truth/InfoHelp coverage plus deterministic Python-owned action execution; no Level 3 customization save and no Level 4 self-learning added.
+- Product/user journey proof: user can start a day, close it, add a manual interval after preview, and generate a monthly report; Product Truth honestly answers work-time/payroll capability questions.
+- Self-learning hooks considered: none added; work-time aliases are canonical actions, not learned aliases.
+- User-facing claims are backed by runtime code, Product Truth registry, canonical action docs, InfoHelp docs, and focused tests.
+
+Docs updated:
+- `README.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Canonical_Decision_Resolver_Contract.md`
+- `docs/llm/Canonical_Action_Registry.md`
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/evals/product_truth_infohelp_smoke.md`
+- `CHANGELOG.md`
+
+Verification:
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py` -> 14 passed.
+- `python -m pytest -q tests\test_decision_resolver.py` -> 581 passed.
+- `python -m pytest -q tests\test_product_truth.py tests\test_info_help.py` -> 125 passed.
 ## 2026-07-01 - Contact wizard recovery hint and inactivity timeout
 
 Summary:
@@ -7436,4 +7470,3 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 - No `storage/invoices` or `pdf_path` changes.
 - No `storage/contracts` changes.
 - No Google Drive sync, delete/edit/search, or broad document browser was implemented.
-

@@ -19,6 +19,8 @@ from bot.services.decision_resolver import (
     resolve_attachment_document_type_choice,
     resolve_attachment_route_choice,
     resolve_global_cancel,
+    resolve_work_time_missing_days_choice,
+    resolve_work_time_open_conflict_choice,
     resolve_yes_no,
 )
 
@@ -69,6 +71,14 @@ APPROVE_EDIT_CANCEL_CONTEXTS = (
 
 GLOBAL_CANCEL_CONTEXTS = (
     'global_state_cancel',
+)
+
+WORK_TIME_OPEN_CONFLICT_CONTEXTS = (
+    'work_time_open_day_conflict_choice',
+)
+
+WORK_TIME_MISSING_DAYS_CONTEXTS = (
+    'work_time_missing_days_choice',
 )
 
 YES_NO_CASES = (
@@ -817,3 +827,44 @@ def test_accounting_duplicate_loud_button_labels_resolve_through_yes_no_family()
             model='gpt-4o',
         )
     ) == 'no'
+@pytest.mark.parametrize('context_name', WORK_TIME_OPEN_CONFLICT_CONTEXTS)
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('uzavriet den', 'close_day'),
+        ('doplnit cas', 'fill_time'),
+        ('preskocit', 'skip_day'),
+        ('zrusit', 'cancel'),
+        ('random text', 'unknown'),
+    ],
+)
+def test_work_time_open_conflict_context_matrix_exact_mappings(context_name: str, user_input: str, expected: str) -> None:
+    assert asyncio.run(
+        resolve_work_time_open_conflict_choice(
+            context_name=context_name,
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected
+
+
+@pytest.mark.parametrize('context_name', WORK_TIME_MISSING_DAYS_CONTEXTS)
+@pytest.mark.parametrize(
+    ('user_input', 'expected'),
+    [
+        ('doplnit', 'fill'),
+        ('preskocit', 'skip'),
+        ('zrusit', 'cancel'),
+        ('random text', 'unknown'),
+    ],
+)
+def test_work_time_missing_days_context_matrix_exact_mappings(context_name: str, user_input: str, expected: str) -> None:
+    assert asyncio.run(
+        resolve_work_time_missing_days_choice(
+            context_name=context_name,
+            user_input_text=user_input,
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == expected

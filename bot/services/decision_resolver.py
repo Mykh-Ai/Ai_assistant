@@ -12,6 +12,8 @@ YesNoDecision = str
 AttachmentRouteChoiceDecision = str
 AttachmentDocumentTypeChoiceDecision = str
 GlobalCancelDecision = str
+WorkTimeOpenConflictChoiceDecision = str
+WorkTimeMissingDaysChoiceDecision = str
 AccountingDocumentCategoryPreviewDecision = str
 AccountingDocumentCategoryUnknownDecision = str
 AccountingDocumentCategorySelectionDecision = str
@@ -30,6 +32,8 @@ _ATTACHMENT_DOCUMENT_TYPE_CHOICE_OUTPUTS = [
     'unknown',
 ]
 _GLOBAL_CANCEL_OUTPUTS = ['cancel', 'unknown']
+_WORK_TIME_OPEN_CONFLICT_OUTPUTS = ['close_day', 'fill_time', 'skip_day', 'cancel', 'unknown']
+_WORK_TIME_MISSING_DAYS_OUTPUTS = ['fill', 'skip', 'cancel', 'unknown']
 _ACCOUNTING_CATEGORY_PREVIEW_OUTPUTS = [
     'save_with_category',
     'change_document_category',
@@ -288,6 +292,49 @@ async def resolve_accounting_document_category_similar_decision(
     return _UNKNOWN
 
 
+
+async def resolve_work_time_open_conflict_choice(
+    *,
+    context_name: str,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> WorkTimeOpenConflictChoiceDecision:
+    del context_name, api_key, model, diagnostics
+    normalized = _normalize_text(user_input_text)
+    if not normalized:
+        return _UNKNOWN
+    if 'uzav' in normalized or 'zatvor' in normalized or 'close' in normalized:
+        return 'close_day'
+    if 'dopln' in normalized or 'vypln' in normalized or 'fill' in normalized:
+        return 'fill_time'
+    if 'preskoc' in normalized or 'skip' in normalized:
+        return 'skip_day'
+    if normalized in {'zrusit', 'cancel', 'spat', 'naspat', 'nie', 'no'}:
+        return 'cancel'
+    return _UNKNOWN
+
+
+async def resolve_work_time_missing_days_choice(
+    *,
+    context_name: str,
+    user_input_text: str,
+    api_key: str | None,
+    model: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> WorkTimeMissingDaysChoiceDecision:
+    del context_name, api_key, model, diagnostics
+    normalized = _normalize_text(user_input_text)
+    if not normalized:
+        return _UNKNOWN
+    if 'dopln' in normalized or 'vypln' in normalized or 'fill' in normalized:
+        return 'fill'
+    if 'preskoc' in normalized or 'skip' in normalized:
+        return 'skip'
+    if normalized in {'zrusit', 'cancel', 'spat', 'naspat', 'nie', 'no'}:
+        return 'cancel'
+    return _UNKNOWN
 def is_global_cancel_text(user_input_text: str) -> bool:
     return _normalize_text(user_input_text) in {_normalize_text(value) for value in _GLOBAL_CANCEL_SHORTCUTS}
 

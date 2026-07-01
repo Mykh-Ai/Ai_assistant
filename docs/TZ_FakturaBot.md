@@ -1,4 +1,4 @@
-# Технічне завдання: FakturaBot
+﻿# Технічне завдання: FakturaBot
 
 ## Telegram-бот для створення фактур з голосу, тексту та договору
 
@@ -1460,3 +1460,22 @@ Receipt date incident noted during Drive backfill:
 - two confirmed receipt metadata/archive records were extracted under year 2023 and repaired to 2026 in DB, local metadata paths, and Google Drive file names/folders;
 - current runtime rejects receipt issue dates before 2026 before confirmed save;
 - this fixed floor is a controlled-rollout guard, not a permanent yearly policy. Before the 2027 accounting year, replace it with an explicit configurable accepted-year/window policy, because January may legitimately need backfill of prior-year receipts.
+
+## 2026-07-01 - OfficeFlow Work-Time / Dochadzka MVP
+
+Current status: `partial`.
+
+Implemented runtime slice:
+- top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, and `generate_work_time_report`;
+- Telegram text and voice entry through the existing bounded top-level action router;
+- `/dochadzka` help command;
+- additive SQLite storage in `work_time_days` and `work_time_events` scoped by `telegram_id`;
+- preview-confirmed manual time ranges and close-time/duration decisions through shared DecisionResolver paths;
+- monthly Excel report generation with all days, Sunday highlighting, and total hours.
+
+Explicitly out of scope:
+- payroll, salary calculation, and legal HR attendance compliance;
+- multi-employee attendance administration;
+- accounting/payroll export;
+- automatic work-time detection;
+- official payroll/legal HR document claims.

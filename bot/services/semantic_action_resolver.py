@@ -161,6 +161,31 @@ def _matches_accounting_document_analytics_request(tokens: set[str]) -> bool:
         or bool(tokens.intersection({'kategoria', 'kategorie', 'kategorii', 'category', 'categories'}))
     )
 
+
+def _matches_work_time_open_request(tokens: set[str]) -> bool:
+    open_terms = {'zacinam', 'zacat', 'otvor', 'open', 'start', 'pochinaju', 'otkroj'}
+    day_terms = {'pracovny', 'pracovneho', 'den', 'work', 'robocij', 'rabocij'}
+    return bool(tokens.intersection(open_terms)) and bool(tokens.intersection(day_terms))
+
+
+def _matches_work_time_close_request(tokens: set[str]) -> bool:
+    close_terms = {'ukonci', 'ukoncit', 'zatvor', 'close', 'zakrij', 'zakroj'}
+    day_terms = {'pracovny', 'den', 'day', 'robocij', 'rabocij'}
+    return bool(tokens.intersection(close_terms)) and bool(tokens.intersection(day_terms))
+
+
+def _matches_work_time_manual_range_request(tokens: set[str]) -> bool:
+    work_terms = {'pracoval', 'robil', 'pracjuvav', 'pracuvav', 'rabotal'}
+    range_terms = {'od', 'do', 'z'}
+    return bool(tokens.intersection(work_terms)) and bool(tokens.intersection(range_terms))
+
+
+def _matches_work_time_report_request(tokens: set[str]) -> bool:
+    report_terms = {'vykaz', 'dochadzka', 'tabulka', 'report', 'tabel', 'otcet', 'zvit'}
+    hour_terms = {'hodin', 'hodiny', 'pracovneho', 'dochadzka', 'hours', 'casov', 'godin'}
+    return bool(tokens.intersection(report_terms)) and bool(tokens.intersection(hour_terms))
+
+
 def _matches_top_level_delete_invoice(tokens: set[str]) -> bool:
     delete_verbs = {
         'vymaz',
@@ -515,9 +540,9 @@ def _is_ambiguous_stt_yes_no_noise(normalized: str) -> bool:
         'a no',
         'ah nu',
         'a nu',
-        'ах ну',
-        'ах ні',
-        'ах не',
+        'Р°С… РЅСѓ',
+        'Р°С… РЅС–',
+        'Р°С… РЅРµ',
     }
 
 
@@ -668,7 +693,7 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             'fakturu',
             'faktura',
             'faktury',
-            'фактуру',
+            '\u0444\u0430\u043a\u0442\u0443\u0440\u0443',
             'invoice',
         }
         create_invoice_verbs = {
@@ -677,9 +702,9 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             'urob',
             'zrob',
             '\u0441\u0434\u0435\u043b\u0430\u0438',
-            'сделай',
-            'витворить',
-            'створи',
+            '\u0441\u0434\u0435\u043b\u0430\u0439',
+            '\u0432\u0438\u0442\u0432\u043e\u0440\u0438\u0442\u044c',
+            '\u0441\u0442\u0432\u043e\u0440\u0438',
         }
         add_contact_verbs = {
             'pridaj',
@@ -688,29 +713,37 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             'uloz',
             'ulozit',
             'save',
-            'додай',
-            'добавь',
-            'добавить',
+            '\u0434\u043e\u0434\u0430\u0439',
+            '\u0434\u043e\u0431\u0430\u0432\u044c',
+            '\u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c',
         }
-        add_contact_targets = {'kontakt', 'контакт', 'контрагента', 'firmu', 'company', 'spolocnost', 'контрагент'}
+        add_contact_targets = {
+            'kontakt',
+            '\u043a\u043e\u043d\u0442\u0430\u043a\u0442',
+            '\u043a\u043e\u043d\u0442\u0440\u0430\u0433\u0435\u043d\u0442\u0430',
+            'firmu',
+            'company',
+            'spolocnost',
+            '\u043a\u043e\u043d\u0442\u0440\u0430\u0433\u0435\u043d\u0442',
+        }
         add_service_alias_verbs = {
             'pridaj',
             'dodaj',
             'add',
-            'создай',
-            'додай',
-            'добавь',
+            '\u0441\u043e\u0437\u0434\u0430\u0439',
+            '\u0434\u043e\u0434\u0430\u0439',
+            '\u0434\u043e\u0431\u0430\u0432\u044c',
             'predaj',
-            'предай',
+            '\u043f\u0440\u0435\u0434\u0430\u0439',
         }
         add_service_alias_targets = {
             'sluzbu',
             'sluzba',
             'polozku',
             'polozka',
-            'службу',
-            'положку',
-            'живность',
+            '\u0441\u043b\u0443\u0436\u0431\u0443',
+            '\u043f\u043e\u043b\u043e\u0436\u043a\u0443',
+            '\u0436\u0438\u0432\u043d\u043e\u0441\u0442\u044c',
             'item',
             'service',
         }
@@ -728,12 +761,20 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             or (tokens.intersection(incoming_invoice_targets) and tokens.intersection({'fakturu', 'faktura', 'invoice'}))
         ):
             return 'add_receipt'
+        if 'open_work_day' in allowed and _matches_work_time_open_request(tokens):
+            return 'open_work_day'
+        if 'close_work_day' in allowed and _matches_work_time_close_request(tokens):
+            return 'close_work_day'
+        if 'add_work_time_entry' in allowed and _matches_work_time_manual_range_request(tokens):
+            return 'add_work_time_entry'
+        if 'generate_work_time_report' in allowed and _matches_work_time_report_request(tokens):
+            return 'generate_work_time_report'
         if 'delete_user_database' in allowed and (
             normalized_text in delete_database_phrases
             or (tokens.intersection(delete_database_verbs) and tokens.intersection(delete_database_targets))
         ):
             return 'delete_user_database'
-        if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'відправ', 'отправь'}):
+        if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'РІС–РґРїСЂР°РІ', 'РѕС‚РїСЂР°РІСЊ'}):
             return 'send_invoice'
         has_existing_invoice_reference = _has_existing_invoice_number_reference(normalized_text)
         if (
@@ -772,6 +813,14 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'accounting_document_analytics'
         if 'invoice_analytics' in allowed and _matches_invoice_analytics_request(text, tokens):
             return 'invoice_analytics'
+        if 'open_work_day' in allowed and _matches_work_time_open_request(tokens):
+            return 'open_work_day'
+        if 'close_work_day' in allowed and _matches_work_time_close_request(tokens):
+            return 'close_work_day'
+        if 'add_work_time_entry' in allowed and _matches_work_time_manual_range_request(tokens):
+            return 'add_work_time_entry'
+        if 'generate_work_time_report' in allowed and _matches_work_time_report_request(tokens):
+            return 'generate_work_time_report'
         if 'mark_existing_invoice_paid' in allowed and _matches_top_level_mark_invoice_paid(tokens):
             return 'mark_existing_invoice_paid'
         if 'edit_existing_invoice' in allowed and _matches_top_level_edit_existing_invoice(tokens):
@@ -798,47 +847,47 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
 
     if context_name == 'invoice_preview_confirmation':
         if 'schvalit' in allowed and tokens.intersection(
-            {'schvalit', 'schvalit', 'potvrdit', 'potvrdzujem', 'approve', 'confirm', 'save', 'ano', 'tak', 'да', 'так'}
+            {'schvalit', 'potvrdit', 'potvrdzujem', 'approve', 'confirm', 'save', 'ano', 'tak', '\u0434\u0430', '\u0442\u0430\u043a'}
         ):
             return 'schvalit'
         if 'upravit' in allowed and tokens.intersection(
-            {'upravit', 'edit', 'change', 'correct', 'opravit', 'исправить', 'изменить', 'редагувати'}
+            {'upravit', 'edit', 'change', 'correct', 'opravit', '\u0438\u0441\u043f\u0440\u0430\u0432\u0438\u0442\u044c', '\u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c', '\u0440\u0435\u0434\u0430\u0433\u0443\u0432\u0430\u0442\u0438'}
         ):
             return 'upravit'
         if 'zrusit' in allowed and tokens.intersection(
-            {'zrusit', 'cancel', 'delete', 'discard', 'remove', 'nie', 'ní', 'ні', 'нет', 'íåò', 'nechcem', 'no'}
+            {'zrusit', 'cancel', 'delete', 'discard', 'remove', 'nie', 'ni', '\u043d\u0456', '\u043d\u0435\u0442', 'nechcem', 'no'}
         ):
             return 'zrusit'
         if 'ano' in allowed and tokens.intersection(
-            {'ano', 'tak', 'так', 'да', 'добре', 'ok', 'yes', 'potvrdzujem'}
+            {'ano', 'tak', '\u0442\u0430\u043a', '\u0434\u0430', '\u0434\u043e\u0431\u0440\u0435', 'ok', 'yes', 'potvrdzujem'}
         ):
             return 'ano'
-        if 'nie' in allowed and tokens.intersection({'nie', 'ні', 'нет', 'cancel', 'nechcem', 'no'}):
+        if 'nie' in allowed and tokens.intersection({'nie', '\u043d\u0456', '\u043d\u0435\u0442', 'cancel', 'nechcem', 'no'}):
             return 'nie'
         return _UNKNOWN
 
     if context_name == 'invoice_postpdf_decision':
         if 'schvalit' in allowed and tokens.intersection(
-            {'schvalit', 'подтвердить', 'схвалити', 'approve', 'да', 'так', 'potvrdit'}
+            {'schvalit', '\u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c', '\u0441\u0445\u0432\u0430\u043b\u0438\u0442\u0438', 'approve', '\u0434\u0430', '\u0442\u0430\u043a', 'potvrdit'}
         ):
             return 'schvalit'
         if 'upravit' in allowed and tokens.intersection(
-            {'upravit', 'редагувати', 'зміни', 'изменить', 'исправить', 'управить'}
+            {'upravit', '\u0440\u0435\u0434\u0430\u0433\u0443\u0432\u0430\u0442\u0438', '\u0437\u043c\u0456\u043d\u0438', '\u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c', '\u0438\u0441\u043f\u0440\u0430\u0432\u0438\u0442\u044c', '\u0443\u043f\u0440\u0430\u0432\u0438\u0442\u044c'}
         ):
             return 'upravit'
         if 'zrusit' in allowed and tokens.intersection(
             {
                 'zrusit',
-                'видалити',
-                'удалить',
+                '\u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438',
+                '\u0443\u0434\u0430\u043b\u0438\u0442\u044c',
                 'delete',
-                'отменить',
-                'скасувати',
-                'знищити',
-                'зрушити',
-                'зрушить',
-                'нет',
-                'ні',
+                '\u043e\u0442\u043c\u0435\u043d\u0438\u0442\u044c',
+                '\u0441\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
+                '\u0437\u043d\u0438\u0449\u0438\u0442\u0438',
+                '\u0437\u0440\u0443\u0448\u0438\u0442\u0438',
+                '\u0437\u0440\u0443\u0448\u0438\u0442\u044c',
+                '\u043d\u0435\u0442',
+                '\u043d\u0456',
                 'nie',
             }
         ):
@@ -846,21 +895,21 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         return _UNKNOWN
 
     if context_name == 'contact_confirm':
-        if 'ano' in allowed and tokens.intersection({'ano', 'áno', 'tak', 'yes', 'да'}):
+        if 'ano' in allowed and tokens.intersection({'ano', 'ano', 'tak', 'yes', '\u0434\u0430'}):
             return 'ano'
-        if 'nie' in allowed and tokens.intersection({'nie', 'ні', 'нет', 'no', 'cancel'}):
+        if 'nie' in allowed and tokens.intersection({'nie', '\u043d\u0456', '\u043d\u0435\u0442', 'no', 'cancel'}):
             return 'nie'
         return _UNKNOWN
 
     if context_name == 'invoice_edit_scope_selection':
-        if 'invoice_level' in allowed and tokens.intersection({'faktura', 'faktúra', 'invoice', 'cislo', 'číslo', 'datum', 'dátum'}):
+        if 'invoice_level' in allowed and tokens.intersection({'faktura', 'faktГєra', 'invoice', 'cislo', 'ДЌГ­slo', 'datum', 'dГЎtum'}):
             return 'invoice_level'
-        if 'item_level' in allowed and tokens.intersection({'polozka', 'položka', 'sluzba', 'služba', 'opis', 'detail'}):
+        if 'item_level' in allowed and tokens.intersection({'polozka', 'poloЕѕka', 'sluzba', 'sluЕѕba', 'opis', 'detail'}):
             return 'item_level'
         return _UNKNOWN
 
     if context_name == 'invoice_edit_invoice_action':
-        if 'edit_invoice_number' in allowed and tokens.intersection({'cislo', 'číslo', 'number', 'num'}):
+        if 'edit_invoice_number' in allowed and tokens.intersection({'cislo', 'ДЌГ­slo', 'number', 'num'}):
             return 'edit_invoice_number'
         if 'edit_invoice_issue_date' in allowed and tokens.intersection({'vystavenia', 'vystavenie', 'issue'}):
             return 'edit_invoice_issue_date'
@@ -868,15 +917,15 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'edit_invoice_delivery_date'
         if 'edit_invoice_due_date' in allowed and tokens.intersection({'splatnosti', 'splatnost', 'due'}):
             return 'edit_invoice_due_date'
-        if 'edit_invoice_date' in allowed and tokens.intersection({'datum', 'dátum', 'date'}):
+        if 'edit_invoice_date' in allowed and tokens.intersection({'datum', 'dГЎtum', 'date'}):
             return 'edit_invoice_date'
         return _UNKNOWN
 
     if context_name == 'invoice_edit_item_target_selection':
         ordered_candidates = [
-            ('1', {'1', 'prva', 'prvá', 'prvy', 'prvý', 'jedna', 'jeden'}),
-            ('2', {'2', 'druha', 'druhá', 'druhy', 'druhý', 'dva', 'dve'}),
-            ('3', {'3', 'tretia', 'treti', 'tretí', 'tri'}),
+            ('1', {'1', 'prva', 'prvГЎ', 'prvy', 'prvГЅ', 'jedna', 'jeden'}),
+            ('2', {'2', 'druha', 'druhГЎ', 'druhy', 'druhГЅ', 'dva', 'dve'}),
+            ('3', {'3', 'tretia', 'treti', 'tretГ­', 'tri'}),
         ]
         for canonical_index, hint_tokens in ordered_candidates:
             if canonical_index in allowed and tokens.intersection(hint_tokens):
@@ -884,31 +933,31 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         return _UNKNOWN
 
     if context_name == 'invoice_edit_item_action':
-        if 'edit_item_quantity' in allowed and tokens.intersection({'mnozstvo', 'množstvo', 'quantity', 'qty'}):
+        if 'edit_item_quantity' in allowed and tokens.intersection({'mnozstvo', 'mnoЕѕstvo', 'quantity', 'qty'}):
             return 'edit_item_quantity'
         if 'edit_item_unit_price' in allowed and tokens.intersection(
-            {'cena', 'cenu', 'ціна', 'unit', 'price', 'mj', 'm.j', 'jednotku', 'jednotka', 'odinicu', 'одиницю'}
+            {'cena', 'cenu', '\u0446\u0456\u043d\u0430', 'unit', 'price', 'mj', 'm.j', 'jednotku', 'jednotka', 'odinicu', '\u043e\u0434\u0438\u043d\u0438\u0446\u044e'}
         ):
             return 'edit_item_unit_price'
         if 'edit_item_total_amount' in allowed and tokens.intersection({'suma', 'sumu', 'spolu', 'total', 'amount'}):
             return 'edit_item_total_amount'
         if 'clear_item_details' in allowed and tokens.intersection(
-            {'vymazat', 'vymazať', 'zmazat', 'zmazať', 'odstranit', 'odstrániť', 'clear', 'delete'}
-        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznámka'}):
+            {'vymazat', 'vymazaЕҐ', 'zmazat', 'zmazaЕҐ', 'odstranit', 'odstrГЎniЕҐ', 'clear', 'delete'}
+        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznГЎmka'}):
             return 'clear_item_details'
         if 'add_item_details' in allowed and tokens.intersection(
-            {'pridat', 'pridať', 'doplnit', 'doplniť', 'add'}
-        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznámka'}):
+            {'pridat', 'pridaЕҐ', 'doplnit', 'doplniЕҐ', 'add'}
+        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznГЎmka'}):
             return 'add_item_details'
         if 'replace_main_description' in allowed and tokens.intersection(
-            {'novy', 'nový', 'opis', 'popis', 'description'}
+            {'novy', 'novГЅ', 'opis', 'popis', 'description'}
         ):
             return 'replace_main_description'
         if 'replace_service' in allowed and tokens.intersection(
-            {'sluzba', 'služba', 'sluzbu', 'službu', 'service', 'polozka', 'položka', 'polozku', 'položku'}
+            {'sluzba', 'sluЕѕba', 'sluzbu', 'sluЕѕbu', 'service', 'polozka', 'poloЕѕka', 'polozku', 'poloЕѕku'}
         ):
             return 'replace_service'
-        if 'add_item_details' in allowed and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznámka'}):
+        if 'add_item_details' in allowed and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznГЎmka'}):
             return 'add_item_details'
         return _UNKNOWN
 
@@ -925,7 +974,7 @@ def _normalize_bounded_reply_text(value: str) -> str:
     return ''.join(ch for ch in normalized if not unicodedata.combining(ch))
 
 
-_NEGATION_MARKERS = {'ne', 'nie', 'not', 'no', 'не', 'ні', 'нет', 'нічого', 'ничего', 'nechcem'}
+_NEGATION_MARKERS = {'ne', 'nie', 'not', 'no', '\u043d\u0435', '\u043d\u0456', '\u043d\u0435\u0442', '\u043d\u0456\u0447\u043e\u0433\u043e', '\u043d\u0438\u0447\u0435\u0433\u043e', 'nechcem'}
 
 
 def _contains_decision_marker(
@@ -959,13 +1008,13 @@ def _resolve_local_decision_markers(
     if 'schvalit' in allowed_outputs and _contains_decision_marker(
         normalized,
         exact_values=approve_values,
-        prefixes=('зберег', 'збереж', 'зберіг', 'сохран'),
+        prefixes=('\u0437\u0431\u0435\u0440\u0435\u0433', '\u0437\u0431\u0435\u0440\u0435\u0436', '\u0437\u0431\u0435\u0440\u0456\u0433', '\u0441\u043e\u0445\u0440\u0430\u043d'),
     ):
         matched.add('schvalit')
     if 'upravit' in allowed_outputs and _contains_decision_marker(
         normalized,
         exact_values=edit_values,
-        prefixes=('uprav', 'oprav', 'редаг', 'відредаг', 'исправ'),
+        prefixes=('uprav', 'oprav', '\u0440\u0435\u0434\u0430\u0433', '\u0432\u0456\u0434\u0440\u0435\u0434\u0430\u0433', '\u0438\u0441\u043f\u0440\u0430\u0432'),
         ignore_negated=True,
     ):
         matched.add('upravit')
@@ -985,8 +1034,8 @@ def _fallback_yes_no_confirmation(*, context_name: str, normalized: str, allowed
         return 'ano'
     if context_name == 'invoice_customer_alias_confirm' and _is_ambiguous_stt_yes_no_noise(normalized):
         return _UNKNOWN
-    positive = {'ano', 'tak', 'ok', 'da', 'yes', 'так', 'да'}
-    negative = {'nie', 'net', 'no', 'ні', 'нет'}
+    positive = {'ano', 'tak', 'ok', 'da', 'yes', '\u0442\u0430\u043a', '\u0434\u0430'}
+    negative = {'nie', 'net', 'no', '\u043d\u0456', '\u043d\u0435\u0442'}
     if normalized in positive and 'ano' in allowed_outputs:
         return 'ano'
     if normalized in negative and 'nie' in allowed_outputs:
@@ -1110,12 +1159,12 @@ def _fallback_bounded_confirmation_reply(
             'ulozte',
             'ulozim',
             'ulozime',
-            'да',
-            'так',
-            'схвалити',
-            'схвалить',
-            'подтвердить',
-            'підтвердити',
+            '\u0434\u0430',
+            '\u0442\u0430\u043a',
+            '\u0441\u0445\u0432\u0430\u043b\u0438\u0442\u0438',
+            '\u0441\u0445\u0432\u0430\u043b\u0438\u0442\u044c',
+            '\u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c',
+            '\u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0438',
         }
         edit_values = {
             'upravit',
@@ -1126,15 +1175,15 @@ def _fallback_bounded_confirmation_reply(
             'edit',
             'change',
             'correct',
-            'изменить',
-            'исправить',
-            'редагувати',
-            'відредагувати',
-            'відредагуй',
-            'змінити',
-            'змініть',
-            'поміняй',
-            'управить',
+            '\u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c',
+            '\u0438\u0441\u043f\u0440\u0430\u0432\u0438\u0442\u044c',
+            '\u0440\u0435\u0434\u0430\u0433\u0443\u0432\u0430\u0442\u0438',
+            '\u0432\u0456\u0434\u0440\u0435\u0434\u0430\u0433\u0443\u0432\u0430\u0442\u0438',
+            '\u0432\u0456\u0434\u0440\u0435\u0434\u0430\u0433\u0443\u0439',
+            '\u0437\u043c\u0456\u043d\u0438\u0442\u0438',
+            '\u0437\u043c\u0456\u043d\u0456\u0442\u044c',
+            '\u043f\u043e\u043c\u0456\u043d\u044f\u0439',
+            '\u0443\u043f\u0440\u0430\u0432\u0438\u0442\u044c',
         }
         if context_name in {
             'invoice_preview_confirmation',
@@ -1149,32 +1198,32 @@ def _fallback_bounded_confirmation_reply(
                 'discard',
                 'remove',
                 'zahodit',
-                'отменить',
-                'скасувати',
-                'нет',
-                'ні',
+                '\u043e\u0442\u043c\u0435\u043d\u0438\u0442\u044c',
+                '\u0441\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
+                '\u043d\u0435\u0442',
+                '\u043d\u0456',
                 'nie',
                 'no',
-                'зрушити',
-                'зрушить',
-                'видалити',
-                'удалить',
+                '\u0437\u0440\u0443\u0448\u0438\u0442\u0438',
+                '\u0437\u0440\u0443\u0448\u0438\u0442\u044c',
+                '\u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438',
+                '\u0443\u0434\u0430\u043b\u0438\u0442\u044c',
             }
         else:
             cancel_values = {
                 'zrusit',
                 'cancel',
                 'zahodit',
-                'отменить',
-                'скасувати',
-                'нет',
-                'ні',
+                '\u043e\u0442\u043c\u0435\u043d\u0438\u0442\u044c',
+                '\u0441\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
+                '\u043d\u0435\u0442',
+                '\u043d\u0456',
                 'nie',
                 'no',
-                'зрушити',
-                'зрушить',
-                'видалити',
-                'удалить',
+                '\u0437\u0440\u0443\u0448\u0438\u0442\u0438',
+                '\u0437\u0440\u0443\u0448\u0438\u0442\u044c',
+                '\u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438',
+                '\u0443\u0434\u0430\u043b\u0438\u0442\u044c',
             }
 
         return _resolve_local_decision_markers(
@@ -1193,26 +1242,28 @@ _NUMBER_WORDS_TO_FLOAT = {
     'jedna': 1.0,
     'jedno': 1.0,
     'raz': 1.0,
-    'один': 1.0,
-    'одна': 1.0,
-    'одно': 1.0,
-    'два': 2.0,
-    'две': 2.0,
-    'дві': 2.0,
+    '\u043e\u0434\u0438\u043d': 1.0,
+    '\u043e\u0434\u043d\u0430': 1.0,
+    '\u043e\u0434\u043d\u043e': 1.0,
+    '\u0434\u0432\u0430': 2.0,
+    '\u0434\u0432\u0435': 2.0,
+    '\u0434\u0432\u0456': 2.0,
     'dva': 2.0,
     'dve': 2.0,
     'tri': 3.0,
-    'три': 3.0,
+    '\u0442\u0440\u0438': 3.0,
     'styri': 4.0,
-    'štyri': 4.0,
-    'четыре': 4.0,
-    'чотири': 4.0,
+    'styri': 4.0,
+    '\u0447\u0435\u0442\u044b\u0440\u0435': 4.0,
+    '\u0447\u043e\u0442\u0438\u0440\u0438': 4.0,
 }
 
 _QTY_TOKEN_PATTERN = (
     r'\d+(?:[.,]\d+)?|'
-    r'jeden|jedna|jedno|raz|dva|dve|tri|styri|štyri|'
-    r'один|одна|одно|два|две|дві|три|четыре|чотири'
+    'jeden|jedna|jedno|raz|dva|dve|tri|styri|'
+    '\u043e\u0434\u0438\u043d|\u043e\u0434\u043d\u0430|\u043e\u0434\u043d\u043e|'
+    '\u0434\u0432\u0430|\u0434\u0432\u0435|\u0434\u0432\u0456|\u0442\u0440\u0438|'
+    '\u0447\u0435\u0442\u044b\u0440\u0435|\u0447\u043e\u0442\u0438\u0440\u0438'
 )
 _PRICE_NUMBER_PATTERN = r'\d+(?:[.,]\d+)?'
 _PAIR_SPACED_PATTERN = re.compile(
@@ -1220,11 +1271,11 @@ _PAIR_SPACED_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _PAIR_MULTIPLIER_PATTERN = re.compile(
-    rf'^\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*(?:\*|x|kr[aá]t|крат|razi|razy|раз|раза|рази|kusy|kus|ks)?\s*(?:po|по)?\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
+    rf'^\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*(?:\*|x|kr[aá]t|\u043a\u0440\u0430\u0442|razi|razy|\u0440\u0430\u0437|\u0440\u0430\u0437\u0430|\u0440\u0430\u0437\u0438|kusy|kus|ks)?\s*(?:po|\u043f\u043e)?\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
     flags=re.IGNORECASE,
 )
 _PAIR_LABELED_PATTERN = re.compile(
-    rf'^\s*(?:mno[zž]stvo|koli[cč]estvo|количество)\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*[,;]?\s*(?:cena(?:\s+za\s+(?:kus|ks|jednotku))?|цена(?:\s+за\s+(?:штуку|единицу|ед))?)\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
+    rf'^\s*(?:mno[zž]stvo|koli[cč]estvo|\u043a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e)\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*[,;]?\s*(?:cena(?:\s+za\s+(?:kus|ks|jednotku))?|\u0446\u0435\u043d\u0430(?:\s+\u0437\u0430\s+(?:\u0448\u0442\u0443\u043a\u0443|\u0435\u0434\u0438\u043d\u0438\u0446\u0443|\u0435\u0434))?)\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
     flags=re.IGNORECASE,
 )
 _SINGLE_PRICE_PATTERN = re.compile(r'^\s*(?P<unit>\d+(?:[.,]\d+)?)\s*$')
@@ -1302,6 +1353,10 @@ async def resolve_semantic_action(
         'edit_existing_invoice',
         'delete_existing_invoice',
         'mark_existing_invoice_paid',
+        'open_work_day',
+        'close_work_day',
+        'add_work_time_entry',
+        'generate_work_time_report',
     }:
         return local_priority
 

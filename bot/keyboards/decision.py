@@ -9,10 +9,42 @@ DECISION_NO = 'no'
 DECISION_APPROVE = 'approve'
 DECISION_EDIT = 'edit'
 DECISION_CANCEL = 'cancel'
+DECISION_CLOSE_DAY = 'close_day'
+DECISION_FILL_TIME = 'fill_time'
+DECISION_SKIP_DAY = 'skip_day'
+DECISION_FILL = 'fill'
+DECISION_SKIP = 'skip'
 
 
 def decision_callback_data(token: str) -> str:
     return f'{DECISION_CALLBACK_PREFIX}{token}'
+
+
+def work_time_open_conflict_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='Uzavriet den', callback_data=decision_callback_data(DECISION_CLOSE_DAY)),
+                InlineKeyboardButton(text='Doplnit cas', callback_data=decision_callback_data(DECISION_FILL_TIME)),
+            ],
+            [
+                InlineKeyboardButton(text='Preskocit', callback_data=decision_callback_data(DECISION_SKIP_DAY)),
+                InlineKeyboardButton(text='Zrusit', callback_data=decision_callback_data(DECISION_CANCEL)),
+            ],
+        ]
+    )
+
+
+def work_time_missing_days_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text='Doplnit', callback_data=decision_callback_data(DECISION_FILL)),
+                InlineKeyboardButton(text='Preskocit', callback_data=decision_callback_data(DECISION_SKIP)),
+                InlineKeyboardButton(text='Zrusit', callback_data=decision_callback_data(DECISION_CANCEL)),
+            ]
+        ]
+    )
 
 
 def approve_edit_cancel_keyboard(

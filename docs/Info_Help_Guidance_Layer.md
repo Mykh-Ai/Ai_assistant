@@ -1,4 +1,4 @@
-# InfoHelp Guidance Layer
+﻿# InfoHelp Guidance Layer
 
 ## Purpose
 
@@ -873,3 +873,16 @@ Required wording boundaries:
 
 Questions about marking an invoice paid must still emphasize bot-local payment
 state only: no bank confirmation and no bank matching.
+
+### OfficeFlow Work-Time Partial Runtime - 2026-07-01
+
+InfoHelp must answer work-time / dochadzka questions from Product Truth as `partial`.
+
+Required wording boundaries:
+
+- say the bot can record a simple work day, close it, add a confirmed manual range, and generate a monthly Excel report;
+- say authorization/setup is required before business work-time state is written;
+- say exact times are preview-confirmed and Python-validated;
+- say the MVP supports one interval per user/day;
+- say payroll, salary calculation, legal HR attendance compliance, multi-employee attendance administration, accounting/payroll export, and automatic work-time detection are not implemented;
+- when the user asks for unsupported attendance features, offer safe clarification or customization-request handling where the current runtime supports it, without claiming implementation.

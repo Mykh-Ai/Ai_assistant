@@ -1,8 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram import Bot
 from aiogram.types import CallbackQuery
 
 from bot.config import Config
@@ -26,12 +25,24 @@ from bot.handlers.onboarding import (
     onboarding_confirm,
     supplier_profile_edit_confirm,
 )
+from bot.handlers.work_time import (
+    WorkTimeStates,
+    work_time_close_preview_confirm,
+    work_time_manual_range_confirm,
+    work_time_missing_days_choice,
+    work_time_open_day_conflict_choice,
+)
 from bot.keyboards.decision import (
     DECISION_APPROVE,
     DECISION_CALLBACK_PREFIX,
     DECISION_CANCEL,
+    DECISION_CLOSE_DAY,
     DECISION_EDIT,
+    DECISION_FILL,
+    DECISION_FILL_TIME,
     DECISION_NO,
+    DECISION_SKIP,
+    DECISION_SKIP_DAY,
     DECISION_YES,
 )
 
@@ -61,7 +72,7 @@ class _CallbackMessageAdapter:
         if source_message is not None and hasattr(source_message, 'answer_document'):
             await source_message.answer_document(document, caption=caption, **kwargs)
             return
-        await self._callback.answer('Dokument sa nepodarilo odoslať z tlačidla.', show_alert=True)
+        await self._callback.answer('Dokument sa nepodarilo odoslat z tlacidla.', show_alert=True)
 
 
 @router.callback_query(F.data.startswith(DECISION_CALLBACK_PREFIX))
@@ -93,7 +104,18 @@ def _parse_decision_token(data: str | None) -> str | None:
     if not data or not data.startswith(DECISION_CALLBACK_PREFIX):
         return None
     token = data[len(DECISION_CALLBACK_PREFIX) :]
-    allowed = {DECISION_YES, DECISION_NO, DECISION_APPROVE, DECISION_EDIT, DECISION_CANCEL}
+    allowed = {
+        DECISION_YES,
+        DECISION_NO,
+        DECISION_APPROVE,
+        DECISION_EDIT,
+        DECISION_CANCEL,
+        DECISION_CLOSE_DAY,
+        DECISION_FILL_TIME,
+        DECISION_SKIP_DAY,
+        DECISION_FILL,
+        DECISION_SKIP,
+    }
     return token if token in allowed else None
 
 
@@ -164,10 +186,7 @@ async def _dispatch_decision_token(
         )
         return True
 
-    if current_state == InvoiceStates.waiting_delete_existing_invoice_confirm.state and token in {
-        DECISION_YES,
-        DECISION_NO,
-    }:
+    if current_state == InvoiceStates.waiting_delete_existing_invoice_confirm.state and token in {DECISION_YES, DECISION_NO}:
         await invoice_delete_existing_invoice_confirm(
             message=message,
             state=state,
@@ -176,15 +195,74 @@ async def _dispatch_decision_token(
         )
         return True
 
-    if current_state == InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state and token in {
-        DECISION_YES,
-        DECISION_NO,
-    }:
+    if current_state == InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state and token in {DECISION_YES, DECISION_NO}:
         await invoice_mark_existing_invoice_paid_confirm(
             message=message,
             state=state,
             config=config,
             canonical_decision=token,
+        )
+        return True
+
+    if current_state == WorkTimeStates.waiting_manual_range_confirm.state and token in {
+        DECISION_APPROVE,
+        DECISION_EDIT,
+        DECISION_CANCEL,
+    }:
+        await work_time_manual_range_confirm(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision=token,
+        )
+        return True
+
+    if current_state == WorkTimeStates.waiting_close_preview_confirm.state and token in {
+        DECISION_APPROVE,
+        DECISION_EDIT,
+        DECISION_CANCEL,
+    }:
+        await work_time_close_preview_confirm(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision=token,
+        )
+        return True
+
+    if current_state == WorkTimeStates.waiting_open_day_conflict_choice.state and token in {
+        DECISION_CLOSE_DAY,
+        DECISION_FILL_TIME,
+        DECISION_SKIP_DAY,
+        DECISION_CANCEL,
+    }:
+        await work_time_open_day_conflict_choice(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision={
+                DECISION_CLOSE_DAY: 'close_day',
+                DECISION_FILL_TIME: 'fill_time',
+                DECISION_SKIP_DAY: 'skip_day',
+                DECISION_CANCEL: 'cancel',
+            }[token],
+        )
+        return True
+
+    if current_state == WorkTimeStates.waiting_missing_days_choice.state and token in {
+        DECISION_FILL,
+        DECISION_SKIP,
+        DECISION_CANCEL,
+    }:
+        await work_time_missing_days_choice(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision={
+                DECISION_FILL: 'fill',
+                DECISION_SKIP: 'skip',
+                DECISION_CANCEL: 'cancel',
+            }[token],
         )
         return True
 

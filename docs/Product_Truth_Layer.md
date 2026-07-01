@@ -1,4 +1,4 @@
-# Product Truth Layer
+﻿# Product Truth Layer
 
 ## Purpose
 
@@ -692,3 +692,25 @@ Forbidden claims now include:
 - invoice PDFs are deleted after upload;
 - upload succeeded before the worker state is `uploaded`;
 - marking paid means bank-confirmed settlement.
+
+### Current OfficeFlow Work-Time Product Truth - 2026-07-01
+
+`work_time_tracking` is `partial`, not fully `supported`.
+
+The implemented slice is a simple tenant/user-scoped work-time MVP:
+
+- top-level canonical actions: `open_work_day`, `close_work_day`, `add_work_time_entry`, and `generate_work_time_report`;
+- authorized users can open a work day, close it with a preview-confirmed time/duration, add a preview-confirmed manual range, and generate a monthly `.xlsx` report;
+- persisted state is additive SQLite tables `work_time_days` and `work_time_events`, scoped by `telegram_id`;
+- MVP supports one interval per user/day;
+- exact time values are Python-parsed, previewed, and saved only after confirmation;
+- reports include all days in the month, Sunday highlighting, and total hours.
+
+Forbidden claims include:
+
+- payroll or salary calculation is implemented;
+- legal HR attendance compliance is implemented;
+- multi-employee attendance administration is implemented;
+- payroll/accounting export is implemented;
+- the bot automatically detects actual work time;
+- the generated Excel report is an official payroll/legal HR document.

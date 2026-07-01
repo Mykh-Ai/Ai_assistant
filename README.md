@@ -225,6 +225,17 @@ Slovak by default. Analytics is read-only: it must not create, edit, delete,
 send, archive, mark paid, generate PDFs, upload to Google Drive, or write any
 invoice/accounting data. Receipt, expense, and incoming-invoice analytics are handled only by the separate partial `accounting_document_analytics` runtime; bank, cashflow, VAT, tax, and full accounting analytics remain unsupported and must not be answered from outgoing invoice data.
 
+### OfficeFlow Work-Time / Dochadzka
+
+`work_time_tracking` is implemented as a partial OfficeFlow MVP for simple user-scoped work-time evidence.
+
+Supported top-level actions:
+- `open_work_day` - start the current work day;
+- `close_work_day` - close the open day with a preview-confirmed end time or duration;
+- `add_work_time_entry` - add one preview-confirmed manual interval;
+- `generate_work_time_report` - generate a monthly Excel report.
+
+The module is not payroll, salary calculation, legal HR attendance compliance, multi-employee attendance, automatic time detection, or accounting/payroll export. It stores one interval per authorized user/day and treats exact time values as preview-confirmed before save.
 ### Accounting Document Analytics
 
 `accounting_document_analytics` is implemented as a partial read-only pilot for

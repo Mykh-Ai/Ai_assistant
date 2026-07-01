@@ -21,6 +21,12 @@ from bot.handlers.contacts import start_add_contact_intake
 from bot.handlers.delete_user_database import DELETE_USER_DATABASE_INTENT, start_delete_user_database_flow
 from bot.handlers.onboarding import cmd_moj_profil, cmd_upravit_profil
 from bot.handlers.start import cmd_menu, cmd_start
+from bot.handlers.work_time import (
+    start_add_work_time_entry,
+    start_close_work_day,
+    start_generate_work_time_report,
+    start_open_work_day,
+)
 from bot.handlers.supplier import start_add_service_alias_intake
 from bot.keyboards.decision import (
     answer_with_decision_keyboard,
@@ -119,6 +125,10 @@ _SHOW_SUPPLIER_PROFILE_INTENT = 'show_supplier_profile'
 _EDIT_SUPPLIER_INTENT = 'edit_supplier'
 _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT = 'show_recent_accounting_documents'
 _ADD_RECEIPT_INTENT = 'add_receipt'
+_OPEN_WORK_DAY_INTENT = 'open_work_day'
+_CLOSE_WORK_DAY_INTENT = 'close_work_day'
+_ADD_WORK_TIME_ENTRY_INTENT = 'add_work_time_entry'
+_GENERATE_WORK_TIME_REPORT_INTENT = 'generate_work_time_report'
 _DELETE_USER_DATABASE_INTENT = DELETE_USER_DATABASE_INTENT
 _UNKNOWN_INVOICE_INTENT = 'unknown'
 
@@ -3233,6 +3243,10 @@ async def process_invoice_text(
             _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT,
             _ADD_RECEIPT_INTENT,
             _DELETE_USER_DATABASE_INTENT,
+            _OPEN_WORK_DAY_INTENT,
+            _CLOSE_WORK_DAY_INTENT,
+            _ADD_WORK_TIME_ENTRY_INTENT,
+            _GENERATE_WORK_TIME_REPORT_INTENT,
             _SEND_INVOICE_INTENT,
             _EDIT_EXISTING_INVOICE_INTENT,
             _DELETE_EXISTING_INVOICE_INTENT,
@@ -3365,6 +3379,22 @@ async def process_invoice_text(
                 ),
                 'not_this': ['create outgoing invoice from voice content', 'manually edit a receipt'],
             },
+            _OPEN_WORK_DAY_INTENT: {
+                'meaning': 'user wants to start/open today work-time attendance day; Python records current local start time only after authorization',
+                'not_this': ['invoice creation', 'report generation', 'manual full time range'],
+            },
+            _CLOSE_WORK_DAY_INTENT: {
+                'meaning': 'user wants to close the currently open work day now, at an explicit end clock time, or by total duration',
+                'not_this': ['create invoice', 'monthly report', 'manual full range without an open day'],
+            },
+            _ADD_WORK_TIME_ENTRY_INTENT: {
+                'meaning': 'user wants to manually add a complete work-time range for today or another date after forgetting live open/close',
+                'not_this': ['open a live work day now', 'invoice item editing'],
+            },
+            _GENERATE_WORK_TIME_REPORT_INTENT: {
+                'meaning': 'user wants to generate a monthly Excel work-time report / dochadzka / vykaz hodin for a selected month',
+                'not_this': ['invoice analytics', 'official payroll or legal HR attendance'],
+            },
             _DELETE_USER_DATABASE_INTENT: {
                 'meaning': (
                     'user wants to permanently delete their own FakturaBot business data, close/leave their bot access, '
@@ -3459,6 +3489,18 @@ async def process_invoice_text(
         return
     if top_level_intent == _ADD_RECEIPT_INTENT:
         await cmd_accounting_document_intake(message=message, state=state)
+        return
+    if top_level_intent == _OPEN_WORK_DAY_INTENT:
+        await start_open_work_day(message=message, state=state, config=config)
+        return
+    if top_level_intent == _CLOSE_WORK_DAY_INTENT:
+        await start_close_work_day(message=message, state=state, config=config, text=invoice_text)
+        return
+    if top_level_intent == _ADD_WORK_TIME_ENTRY_INTENT:
+        await start_add_work_time_entry(message=message, state=state, config=config, text=invoice_text)
+        return
+    if top_level_intent == _GENERATE_WORK_TIME_REPORT_INTENT:
+        await start_generate_work_time_report(message=message, state=state, config=config, text=invoice_text)
         return
     if top_level_intent == _DELETE_USER_DATABASE_INTENT:
         await start_delete_user_database_flow(message=message, state=state, config=config)

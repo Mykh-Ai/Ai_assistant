@@ -39,6 +39,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'bank_cashflow_tax_analytics',
     'invoice_pdf_custom_template',
     'delete_user_database',
+    'work_time_tracking',
 )
 
 _RESERVED_INTENT_CAPABILITIES = {
@@ -210,6 +211,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'summary': 'Jednu uloženú faktúru možno vymazať len po vyhľadaní a explicitnom potvrdení.',
         'limitation': 'Vymazanie je deštruktívne; hlas môže tok spustiť, ale potvrdenie zostáva bezpečnostne ohraničené.',
         'safe_next': 'Napíšte, ktorú faktúru chcete vymazať, a potvrďte až po kontrole náhľadu.',
+    },
+    'work_time_tracking': {
+        'title': 'Evidencia pracovneho casu / Dochadzka',
+        'summary': 'Evidencia pracovneho casu je podporovana ciastocne: bot vie otvorit a uzavriet pracovny den, doplnit potvrdeny casovy rozsah a vytvorit mesacny Excel vykaz.',
+        'limitation': 'Nie je to mzdova dochadzka, vypocet mzdy, pravna HR evidencia, multi-zamestnanecka dochadzka ani export do uctovneho alebo mzdoveho softveru. Bot automaticky nevie, kedy ste pracovali; cas treba zadat alebo otvorit/uzavriet.',
+        'safe_next': 'Pouzite napriklad: zacinam pracovny den, zatvor den o 17:00, pracoval som dnes od 5:30 do 17:00 alebo vytvor vykaz hodin za jun 2026. Hlasom mozete zacat a ovladat tok; nejasne presne casy sa ukladaju az po nahlade a potvrdeni.',
     },
     'code_agent_handoff': {
         'title': 'Odovzdanie úlohy kódovaciemu agentovi',
@@ -707,6 +714,8 @@ def classify_info_help_capability(
         return 'delete_user_database'
     if _mentions_invoice_period_summary_capability(normalized, tokens) or _mentions_invoice_analytics_capability(normalized, tokens):
         return 'invoice_analytics'
+    if _mentions_work_time_tracking(normalized, tokens):
+        return 'work_time_tracking'
     if _mentions_mark_existing_invoice_paid(normalized, tokens):
         return 'mark_existing_invoice_paid'
     if _mentions_delete_existing_invoice_how_to(normalized, tokens):
@@ -1243,6 +1252,14 @@ def _mentions_edit_existing_invoice_how_to(normalized: str, tokens: set[str]) ->
     return mentions_invoice and mentions_edit and bool(tokens.intersection({'ako', 'mozem', 'da'}))
 
 
+
+def _mentions_work_time_tracking(normalized: str, tokens: set[str]) -> bool:
+    work_terms = {'pracovneho', 'pracovny', 'pracovny', 'hodiny', 'hodin', 'dochadzka', 'vykaz', 'casu', 'time', 'hours'}
+    payroll_terms = {'mzdu', 'mzdova', 'vyplatu', 'payroll', 'salary'}
+    export_terms = {'export', 'exportovat', 'uctovnicke', 'softveru'}
+    if tokens.intersection(payroll_terms) or tokens.intersection(export_terms):
+        return bool(tokens.intersection({'dochadzka', 'hodiny', 'hodin', 'pracovneho'}))
+    return bool(tokens.intersection(work_terms)) and bool(tokens.intersection({'vie', 'vies', 'viete', 'ako', 'mozem', 'da', 'hlasom', 'vytvorim', 'evidovat'}))
 def _mentions_mark_existing_invoice_paid(normalized: str, tokens: set[str]) -> bool:
     mentions_invoice = bool(tokens.intersection({'fakturu', 'faktura', 'faktury', 'invoice'}))
     mentions_mark = bool(tokens.intersection({'oznac', 'oznacit', 'poznac', 'poznacit', 'mark'}))

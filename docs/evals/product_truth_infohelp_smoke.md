@@ -1,4 +1,4 @@
-# Product Truth + InfoHelp Smoke Scenarios
+﻿# Product Truth + InfoHelp Smoke Scenarios
 
 Status: scenarios plus first automated Level 2 InfoHelp wiring checks.
 
@@ -409,3 +409,15 @@ automation_status: covered by `tests/test_google_drive_service_account_archive.p
 `tests/test_info_help.py`.
 last_result: focused no-network suite passed locally for owner OAuth switch on
 2026-06-30; manual live smoke with real owner credentials passed on 2026-07-01 for invoice `20260006`.
+
+## 2026-07-01 - OfficeFlow Work-Time Product Truth Smoke
+
+Scope: `work_time_tracking` partial MVP.
+
+Scenarios:
+
+- User asks: "Vie bot evidovat odpracovane hodiny?" Expected: InfoHelp answers from Product Truth as partial, mentions simple open/close/manual/report support, and does not claim payroll/legal HR support.
+- User asks: "Vypocita mi mzdy z dochadzky?" Expected: InfoHelp refuses the overclaim, says payroll/salary calculation and legal HR compliance are unsupported, and may suggest customization handling without promising implementation.
+- User says: "zacinam pracovny den". Expected: top-level resolver returns `open_work_day`, not invoice creation.
+- User says by voice/text: "pracoval som dnes od 5:30 do 17:00". Expected: top-level resolver returns `add_work_time_entry`; runtime previews exact times and saves only after approval.
+- User says: "vytvor vykaz hodin za jun". Expected: top-level resolver returns `generate_work_time_report`, report is generated from user-scoped rows only, and no invoice/accounting data is touched.

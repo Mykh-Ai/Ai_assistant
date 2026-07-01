@@ -7,6 +7,7 @@ from .contacts import router as contacts_router
 from .contracts import router as contracts_router
 from .delete_user_database import router as delete_user_database_router
 from .decision_callbacks import router as decision_callbacks_router
+from .work_time import router as work_time_router
 from .invoice import router as invoice_router
 from .invoice_followup import router as invoice_followup_router
 from .officeflow_attachment_router import router as officeflow_attachment_router
@@ -32,6 +33,7 @@ routers: list[Router] = [
     officeflow_attachment_router,
     contacts_router,
     contracts_router,
+    work_time_router,
     invoice_router,
     settings_router,
 ]
