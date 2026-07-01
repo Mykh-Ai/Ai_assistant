@@ -17,6 +17,9 @@ from bot.services.accounting_document_models import (
 from bot.services.validation import validate_iban
 
 
+MIN_RECEIPT_ISSUE_YEAR = 2026
+
+
 @dataclass(frozen=True)
 class AccountingDocumentValidationResult:
     can_save: bool
@@ -107,6 +110,8 @@ def validate_accounting_document_candidate(
             errors.append('vendor_name_required')
         if issue_date is None:
             errors.append('issue_date_required')
+        elif issue_date.year < MIN_RECEIPT_ISSUE_YEAR:
+            errors.append('receipt_issue_date_before_supported_year')
     elif candidate.document_type == DOCUMENT_TYPE_INCOMING_INVOICE:
         if not _has_text(candidate.vendor_name):
             errors.append('vendor_name_required')

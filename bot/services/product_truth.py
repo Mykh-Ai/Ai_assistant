@@ -613,6 +613,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         summary_for_user='Starts accounting document intake for receipts and incoming invoices, proposes bounded metadata and category candidates, then saves only after user approval.',
         current_limitations=(
             'Upload requires photo/PDF; broader document intake remains planned.',
+            'Receipt issue dates before 2026 are rejected before confirmed save.',
             'Category changes update only the preview until the final save confirmation.',
             'Category support is controlled by the separate accounting_document_categories partial capability.',
         ),

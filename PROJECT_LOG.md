@@ -1,3 +1,36 @@
+## 2026-07-01 - Receipt 2023 year repair and receipt date guard
+
+Summary:
+- Repaired two live confirmed receipt metadata/archive records that had been saved under year 2023 after LMM date extraction errors.
+- Moved local metadata from `years/2023` to `years/2026`, updated DB `archive_jobs` and `accounting_document_archive_state`, and moved/renamed the corresponding owner OAuth Google Drive files into the 2026 receipt folders.
+- Added a Python validation guard that rejects receipt issue dates before 2026 before confirmed save can derive storage paths, metadata JSON, archive jobs, or Drive upload state.
+- Product Truth and TZ now state this receipt date boundary honestly.
+
+Contracts read:
+- `AGENTS.md`
+- `docs/FakturaBot_Data_Migration_Runbook.md`
+- `docs/Document_Intake_MVP_Implementation_Plan.md`
+- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/TZ_FakturaBot.md`
+- `docs/local-only/FakturaBot_Server_Agent_Context.md`
+
+Touched scopes:
+- storage/DB/server: yes, live metadata paths and archive rows repaired after backup; local receipt originals were already deleted by confirmed Drive upload retention.
+- Google Drive: yes, two uploaded receipt files were renamed and moved to 2026 receipt folders through owner OAuth.
+- runtime validation: yes, receipt date guard before confirmed save.
+- LMM/STT/routing/FSM/confirmation/access/PDF layout: no behavior change.
+- Product Truth/docs/tests/project log: updated.
+
+Safety and rollback:
+- Server backup created at `/bot/data/storage/migration_backups/receipt-2023-year-repair-20260701090216` before apply.
+- No token, OAuth secret, service-account JSON, or Telegram ID was written to docs/logs.
+- Post-repair audit found zero receipt archive rows or metadata files under `years/2023`.
+
+Verification:
+- Live DB/storage audit found the two repaired records under `years/2026` with issue dates `2026-03-26` and `2026-06-14`.
+- Live Drive validation confirmed both files renamed and untrashed in the new 2026 folders.
+- `python -m pytest tests/test_accounting_document_storage.py tests/test_accounting_document_extraction.py -q` -> 31 passed.
+
 ## 2026-06-30 - Google Drive owner OAuth archive MVP switch
 
 Summary:

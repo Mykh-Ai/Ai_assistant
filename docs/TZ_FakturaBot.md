@@ -107,6 +107,8 @@ unless a future Python-owned product decision explicitly changes it.
 
 Controlled receipt/incoming-invoice categories are now partially implemented inside the existing `/add_blocek` / `/dodat_blocek` accounting Document Intake preview flow. This is not a standalone top-level action. Python owns the category registry, allowed-category payload, validation, confirmation, and persistence. The LMM may suggest only bounded candidates from Python-provided categories or `unknown_review`; it must not create categories, decide tax treatment, or execute side effects. Workspace categories are created only after typed label plus explicit confirmation, and confirmed metadata stores category ids with `label_snapshot`. The category preview, unknown-category choice, duplicate warning, new-category confirmation, similar-category warning, and reasonable category selection steps may show Telegram reply buttons; those buttons feed the same state-aware DecisionResolver paths as text and voice. After confirmed save, the user sees a clean saved message with `/add_blocek`, `/blocek`, and `/menu` next steps instead of an internal metadata path.
 
+Confirmed receipt/blocek save is date-bounded for the current controlled rollout: receipt issue dates before 2026 are rejected by Python validation before storage path, metadata JSON, DB archive state, or Google Drive archive jobs are created. This guard is specific to receipts; incoming-invoice date policy remains the existing validation contract unless changed separately.
+
 Receipt/blocek analytics must not be built or claimed before all of these exist:
 
 1. a separate read-only analytics contract and dataset;

@@ -98,6 +98,21 @@ def test_missing_issue_date_cannot_confirmed_save(tmp_path: Path) -> None:
         )
 
 
+def test_receipt_before_supported_year_cannot_confirmed_save(tmp_path: Path) -> None:
+    candidate = _receipt_candidate(issue_date='2023-03-26')
+    source = tmp_path / 'source.jpg'
+    source.write_bytes(b'jpg')
+
+    with pytest.raises(AccountingDocumentStorageError):
+        save_confirmed_accounting_document(
+            storage_dir=tmp_path,
+            source_path=source,
+            candidate=candidate,
+            file_unique_id='ABC123',
+        )
+
+    assert not (tmp_path / 'workspaces').exists()
+
 def test_storage_does_not_touch_storage_invoices(tmp_path: Path) -> None:
     source = tmp_path / 'source.jpg'
     source.write_bytes(b'jpg')
