@@ -13,6 +13,7 @@ from bot.keyboards.decision import (
     answer_with_decision_keyboard,
     approve_edit_cancel_keyboard,
     delete_cancel_keyboard,
+    yes_no_keyboard,
     work_time_missing_days_keyboard,
     work_time_open_conflict_keyboard,
 )
@@ -29,9 +30,11 @@ from bot.services.work_time import (
     format_candidate_preview,
     format_day_summary,
     format_month_summary,
+    is_lunch_break_disable_request,
     parse_close_candidate,
     parse_duration_entry_candidate,
     parse_explicit_month,
+    parse_lunch_break_minutes,
     parse_manual_range_candidate,
     parse_report_month,
     resolve_work_time_entry_candidate,
@@ -48,6 +51,10 @@ class WorkTimeStates(StatesGroup):
     waiting_close_input = State()
     waiting_delete_month_input = State()
     waiting_delete_month_confirm = State()
+    waiting_lunch_break_initial_choice = State()
+    waiting_lunch_break_value = State()
+    waiting_lunch_break_update_value = State()
+    waiting_lunch_break_update_confirm = State()
     waiting_open_day_conflict_choice = State()
     waiting_missing_days_choice = State()
 
@@ -63,7 +70,9 @@ async def cmd_dochadzka(message: Message, state: FSMContext, config: Config) -> 
         '- zatvor den 10 hodin\n'
         '- pracoval som dnes od 5:30 do 17:00\n'
         '- vytvor vykaz hodin za jun 2026\n'
+        '- nastav obednu prestavku na 30 minut\n'
         '- vymaz dochadzku za jul 2026\n\n'
+        'Vykaz pocita ciste hodiny po nastavenej obednej prestavke. '
         'Nie je to mzdova dochadzka, vypocet mzdy ani pravny HR doklad.'
     )
 
@@ -143,7 +152,7 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
     await answer_with_decision_keyboard(
         message,
         'Skontrolujte uzavretie pracovneho dna:\n'
-        f'{format_candidate_preview(candidate, open_day=open_day)}\n\n'
+        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, telegram_id))}\n\n'
         'Schvalit, upravit alebo zrusit?',
         approve_edit_cancel_keyboard(),
     )
@@ -158,26 +167,51 @@ async def start_add_work_time_entry(message: Message, state: FSMContext, config:
     await _preview_manual_candidate(message, state, candidate)
 
 
-async def start_generate_work_time_report(message: Message, state: FSMContext, config: Config, *, text: str) -> None:
+async def start_generate_work_time_report(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    *,
+    text: str,
+    source_channel: str = 'text',
+) -> None:
     telegram_id = _telegram_id(message)
     if telegram_id is None:
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         return
     year, month = parse_report_month(text)
-    result = WorkTimeService(config.db_path).generate_monthly_report(
-        telegram_id=telegram_id,
-        year=year,
-        month=month,
-        output_dir=config.storage_dir / 'work_time_reports' / str(telegram_id),
-    )
-    await state.clear()
-    if not result.ok or result.report_path is None:
-        await message.answer('Vykaz sa nepodarilo vytvorit.')
+    service = WorkTimeService(config.db_path)
+    settings = service.get_lunch_break_settings(telegram_id=telegram_id)
+    if not settings.configured:
+        await state.update_data(
+            work_time_pending_report_year=year,
+            work_time_pending_report_month=month,
+            work_time_pending_report_source_channel=source_channel,
+        )
+        await state.set_state(WorkTimeStates.waiting_lunch_break_initial_choice)
+        await answer_with_decision_keyboard(
+            message,
+            'Chcete odpočítavať obednú prestávku?',
+            yes_no_keyboard(yes_label='Áno', no_label='Nie'),
+        )
         return
-    await message.answer_document(
-        FSInputFile(result.report_path, filename=result.report_path.name),
-        caption='Vytvoril som mesacny vykaz odpracovanych hodin. Nie je to oficialny mzdovy ani pravny HR doklad.',
-    )
+    await _send_work_time_report(message, state, config, telegram_id=telegram_id, year=year, month=month)
+
+
+async def start_update_work_time_lunch_break(message: Message, state: FSMContext, config: Config, *, text: str) -> None:
+    telegram_id = _telegram_id(message)
+    if telegram_id is None:
+        await message.answer('Nepodarilo sa identifikovat pouzivatela.')
+        return
+    if is_lunch_break_disable_request(text):
+        await _preview_lunch_break_update(message, state, enabled=False, minutes=0)
+        return
+    minutes = parse_lunch_break_minutes(text)
+    if minutes is None:
+        await state.set_state(WorkTimeStates.waiting_lunch_break_update_value)
+        await message.answer('Ak chcete zmenit trvanie obednej prestavky, napiste alebo povedzte pocet minut.')
+        return
+    await _preview_lunch_break_update(message, state, enabled=minutes > 0, minutes=minutes)
 
 
 async def start_delete_work_time_month(message: Message, state: FSMContext, config: Config, *, text: str) -> None:
@@ -254,6 +288,116 @@ async def work_time_delete_month_confirm(
     )
 
 
+@router.message(WorkTimeStates.waiting_lunch_break_initial_choice)
+async def work_time_lunch_break_initial_choice(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    decision = canonical_decision or await resolve_yes_no(
+        context_name='work_time_lunch_break_initial_choice',
+        user_input_text=message.text or '',
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    telegram_id = _telegram_id(message)
+    if telegram_id is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovat pouzivatela.')
+        return
+    if decision == 'no':
+        WorkTimeService(config.db_path).save_lunch_break_settings(telegram_id=telegram_id, enabled=False, minutes=0)
+        await _continue_pending_work_time_report(message, state, config, telegram_id=telegram_id)
+        return
+    if decision == 'yes':
+        await state.set_state(WorkTimeStates.waiting_lunch_break_value)
+        await message.answer('Napíšte alebo povedzte trvanie obednej prestávky v minútach.')
+        return
+    await answer_with_decision_keyboard(
+        message,
+        'Chcete odpočítavať obednú prestávku?',
+        yes_no_keyboard(yes_label='Áno', no_label='Nie'),
+    )
+
+
+@router.message(WorkTimeStates.waiting_lunch_break_value)
+async def work_time_lunch_break_value(message: Message, state: FSMContext, config: Config) -> None:
+    telegram_id = _telegram_id(message)
+    if telegram_id is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovat pouzivatela.')
+        return
+    minutes = parse_lunch_break_minutes(message.text or '')
+    if minutes is None:
+        await message.answer('Trvanie sa nepodarilo rozpoznat. Zadajte 0 az 180 minut, napriklad: 30, 45 minut alebo 1 hodina.')
+        return
+    WorkTimeService(config.db_path).save_lunch_break_settings(telegram_id=telegram_id, enabled=minutes > 0, minutes=minutes)
+    await _continue_pending_work_time_report(message, state, config, telegram_id=telegram_id)
+
+
+@router.message(WorkTimeStates.waiting_lunch_break_update_value)
+async def work_time_lunch_break_update_value(message: Message, state: FSMContext, config: Config) -> None:
+    if is_lunch_break_disable_request(message.text or ''):
+        await _preview_lunch_break_update(message, state, enabled=False, minutes=0)
+        return
+    minutes = parse_lunch_break_minutes(message.text or '')
+    if minutes is None:
+        await message.answer('Trvanie sa nepodarilo rozpoznat. Zadajte 0 az 180 minut, napriklad: 30, 45 minut alebo 1 hodina.')
+        return
+    await _preview_lunch_break_update(message, state, enabled=minutes > 0, minutes=minutes)
+
+
+@router.message(WorkTimeStates.waiting_lunch_break_update_confirm)
+async def work_time_lunch_break_update_confirm(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    decision = canonical_decision or await resolve_approve_edit_cancel(
+        context_name='work_time_lunch_break_update_confirm',
+        user_input_text=message.text or '',
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if decision == 'edit':
+        await state.set_state(WorkTimeStates.waiting_lunch_break_update_value)
+        await message.answer('Napiste alebo povedzte nove trvanie obednej prestavky v minutach.')
+        return
+    if decision == 'cancel':
+        await state.clear()
+        await message.answer('Zmenu obednej prestavky som zrusil. Nic sa nezmenilo.')
+        return
+    if decision != 'approve':
+        await answer_with_decision_keyboard(message, 'Schvalit zmenu obednej prestavky alebo zrusit?', approve_edit_cancel_keyboard(approve_label='Uložiť', edit_label='Upraviť', cancel_label='Zrušiť'))
+        return
+    telegram_id = _telegram_id(message)
+    data = await state.get_data()
+    if telegram_id is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovat pouzivatela.')
+        return
+    try:
+        minutes = int(data['work_time_lunch_break_minutes'])
+        enabled = bool(data['work_time_lunch_break_enabled'])
+    except (KeyError, TypeError, ValueError):
+        await state.clear()
+        await message.answer('Nahlad zmeny uz nie je dostupny. Skuste poziadavku zadat znova.')
+        return
+    settings = WorkTimeService(config.db_path).save_lunch_break_settings(
+        telegram_id=telegram_id,
+        enabled=enabled,
+        minutes=minutes,
+    )
+    await state.clear()
+    if not settings.enabled:
+        await message.answer('Odpočítavanie obednej prestávky je vypnuté. Ďalšie výkazy dochádzky budú bez odpočtu obeda.')
+        return
+    await message.answer(
+        f'Obedná prestávka je nastavená na {settings.minutes} minút. Použije sa pri ďalších výkazoch dochádzky.'
+    )
+
 @router.message(WorkTimeStates.waiting_manual_range_input)
 async def work_time_manual_range_input(message: Message, state: FSMContext, config: Config) -> None:
     candidate = await _resolve_manual_entry_candidate(message.text or '', config)
@@ -294,7 +438,7 @@ async def work_time_close_input(message: Message, state: FSMContext, config: Con
     await answer_with_decision_keyboard(
         message,
         'Skontrolujte uzavretie pracovneho dna:\n'
-        f'{format_candidate_preview(candidate, open_day=open_day)}\n\n'
+        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, telegram_id))}\n\n'
         'Schvalit, upravit alebo zrusit?',
         approve_edit_cancel_keyboard(),
     )
@@ -452,6 +596,65 @@ async def work_time_missing_days_choice(
     await answer_with_decision_keyboard(message, 'Vyberte jednu moznost.', work_time_missing_days_keyboard())
 
 
+async def _preview_lunch_break_update(message: Message, state: FSMContext, *, enabled: bool, minutes: int) -> None:
+    await state.update_data(
+        work_time_lunch_break_enabled=enabled,
+        work_time_lunch_break_minutes=minutes,
+    )
+    await state.set_state(WorkTimeStates.waiting_lunch_break_update_confirm)
+    if not enabled or minutes <= 0:
+        preview = 'Vypnut odpocitavanie obednej prestavky?'
+    else:
+        preview = f'Nastavit obednu prestavku na {minutes} minut?'
+    await answer_with_decision_keyboard(
+        message,
+        f'{preview}\n\nSchvalit, upravit alebo zrusit?',
+        approve_edit_cancel_keyboard(approve_label='Ulozit', edit_label='Upravit', cancel_label='Zrusit'),
+    )
+
+
+async def _continue_pending_work_time_report(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    *,
+    telegram_id: int,
+) -> None:
+    data = await state.get_data()
+    try:
+        year = int(data['work_time_pending_report_year'])
+        month = int(data['work_time_pending_report_month'])
+    except (KeyError, TypeError, ValueError):
+        await state.clear()
+        await message.answer('Povodna poziadavka na vykaz uz nie je dostupna. Skuste vykaz zadat znova.')
+        return
+    await _send_work_time_report(message, state, config, telegram_id=telegram_id, year=year, month=month)
+
+
+async def _send_work_time_report(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    *,
+    telegram_id: int,
+    year: int,
+    month: int,
+) -> None:
+    result = WorkTimeService(config.db_path).generate_monthly_report(
+        telegram_id=telegram_id,
+        year=year,
+        month=month,
+        output_dir=config.storage_dir / 'work_time_reports' / str(telegram_id),
+    )
+    await state.clear()
+    if not result.ok or result.report_path is None:
+        await message.answer('Vykaz sa nepodarilo vytvorit.')
+        return
+    await message.answer_document(
+        FSInputFile(result.report_path, filename=result.report_path.name),
+        caption='Vytvoril som mesacny vykaz odpracovanych hodin. Nie je to oficialny mzdovy ani pravny HR doklad.',
+    )
+
 async def _preview_delete_month(
     message: Message,
     state: FSMContext,
@@ -499,6 +702,14 @@ async def _resolve_manual_entry_candidate(text: str, config: Config) -> WorkTime
     )
 
 
+def _effective_lunch_break_minutes_for_user(config: Config, telegram_id: int | None) -> int:
+    if telegram_id is None:
+        return 0
+    settings = WorkTimeService(config.db_path).get_lunch_break_settings(telegram_id=telegram_id)
+    if not settings.configured or not settings.enabled:
+        return 0
+    return settings.minutes
+
 def _should_try_llm_work_time_slots(text: str) -> bool:
     lowered = (text or '').casefold()
     if any(term in lowered for term in ('teraz', 'now')):
@@ -512,7 +723,7 @@ async def _preview_manual_candidate(message: Message, state: FSMContext, candida
     await answer_with_decision_keyboard(
         message,
         'Skontrolujte doplnenie pracovneho casu:\n'
-        f'{format_candidate_preview(candidate)}\n\n'
+        f'{format_candidate_preview(candidate, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, _telegram_id(message)))}\n\n'
         'Schvalit, upravit alebo zrusit?',
         approve_edit_cancel_keyboard(),
     )

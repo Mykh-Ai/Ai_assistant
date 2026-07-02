@@ -62,6 +62,10 @@ from bot.handlers.work_time import (
     work_time_close_preview_confirm,
     work_time_delete_month_confirm,
     work_time_delete_month_input,
+    work_time_lunch_break_initial_choice,
+    work_time_lunch_break_update_confirm,
+    work_time_lunch_break_update_value,
+    work_time_lunch_break_value,
     work_time_manual_range_confirm,
     work_time_manual_range_input,
     work_time_missing_days_choice,
@@ -421,6 +425,30 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             )
         elif current_state == WorkTimeStates.waiting_delete_month_input.state:
             await work_time_delete_month_input(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_lunch_break_initial_choice.state:
+            await work_time_lunch_break_initial_choice(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_lunch_break_value.state:
+            await work_time_lunch_break_value(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_lunch_break_update_value.state:
+            await work_time_lunch_break_update_value(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_lunch_break_update_confirm.state:
+            await work_time_lunch_break_update_confirm(
                 message=text_message,
                 state=state,
                 config=config,

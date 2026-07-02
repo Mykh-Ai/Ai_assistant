@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
@@ -29,6 +29,8 @@ from bot.handlers.work_time import (
     WorkTimeStates,
     work_time_close_preview_confirm,
     work_time_delete_month_confirm,
+    work_time_lunch_break_initial_choice,
+    work_time_lunch_break_update_confirm,
     work_time_manual_range_confirm,
     work_time_missing_days_choice,
     work_time_open_day_conflict_choice,
@@ -224,6 +226,28 @@ async def _dispatch_decision_token(
         DECISION_CANCEL,
     }:
         await work_time_close_preview_confirm(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision=token,
+        )
+        return True
+
+    if current_state == WorkTimeStates.waiting_lunch_break_initial_choice.state and token in {DECISION_YES, DECISION_NO}:
+        await work_time_lunch_break_initial_choice(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision=token,
+        )
+        return True
+
+    if current_state == WorkTimeStates.waiting_lunch_break_update_confirm.state and token in {
+        DECISION_APPROVE,
+        DECISION_EDIT,
+        DECISION_CANCEL,
+    }:
+        await work_time_lunch_break_update_confirm(
             message=message,
             state=state,
             config=config,

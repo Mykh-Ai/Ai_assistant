@@ -26,6 +26,7 @@ from bot.handlers.work_time import (
     start_close_work_day,
     start_delete_work_time_month,
     start_generate_work_time_report,
+    start_update_work_time_lunch_break,
     start_open_work_day,
 )
 from bot.handlers.supplier import start_add_service_alias_intake
@@ -131,6 +132,7 @@ _CLOSE_WORK_DAY_INTENT = 'close_work_day'
 _ADD_WORK_TIME_ENTRY_INTENT = 'add_work_time_entry'
 _GENERATE_WORK_TIME_REPORT_INTENT = 'generate_work_time_report'
 _DELETE_WORK_TIME_MONTH_INTENT = 'delete_work_time_month'
+_UPDATE_WORK_TIME_LUNCH_BREAK_INTENT = 'update_work_time_lunch_break'
 _DELETE_USER_DATABASE_INTENT = DELETE_USER_DATABASE_INTENT
 _UNKNOWN_INVOICE_INTENT = 'unknown'
 
@@ -3250,6 +3252,7 @@ async def process_invoice_text(
             _ADD_WORK_TIME_ENTRY_INTENT,
             _GENERATE_WORK_TIME_REPORT_INTENT,
             _DELETE_WORK_TIME_MONTH_INTENT,
+            _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT,
             _SEND_INVOICE_INTENT,
             _EDIT_EXISTING_INVOICE_INTENT,
             _DELETE_EXISTING_INVOICE_INTENT,
@@ -3398,6 +3401,10 @@ async def process_invoice_text(
                 'meaning': 'user wants to generate a monthly Excel work-time report / dochadzka / vykaz hodin for a selected month',
                 'not_this': ['invoice analytics', 'official payroll or legal HR attendance', 'delete saved work-time records'],
             },
+            _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT: {
+                'meaning': 'user wants to set, change, or disable the fixed lunch break deduction used by OfficeFlow work-time reports',
+                'not_this': ['monthly report generation', 'payroll or legal HR attendance', 'invoice editing'],
+            },
             _DELETE_WORK_TIME_MONTH_INTENT: {
                 'meaning': (
                     'user wants to delete stored OfficeFlow work-time / dochadzka records for one selected month; '
@@ -3510,10 +3517,13 @@ async def process_invoice_text(
         await start_add_work_time_entry(message=message, state=state, config=config, text=invoice_text)
         return
     if top_level_intent == _GENERATE_WORK_TIME_REPORT_INTENT:
-        await start_generate_work_time_report(message=message, state=state, config=config, text=invoice_text)
+        await start_generate_work_time_report(message=message, state=state, config=config, text=invoice_text, source_channel=input_channel)
         return
     if top_level_intent == _DELETE_WORK_TIME_MONTH_INTENT:
         await start_delete_work_time_month(message=message, state=state, config=config, text=invoice_text)
+        return
+    if top_level_intent == _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT:
+        await start_update_work_time_lunch_break(message=message, state=state, config=config, text=invoice_text)
         return
     if top_level_intent == _DELETE_USER_DATABASE_INTENT:
         await start_delete_user_database_flow(message=message, state=state, config=config)

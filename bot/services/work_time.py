@@ -39,7 +39,7 @@ MONTH_NAMES_SK = {
     7: 'júl',
     8: 'august',
     9: 'september',
-    10: 'oktober',
+    10: 'október',
     11: 'november',
     12: 'december',
 }
@@ -56,6 +56,18 @@ class WorkTimeDay:
     status: str
     source: str
     note: str | None
+    gross_minutes: int | None = None
+    lunch_break_minutes_snapshot: int | None = None
+    net_work_minutes_override: int | None = None
+    close_input_mode: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkTimeLunchBreakSettings:
+    telegram_id: int
+    configured: bool
+    enabled: bool
+    minutes: int
 
 
 @dataclass(frozen=True)
@@ -122,8 +134,8 @@ class WorkTimeService:
             cursor = connection.execute(
                 """
                 INSERT INTO work_time_days
-                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note)
-                VALUES (?, ?, ?, NULL, NULL, ?, ?, NULL)
+                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, close_input_mode)
+                VALUES (?, ?, ?, NULL, NULL, ?, ?, NULL, NULL)
                 """,
                 (telegram_id, work_date, start_value, STATUS_OPEN, SOURCE_OPENED_LIVE),
             )
@@ -157,33 +169,67 @@ class WorkTimeService:
             if day.start_time is None:
                 return WorkTimeOperationResult(ok=False, reason='missing_start_time', conflict_day=day)
 
+            settings = self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection)
+            effective_break = _effective_lunch_break_minutes(settings)
             start_dt = datetime.combine(date.fromisoformat(day.work_date), _parse_time_value(day.start_time))
             if duration_minutes is not None:
                 if duration_minutes <= 0:
                     return WorkTimeOperationResult(ok=False, reason='invalid_duration', conflict_day=day)
-                end_dt = start_dt + timedelta(minutes=duration_minutes)
+                end_dt = start_dt + timedelta(minutes=duration_minutes + effective_break)
+                gross_minutes = duration_minutes + effective_break
+                total_minutes = duration_minutes
+                net_override = duration_minutes
+                lunch_snapshot = effective_break
+                close_mode = 'duration'
                 close_source = SOURCE_MANUAL_DURATION
             else:
                 end_dt = datetime.combine(date.fromisoformat(day.work_date), current.time().replace(second=0, microsecond=0))
+                if end_dt < start_dt:
+                    return WorkTimeOperationResult(ok=False, reason='end_before_start', conflict_day=day)
+                gross_minutes = int((end_dt - start_dt).total_seconds() // 60)
+                total_minutes = max(0, gross_minutes - effective_break)
+                net_override = None
+                lunch_snapshot = None
+                close_mode = 'explicit_end'
                 close_source = source
             if end_dt < start_dt:
                 return WorkTimeOperationResult(ok=False, reason='end_before_start', conflict_day=day)
-            total_minutes = int((end_dt - start_dt).total_seconds() // 60)
             end_value = _format_time(end_dt.time())
             connection.execute(
                 """
                 UPDATE work_time_days
-                SET end_time = ?, total_minutes = ?, status = ?, source = ?, updated_at = CURRENT_TIMESTAMP
+                SET end_time = ?, total_minutes = ?, status = ?, source = ?, gross_minutes = ?,
+                    lunch_break_minutes_snapshot = ?, net_work_minutes_override = ?, close_input_mode = ?,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND telegram_id = ?
                 """,
-                (end_value, total_minutes, STATUS_CLOSED, close_source, day.id, telegram_id),
+                (
+                    end_value,
+                    total_minutes,
+                    STATUS_CLOSED,
+                    close_source,
+                    gross_minutes,
+                    lunch_snapshot,
+                    net_override,
+                    close_mode,
+                    day.id,
+                    telegram_id,
+                ),
             )
             self._record_event(
                 connection,
                 day_id=day.id,
                 event_type='close',
                 old_value=day.__dict__,
-                new_value={'end_time': end_value, 'total_minutes': total_minutes, 'source': close_source},
+                new_value={
+                    'end_time': end_value,
+                    'gross_minutes': gross_minutes,
+                    'total_minutes': total_minutes,
+                    'lunch_break_minutes_snapshot': lunch_snapshot,
+                    'net_work_minutes_override': net_override,
+                    'close_input_mode': close_mode,
+                    'source': close_source,
+                },
                 source_message_id=source_message_id,
                 telegram_id=telegram_id,
             )
@@ -203,8 +249,10 @@ class WorkTimeService:
         end_dt = datetime.combine(candidate.work_date, candidate.calculated_end_time)
         if end_dt < start_dt:
             return WorkTimeOperationResult(ok=False, reason='end_before_start')
-        total_minutes = int((end_dt - start_dt).total_seconds() // 60)
+        gross_minutes = int((end_dt - start_dt).total_seconds() // 60)
         with managed_connection(self.db_path) as connection:
+            settings = self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection)
+            total_minutes = max(0, gross_minutes - _effective_lunch_break_minutes(settings))
             existing = self.get_day(
                 telegram_id=telegram_id,
                 work_date=candidate.work_date.isoformat(),
@@ -217,8 +265,8 @@ class WorkTimeService:
             cursor = connection.execute(
                 """
                 INSERT INTO work_time_days
-                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, close_input_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                 """,
                 (
                     telegram_id,
@@ -228,6 +276,8 @@ class WorkTimeService:
                     total_minutes,
                     STATUS_CLOSED,
                     SOURCE_MANUAL_RANGE,
+                    gross_minutes,
+                    'explicit_range',
                 ),
             )
             day_id = int(cursor.lastrowid)
@@ -236,7 +286,7 @@ class WorkTimeService:
                 day_id=day_id,
                 event_type='open',
                 old_value=None,
-                new_value={'manual_range': True, 'total_minutes': total_minutes},
+                new_value={'manual_range': True, 'gross_minutes': gross_minutes, 'total_minutes': total_minutes, 'close_input_mode': 'explicit_range'},
                 source_message_id=source_message_id,
                 telegram_id=telegram_id,
             )
@@ -262,11 +312,13 @@ class WorkTimeService:
                 return WorkTimeOperationResult(ok=False, reason='conflict_same_day', conflict_day=existing)
             if existing is not None:
                 connection.execute('DELETE FROM work_time_days WHERE id = ? AND telegram_id = ?', (existing.id, telegram_id))
+            lunch_snapshot = _effective_lunch_break_minutes(self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection))
             cursor = connection.execute(
                 """
                 INSERT INTO work_time_days
-                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note)
-                VALUES (?, ?, NULL, NULL, ?, ?, ?, NULL)
+                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note,
+                     lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode)
+                VALUES (?, ?, NULL, NULL, ?, ?, ?, NULL, ?, ?, ?)
                 """,
                 (
                     telegram_id,
@@ -274,6 +326,9 @@ class WorkTimeService:
                     candidate.duration_minutes,
                     STATUS_CLOSED,
                     SOURCE_MANUAL_DURATION,
+                    lunch_snapshot,
+                    candidate.duration_minutes,
+                    'duration',
                 ),
             )
             day_id = int(cursor.lastrowid)
@@ -282,7 +337,13 @@ class WorkTimeService:
                 day_id=day_id,
                 event_type='duration_entry',
                 old_value=None,
-                new_value={'duration_only': True, 'total_minutes': candidate.duration_minutes},
+                new_value={
+                    'duration_only': True,
+                    'total_minutes': candidate.duration_minutes,
+                    'lunch_break_minutes_snapshot': lunch_snapshot,
+                    'net_work_minutes_override': candidate.duration_minutes,
+                    'close_input_mode': 'duration',
+                },
                 source_message_id=source_message_id,
                 telegram_id=telegram_id,
             )
@@ -329,6 +390,7 @@ class WorkTimeService:
         output_dir: Path,
     ) -> WorkTimeOperationResult:
         rows = self.list_days_for_month(telegram_id=telegram_id, year=year, month=month)
+        settings = self.get_lunch_break_settings(telegram_id=telegram_id)
         by_date = {row.work_date: row for row in rows}
         output_dir.mkdir(parents=True, exist_ok=True)
         report_path = output_dir / f'dochadzka_{year:04d}_{month:02d}.xlsx'
@@ -359,8 +421,9 @@ class WorkTimeService:
             current_date = date(year, month, day_number)
             record = by_date.get(current_date.isoformat())
             if record and record.status == STATUS_CLOSED and record.total_minutes is not None:
-                hours = _format_duration(record.total_minutes)
-                total_minutes += record.total_minutes
+                report_minutes = self.report_net_minutes(record, settings=settings)
+                hours = _format_duration(report_minutes)
+                total_minutes += report_minutes
                 row_values = [current_date.strftime('%d.%m.%Y'), record.start_time or '', record.end_time or '', hours]
             elif record and record.status == STATUS_SKIPPED:
                 row_values = [current_date.strftime('%d.%m.%Y'), '', '', 'preskocene']
@@ -406,11 +469,12 @@ class WorkTimeService:
 
     def summarize_month(self, *, telegram_id: int, year: int, month: int) -> WorkTimeMonthSummary:
         rows = self.list_days_for_month(telegram_id=telegram_id, year=year, month=month)
+        settings = self.get_lunch_break_settings(telegram_id=telegram_id)
         return WorkTimeMonthSummary(
             year=year,
             month=month,
             row_count=len(rows),
-            total_minutes=sum(row.total_minutes or 0 for row in rows),
+            total_minutes=sum(self.report_net_minutes(row, settings=settings) for row in rows),
         )
 
     def delete_month(
@@ -424,21 +488,19 @@ class WorkTimeService:
         start = date(year, month, 1).isoformat()
         end = date(year, month, monthrange(year, month)[1]).isoformat()
         with managed_connection(self.db_path) as connection:
-            rows = connection.execute(
-                """
-                SELECT id, total_minutes
-                FROM work_time_days
-                WHERE telegram_id = ? AND work_date BETWEEN ? AND ?
-                ORDER BY work_date ASC, id ASC
-                """,
-                (telegram_id, start, end),
-            ).fetchall()
-            day_ids = [int(row[0]) for row in rows]
+            rows = self._list_days_for_month_with_connection(
+                connection=connection,
+                telegram_id=telegram_id,
+                year=year,
+                month=month,
+            )
+            day_ids = [row.id for row in rows]
+            settings = self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection)
             summary = WorkTimeMonthSummary(
                 year=year,
                 month=month,
                 row_count=len(day_ids),
-                total_minutes=sum(0 if row[1] is None else int(row[1]) for row in rows),
+                total_minutes=sum(self.report_net_minutes(row, settings=settings) for row in rows),
             )
             if day_ids:
                 placeholders = ','.join('?' for _ in day_ids)
@@ -479,7 +541,7 @@ class WorkTimeService:
         def _query(conn: sqlite3.Connection) -> WorkTimeDay | None:
             row = conn.execute(
                 """
-                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note
+                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode
                 FROM work_time_days
                 WHERE telegram_id = ? AND status = ?
                 ORDER BY work_date ASC, id ASC
@@ -504,7 +566,7 @@ class WorkTimeService:
         def _query(conn: sqlite3.Connection) -> WorkTimeDay | None:
             row = conn.execute(
                 """
-                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note
+                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode
                 FROM work_time_days
                 WHERE telegram_id = ? AND work_date = ?
                 ORDER BY id DESC
@@ -528,7 +590,7 @@ class WorkTimeService:
         def _query(conn: sqlite3.Connection) -> WorkTimeDay | None:
             row = conn.execute(
                 """
-                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note
+                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode
                 FROM work_time_days
                 WHERE id = ?
                 """,
@@ -542,19 +604,112 @@ class WorkTimeService:
             return _query(conn)
 
     def list_days_for_month(self, *, telegram_id: int, year: int, month: int) -> list[WorkTimeDay]:
+        with managed_connection(self.db_path) as connection:
+            return self._list_days_for_month_with_connection(
+                connection=connection,
+                telegram_id=telegram_id,
+                year=year,
+                month=month,
+            )
+
+    def get_lunch_break_settings(
+        self,
+        *,
+        telegram_id: int,
+        connection: sqlite3.Connection | None = None,
+    ) -> WorkTimeLunchBreakSettings:
+        def _query(conn: sqlite3.Connection) -> WorkTimeLunchBreakSettings:
+            row = conn.execute(
+                """
+                SELECT telegram_id, lunch_break_configured, lunch_break_enabled, lunch_break_minutes
+                FROM work_time_settings
+                WHERE telegram_id = ?
+                """,
+                (telegram_id,),
+            ).fetchone()
+            if row is None:
+                return WorkTimeLunchBreakSettings(telegram_id=telegram_id, configured=False, enabled=False, minutes=0)
+            return WorkTimeLunchBreakSettings(
+                telegram_id=int(row[0]),
+                configured=bool(row[1]),
+                enabled=bool(row[2]),
+                minutes=max(0, int(row[3] or 0)),
+            )
+
+        if connection is not None:
+            return _query(connection)
+        with managed_connection(self.db_path) as conn:
+            return _query(conn)
+
+    def save_lunch_break_settings(
+        self,
+        *,
+        telegram_id: int,
+        enabled: bool,
+        minutes: int,
+    ) -> WorkTimeLunchBreakSettings:
+        safe_minutes = _validate_lunch_break_minutes(minutes)
+        enabled_value = bool(enabled and safe_minutes > 0)
+        stored_minutes = safe_minutes if enabled_value else 0
+        with managed_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO work_time_settings
+                    (telegram_id, lunch_break_configured, lunch_break_enabled, lunch_break_minutes, updated_at)
+                VALUES (?, 1, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(telegram_id) DO UPDATE SET
+                    lunch_break_configured = 1,
+                    lunch_break_enabled = excluded.lunch_break_enabled,
+                    lunch_break_minutes = excluded.lunch_break_minutes,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (telegram_id, 1 if enabled_value else 0, stored_minutes),
+            )
+            connection.commit()
+            return self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection)
+
+    def report_net_minutes(
+        self,
+        day: WorkTimeDay,
+        *,
+        settings: WorkTimeLunchBreakSettings | None = None,
+    ) -> int:
+        if day.net_work_minutes_override is not None:
+            return max(0, day.net_work_minutes_override)
+        if day.start_time and day.end_time:
+            gross = day.gross_minutes
+            if gross is None:
+                gross = _minutes_between(day.start_time, day.end_time)
+            if gross is None:
+                return max(0, day.total_minutes or 0)
+            return max(0, gross - _effective_lunch_break_minutes(settings))
+        return max(0, day.total_minutes or 0)
+
+    def _list_days_for_month_with_connection(
+        self,
+        *,
+        connection: sqlite3.Connection,
+        telegram_id: int,
+        year: int,
+        month: int,
+    ) -> list[WorkTimeDay]:
         start = date(year, month, 1).isoformat()
         end = date(year, month, monthrange(year, month)[1]).isoformat()
-        with managed_connection(self.db_path) as connection:
-            rows = connection.execute(
-                """
-                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note
-                FROM work_time_days
-                WHERE telegram_id = ? AND work_date BETWEEN ? AND ?
-                ORDER BY work_date ASC, id ASC
-                """,
-                (telegram_id, start, end),
-            ).fetchall()
-            return [_row_to_day(row) for row in rows if _row_to_day(row) is not None]
+        rows = connection.execute(
+            """
+            SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode
+            FROM work_time_days
+            WHERE telegram_id = ? AND work_date BETWEEN ? AND ?
+            ORDER BY work_date ASC, id ASC
+            """,
+            (telegram_id, start, end),
+        ).fetchall()
+        days = []
+        for row in rows:
+            day = _row_to_day(row)
+            if day is not None:
+                days.append(day)
+        return days
 
     def _record_event(
         self,
@@ -584,6 +739,41 @@ class WorkTimeService:
         )
 
 
+
+def parse_lunch_break_minutes(text: str) -> int | None:
+    normalized = _normalize(text)
+    if not normalized:
+        return None
+    if any(term in normalized for term in ('pol hodiny', 'polhodina', 'polhodiny', 'half hour', 'piv godini', 'piv hodyny', 'polcasa', 'pol casa')):
+        return 30
+    if any(term in normalized for term in ('hodina', 'jedna hodina', '1 hodina', 'godina', 'chas', 'cas')):
+        return 60
+    if any(term in normalized for term in ('година', 'одна година', 'годину', 'час')):
+        return 60
+    if any(term in normalized for term in ('пів години', 'півгодини', 'полчаса', 'пол часа')):
+        return 30
+    hour_match = re.search(r'\b(\d{1,2})\s*(?:hodin|hodiny|hodina|hod|h|godin|casov|chas|годин|години|час|часа|часов)\b', normalized)
+    if hour_match:
+        value = int(hour_match.group(1)) * 60
+        return value if 0 <= value <= 180 else None
+    minute_match = re.search(r'\b(\d{1,3})\s*(?:minut|minuta|minuty|min|m|хвилин|хв|минут|минута|минуты)\b', normalized)
+    if minute_match:
+        value = int(minute_match.group(1))
+        return value if 0 <= value <= 180 else None
+    plain_match = re.fullmatch(r'\s*(\d{1,3})\s*', normalized)
+    if plain_match:
+        value = int(plain_match.group(1))
+        return value if 0 <= value <= 180 else None
+    return None
+
+
+def is_lunch_break_disable_request(text: str) -> bool:
+    normalized = _normalize(text)
+    if not normalized:
+        return False
+    disable_terms = ('zrus', 'vypni', 'bez', 'neodpocitavaj', 'ne odnimati', 'ne vidnimati', 'otkluci', 'disable')
+    lunch_terms = ('obed', 'obednu', 'obednej', 'pauz', 'prestav', 'lunch', 'break', 'обід', 'обед', 'пауз', 'перерв')
+    return any(term in normalized for term in disable_terms) and any(term in normalized for term in lunch_terms)
 def parse_manual_range_candidate(text: str, *, today: date | None = None) -> WorkTimeCandidate | None:
     normalized = _normalize(text)
     work_date = _resolve_relative_date(normalized, today=today)
@@ -612,7 +802,7 @@ def parse_close_candidate(text: str, *, open_day: WorkTimeDay, today: date | Non
     normalized = _normalize(text)
     work_date = date.fromisoformat(open_day.work_date)
     duration_match = re.search(
-        r'\b(\d{1,2})(?:[,.](\d{1,2}))?\s*(?:hodin|hodiny|hodina|hod|h|godin|chas|casov|час|часов|годин)\b',
+        r'\b(\d{1,2})(?:[,.](\d{1,2}))?\s*(?:hodin|hodiny|hodina|hod|h|godin|chas|casov|С‡Р°СЃ|С‡Р°СЃРѕРІ|РіРѕРґРёРЅ)\b',
         normalized,
     )
     if duration_match:
@@ -623,13 +813,13 @@ def parse_close_candidate(text: str, *, open_day: WorkTimeDay, today: date | Non
             minutes = int(round(float(f'0.{fraction}') * 60))
         return WorkTimeCandidate(work_date=work_date, duration_minutes=hours * 60 + minutes, close_mode='close_with_duration')
 
-    time_match = re.search(r'(?:\bo\b|\bv\b|\bat\b|в|о)\s*(\d{1,2})(?::(\d{2}))\b', normalized)
+    time_match = re.search(r'(?:\bo\b|\bv\b|\bat\b|РІ|Рѕ)\s*(\d{1,2})(?::(\d{2}))\b', normalized)
     if time_match:
         end_time = _parse_match_time((time_match.group(1), time_match.group(2)))
         if end_time is not None:
             return WorkTimeCandidate(work_date=work_date, end_time=end_time, close_mode='close_at_time')
 
-    if any(term in normalized for term in ('teraz', 'now', 'зараз', 'сейчас')):
+    if any(term in normalized for term in ('teraz', 'now', 'Р·Р°СЂР°Р·', 'СЃРµР№С‡Р°СЃ')):
         return WorkTimeCandidate(work_date=_resolve_relative_date(normalized, today=today), close_mode='close_now', needs_confirmation=False)
     return WorkTimeCandidate(work_date=work_date, close_mode='close_now', needs_confirmation=False)
 
@@ -762,15 +952,25 @@ def format_day_summary(day: WorkTimeDay) -> str:
     return f"{_format_date_sk(day.work_date)}: {day.status}"
 
 
-def format_candidate_preview(candidate: WorkTimeCandidate, *, open_day: WorkTimeDay | None = None) -> str:
+def format_candidate_preview(
+    candidate: WorkTimeCandidate,
+    *,
+    open_day: WorkTimeDay | None = None,
+    lunch_break_minutes: int = 0,
+) -> str:
     start_value = candidate.start_time
     if start_value is None and open_day is not None and open_day.start_time is not None:
         start_value = _parse_time_value(open_day.start_time)
-    end_value = candidate.calculated_end_time
-    if end_value is None and candidate.end_time is not None:
-        end_value = candidate.end_time
+    end_value = candidate.end_time
+    if end_value is None and start_value is not None and candidate.duration_minutes is not None:
+        base = datetime.combine(candidate.work_date, start_value)
+        end_value = (base + timedelta(minutes=candidate.duration_minutes + max(0, lunch_break_minutes))).time().replace(second=0, microsecond=0)
+    elif end_value is None:
+        end_value = candidate.calculated_end_time
     total = ''
-    if start_value is not None and end_value is not None:
+    if candidate.duration_minutes is not None:
+        total = _format_duration(candidate.duration_minutes)
+    elif start_value is not None and end_value is not None:
         total_minutes = int(
             (
                 datetime.combine(candidate.work_date, end_value)
@@ -778,9 +978,7 @@ def format_candidate_preview(candidate: WorkTimeCandidate, *, open_day: WorkTime
             ).total_seconds()
             // 60
         )
-        total = _format_duration(total_minutes)
-    elif candidate.duration_minutes is not None:
-        total = _format_duration(candidate.duration_minutes)
+        total = _format_duration(max(0, total_minutes - max(0, lunch_break_minutes)))
     return (
         f"Datum: {_format_date_sk(candidate.work_date.isoformat())}\n"
         f"Prichod: {_format_time(start_value) if start_value else '-'}\n"
@@ -810,7 +1008,37 @@ def _row_to_day(row) -> WorkTimeDay | None:
         status=str(row[6]),
         source=str(row[7]),
         note=row[8],
+        gross_minutes=None if len(row) <= 9 or row[9] is None else int(row[9]),
+        lunch_break_minutes_snapshot=None if len(row) <= 10 or row[10] is None else int(row[10]),
+        net_work_minutes_override=None if len(row) <= 11 or row[11] is None else int(row[11]),
+        close_input_mode=None if len(row) <= 12 or row[12] is None else str(row[12]),
     )
+
+
+def _effective_lunch_break_minutes(settings: WorkTimeLunchBreakSettings | None) -> int:
+    if settings is None or not settings.configured or not settings.enabled:
+        return 0
+    return max(0, min(180, settings.minutes))
+
+
+def _validate_lunch_break_minutes(minutes: int) -> int:
+    value = int(minutes)
+    if value < 0 or value > 180:
+        raise ValueError('lunch_break_minutes_out_of_range')
+    return value
+
+
+def _minutes_between(start_value: str, end_value: str) -> int | None:
+    try:
+        start_time = _parse_time_value(start_value)
+        end_time = _parse_time_value(end_value)
+    except ValueError:
+        return None
+    start_dt = datetime.combine(date(2000, 1, 1), start_time)
+    end_dt = datetime.combine(date(2000, 1, 1), end_time)
+    if end_dt < start_dt:
+        return None
+    return int((end_dt - start_dt).total_seconds() // 60)
 
 
 def _local_now(value: datetime | None = None) -> datetime:
@@ -909,22 +1137,22 @@ def _parse_match_time(match: tuple[str, str]) -> time | None:
 
 def _resolve_relative_date(normalized: str, *, today: date | None = None) -> date:
     current = today or date.today()
-    if any(term in normalized for term in ('vcera', 'včera', 'vchera', 'вчора', 'вчера')):
+    if any(term in normalized for term in ('vcera', 'vДЌera', 'vchera', 'РІС‡РѕСЂР°', 'РІС‡РµСЂР°')):
         return current - timedelta(days=1)
     return current
 
 
 _MONTH_ALIASES = {
-    1: ('januar', 'jan', 'січень', 'январ'),
-    2: ('februar', 'feb', 'лютий', 'феврал'),
-    3: ('marec', 'marci', 'march', 'березень', 'март'),
-    4: ('april', 'apr', 'квітень', 'апрел'),
-    5: ('maj', 'may', 'травень', 'май'),
-    6: ('jun', 'june', 'jún', 'червень', 'июн'),
-    7: ('jul', 'july', 'júl', 'липень', 'июл'),
-    8: ('august', 'aug', 'серпень', 'август'),
-    9: ('september', 'sep', 'вересень', 'сентябр'),
-    10: ('oktober', 'oct', 'жовтень', 'октябр'),
-    11: ('november', 'nov', 'листопад', 'ноябр'),
-    12: ('december', 'dec', 'грудень', 'декабр'),
+    1: ('januar', 'jan', 'СЃС–С‡РµРЅСЊ', 'СЏРЅРІР°СЂ'),
+    2: ('februar', 'feb', 'Р»СЋС‚РёР№', 'С„РµРІСЂР°Р»'),
+    3: ('marec', 'marci', 'march', 'Р±РµСЂРµР·РµРЅСЊ', 'РјР°СЂС‚'),
+    4: ('april', 'apr', 'РєРІС–С‚РµРЅСЊ', 'Р°РїСЂРµР»'),
+    5: ('maj', 'may', 'С‚СЂР°РІРµРЅСЊ', 'РјР°Р№'),
+    6: ('jun', 'june', 'jún', 'С‡РµСЂРІРµРЅСЊ', 'РёСЋРЅ'),
+    7: ('jul', 'july', 'júl', 'Р»РёРїРµРЅСЊ', 'РёСЋР»'),
+    8: ('august', 'aug', 'СЃРµСЂРїРµРЅСЊ', 'Р°РІРіСѓСЃС‚'),
+    9: ('september', 'sep', 'РІРµСЂРµСЃРµРЅСЊ', 'СЃРµРЅС‚СЏР±СЂ'),
+    10: ('október', 'oct', 'Р¶РѕРІС‚РµРЅСЊ', 'РѕРєС‚СЏР±СЂ'),
+    11: ('november', 'nov', 'Р»РёСЃС‚РѕРїР°Рґ', 'РЅРѕСЏР±СЂ'),
+    12: ('december', 'dec', 'РіСЂСѓРґРµРЅСЊ', 'РґРµРєР°Р±СЂ'),
 }

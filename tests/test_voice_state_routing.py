@@ -1360,6 +1360,104 @@ def test_voice_mark_existing_invoice_paid_confirmation_routes_to_mark_paid_handl
     assert calls == ['ano']
 
 
+
+
+def test_voice_work_time_lunch_break_initial_choice_routes_to_shared_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ano'
+
+    async def _handler(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.work_time_lunch_break_initial_choice', _handler)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(WorkTimeStates.waiting_lunch_break_initial_choice.state),
+        )
+    )
+
+    assert calls == ['ano']
+
+
+def test_voice_work_time_lunch_break_value_routes_to_value_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return '60 minut'
+
+    async def _handler(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.work_time_lunch_break_value', _handler)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(WorkTimeStates.waiting_lunch_break_value.state),
+        )
+    )
+
+    assert calls == ['60 minut']
+
+
+def test_voice_work_time_lunch_break_update_value_routes_to_value_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return '45 minut'
+
+    async def _handler(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.work_time_lunch_break_update_value', _handler)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(WorkTimeStates.waiting_lunch_break_update_value.state),
+        )
+    )
+
+    assert calls == ['45 minut']
+
+
+def test_voice_work_time_lunch_break_update_confirm_routes_to_shared_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ulozit'
+
+    async def _handler(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.work_time_lunch_break_update_confirm', _handler)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(WorkTimeStates.waiting_lunch_break_update_confirm.state),
+        )
+    )
+
+    assert calls == ['ulozit']
+
+
 def test_voice_work_time_delete_month_confirmation_routes_to_shared_handler(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
 

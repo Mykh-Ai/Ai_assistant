@@ -15,6 +15,7 @@ from bot.services.work_time import (
     format_candidate_preview,
     parse_close_candidate,
     parse_duration_entry_candidate,
+    parse_lunch_break_minutes,
     parse_explicit_month,
     parse_manual_range_candidate,
     parse_report_month,
@@ -206,6 +207,91 @@ def test_report_includes_all_days_sundays_and_total(tmp_path: Path) -> None:
     assert all(sheet[f'{column}{sunday_row}'].fill.fgColor.rgb in {'00C6EFCE', 'C6EFCE'} for column in 'ABCD')
     assert [sheet.column_dimensions[column].width for column in 'ABCD'] == [14, 11, 11, 14]
 
+
+
+def test_lunch_break_parser_accepts_supported_examples() -> None:
+    assert parse_lunch_break_minutes('30') == 30
+    assert parse_lunch_break_minutes('45 minut') == 45
+    assert parse_lunch_break_minutes('1 hodina') == 60
+    assert parse_lunch_break_minutes('hodina') == 60
+    assert parse_lunch_break_minutes('\u043f\u0456\u0432 \u0433\u043e\u0434\u0438\u043d\u0438') == 30
+    assert parse_lunch_break_minutes('\u0447\u0430\u0441') == 60
+    assert parse_lunch_break_minutes('60 \u0445\u0432\u0438\u043b\u0438\u043d') == 60
+    assert parse_lunch_break_minutes('-5') is None
+    assert parse_lunch_break_minutes('240 minut') is None
+
+
+def test_explicit_range_report_subtracts_current_lunch_break(tmp_path: Path) -> None:
+    db_path = tmp_path / 'test.db'
+    init_db(db_path)
+    service = WorkTimeService(db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=60)
+    candidate = WorkTimeCandidate(work_date=date(2026, 7, 2), start_time=datetime.strptime('09:00', '%H:%M').time(), end_time=datetime.strptime('21:00', '%H:%M').time())
+    result = service.add_manual_range(telegram_id=1001, candidate=candidate)
+    assert result.ok
+    assert result.day is not None
+    assert result.day.gross_minutes == 720
+    assert result.day.total_minutes == 660
+
+    report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports')
+    sheet = load_workbook(report.report_path).active
+    assert sheet['D5'].value == '11 hod.'
+    assert sheet['D35'].value == '11 hod.'
+
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=30)
+    updated_report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports2')
+    updated_sheet = load_workbook(updated_report.report_path).active
+    assert updated_sheet['D5'].value == '11,5 hod.'
+
+
+def test_duration_close_keeps_requested_net_and_extends_end_by_lunch(tmp_path: Path) -> None:
+    db_path = tmp_path / 'test.db'
+    init_db(db_path)
+    service = WorkTimeService(db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=60)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 2, 7, 12)).ok
+
+    closed = service.close_open_day(telegram_id=1001, duration_minutes=600)
+
+    assert closed.ok
+    assert closed.day is not None
+    assert closed.day.end_time == '18:12'
+    assert closed.day.gross_minutes == 660
+    assert closed.day.total_minutes == 600
+    assert closed.day.net_work_minutes_override == 600
+    report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports')
+    sheet = load_workbook(report.report_path).active
+    assert sheet['D5'].value == '10 hod.'
+
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=30)
+    updated_report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports2')
+    assert load_workbook(updated_report.report_path).active['D5'].value == '10 hod.'
+
+
+def test_duration_close_with_lunch_disabled_keeps_old_end_semantics(tmp_path: Path) -> None:
+    db_path = tmp_path / 'test.db'
+    init_db(db_path)
+    service = WorkTimeService(db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=False, minutes=0)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 2, 7, 12)).ok
+
+    closed = service.close_open_day(telegram_id=1001, duration_minutes=600)
+
+    assert closed.ok
+    assert closed.day is not None
+    assert closed.day.end_time == '17:12'
+    assert closed.day.total_minutes == 600
+
+
+def test_report_clamps_break_larger_than_explicit_gross_to_zero(tmp_path: Path) -> None:
+    db_path = tmp_path / 'test.db'
+    init_db(db_path)
+    service = WorkTimeService(db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=180)
+    candidate = WorkTimeCandidate(work_date=date(2026, 7, 2), start_time=datetime.strptime('09:00', '%H:%M').time(), end_time=datetime.strptime('10:00', '%H:%M').time())
+    assert service.add_manual_range(telegram_id=1001, candidate=candidate).ok
+    report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports')
+    assert load_workbook(report.report_path).active['D5'].value == '0 hod.'
 
 def test_format_duration_uses_compact_hour_labels() -> None:
     assert _format_duration(540) == '9 hod.'

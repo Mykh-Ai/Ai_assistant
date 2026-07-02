@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import inspect
@@ -8,7 +8,16 @@ from pathlib import Path
 
 from bot.config import Config
 from bot.handlers import voice
-from bot.handlers.work_time import WorkTimeStates, start_delete_work_time_month, work_time_delete_month_confirm
+from bot.handlers.work_time import (
+    WorkTimeStates,
+    start_delete_work_time_month,
+    start_generate_work_time_report,
+    start_update_work_time_lunch_break,
+    work_time_delete_month_confirm,
+    work_time_lunch_break_initial_choice,
+    work_time_lunch_break_update_confirm,
+    work_time_lunch_break_value,
+)
 from bot.services.db import init_db
 from bot.services.info_help import build_product_truth_guidance
 from bot.services.product_truth import get_capability, get_safe_answer_payload
@@ -22,9 +31,13 @@ class _DummyMessage:
         self.from_user = type('_User', (), {'id': telegram_id})()
         self.message_id = 88
         self.answers: list[str] = []
+        self.documents: list[tuple[object, str | None]] = []
 
     async def answer(self, text: str, **kwargs) -> None:
         self.answers.append(text)
+
+    async def answer_document(self, document, caption: str | None = None, **kwargs) -> None:
+        self.documents.append((document, caption))
 
 
 class _DummyState:
@@ -88,6 +101,7 @@ WORK_TIME_ALLOWED = [
     'add_work_time_entry',
     'generate_work_time_report',
     'delete_work_time_month',
+    'update_work_time_lunch_break',
     'unknown',
 ]
 
@@ -144,6 +158,13 @@ def test_top_level_work_time_report_routes_from_month_request() -> None:
     assert _resolve('vytvor vykaz hodin za jun') == 'generate_work_time_report'
 
 
+
+def test_top_level_work_time_lunch_break_update_routes_from_examples() -> None:
+    assert _resolve('zmeň obednú prestávku na 30 minút') == 'update_work_time_lunch_break'
+    assert _resolve('nastav obednú prestávku 1 hodina') == 'update_work_time_lunch_break'
+    assert _resolve('\u0437\u043c\u0456\u043d\u0438 \u043e\u0431\u0456\u0434\u043d\u044e \u043f\u0435\u0440\u0435\u0440\u0432\u0443 \u043d\u0430 30 \u0445\u0432\u0438\u043b\u0438\u043d') == 'update_work_time_lunch_break'
+    assert _resolve('\u0438\u0437\u043c\u0435\u043d\u0438 \u043e\u0431\u0435\u0434\u0435\u043d\u043d\u044b\u0439 \u043f\u0435\u0440\u0435\u0440\u044b\u0432 \u043d\u0430 45 \u043c\u0438\u043d\u0443\u0442') == 'update_work_time_lunch_break'
+    assert _resolve('\u043d\u0435 \u0432\u0456\u0434\u043d\u0456\u043c\u0430\u0442\u0438 \u043e\u0431\u0456\u0434') == 'update_work_time_lunch_break'
 def test_top_level_work_time_delete_month_routes_from_slovak_text() -> None:
     assert _resolve('vymaz dochadzku za jul') == 'delete_work_time_month'
     assert _resolve('zmaz vykaz hodin za maj') == 'delete_work_time_month'
@@ -171,6 +192,8 @@ def test_product_truth_work_time_tracking_is_partial() -> None:
     assert payload['product_status'] == 'partial'
     assert 'open_work_day' in result.capability.canonical_actions
     assert 'delete_work_time_month' in result.capability.canonical_actions
+    assert 'update_work_time_lunch_break' in result.capability.canonical_actions
+    assert any('lunch' in limitation.lower() for limitation in result.capability.current_limitations)
     forbidden = ' '.join(payload['forbidden_claims'])
     assert 'payroll' in forbidden.lower()
     assert 'salary' in forbidden.lower()
@@ -186,9 +209,103 @@ def test_info_help_answers_work_time_and_refuses_payroll_overclaim() -> None:
     assert 'ciastocne' in answer.lower() or 'ciasto' in answer.lower()
     assert 'mzdova dochadzka' in answer.lower() or 'mzdova dochadzka' in answer.lower()
     assert 'vypocet mzdy' in answer.lower() or 'vypocet mzdy' in answer.lower()
+    lunch_answer = build_product_truth_guidance(user_input_text='Vie bot nastavit obednu prestavku?')
+    assert lunch_answer is not None
+    assert 'obed' in lunch_answer.lower()
+    assert 'ciastocne' in lunch_answer.lower() or 'ciasto' in lunch_answer.lower()
 
 
 
+
+def test_first_report_without_lunch_setting_asks_and_stores_pending_request(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage('vytvor vykaz hodin za jul 2026')
+    state = _DummyState()
+
+    asyncio.run(start_generate_work_time_report(message=message, state=state, config=config, text=message.text, source_channel='voice'))
+
+    assert state.current_state == WorkTimeStates.waiting_lunch_break_initial_choice.state
+    assert state.data['work_time_pending_report_year'] == 2026
+    assert state.data['work_time_pending_report_month'] == 7
+    assert state.data['work_time_pending_report_source_channel'] == 'voice'
+    assert 'obed' in message.answers[-1].lower()
+    assert message.documents == []
+
+
+def test_first_report_no_saves_disabled_and_generates_pending_report(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    assert service.add_duration_entry(telegram_id=1001, candidate=WorkTimeCandidate(work_date=date(2026, 7, 2), duration_minutes=600)).ok
+    message = _DummyMessage('vytvor vykaz hodin za jul 2026')
+    state = _DummyState()
+
+    asyncio.run(start_generate_work_time_report(message=message, state=state, config=config, text=message.text))
+    asyncio.run(work_time_lunch_break_initial_choice(message=_DummyMessage('nie'), state=state, config=config, canonical_decision='no'))
+
+    settings = service.get_lunch_break_settings(telegram_id=1001)
+    assert settings.configured is True
+    assert settings.enabled is False
+    assert settings.minutes == 0
+    assert state.current_state is None
+
+
+def test_first_report_yes_then_value_saves_and_generates_pending_report(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage('vytvor vykaz hodin za jul 2026')
+    state = _DummyState()
+
+    asyncio.run(start_generate_work_time_report(message=message, state=state, config=config, text=message.text))
+    asyncio.run(work_time_lunch_break_initial_choice(message=_DummyMessage('ano'), state=state, config=config, canonical_decision='yes'))
+    assert state.current_state == WorkTimeStates.waiting_lunch_break_value.state
+    value_message = _DummyMessage('60')
+    asyncio.run(work_time_lunch_break_value(message=value_message, state=state, config=config))
+
+    settings = WorkTimeService(config.db_path).get_lunch_break_settings(telegram_id=1001)
+    assert settings.configured is True
+    assert settings.enabled is True
+    assert settings.minutes == 60
+    assert state.current_state is None
+    assert value_message.documents
+
+
+def test_second_report_after_lunch_setting_generates_directly(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=60)
+    message = _DummyMessage('vytvor vykaz hodin za jul 2026')
+    state = _DummyState()
+
+    asyncio.run(start_generate_work_time_report(message=message, state=state, config=config, text=message.text))
+
+    assert state.current_state is None
+    assert message.documents
+    assert 'obed' not in ''.join(message.answers).lower()
+
+
+def test_lunch_break_update_and_disable_are_confirmation_gated(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _DummyMessage('zmen obednu prestavku na 30 minut')
+
+    asyncio.run(start_update_work_time_lunch_break(message=message, state=state, config=config, text=message.text))
+    assert state.current_state == WorkTimeStates.waiting_lunch_break_update_confirm.state
+    asyncio.run(work_time_lunch_break_update_confirm(message=_DummyMessage('ulozit'), state=state, config=config, canonical_decision='approve'))
+    settings = WorkTimeService(config.db_path).get_lunch_break_settings(telegram_id=1001)
+    assert settings.enabled is True
+    assert settings.minutes == 30
+
+    state = _DummyState()
+    disable = _DummyMessage('zrus odpocitavanie obednej prestavky')
+    asyncio.run(start_update_work_time_lunch_break(message=disable, state=state, config=config, text=disable.text))
+    asyncio.run(work_time_lunch_break_update_confirm(message=_DummyMessage('ulozit'), state=state, config=config, canonical_decision='approve'))
+    disabled = WorkTimeService(config.db_path).get_lunch_break_settings(telegram_id=1001)
+    assert disabled.enabled is False
+    assert disabled.minutes == 0
 def test_delete_work_time_month_missing_month_asks_without_deleting(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)

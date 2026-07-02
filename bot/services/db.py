@@ -310,9 +310,23 @@ CREATE TABLE IF NOT EXISTS work_time_days (
     status TEXT NOT NULL,
     source TEXT NOT NULL,
     note TEXT,
+    gross_minutes INTEGER,
+    lunch_break_minutes_snapshot INTEGER,
+    net_work_minutes_override INTEGER,
+    close_input_mode TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(telegram_id, work_date)
+);
+"""
+
+WORK_TIME_SETTINGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS work_time_settings (
+    telegram_id INTEGER PRIMARY KEY,
+    lunch_break_configured INTEGER NOT NULL DEFAULT 0,
+    lunch_break_enabled INTEGER NOT NULL DEFAULT 0,
+    lunch_break_minutes INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 """
 
@@ -514,6 +528,12 @@ _ARCHIVE_JOB_ADDITIVE_COLUMNS = {
     'lease_until': 'TEXT',
 }
 
+_WORK_TIME_DAY_ADDITIVE_COLUMNS = {
+    'gross_minutes': 'INTEGER',
+    'lunch_break_minutes_snapshot': 'INTEGER',
+    'net_work_minutes_override': 'INTEGER',
+    'close_input_mode': 'TEXT',
+}
 
 def _bootstrap_supplier_table(connection: sqlite3.Connection) -> None:
     existing_columns = {
@@ -860,6 +880,8 @@ def ensure_google_drive_connection_schema(connection: sqlite3.Connection) -> Non
 
 def ensure_work_time_schema(connection: sqlite3.Connection) -> None:
     connection.execute(WORK_TIME_DAY_SCHEMA)
+    _ensure_work_time_day_additive_columns(connection)
+    connection.execute(WORK_TIME_SETTINGS_SCHEMA)
     connection.execute(WORK_TIME_EVENT_SCHEMA)
     connection.execute(
         'CREATE INDEX IF NOT EXISTS idx_work_time_days_user_month '
@@ -869,6 +891,19 @@ def ensure_work_time_schema(connection: sqlite3.Connection) -> None:
         'CREATE INDEX IF NOT EXISTS idx_work_time_events_day_created '
         'ON work_time_events (work_time_day_id, created_at)'
     )
+
+
+def _ensure_work_time_day_additive_columns(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row[1] for row in connection.execute('PRAGMA table_info(work_time_days)').fetchall()
+    }
+    for column_name, column_definition in _WORK_TIME_DAY_ADDITIVE_COLUMNS.items():
+        if column_name not in existing_columns:
+            connection.execute(
+                f'ALTER TABLE work_time_days ADD COLUMN {column_name} {column_definition}'
+            )
+
+
 def _ensure_archive_job_additive_columns(connection: sqlite3.Connection) -> None:
     existing_columns = {
         row[1] for row in connection.execute('PRAGMA table_info(archive_jobs)').fetchall()

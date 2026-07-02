@@ -1,3 +1,28 @@
+## 2026-07-02 - OfficeFlow Work-Time Lunch Break Settings And Net Report Hours
+
+Summary:
+- Added `update_work_time_lunch_break` for setting, changing, or disabling a fixed lunch-break deduction after preview confirmation.
+- Added first-report lunch setup so an authorized user is asked once whether lunch should be deducted before the monthly report is generated.
+- Corrected report semantics to show net hours: explicit start/end rows subtract the configured lunch break, while duration-only rows keep the user-confirmed net duration stable and store a lunch snapshot/audit mode.
+- Kept payroll, salary, legal HR compliance, multi-employee attendance, export, automatic break detection, and generated-report deletion out of scope.
+
+Docs/contracts read:
+- `AGENTS.md`, `README.md`, `PROJECT_LOG.md`, `CHANGELOG.md`, `docs/Product_Doctrine_2030.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/Product_Truth_Layer.md`, `docs/Product_Truth_Registry_MVP_Design.md`, `docs/Self_Learning_Layer.md`, `docs/Evaluation_and_Smoke_Test_Standards.md`, `docs/Product_UX_Eval_Artifacts.md`, `docs/TZ_FakturaBot.md`, `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `docs/llm/New_Action_Design_Checklist.md`, `docs/llm/Bounded_Resolver_Prompt_Template.md`, `docs/Info_Help_Guidance_Layer.md`, `docs/Customization_Request_Layer.md`, `docs/Canonical_Decision_Resolver_Contract.md`, `docs/User_Access_Model_Roadmap.md`, `docs/FakturaBot_Data_Migration_Runbook.md`, and focused work-time/voice/decision/product truth/help code.
+
+Preflight/status:
+- Touched scopes: routing, FSM, confirmation/buttons, voice state routing, additive DB schema, work-time report generation, Product Truth, InfoHelp, docs, tests.
+- Current implementation status: `partial` OfficeFlow work-time MVP.
+- AI maturity level: bounded canonical top-level action routing plus Level 2 Product Truth/InfoHelp truth sync; no customization request or self-learning behavior added.
+- Persisted data impact: additive nullable `work_time_days` columns and additive user-scoped `work_time_settings`; existing rows are not rewritten and legacy rows remain readable.
+- Product/user journey proof: first report asks lunch yes/no, approval saves settings and sends report, later report skips setup, update/disable lunch is confirmation-gated, voice routes through state/top-level routing, report totals use net semantics, and delete-month still deletes only selected current-user DB rows after confirmation.
+- Self-learning hooks considered: none added; lunch-break wording is canonical routing/settings behavior, not learned aliases.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py tests\test_voice_state_routing.py tests\test_decision_resolver.py` - 743 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py tests\test_info_help.py tests\test_product_truth.py` - 344 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2008 passed, 7 subtests passed.
+- `git diff --check` - clean.
+
 ## 2026-07-02 - OfficeFlow Work-Time Month Deletion Flow
 
 Summary:

@@ -186,6 +186,22 @@ def _matches_work_time_report_request(tokens: set[str]) -> bool:
     return bool(tokens.intersection(report_terms)) and bool(tokens.intersection(hour_terms))
 
 
+def _matches_work_time_lunch_break_update_request(tokens: set[str]) -> bool:
+    lunch_terms = {
+        'obed', 'obednu', 'obednej', 'obedna', 'pauza', 'pauzu', 'prestavka', 'prestavku',
+        'odpocitavanie', 'odpocitavaj', 'lunch', 'break',
+        '\u043e\u0431\u0456\u0434', '\u043e\u0431\u0456\u0434\u043d\u044e', '\u043e\u0431\u0435\u0434', '\u043e\u0431\u0435\u0434\u0435\u043d\u043d\u044b\u0439',
+        '\u043f\u0435\u0440\u0435\u0440\u0432\u0443', '\u043f\u0435\u0440\u0435\u0440\u0432\u0430', '\u043f\u0435\u0440\u0435\u0440\u044b\u0432', '\u043f\u0430\u0443\u0437\u0443',
+    }
+    update_terms = {
+        'zmen', 'zmenit', 'uprav', 'upravit', 'nastav', 'nastavit', 'set', 'change', 'update',
+        'zrus', 'zrusit', 'vypni', 'vypnut', 'bez', 'neodpocitavaj', 'disable',
+        '\u0437\u043c\u0456\u043d\u0438', '\u0437\u043c\u0456\u043d\u0438\u0442\u0438', '\u043f\u043e\u043c\u0456\u043d\u044f\u0439', '\u043d\u0430\u0441\u0442\u0430\u0432',
+        '\u043d\u0435', '\u0432\u0456\u0434\u043d\u0456\u043c\u0430\u0442\u0438', '\u0438\u0437\u043c\u0435\u043d\u0438', '\u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c',
+        '\u043e\u0442\u043a\u043b\u044e\u0447\u0438', '\u043e\u0442\u043a\u043b\u044e\u0447\u0438\u0442\u044c',
+    }
+    return bool(tokens.intersection(lunch_terms)) and bool(tokens.intersection(update_terms))
+
 def _matches_work_time_delete_month_request(tokens: set[str]) -> bool:
     delete_terms = {
         'vymaz',
@@ -583,9 +599,9 @@ def _is_ambiguous_stt_yes_no_noise(normalized: str) -> bool:
         'a no',
         'ah nu',
         'a nu',
-        'Р°С… РЅСѓ',
-        'Р°С… РЅС–',
-        'Р°С… РЅРµ',
+        'Р В°РЎвЂ¦ Р Р…РЎС“',
+        'Р В°РЎвЂ¦ Р Р…РЎвЂ“',
+        'Р В°РЎвЂ¦ Р Р…Р Вµ',
     }
 
 
@@ -810,6 +826,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'close_work_day'
         if 'add_work_time_entry' in allowed and _matches_work_time_manual_range_request(tokens):
             return 'add_work_time_entry'
+        if 'update_work_time_lunch_break' in allowed and _matches_work_time_lunch_break_update_request(tokens):
+            return 'update_work_time_lunch_break'
         if 'delete_work_time_month' in allowed and _matches_work_time_delete_month_request(tokens):
             return 'delete_work_time_month'
         if 'generate_work_time_report' in allowed and _matches_work_time_report_request(tokens):
@@ -819,7 +837,7 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             or (tokens.intersection(delete_database_verbs) and tokens.intersection(delete_database_targets))
         ):
             return 'delete_user_database'
-        if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'РІС–РґРїСЂР°РІ', 'РѕС‚РїСЂР°РІСЊ'}):
+        if 'send_invoice' in allowed and tokens.intersection({'posli', 'send', 'Р Р†РЎвЂ“Р Т‘Р С—РЎР‚Р В°Р Р†', 'Р С•РЎвЂљР С—РЎР‚Р В°Р Р†РЎРЉ'}):
             return 'send_invoice'
         has_existing_invoice_reference = _has_existing_invoice_number_reference(normalized_text)
         if (
@@ -864,6 +882,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'close_work_day'
         if 'add_work_time_entry' in allowed and _matches_work_time_manual_range_request(tokens):
             return 'add_work_time_entry'
+        if 'update_work_time_lunch_break' in allowed and _matches_work_time_lunch_break_update_request(tokens):
+            return 'update_work_time_lunch_break'
         if 'delete_work_time_month' in allowed and _matches_work_time_delete_month_request(tokens):
             return 'delete_work_time_month'
         if 'generate_work_time_report' in allowed and _matches_work_time_report_request(tokens):
@@ -949,14 +969,14 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         return _UNKNOWN
 
     if context_name == 'invoice_edit_scope_selection':
-        if 'invoice_level' in allowed and tokens.intersection({'faktura', 'faktГєra', 'invoice', 'cislo', 'ДЌГ­slo', 'datum', 'dГЎtum'}):
+        if 'invoice_level' in allowed and tokens.intersection({'faktura', 'faktР“С”ra', 'invoice', 'cislo', 'Р”РЊР“В­slo', 'datum', 'dР“РЋtum'}):
             return 'invoice_level'
-        if 'item_level' in allowed and tokens.intersection({'polozka', 'poloЕѕka', 'sluzba', 'sluЕѕba', 'opis', 'detail'}):
+        if 'item_level' in allowed and tokens.intersection({'polozka', 'poloР•С•ka', 'sluzba', 'sluР•С•ba', 'opis', 'detail'}):
             return 'item_level'
         return _UNKNOWN
 
     if context_name == 'invoice_edit_invoice_action':
-        if 'edit_invoice_number' in allowed and tokens.intersection({'cislo', 'ДЌГ­slo', 'number', 'num'}):
+        if 'edit_invoice_number' in allowed and tokens.intersection({'cislo', 'Р”РЊР“В­slo', 'number', 'num'}):
             return 'edit_invoice_number'
         if 'edit_invoice_issue_date' in allowed and tokens.intersection({'vystavenia', 'vystavenie', 'issue'}):
             return 'edit_invoice_issue_date'
@@ -964,15 +984,15 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'edit_invoice_delivery_date'
         if 'edit_invoice_due_date' in allowed and tokens.intersection({'splatnosti', 'splatnost', 'due'}):
             return 'edit_invoice_due_date'
-        if 'edit_invoice_date' in allowed and tokens.intersection({'datum', 'dГЎtum', 'date'}):
+        if 'edit_invoice_date' in allowed and tokens.intersection({'datum', 'dР“РЋtum', 'date'}):
             return 'edit_invoice_date'
         return _UNKNOWN
 
     if context_name == 'invoice_edit_item_target_selection':
         ordered_candidates = [
-            ('1', {'1', 'prva', 'prvГЎ', 'prvy', 'prvГЅ', 'jedna', 'jeden'}),
-            ('2', {'2', 'druha', 'druhГЎ', 'druhy', 'druhГЅ', 'dva', 'dve'}),
-            ('3', {'3', 'tretia', 'treti', 'tretГ­', 'tri'}),
+            ('1', {'1', 'prva', 'prvР“РЋ', 'prvy', 'prvР“Р…', 'jedna', 'jeden'}),
+            ('2', {'2', 'druha', 'druhР“РЋ', 'druhy', 'druhР“Р…', 'dva', 'dve'}),
+            ('3', {'3', 'tretia', 'treti', 'tretР“В­', 'tri'}),
         ]
         for canonical_index, hint_tokens in ordered_candidates:
             if canonical_index in allowed and tokens.intersection(hint_tokens):
@@ -980,7 +1000,7 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         return _UNKNOWN
 
     if context_name == 'invoice_edit_item_action':
-        if 'edit_item_quantity' in allowed and tokens.intersection({'mnozstvo', 'mnoЕѕstvo', 'quantity', 'qty'}):
+        if 'edit_item_quantity' in allowed and tokens.intersection({'mnozstvo', 'mnoР•С•stvo', 'quantity', 'qty'}):
             return 'edit_item_quantity'
         if 'edit_item_unit_price' in allowed and tokens.intersection(
             {'cena', 'cenu', '\u0446\u0456\u043d\u0430', 'unit', 'price', 'mj', 'm.j', 'jednotku', 'jednotka', 'odinicu', '\u043e\u0434\u0438\u043d\u0438\u0446\u044e'}
@@ -989,22 +1009,22 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
         if 'edit_item_total_amount' in allowed and tokens.intersection({'suma', 'sumu', 'spolu', 'total', 'amount'}):
             return 'edit_item_total_amount'
         if 'clear_item_details' in allowed and tokens.intersection(
-            {'vymazat', 'vymazaЕҐ', 'zmazat', 'zmazaЕҐ', 'odstranit', 'odstrГЎniЕҐ', 'clear', 'delete'}
-        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznГЎmka'}):
+            {'vymazat', 'vymazaР•Тђ', 'zmazat', 'zmazaР•Тђ', 'odstranit', 'odstrР“РЋniР•Тђ', 'clear', 'delete'}
+        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznР“РЋmka'}):
             return 'clear_item_details'
         if 'add_item_details' in allowed and tokens.intersection(
-            {'pridat', 'pridaЕҐ', 'doplnit', 'doplniЕҐ', 'add'}
-        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznГЎmka'}):
+            {'pridat', 'pridaР•Тђ', 'doplnit', 'doplniР•Тђ', 'add'}
+        ) and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznР“РЋmka'}):
             return 'add_item_details'
         if 'replace_main_description' in allowed and tokens.intersection(
-            {'novy', 'novГЅ', 'opis', 'popis', 'description'}
+            {'novy', 'novР“Р…', 'opis', 'popis', 'description'}
         ):
             return 'replace_main_description'
         if 'replace_service' in allowed and tokens.intersection(
-            {'sluzba', 'sluЕѕba', 'sluzbu', 'sluЕѕbu', 'service', 'polozka', 'poloЕѕka', 'polozku', 'poloЕѕku'}
+            {'sluzba', 'sluР•С•ba', 'sluzbu', 'sluР•С•bu', 'service', 'polozka', 'poloР•С•ka', 'polozku', 'poloР•С•ku'}
         ):
             return 'replace_service'
-        if 'add_item_details' in allowed and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznГЎmka'}):
+        if 'add_item_details' in allowed and tokens.intersection({'detail', 'detaily', 'details', 'poznamka', 'poznР“РЋmka'}):
             return 'add_item_details'
         return _UNKNOWN
 
@@ -1136,6 +1156,7 @@ def _fallback_bounded_confirmation_reply(
             'invoice_postpdf_decision',
             'customization_request_preview',
             'customization_request_admin_response_preview',
+            'work_time_lunch_break_update_confirm',
         }
         and _is_stt_ano_noise(normalized)
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
@@ -1184,6 +1205,7 @@ def _fallback_bounded_confirmation_reply(
             'accounting_document_intake_preview',
             'customization_request_preview',
             'customization_request_admin_response_preview',
+            'work_time_lunch_break_update_confirm',
         }
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):
@@ -1237,6 +1259,7 @@ def _fallback_bounded_confirmation_reply(
             'accounting_document_intake_preview',
             'customization_request_preview',
             'customization_request_admin_response_preview',
+            'work_time_lunch_break_update_confirm',
         }:
             cancel_values = {
                 'zrusit',
@@ -1318,11 +1341,11 @@ _PAIR_SPACED_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _PAIR_MULTIPLIER_PATTERN = re.compile(
-    rf'^\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*(?:\*|x|kr[aá]t|\u043a\u0440\u0430\u0442|razi|razy|\u0440\u0430\u0437|\u0440\u0430\u0437\u0430|\u0440\u0430\u0437\u0438|kusy|kus|ks)?\s*(?:po|\u043f\u043e)?\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
+    rf'^\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*(?:\*|x|kr[a\u00e1]t|\u043a\u0440\u0430\u0442|razi|razy|\u0440\u0430\u0437|\u0440\u0430\u0437\u0430|\u0440\u0430\u0437\u0438|kusy|kus|ks)?\s*(?:po|\u043f\u043e)?\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
     flags=re.IGNORECASE,
 )
 _PAIR_LABELED_PATTERN = re.compile(
-    rf'^\s*(?:mno[zž]stvo|koli[cč]estvo|\u043a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e)\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*[,;]?\s*(?:cena(?:\s+za\s+(?:kus|ks|jednotku))?|\u0446\u0435\u043d\u0430(?:\s+\u0437\u0430\s+(?:\u0448\u0442\u0443\u043a\u0443|\u0435\u0434\u0438\u043d\u0438\u0446\u0443|\u0435\u0434))?)\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
+    rf'^\s*(?:mno[z\u017e]stvo|koli[c\u010d]estvo|\u043a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e)\s*(?P<qty>{_QTY_TOKEN_PATTERN})\s*[,;]?\s*(?:cena(?:\s+za\s+(?:kus|ks|jednotku))?|\u0446\u0435\u043d\u0430(?:\s+\u0437\u0430\s+(?:\u0448\u0442\u0443\u043a\u0443|\u0435\u0434\u0438\u043d\u0438\u0446\u0443|\u0435\u0434))?)\s*(?P<unit>{_PRICE_NUMBER_PATTERN})\s*$',
     flags=re.IGNORECASE,
 )
 _SINGLE_PRICE_PATTERN = re.compile(r'^\s*(?P<unit>\d+(?:[.,]\d+)?)\s*$')
@@ -1405,6 +1428,7 @@ async def resolve_semantic_action(
         'add_work_time_entry',
         'generate_work_time_report',
         'delete_work_time_month',
+        'update_work_time_lunch_break',
     }:
         return local_priority
 
@@ -1595,6 +1619,7 @@ async def resolve_bounded_confirmation_reply(
             'accounting_document_intake_preview',
             'customization_request_preview',
             'customization_request_admin_response_preview',
+            'work_time_lunch_break_update_confirm',
         }
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):

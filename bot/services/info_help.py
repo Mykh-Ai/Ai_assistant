@@ -214,9 +214,9 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'work_time_tracking': {
         'title': 'Evidencia pracovneho casu / Dochadzka',
-        'summary': 'Evidencia pracovneho casu je podporovana ciastocne: bot vie otvorit a uzavriet pracovny den, doplnit potvrdeny casovy rozsah, vytvorit mesacny Excel vykaz a po potvrdeni vymazat ulozene zaznamy za vybrany mesiac.',
-        'limitation': 'Nie je to mzdova dochadzka, vypocet mzdy, pravna HR evidencia, multi-zamestnanecka dochadzka ani export do uctovneho alebo mzdoveho softveru. Bot automaticky nevie, kedy ste pracovali; cas treba zadat alebo otvorit/uzavriet. Vymazanie mesiaca maze DB zaznamy dochadzky, nie on-demand Excel subory ako kanonicke data.',
-        'safe_next': 'Pouzite napriklad: zacinam pracovny den, zatvor den o 17:00, pracoval som dnes od 5:30 do 17:00, vytvor vykaz hodin za jun 2026 alebo vymaz dochadzku za jul 2026. Hlasom mozete zacat a ovladat tok; presne casy aj mazanie mesiaca idu az po nahlade a potvrdeni.',
+        'summary': 'Evidencia pracovneho casu je podporovana ciastocne: bot vie otvorit a uzavriet pracovny den, doplnit potvrdeny casovy rozsah, nastavit odpocty obednej prestavky, vytvorit mesacny Excel vykaz a po potvrdeni vymazat ulozene zaznamy za vybrany mesiac.',
+        'limitation': 'Nie je to mzdova dochadzka, vypocet mzdy, pravna HR evidencia, multi-zamestnanecka dochadzka ani export do uctovneho alebo mzdoveho softveru. Bot automaticky nevie, kedy ste pracovali; cas treba zadat alebo otvorit/uzavriet. Obedna prestavka je fixny pouzivatelsky odpocet pre vykazy, nie pravny payroll vypocet. Vymazanie mesiaca maze DB zaznamy dochadzky, nie on-demand Excel subory ako kanonicke data.',
+        'safe_next': 'Pouzite napriklad: zacinam pracovny den, zatvor den o 17:00, pracoval som dnes od 5:30 do 17:00, vytvor vykaz hodin za jun 2026, nastav obednu prestavku na 30 minut alebo vymaz dochadzku za jul 2026. Hlasom mozete zacat a ovladat tok; presne casy, zmena obeda aj mazanie mesiaca idu az po nahlade a potvrdeni.',
     },
     'code_agent_handoff': {
         'title': 'Odovzdanie úlohy kódovaciemu agentovi',
@@ -1254,11 +1254,18 @@ def _mentions_edit_existing_invoice_how_to(normalized: str, tokens: set[str]) ->
 
 
 def _mentions_work_time_tracking(normalized: str, tokens: set[str]) -> bool:
-    work_terms = {'pracovneho', 'pracovny', 'pracovny', 'hodiny', 'hodin', 'dochadzka', 'vykaz', 'casu', 'time', 'hours'}
+    work_terms = {
+        'pracovneho', 'pracovny', 'pracovny', 'hodiny', 'hodin', 'dochadzka', 'vykaz', 'casu',
+        'time', 'hours', 'obed', 'obedna', 'obednu', 'obednej', 'prestavka', 'prestavku', 'prest?vka',
+        'prest?vku', 'break', 'lunch',
+    }
     payroll_terms = {'mzdu', 'mzdova', 'vyplatu', 'payroll', 'salary'}
     export_terms = {'export', 'exportovat', 'uctovnicke', 'softveru'}
+    lunch_terms = {'obed', 'obedna', 'obednu', 'obednej', 'prestavka', 'prestavku', 'prest?vka', 'prest?vku', 'break', 'lunch'}
     if tokens.intersection(payroll_terms) or tokens.intersection(export_terms):
         return bool(tokens.intersection({'dochadzka', 'hodiny', 'hodin', 'pracovneho'}))
+    if tokens.intersection(lunch_terms):
+        return bool(tokens.intersection({'vie', 'vies', 'viete', 'ako', 'mozem', 'da', 'nastavit', 'zmenit', 'zmenim', 'odpocitat'}))
     return bool(tokens.intersection(work_terms)) and bool(tokens.intersection({'vie', 'vies', 'viete', 'ako', 'mozem', 'da', 'hlasom', 'vytvorim', 'evidovat'}))
 def _mentions_mark_existing_invoice_paid(normalized: str, tokens: set[str]) -> bool:
     mentions_invoice = bool(tokens.intersection({'fakturu', 'faktura', 'faktury', 'invoice'}))

@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- Added partial OfficeFlow work-time / dochadzka MVP with top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, and `delete_work_time_month`, additive user-scoped SQLite tables, preview-confirmed time writes/deletes, shared DecisionResolver route choices, Product Truth/InfoHelp coverage, monthly Excel report generation, and confirmed deletion of selected-month DB records. Payroll, legal HR compliance, multi-employee attendance, export, and automatic time detection remain unsupported.
+- Added partial OfficeFlow work-time / dochadzka MVP with top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, `update_work_time_lunch_break`, and `delete_work_time_month`, additive user-scoped SQLite tables/settings, preview-confirmed time/lunch/delete writes, shared DecisionResolver route choices, Product Truth/InfoHelp coverage, monthly Excel report generation with net hours after configured lunch deduction, and confirmed deletion of selected-month DB records. Payroll, legal HR compliance, multi-employee attendance, export, and automatic time detection remain unsupported.
 
 ### Added
 - Owner OAuth Google Drive archive MVP: manual/local owner authorization bootstrap, encrypted refresh-token storage, lazy owner OAuth Drive provider, confirmed receipt/incoming-invoice uploads, and invoice-PDF enqueue after mark-paid/control events.

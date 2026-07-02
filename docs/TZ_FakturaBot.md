@@ -1,4 +1,4 @@
-﻿# Технічне завдання: FakturaBot
+# Технічне завдання: FakturaBot
 
 ## Telegram-бот для створення фактур з голосу, тексту та договору
 
@@ -1466,17 +1466,20 @@ Receipt date incident noted during Drive backfill:
 Current status: `partial`.
 
 Implemented runtime slice:
-- top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, and `delete_work_time_month`;
+- top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, `update_work_time_lunch_break`, and `delete_work_time_month`;
 - Telegram text and voice entry through the existing bounded top-level action router;
 - `/dochadzka` help command;
-- additive SQLite storage in `work_time_days` and `work_time_events` scoped by `telegram_id`; `delete_work_time_month` removes only the current user's rows/events for the selected month after preview confirmation;
-- preview-confirmed manual time ranges and close-time/duration decisions through shared DecisionResolver paths;
-- monthly Excel report generation with all days, Sunday highlighting, and total hours.
+- additive SQLite storage in `work_time_days`, `work_time_events`, and `work_time_settings` scoped by `telegram_id`; `delete_work_time_month` removes only the current user's rows/events for the selected month after preview confirmation;
+- additive `work_time_days` columns for gross minutes, lunch-break snapshot, net-duration override, and close input mode; existing rows are not rewritten;
+- first report asks once whether lunch break should be deducted; later `update_work_time_lunch_break` changes or disables the fixed deduction after preview confirmation;
+- preview-confirmed manual time ranges, close-time/duration decisions, lunch-break changes, and monthly deletion through shared DecisionResolver paths;
+- monthly Excel report generation with all days, Sunday highlighting, and net total hours after configured lunch deduction.
 
 Explicitly out of scope:
 - payroll, salary calculation, and legal HR attendance compliance;
 - multi-employee attendance administration;
 - accounting/payroll export;
 - automatic work-time detection;
-- deletion of generated monthly Excel report files as canonical data; reports are generated on demand from DB rows.
+- deletion of generated monthly Excel report files as canonical data; reports are generated on demand from DB rows;
+- legal lunch-break, payroll, or HR compliance calculations; the lunch setting is only a fixed net-hours deduction for MVP reports.
 - official payroll/legal HR document claims.

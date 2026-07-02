@@ -44,6 +44,7 @@ YES_NO_CONTEXTS = (
     'accounting_document_duplicate_save_decision',
     'accounting_document_category_create_confirm',
     'work_time_delete_month_confirm',
+    'work_time_lunch_break_initial_choice',
 )
 
 ACCOUNTING_CATEGORY_PREVIEW_CONTEXTS = (
@@ -68,6 +69,7 @@ APPROVE_EDIT_CANCEL_CONTEXTS = (
     'accounting_document_intake_preview',
     'customization_request_preview',
     'customization_request_admin_response_preview',
+    'work_time_lunch_break_update_confirm',
 )
 
 GLOBAL_CANCEL_CONTEXTS = (

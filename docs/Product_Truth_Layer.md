@@ -1,4 +1,4 @@
-﻿# Product Truth Layer
+# Product Truth Layer
 
 ## Purpose
 
@@ -699,12 +699,14 @@ Forbidden claims now include:
 
 The implemented slice is a simple tenant/user-scoped work-time MVP:
 
-- top-level canonical actions: `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, and `delete_work_time_month`;
-- authorized users can open a work day, close it with a preview-confirmed time/duration, add a preview-confirmed manual range, generate a monthly `.xlsx` report, and delete one selected month of stored records after destructive preview confirmation;
-- persisted state is additive SQLite tables `work_time_days` and `work_time_events`, scoped by `telegram_id`;
+- top-level canonical actions: `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, `update_work_time_lunch_break`, and `delete_work_time_month`;
+- authorized users can open a work day, close it with a preview-confirmed time/duration, add a preview-confirmed manual range, configure a fixed lunch-break deduction, generate a monthly `.xlsx` report, and delete one selected month of stored records after destructive preview confirmation;
+- the first monthly report asks once whether lunch break should be deducted; later lunch-break changes are preview-confirmed and can be disabled;
+- persisted state is additive SQLite tables `work_time_days`, `work_time_events`, and `work_time_settings`, scoped by `telegram_id`; existing rows are not rewritten;
+- `work_time_days` stores gross minutes, lunch-break snapshots, net-duration overrides, and close input mode where available; legacy rows remain readable;
 - MVP supports one interval per user/day;
 - exact time values are Python-parsed, previewed, and saved only after confirmation;
-- reports include all days in the month, Sunday highlighting, and total hours;
+- reports include all days in the month, Sunday highlighting, and net total hours; explicit start/end rows subtract the currently configured lunch break, while duration-only rows keep the confirmed net duration stable;
 - `delete_work_time_month` removes DB work-time records only; generated Excel reports are on-demand artifacts, not canonical stored attendance data.
 
 Forbidden claims include:
@@ -714,6 +716,7 @@ Forbidden claims include:
 - multi-employee attendance administration is implemented;
 - payroll/accounting export is implemented;
 - the bot automatically detects actual work time;
+- lunch-break settings are payroll or legal HR compliance calculations;
 - deleting a work-time month deletes payroll/legal HR records;
 - deleting a month removes generated Excel reports as canonical records;
 - the generated Excel report is an official payroll/legal HR document.

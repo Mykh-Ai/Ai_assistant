@@ -234,11 +234,14 @@ Supported top-level actions:
 - `close_work_day` - close the open day with a preview-confirmed end time or duration;
 - `add_work_time_entry` - add one preview-confirmed manual interval or duration-only total;
 - `generate_work_time_report` - generate a monthly Excel report;
+- `update_work_time_lunch_break` - set, change, or disable the fixed lunch-break deduction used in reports;
 - `delete_work_time_month` - delete stored work-time rows for one selected month after preview and confirmation.
+
+The first report asks once whether lunch break should be deducted. Reports show net hours: explicit start/end rows subtract the current fixed lunch setting, while duration-only rows keep the user-confirmed net duration stable.
 
 Deleting a month removes DB work-time records only. Excel reports are generated on demand and are not the canonical stored attendance data.
 
-The module is not payroll, salary calculation, legal HR attendance compliance, multi-employee attendance, automatic time detection, or accounting/payroll export. It stores one entry per authorized user/day and treats exact time or duration values as preview-confirmed before save.
+The module is not payroll, salary calculation, legal HR attendance compliance, multi-employee attendance, automatic time detection, legal lunch-break compliance, or accounting/payroll export. It stores one entry per authorized user/day and treats exact time, duration, lunch-break setting, and monthly deletion values as preview-confirmed before save/delete.
 ### Accounting Document Analytics
 
 `accounting_document_analytics` is implemented as a partial read-only pilot for
