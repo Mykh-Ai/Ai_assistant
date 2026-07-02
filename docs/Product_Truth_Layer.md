@@ -25,7 +25,8 @@ As of the current logged state:
   conservative capability/safety topics;
 - the `info_help` Product Truth status is partial, not complete Level 2;
 - bounded Unknown / Discovery / Triage v1 classification exists for safe
-  non-persistent responses;
+  non-persistent responses, and business-like unknowns are triaged before
+  generic command-list fallback guidance;
 - broader bounded InfoHelp resolver coverage is not complete;
 - customization request creation/storage has a partial Level 3 MVP slice:
   eligible triage candidates can enter a confirmation-gated preview/save flow,
@@ -120,10 +121,11 @@ spam/noise safely, or offer to prepare a future request / human-review item
 under the Customization Request Layer.
 
 The current Unknown / Discovery / Triage runtime is a bounded v1 foundation
-only: it may classify inputs and, for eligible customization/admin/product
-truth gap candidates, enter the confirmation-gated preview/save flow. It must
-not notify admins, send admin responses to users, create Product Truth entries,
-or claim complete Level 2 InfoHelp.
+only: it may classify inputs, keep business-like unknowns out of the blind
+command-list fallback, and, for eligible customization/admin/product truth gap
+candidates, enter the confirmation-gated preview/save flow. It must not notify
+admins, send admin responses to users, create Product Truth entries, save
+unconfirmed requests, or claim complete Level 2 InfoHelp.
 
 ## Capability Status Model
 

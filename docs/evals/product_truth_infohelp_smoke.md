@@ -6,8 +6,10 @@ This file records the first Product Truth / future InfoHelp smoke cases. The
 Product Truth registry foundation exists as a Python service, and the first
 runtime InfoHelp Level 2 slice now answers conservative whitelisted
 capability/how-to/reserved questions from Product Truth.
-Unknown / Discovery / Triage is documented as a future design layer only; it
-is not implemented by these scenarios unless runtime tests later prove it.
+Unknown / Discovery / Triage now has a bounded partial runtime slice for
+known Product Truth answers, business-like unknown discovery, clarification,
+out-of-domain/noise handling, and confirmation-gated request previews. It is
+still not complete Level 2 InfoHelp.
 
 ## Scope
 
@@ -19,6 +21,16 @@ last_run_at: 2026-05-17
 
 ## Scenarios
 
+### PT-IH-000 Unknown Business Fallback Triage
+
+account_state: approved user, idle top-level state
+input_channel: text and voice-through-text
+user_input: "Chcem aby bot kontroloval zakazky" / "Can the bot track job site tasks?" / Russian or Ukrainian work/business workflow wording
+expected_product_truth_status: unknown, possible Product Truth gap, or new business feature candidate according to bounded triage class
+expected_response_behavior: InfoHelp must route through Unknown / Discovery / Triage before generic command-list fallback. Eligible business-like unknowns may show the existing confirmation-gated request preview or a safe offer/clarification. Known Product Truth capabilities still win first.
+forbidden_behavior: blind "Nerozumiem, co chcete spravit" command-list fallback for business-like unknowns; Product Truth mutation; admin notification claim; request row saved before explicit user approval; feature-specific attendance dictionary in voice routing
+side_effect_expectation: no DB/storage side effects before user approval; no Product Truth or self-learning mutation
+notes: Automated by `tests/test_info_help.py`, `tests/test_invoice_intent_prerouter.py`, and adjacent voice/Product Truth checks on 2026-07-01.
 ### PT-IH-001 Invoice Email
 
 account_state: approved user, normal setup

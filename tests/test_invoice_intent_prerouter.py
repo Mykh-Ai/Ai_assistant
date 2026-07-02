@@ -2117,6 +2117,25 @@ def test_all_eligible_triage_classes_create_preview_only(
     assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
 
 
+def test_business_like_unknown_runtime_uses_triage_preview_not_command_list(tmp_path: Path, monkeypatch) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Chcem aby bot kontroloval zákazky')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert 'Návrh požiadavky' in message.answers[-1]
+    assert 'Nerozumiem, čo chcete spraviť.' not in message.answers[-1]
+    assert '- vytvoriť faktúru' not in message.answers[-1]
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
+
 def test_invoice_period_summary_resolver_fallback_is_product_truth_not_customization_preview(
     tmp_path: Path,
     monkeypatch,
@@ -2610,7 +2629,7 @@ def test_process_invoice_text_llm_possible_product_truth_candidate_asks_clarific
         db_path=tmp_path / 'test.db',
         storage_dir=tmp_path,
     )
-    message = _authorized_message('viete spravit veci okolo workflow?')
+    message = _authorized_message('viete spravit veci okolo alpha beta?')
     state = _DummyState()
 
     asyncio.run(
@@ -2618,7 +2637,7 @@ def test_process_invoice_text_llm_possible_product_truth_candidate_asks_clarific
             message=message,
             state=state,
             config=config,
-            invoice_text='viete spravit veci okolo workflow?',
+            invoice_text='viete spravit veci okolo alpha beta?',
         )
     )
 

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Repaired global InfoHelp unknown-business fallback so business-like unresolved idle text/voice inputs are triaged through bounded Unknown / Discovery / Triage before generic command-list guidance; eligible cases can enter the existing confirmation-gated request preview, with no Product Truth mutation or unconfirmed DB save.
 - Added partial OfficeFlow work-time / dochadzka MVP with top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, and `generate_work_time_report`, additive user-scoped SQLite tables, preview-confirmed time writes, shared DecisionResolver route choices, Product Truth/InfoHelp coverage, and monthly Excel report generation. Payroll, legal HR compliance, multi-employee attendance, export, and automatic time detection remain unsupported.
 
 ### Added

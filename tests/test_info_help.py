@@ -20,6 +20,7 @@ from bot.services.info_help import (
     TRIAGE_UNCLEAR_NEEDS_CLARIFICATION,
     build_info_help_triage_guidance_with_llm,
     build_info_help_triage_guidance,
+    build_top_level_unknown_guidance,
     build_product_truth_guidance,
     classify_info_help_capability,
     classify_info_help_triage,
@@ -948,6 +949,45 @@ def test_info_help_triage_business_feature_request() -> None:
     assert 'požiadavku na kontrolu správcom' in answer
     assert 'Uloží sa iba vtedy, keď ju potvrdíte.' in answer
 
+
+@pytest.mark.parametrize(
+    ('user_input', 'expected_triage'),
+    [
+        ('Chcem aby bot kontroloval zákazky', TRIAGE_NEW_BUSINESS_FEATURE_REQUEST),
+        ('Chcem mesačný plán kapacít pre klienta', TRIAGE_NEW_BUSINESS_FEATURE_REQUEST),
+        ('Chcem takú tú tabuľku pre robotu', TRIAGE_UNCLEAR_NEEDS_CLARIFICATION),
+        ('Can the bot track job site tasks?', TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE),
+        ('Я могу вести учет отработанного времени?', TRIAGE_NEW_BUSINESS_FEATURE_REQUEST),
+        ('Можу вести облік відпрацьованого часу?', TRIAGE_NEW_BUSINESS_FEATURE_REQUEST),
+        ('Можешь вести склад материалов по объектам?', TRIAGE_NEW_BUSINESS_FEATURE_REQUEST),
+    ],
+)
+def test_business_like_unknowns_use_triage_not_command_list(user_input: str, expected_triage: str) -> None:
+    result = classify_info_help_triage(user_input_text=user_input)
+
+    assert result.triage_class == expected_triage
+    answer = build_top_level_unknown_guidance(user_input_text=user_input)
+    assert 'Nerozumiem, čo chcete spraviť.' not in answer
+    assert '- vytvoriť faktúru' not in answer
+    assert 'požiadavku na kontrolu správcom' in answer or 'Napíšte prosím konkrétne' in answer
+
+
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        'Aké bude počasie zajtra?',
+        '@@@ #### !!!',
+        'lorem ipsum maybe',
+    ],
+)
+def test_non_business_unknowns_do_not_start_business_triage_offer(user_input: str) -> None:
+    answer = build_top_level_unknown_guidance(user_input_text=user_input)
+
+    if user_input == 'lorem ipsum maybe':
+        assert 'Nerozumiem, čo chcete spraviť.' in answer
+        assert '- vytvoriť faktúru' in answer
+    else:
+        assert 'požiadavku na kontrolu správcom' not in answer
 
 @pytest.mark.parametrize(
     'user_input',

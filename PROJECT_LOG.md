@@ -1,3 +1,33 @@
+## 2026-07-01 - Repair global InfoHelp unknown-business fallback
+
+Summary:
+- Repaired the shared InfoHelp unknown fallback so business-like unresolved idle inputs are classified by bounded Unknown / Discovery / Triage before the generic command-list fallback can render.
+- Added broad workflow/business-language triage coverage for Slovak, English, Russian, and Ukrainian examples without adding a feature-specific attendance/work-time dictionary.
+- Kept known Product Truth capabilities first, out-of-domain/spam/noise out of the request path, and eligible business unknowns in the existing confirmation-gated customization/admin-review preview only.
+- No Product Truth entries were mutated, no admin notification path was added, no self-learning was added, and no request row is saved before user confirmation.
+
+Docs/contracts read:
+- `docs/Info_Help_Guidance_Layer.md`, `docs/Product_Truth_Layer.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/llm/Bounded_Resolver_Prompt_Template.md`, `docs/FakturaBot_LLM_Orchestrator_Contract.md`, and `docs/Customization_Request_Layer.md`.
+
+Preflight/status:
+- Touched scopes: InfoHelp triage, top-level fallback rendering, routing tests, Product Truth/InfoHelp docs, product UX eval artifact, changelog, project log.
+- Current implementation status: `partial`.
+- AI maturity level: Level 2 partial Unknown / Discovery / Triage repair plus existing partial Level 3 confirmation-gated request preview; not complete InfoHelp, not Level 4 self-learning, and not Level 5 code-agent handoff.
+- Product/user journey proof: unknown business workflow requests no longer receive the blind command-list fallback; known capabilities still answer from Product Truth; out-of-domain/noise do not become requests.
+- Self-learning hooks considered: none added because triage must not learn aliases or mutate registries from unresolved inputs.
+- User-facing claims are backed by `bot/services/info_help.py`, the existing customization request service contract, Product Truth/InfoHelp docs, and focused automated tests.
+
+Docs updated:
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Product_Truth_Layer.md`
+- `docs/evals/product_truth_infohelp_smoke.md`
+- `CHANGELOG.md`
+
+Verification:
+- `python -m pytest -q tests\test_info_help.py tests\test_invoice_intent_prerouter.py::test_business_like_unknown_runtime_uses_triage_preview_not_command_list tests\test_invoice_intent_prerouter.py::test_process_invoice_text_llm_unknown_falls_back_to_generic_guidance_without_side_effects tests\test_invoice_intent_prerouter.py::test_noneligible_triage_does_not_start_customization_draft tests\test_invoice_intent_prerouter.py::test_all_eligible_triage_classes_create_preview_only` -> 121 passed.
+- `python -m pytest -q tests\test_work_time_routing.py tests\test_product_truth.py tests\test_voice_state_routing.py::test_voice_idle_transcript_uses_safe_info_help_triage tests\test_voice_state_routing.py::test_voice_idle_transcript_can_use_llm_info_help_triage_without_side_effects` -> 37 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py` -> 220 passed.
+- `python -m pytest -q tests\test_info_help.py tests\test_product_truth.py tests\test_work_time_routing.py tests\test_voice_state_routing.py::test_voice_idle_transcript_uses_safe_info_help_triage tests\test_voice_state_routing.py::test_voice_idle_transcript_can_use_llm_info_help_triage_without_side_effects` -> 147 passed.
 ## 2026-07-01 - OfficeFlow Work-Time / Dochadzka MVP
 
 Summary:
