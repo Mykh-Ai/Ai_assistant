@@ -186,6 +186,49 @@ def _matches_work_time_report_request(tokens: set[str]) -> bool:
     return bool(tokens.intersection(report_terms)) and bool(tokens.intersection(hour_terms))
 
 
+def _matches_work_time_delete_month_request(tokens: set[str]) -> bool:
+    delete_terms = {
+        'vymaz',
+        'vymazat',
+        'zmaz',
+        'zmazat',
+        'odstran',
+        'odstranit',
+        'delete',
+        'remove',
+        'vydali',
+        'vydalit',
+        'udali',
+        'udalit',
+        '\u0432\u0438\u0434\u0430\u043b\u0438',
+        '\u0432\u0438\u0434\u0430\u043b\u0438\u0442\u0438',
+        '\u0443\u0434\u0430\u043b\u0438',
+        '\u0443\u0434\u0430\u043b\u0438\u0442\u044c',
+    }
+    work_time_targets = {
+        'dochadzka',
+        'dochadzku',
+        'vykaz',
+        'hodin',
+        'hodiny',
+        'pracovneho',
+        'casu',
+        'tabulka',
+        'tabulku',
+        'attendance',
+        'timesheet',
+        'hours',
+        'tabel',
+        'tabell',
+        '\u0434\u043e\u0445\u0430\u0434\u0437\u043a\u0443',
+        '\u0442\u0430\u0431\u0435\u043b\u044c',
+        '\u0442\u0430\u0431\u0435\u043b\u044e',
+        '\u0440\u0430\u0431\u043e\u0447\u0435\u0433\u043e',
+        '\u0440\u043e\u0431\u043e\u0447\u043e\u0433\u043e',
+    }
+    return bool(tokens.intersection(delete_terms)) and bool(tokens.intersection(work_time_targets))
+
+
 def _matches_top_level_delete_invoice(tokens: set[str]) -> bool:
     delete_verbs = {
         'vymaz',
@@ -767,6 +810,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'close_work_day'
         if 'add_work_time_entry' in allowed and _matches_work_time_manual_range_request(tokens):
             return 'add_work_time_entry'
+        if 'delete_work_time_month' in allowed and _matches_work_time_delete_month_request(tokens):
+            return 'delete_work_time_month'
         if 'generate_work_time_report' in allowed and _matches_work_time_report_request(tokens):
             return 'generate_work_time_report'
         if 'delete_user_database' in allowed and (
@@ -819,6 +864,8 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
             return 'close_work_day'
         if 'add_work_time_entry' in allowed and _matches_work_time_manual_range_request(tokens):
             return 'add_work_time_entry'
+        if 'delete_work_time_month' in allowed and _matches_work_time_delete_month_request(tokens):
+            return 'delete_work_time_month'
         if 'generate_work_time_report' in allowed and _matches_work_time_report_request(tokens):
             return 'generate_work_time_report'
         if 'mark_existing_invoice_paid' in allowed and _matches_top_level_mark_invoice_paid(tokens):
@@ -1357,6 +1404,7 @@ async def resolve_semantic_action(
         'close_work_day',
         'add_work_time_entry',
         'generate_work_time_report',
+        'delete_work_time_month',
     }:
         return local_priority
 

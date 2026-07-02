@@ -693,18 +693,19 @@ Forbidden claims now include:
 - upload succeeded before the worker state is `uploaded`;
 - marking paid means bank-confirmed settlement.
 
-### Current OfficeFlow Work-Time Product Truth - 2026-07-01
+### Current OfficeFlow Work-Time Product Truth - 2026-07-02
 
 `work_time_tracking` is `partial`, not fully `supported`.
 
 The implemented slice is a simple tenant/user-scoped work-time MVP:
 
-- top-level canonical actions: `open_work_day`, `close_work_day`, `add_work_time_entry`, and `generate_work_time_report`;
-- authorized users can open a work day, close it with a preview-confirmed time/duration, add a preview-confirmed manual range, and generate a monthly `.xlsx` report;
+- top-level canonical actions: `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, and `delete_work_time_month`;
+- authorized users can open a work day, close it with a preview-confirmed time/duration, add a preview-confirmed manual range, generate a monthly `.xlsx` report, and delete one selected month of stored records after destructive preview confirmation;
 - persisted state is additive SQLite tables `work_time_days` and `work_time_events`, scoped by `telegram_id`;
 - MVP supports one interval per user/day;
 - exact time values are Python-parsed, previewed, and saved only after confirmation;
-- reports include all days in the month, Sunday highlighting, and total hours.
+- reports include all days in the month, Sunday highlighting, and total hours;
+- `delete_work_time_month` removes DB work-time records only; generated Excel reports are on-demand artifacts, not canonical stored attendance data.
 
 Forbidden claims include:
 
@@ -713,4 +714,6 @@ Forbidden claims include:
 - multi-employee attendance administration is implemented;
 - payroll/accounting export is implemented;
 - the bot automatically detects actual work time;
+- deleting a work-time month deletes payroll/legal HR records;
+- deleting a month removes generated Excel reports as canonical records;
 - the generated Excel report is an official payroll/legal HR document.

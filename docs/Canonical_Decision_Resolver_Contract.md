@@ -293,6 +293,7 @@ Implemented in `bot/services/decision_resolver.py`:
 Migrated runtime paths:
 - work-time manual range preview uses the shared `approve_edit_cancel` family;
 - work-time close preview uses the shared `approve_edit_cancel` family;
+- work-time monthly delete confirmation uses the shared `yes_no` family with context `work_time_delete_month_confirm`;
 - open-day conflict choices use `work_time_open_conflict_choice`;
 - missing-day choices use `work_time_missing_days_choice`.
 

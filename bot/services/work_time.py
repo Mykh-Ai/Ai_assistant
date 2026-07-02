@@ -68,6 +68,14 @@ class WorkTimeOperationResult:
 
 
 @dataclass(frozen=True)
+class WorkTimeMonthSummary:
+    year: int
+    month: int
+    row_count: int
+    total_minutes: int
+
+
+@dataclass(frozen=True)
 class WorkTimeCandidate:
     work_date: date
     start_time: time | None = None
@@ -396,6 +404,72 @@ class WorkTimeService:
             connection.commit()
         return WorkTimeOperationResult(ok=True, report_path=report_path)
 
+    def summarize_month(self, *, telegram_id: int, year: int, month: int) -> WorkTimeMonthSummary:
+        rows = self.list_days_for_month(telegram_id=telegram_id, year=year, month=month)
+        return WorkTimeMonthSummary(
+            year=year,
+            month=month,
+            row_count=len(rows),
+            total_minutes=sum(row.total_minutes or 0 for row in rows),
+        )
+
+    def delete_month(
+        self,
+        *,
+        telegram_id: int,
+        year: int,
+        month: int,
+        source_message_id: int | None = None,
+    ) -> WorkTimeMonthSummary:
+        start = date(year, month, 1).isoformat()
+        end = date(year, month, monthrange(year, month)[1]).isoformat()
+        with managed_connection(self.db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, total_minutes
+                FROM work_time_days
+                WHERE telegram_id = ? AND work_date BETWEEN ? AND ?
+                ORDER BY work_date ASC, id ASC
+                """,
+                (telegram_id, start, end),
+            ).fetchall()
+            day_ids = [int(row[0]) for row in rows]
+            summary = WorkTimeMonthSummary(
+                year=year,
+                month=month,
+                row_count=len(day_ids),
+                total_minutes=sum(0 if row[1] is None else int(row[1]) for row in rows),
+            )
+            if day_ids:
+                placeholders = ','.join('?' for _ in day_ids)
+                connection.execute(
+                    f'DELETE FROM work_time_events WHERE telegram_id = ? AND work_time_day_id IN ({placeholders})',
+                    (telegram_id, *day_ids),
+                )
+                connection.execute(
+                    """
+                    DELETE FROM work_time_days
+                    WHERE telegram_id = ? AND work_date BETWEEN ? AND ?
+                    """,
+                    (telegram_id, start, end),
+                )
+                self._record_event(
+                    connection,
+                    day_id=None,
+                    event_type='delete_month',
+                    old_value=None,
+                    new_value={
+                        'year': year,
+                        'month': month,
+                        'row_count': summary.row_count,
+                        'total_minutes': summary.total_minutes,
+                    },
+                    source_message_id=source_message_id,
+                    telegram_id=telegram_id,
+                )
+            connection.commit()
+            return summary
+
     def get_open_day(
         self,
         *,
@@ -568,10 +642,30 @@ def parse_report_month(text: str, *, today: date | None = None) -> tuple[int, in
     for month, names in _MONTH_ALIASES.items():
         if any(name in normalized for name in names):
             return year, month
-    if 'minuly mesiac' in normalized or 'minuly mesiac' in normalized:
+    if 'minuly mesiac' in normalized or 'last month' in normalized:
         previous = (current.replace(day=1) - timedelta(days=1))
         return previous.year, previous.month
     return year, current.month
+
+
+def parse_explicit_month(text: str, *, today: date | None = None) -> tuple[int, int] | None:
+    current = today or date.today()
+    normalized = _normalize(text)
+    explicit_year = re.findall(r'\b((?:19|20)\d{2})\b', normalized)
+    year = int(explicit_year[-1]) if explicit_year else current.year
+    numeric_year_month = re.search(r'\b((?:19|20)\d{2})[-/.](0?[1-9]|1[0-2])\b', normalized)
+    if numeric_year_month:
+        return int(numeric_year_month.group(1)), int(numeric_year_month.group(2))
+    numeric_month_year = re.search(r'\b(0?[1-9]|1[0-2])[-/.]((?:19|20)\d{2})\b', normalized)
+    if numeric_month_year:
+        return int(numeric_month_year.group(2)), int(numeric_month_year.group(1))
+    for month, names in _MONTH_ALIASES.items():
+        if any(name in normalized for name in names):
+            return year, month
+    if 'minuly mesiac' in normalized or 'last month' in normalized:
+        previous = current.replace(day=1) - timedelta(days=1)
+        return previous.year, previous.month
+    return None
 
 
 async def resolve_work_time_entry_candidate(
@@ -692,6 +786,14 @@ def format_candidate_preview(candidate: WorkTimeCandidate, *, open_day: WorkTime
         f"Prichod: {_format_time(start_value) if start_value else '-'}\n"
         f"Odchod: {_format_time(end_value) if end_value else '-'}\n"
         f"Hodiny: {total or '-'}"
+    )
+
+
+def format_month_summary(summary: WorkTimeMonthSummary) -> str:
+    return (
+        f"Mesiac: {MONTH_NAMES_SK[summary.month]} {summary.year}\n"
+        f"Pocet zaznamov: {summary.row_count}\n"
+        f"Spolu hodin: {_format_duration(summary.total_minutes)}"
     )
 
 

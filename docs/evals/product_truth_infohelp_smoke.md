@@ -421,3 +421,4 @@ Scenarios:
 - User says: "zacinam pracovny den". Expected: top-level resolver returns `open_work_day`, not invoice creation.
 - User says by voice/text: "pracoval som dnes od 5:30 do 17:00". Expected: top-level resolver returns `add_work_time_entry`; runtime previews exact times and saves only after approval.
 - User says: "vytvor vykaz hodin za jun". Expected: top-level resolver returns `generate_work_time_report`, report is generated from user-scoped rows only, and no invoice/accounting data is touched.
+- User says: "vymaz dochadzku za jul". Expected: top-level resolver returns `delete_work_time_month`, runtime previews month/year, row count, and total hours, deletes only after confirmation, and touches only current-user DB work-time rows/events for that month.

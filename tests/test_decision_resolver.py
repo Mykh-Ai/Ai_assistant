@@ -43,6 +43,7 @@ YES_NO_CONTEXTS = (
     'idle_attachment_accounting_proposal',
     'accounting_document_duplicate_save_decision',
     'accounting_document_category_create_confirm',
+    'work_time_delete_month_confirm',
 )
 
 ACCOUNTING_CATEGORY_PREVIEW_CONTEXTS = (

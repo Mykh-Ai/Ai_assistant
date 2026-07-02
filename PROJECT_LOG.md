@@ -1,3 +1,25 @@
+## 2026-07-02 - OfficeFlow Work-Time Month Deletion Flow
+
+Summary:
+- Added `delete_work_time_month` for deleting stored OfficeFlow work-time / dochadzka DB records for one selected month after destructive preview confirmation.
+- The flow resolves explicit month/year, asks for month/year when missing, exits without confirmation when no rows exist, previews row count and total hours, and deletes only current `telegram_id` scoped `work_time_days` plus related `work_time_events` for that month after confirmation.
+- Documented that generated monthly Excel reports are on-demand artifacts, not canonical stored attendance data; deletion removes DB work-time records only.
+- Kept global InfoHelp unknown-business fallback, invoice, blocek/accounting, payroll/legal HR, export, automatic detection, and generated-report file deletion out of scope.
+
+Docs/contracts read:
+- `AGENTS.md`, `README.md`, `PROJECT_LOG.md`, `CHANGELOG.md`, `docs/Product_Doctrine_2030.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/Product_Truth_Layer.md`, `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/Canonical_Decision_Resolver_Contract.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `docs/llm/New_Action_Design_Checklist.md`, work-time handler/service code, voice routing, semantic action resolver, and focused work-time/voice/decision tests.
+
+Preflight/status:
+- Touched scopes: routing, FSM, confirmation/buttons, voice state routing, work-time DB delete side effect, Product Truth, InfoHelp known work-time text, docs, tests.
+- Current implementation status: `partial` OfficeFlow work-time MVP.
+- AI maturity level: bounded canonical top-level action routing plus Level 2 Product Truth/InfoHelp truth sync; no new customization request or self-learning behavior.
+- Side effects: confirmed deletion from existing user-scoped SQLite `work_time_days` and related `work_time_events`; no schema migration, no server writes, no external services.
+- Product/user journey proof: text/voice can start monthly deletion, missing month asks clarification, empty month has no destructive confirmation, existing month previews count/hours, cancel preserves rows, approve deletes only the current user's selected-month rows.
+- Self-learning hooks considered: none added; delete wording is a canonical resolver action, not learned aliases.
+
+Verification:
+- Pending in this session.
+
 ## 2026-07-01 - OfficeFlow Work-Time / Dochadzka MVP
 
 Summary:

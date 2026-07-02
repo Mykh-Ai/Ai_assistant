@@ -60,6 +60,8 @@ from bot.handlers.work_time import (
     WorkTimeStates,
     work_time_close_input,
     work_time_close_preview_confirm,
+    work_time_delete_month_confirm,
+    work_time_delete_month_input,
     work_time_manual_range_confirm,
     work_time_manual_range_input,
     work_time_missing_days_choice,
@@ -413,6 +415,18 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             )
         elif current_state == WorkTimeStates.waiting_close_preview_confirm.state:
             await work_time_close_preview_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_delete_month_input.state:
+            await work_time_delete_month_input(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_delete_month_confirm.state:
+            await work_time_delete_month_confirm(
                 message=text_message,
                 state=state,
                 config=config,

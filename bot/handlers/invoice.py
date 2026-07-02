@@ -24,6 +24,7 @@ from bot.handlers.start import cmd_menu, cmd_start
 from bot.handlers.work_time import (
     start_add_work_time_entry,
     start_close_work_day,
+    start_delete_work_time_month,
     start_generate_work_time_report,
     start_open_work_day,
 )
@@ -129,6 +130,7 @@ _OPEN_WORK_DAY_INTENT = 'open_work_day'
 _CLOSE_WORK_DAY_INTENT = 'close_work_day'
 _ADD_WORK_TIME_ENTRY_INTENT = 'add_work_time_entry'
 _GENERATE_WORK_TIME_REPORT_INTENT = 'generate_work_time_report'
+_DELETE_WORK_TIME_MONTH_INTENT = 'delete_work_time_month'
 _DELETE_USER_DATABASE_INTENT = DELETE_USER_DATABASE_INTENT
 _UNKNOWN_INVOICE_INTENT = 'unknown'
 
@@ -3247,6 +3249,7 @@ async def process_invoice_text(
             _CLOSE_WORK_DAY_INTENT,
             _ADD_WORK_TIME_ENTRY_INTENT,
             _GENERATE_WORK_TIME_REPORT_INTENT,
+            _DELETE_WORK_TIME_MONTH_INTENT,
             _SEND_INVOICE_INTENT,
             _EDIT_EXISTING_INVOICE_INTENT,
             _DELETE_EXISTING_INVOICE_INTENT,
@@ -3393,7 +3396,14 @@ async def process_invoice_text(
             },
             _GENERATE_WORK_TIME_REPORT_INTENT: {
                 'meaning': 'user wants to generate a monthly Excel work-time report / dochadzka / vykaz hodin for a selected month',
-                'not_this': ['invoice analytics', 'official payroll or legal HR attendance'],
+                'not_this': ['invoice analytics', 'official payroll or legal HR attendance', 'delete saved work-time records'],
+            },
+            _DELETE_WORK_TIME_MONTH_INTENT: {
+                'meaning': (
+                    'user wants to delete stored OfficeFlow work-time / dochadzka records for one selected month; '
+                    'Python must resolve month/year, preview row count and total hours, and delete only after confirmation'
+                ),
+                'not_this': ['generate Excel work-time report', 'delete invoice', 'delete whole user database', 'payroll/legal HR attendance'],
             },
             _DELETE_USER_DATABASE_INTENT: {
                 'meaning': (
@@ -3501,6 +3511,9 @@ async def process_invoice_text(
         return
     if top_level_intent == _GENERATE_WORK_TIME_REPORT_INTENT:
         await start_generate_work_time_report(message=message, state=state, config=config, text=invoice_text)
+        return
+    if top_level_intent == _DELETE_WORK_TIME_MONTH_INTENT:
+        await start_delete_work_time_month(message=message, state=state, config=config, text=invoice_text)
         return
     if top_level_intent == _DELETE_USER_DATABASE_INTENT:
         await start_delete_user_database_flow(message=message, state=state, config=config)

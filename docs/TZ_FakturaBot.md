@@ -1466,10 +1466,10 @@ Receipt date incident noted during Drive backfill:
 Current status: `partial`.
 
 Implemented runtime slice:
-- top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, and `generate_work_time_report`;
+- top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, and `delete_work_time_month`;
 - Telegram text and voice entry through the existing bounded top-level action router;
 - `/dochadzka` help command;
-- additive SQLite storage in `work_time_days` and `work_time_events` scoped by `telegram_id`;
+- additive SQLite storage in `work_time_days` and `work_time_events` scoped by `telegram_id`; `delete_work_time_month` removes only the current user's rows/events for the selected month after preview confirmation;
 - preview-confirmed manual time ranges and close-time/duration decisions through shared DecisionResolver paths;
 - monthly Excel report generation with all days, Sunday highlighting, and total hours.
 
@@ -1478,4 +1478,5 @@ Explicitly out of scope:
 - multi-employee attendance administration;
 - accounting/payroll export;
 - automatic work-time detection;
+- deletion of generated monthly Excel report files as canonical data; reports are generated on demand from DB rows.
 - official payroll/legal HR document claims.

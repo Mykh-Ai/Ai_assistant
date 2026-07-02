@@ -881,8 +881,8 @@ InfoHelp must answer work-time / dochadzka questions from Product Truth as `part
 Required wording boundaries:
 
 - say the bot can record a simple work day, close it, add a confirmed manual range, and generate a monthly Excel report;
-- say authorization/setup is required before business work-time state is written;
+- say authorization/setup is required before business work-time state is written or deleted;
 - say exact times are preview-confirmed and Python-validated;
 - say the MVP supports one interval per user/day;
-- say payroll, salary calculation, legal HR attendance compliance, multi-employee attendance administration, accounting/payroll export, and automatic work-time detection are not implemented;
+- say payroll, salary calculation, legal HR attendance compliance, multi-employee attendance administration, accounting/payroll export, automatic work-time detection, and generated-report deletion as canonical data are not implemented;
 - when the user asks for unsupported attendance features, offer safe clarification or customization-request handling where the current runtime supports it, without claiming implementation.

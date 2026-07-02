@@ -15,6 +15,7 @@ from bot.services.work_time import (
     format_candidate_preview,
     parse_close_candidate,
     parse_duration_entry_candidate,
+    parse_explicit_month,
     parse_manual_range_candidate,
     parse_report_month,
     resolve_work_time_entry_candidate,
@@ -108,6 +109,38 @@ def test_duration_only_entry_stores_total_without_start_end(tmp_path: Path) -> N
     assert result.day.total_minutes == 570
     assert format_candidate_preview(candidate) == 'Datum: 02.07.2026\nPrichod: -\nOdchod: -\nHodiny: 9,5 hod.'
 
+
+
+def test_delete_month_removes_only_current_user_selected_month(tmp_path: Path) -> None:
+    db_path = tmp_path / 'test.db'
+    init_db(db_path)
+    service = WorkTimeService(db_path)
+
+    july_user_a = WorkTimeCandidate(work_date=date(2026, 7, 2), duration_minutes=600, close_mode='manual_duration')
+    july_user_b = WorkTimeCandidate(work_date=date(2026, 7, 3), duration_minutes=480, close_mode='manual_duration')
+    august_user_a = WorkTimeCandidate(work_date=date(2026, 8, 2), duration_minutes=300, close_mode='manual_duration')
+    assert service.add_duration_entry(telegram_id=1001, candidate=july_user_a).ok
+    assert service.add_duration_entry(telegram_id=2002, candidate=july_user_b).ok
+    assert service.add_duration_entry(telegram_id=1001, candidate=august_user_a).ok
+
+    preview = service.summarize_month(telegram_id=1001, year=2026, month=7)
+    assert preview.row_count == 1
+    assert preview.total_minutes == 600
+    assert service.list_days_for_month(telegram_id=1001, year=2026, month=7)
+
+    deleted = service.delete_month(telegram_id=1001, year=2026, month=7)
+
+    assert deleted.row_count == 1
+    assert deleted.total_minutes == 600
+    assert service.list_days_for_month(telegram_id=1001, year=2026, month=7) == []
+    assert len(service.list_days_for_month(telegram_id=2002, year=2026, month=7)) == 1
+    assert len(service.list_days_for_month(telegram_id=1001, year=2026, month=8)) == 1
+
+
+def test_parse_explicit_month_requires_month_for_delete() -> None:
+    assert parse_explicit_month('vymaz dochadzku za jul', today=date(2026, 7, 2)) == (2026, 7)
+    assert parse_explicit_month('vymaz dochadzku za 2026-07', today=date(2026, 7, 2)) == (2026, 7)
+    assert parse_explicit_month('vymaz dochadzku', today=date(2026, 7, 2)) is None
 
 def test_duration_only_entry_appears_in_report_without_times(tmp_path: Path) -> None:
     db_path = tmp_path / 'test.db'

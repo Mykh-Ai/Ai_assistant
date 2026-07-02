@@ -13,6 +13,7 @@ from bot.handlers.access_admin import CustomizationRequestAdminResponseStates
 from bot.handlers.contacts import ContactStates
 from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
 from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
+from bot.handlers.work_time import WorkTimeStates
 from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates
 from bot.handlers.supplier import ServiceAliasStates
 from bot.handlers.voice import handle_voice
@@ -1357,3 +1358,55 @@ def test_voice_mark_existing_invoice_paid_confirmation_routes_to_mark_paid_handl
     )
 
     assert calls == ['ano']
+
+
+def test_voice_work_time_delete_month_confirmation_routes_to_shared_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'ano'
+
+    async def _delete_month_confirm(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    async def _generic(**kwargs) -> None:
+        raise AssertionError('generic invoice routing should not run for work-time delete confirmation state')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.work_time_delete_month_confirm', _delete_month_confirm)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _generic)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(WorkTimeStates.waiting_delete_month_confirm.state),
+        )
+    )
+
+    assert calls == ['ano']
+
+
+def test_voice_work_time_delete_month_input_routes_to_month_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'jul 2026'
+
+    async def _delete_month_input(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.work_time_delete_month_input', _delete_month_input)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(WorkTimeStates.waiting_delete_month_input.state),
+        )
+    )
+
+    assert calls == ['jul 2026']

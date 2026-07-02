@@ -12,11 +12,13 @@ from bot.config import Config
 from bot.keyboards.decision import (
     answer_with_decision_keyboard,
     approve_edit_cancel_keyboard,
+    delete_cancel_keyboard,
     work_time_missing_days_keyboard,
     work_time_open_conflict_keyboard,
 )
 from bot.services.decision_resolver import (
     resolve_approve_edit_cancel,
+    resolve_yes_no,
     resolve_work_time_missing_days_choice,
     resolve_work_time_open_conflict_choice,
 )
@@ -26,8 +28,10 @@ from bot.services.work_time import (
     WorkTimeService,
     format_candidate_preview,
     format_day_summary,
+    format_month_summary,
     parse_close_candidate,
     parse_duration_entry_candidate,
+    parse_explicit_month,
     parse_manual_range_candidate,
     parse_report_month,
     resolve_work_time_entry_candidate,
@@ -42,6 +46,8 @@ class WorkTimeStates(StatesGroup):
     waiting_manual_range_input = State()
     waiting_close_preview_confirm = State()
     waiting_close_input = State()
+    waiting_delete_month_input = State()
+    waiting_delete_month_confirm = State()
     waiting_open_day_conflict_choice = State()
     waiting_missing_days_choice = State()
 
@@ -56,7 +62,8 @@ async def cmd_dochadzka(message: Message, state: FSMContext, config: Config) -> 
         '- zatvor den o 17:00\n'
         '- zatvor den 10 hodin\n'
         '- pracoval som dnes od 5:30 do 17:00\n'
-        '- vytvor vykaz hodin za jun 2026\n\n'
+        '- vytvor vykaz hodin za jun 2026\n'
+        '- vymaz dochadzku za jul 2026\n\n'
         'Nie je to mzdova dochadzka, vypocet mzdy ani pravny HR doklad.'
     )
 
@@ -170,6 +177,80 @@ async def start_generate_work_time_report(message: Message, state: FSMContext, c
     await message.answer_document(
         FSInputFile(result.report_path, filename=result.report_path.name),
         caption='Vytvoril som mesacny vykaz odpracovanych hodin. Nie je to oficialny mzdovy ani pravny HR doklad.',
+    )
+
+
+async def start_delete_work_time_month(message: Message, state: FSMContext, config: Config, *, text: str) -> None:
+    selected = parse_explicit_month(text)
+    if selected is None:
+        await state.set_state(WorkTimeStates.waiting_delete_month_input)
+        await message.answer('Za ktory mesiac chcete vymazat dochadzku? Napiste napriklad: jul 2026 alebo 2026-07.')
+        return
+    await _preview_delete_month(message, state, config, year=selected[0], month=selected[1])
+
+
+@router.message(WorkTimeStates.waiting_delete_month_input)
+async def work_time_delete_month_input(message: Message, state: FSMContext, config: Config) -> None:
+    selected = parse_explicit_month(message.text or '')
+    if selected is None:
+        await message.answer('Mesiac sa nepodarilo rozpoznat. Napiste napriklad: jul 2026 alebo 2026-07, pripadne zrusit.')
+        return
+    await _preview_delete_month(message, state, config, year=selected[0], month=selected[1])
+
+
+@router.message(WorkTimeStates.waiting_delete_month_confirm)
+async def work_time_delete_month_confirm(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    decision = canonical_decision or await resolve_yes_no(
+        context_name='work_time_delete_month_confirm',
+        user_input_text=message.text or '',
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if decision == 'no':
+        await state.clear()
+        await message.answer('Vymazanie dochadzky som zrusil. Nic sa nezmenilo.')
+        return
+    if decision != 'yes':
+        await answer_with_decision_keyboard(
+            message,
+            'Vymazat tieto ulozene zaznamy dochadzky alebo zrusit?',
+            delete_cancel_keyboard(delete_label='Vymazat dochadzku', cancel_label='Zrusit'),
+        )
+        return
+
+    telegram_id = _telegram_id(message)
+    data = await state.get_data()
+    try:
+        year = int(data['work_time_delete_month_year'])
+        month = int(data['work_time_delete_month_month'])
+    except (KeyError, TypeError, ValueError):
+        await state.clear()
+        await message.answer('Nahlad vymazania uz nie je dostupny. Skuste poziadavku zadat znova.')
+        return
+    if telegram_id is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovat pouzivatela.')
+        return
+
+    summary = WorkTimeService(config.db_path).delete_month(
+        telegram_id=telegram_id,
+        year=year,
+        month=month,
+        source_message_id=getattr(message, 'message_id', None),
+    )
+    await state.clear()
+    if summary.row_count == 0:
+        await message.answer('Za vybrany mesiac uz nie je co vymazat.')
+        return
+    await message.answer(
+        'Vymazal som ulozene zaznamy dochadzky pre vybrany mesiac.\n'
+        f'{format_month_summary(summary)}\n\n'
+        'Mesacne Excel vykazy vytvorene na poziadanie nie su kanonicke data; tento krok maze DB zaznamy dochadzky.'
     )
 
 
@@ -369,6 +450,42 @@ async def work_time_missing_days_choice(
         await message.answer('V poriadku, chybajuce dni teraz neriesim.')
         return
     await answer_with_decision_keyboard(message, 'Vyberte jednu moznost.', work_time_missing_days_keyboard())
+
+
+async def _preview_delete_month(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    *,
+    year: int,
+    month: int,
+) -> None:
+    telegram_id = _telegram_id(message)
+    if telegram_id is None:
+        await state.clear()
+        await message.answer('Nepodarilo sa identifikovat pouzivatela.')
+        return
+    summary = WorkTimeService(config.db_path).summarize_month(telegram_id=telegram_id, year=year, month=month)
+    if summary.row_count == 0:
+        await state.clear()
+        await message.answer(f'Za {summary.month:02d}/{summary.year} nie su ulozene ziadne zaznamy dochadzky. Nie je co vymazat.')
+        return
+    await state.update_data(
+        work_time_delete_month_year=year,
+        work_time_delete_month_month=month,
+        work_time_delete_month_row_count=summary.row_count,
+        work_time_delete_month_total_minutes=summary.total_minutes,
+    )
+    await state.set_state(WorkTimeStates.waiting_delete_month_confirm)
+    await answer_with_decision_keyboard(
+        message,
+        'POZOR: vymazete ulozene zaznamy dochadzky pre tento mesiac.\n'
+        f'{format_month_summary(summary)}\n\n'
+        'Vymazu sa iba DB zaznamy dochadzky aktualneho pouzivatela/workspace pre tento mesiac. '
+        'Mesacne Excel vykazy vytvorene na poziadanie nie su kanonicke data.\n\n'
+        'Vymazat alebo zrusit?',
+        delete_cancel_keyboard(delete_label='Vymazat dochadzku', cancel_label='Zrusit'),
+    )
 
 
 async def _resolve_manual_entry_candidate(text: str, config: Config) -> WorkTimeCandidate | None:
