@@ -45,11 +45,14 @@ from bot.services.customization_requests import (
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.info_help import (
     TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+    TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE,
     build_product_truth_guidance,
     build_top_level_unknown_guidance,
+    classify_info_help_capability,
     render_info_help_triage_result,
     resolve_info_help_triage_result_with_llm,
 )
+from bot.services.product_truth import get_safe_answer_payload
 from bot.services.accounting_document_analytics_answerer import answer_accounting_document_analytics
 from bot.services.accounting_document_analytics_dataset import (
     AccountingDocumentAnalyticsDatasetService,
@@ -1047,6 +1050,55 @@ def _format_customization_request_preview(draft: dict[str, object]) -> str:
     )
 
 
+def _looks_like_admin_request_offer_activation(user_input_text: str) -> bool:
+    normalized = (user_input_text or '').casefold()
+    if not normalized.strip():
+        return False
+    activation_markers = (
+        'chcem',
+        'potrebujem',
+        'môžem',
+        'mozem',
+        'vieš',
+        'vies',
+        'viete',
+        'can ',
+        'could ',
+        'want',
+        'need',
+        'custom',
+        'додати',
+        'добавить',
+        'можу',
+        'могу',
+        'можно',
+        'хочу',
+        'потрібно',
+        'нужно',
+    )
+    return any(marker in normalized for marker in activation_markers)
+
+
+def _product_truth_admin_request_capability_id(
+    *,
+    user_input_text: str,
+    resolved_top_level_intent: str | None,
+) -> str | None:
+    if not _looks_like_admin_request_offer_activation(user_input_text):
+        return None
+    capability_id = classify_info_help_capability(
+        user_input_text=user_input_text,
+        resolved_top_level_intent=resolved_top_level_intent,
+    )
+    if capability_id is None or capability_id == 'overview':
+        return None
+    payload = get_safe_answer_payload(capability_id)
+    if not payload.get('customization_allowed'):
+        return None
+    if str(payload.get('product_status') or 'unknown') == 'supported':
+        return None
+    return capability_id
+
 async def _start_customization_request_preview(
     *,
     message: Message,
@@ -1058,6 +1110,7 @@ async def _start_customization_request_preview(
     capability_id: str | None,
     topic_id: str | None,
     confidence: float | None,
+    intro_text: str | None = None,
 ) -> None:
     draft = _build_customization_request_draft(
         requester_telegram_id=requester_telegram_id,
@@ -1075,9 +1128,12 @@ async def _start_customization_request_preview(
         }
     )
     await state.set_state(CustomizationRequestStates.waiting_preview_decision)
+    preview_text = _format_customization_request_preview(draft)
+    if intro_text:
+        preview_text = f'{intro_text}\n\n{preview_text}'
     await answer_with_decision_keyboard(
         message,
-        _format_customization_request_preview(draft),
+        preview_text,
         approve_edit_cancel_keyboard(),
     )
 
@@ -3471,6 +3527,26 @@ async def process_invoice_text(
             resolved_top_level_intent=top_level_intent,
         )
         if product_truth_guidance is not None:
+            admin_request_capability_id = _product_truth_admin_request_capability_id(
+                user_input_text=invoice_text,
+                resolved_top_level_intent=top_level_intent,
+            )
+            if admin_request_capability_id is not None:
+                telegram_id = _message_supplier_telegram_id(message)
+                if telegram_id is not None:
+                    await _start_customization_request_preview(
+                        message=message,
+                        state=state,
+                        requester_telegram_id=telegram_id,
+                        user_input_text=invoice_text,
+                        source_channel=input_channel,
+                        triage_class=TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE,
+                        capability_id=admin_request_capability_id,
+                        topic_id='product_capability',
+                        confidence=0.9,
+                        intro_text=product_truth_guidance,
+                    )
+                    return
             await message.answer(product_truth_guidance)
             await state.clear()
             return

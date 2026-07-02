@@ -1,3 +1,32 @@
+## 2026-07-02 - Polish InfoHelp admin request preview flow
+
+Summary:
+- Reused the existing Customization Request preview state for actionable InfoHelp/Product Truth admin-review offers so a user can approve, edit, or cancel immediately after the offer.
+- Kept the shared `approve_edit_cancel` DecisionResolver family and standard `decision:approve`, `decision:edit`, and `decision:cancel` buttons; no InfoHelp-local confirmation parser or button helper was added.
+- Added shared resolver coverage for the Ukrainian confirmation wording `підтверджую`.
+- Kept Product Truth mutation, admin notification, and request persistence behind existing gates: no DB row is saved until `approve`.
+
+Docs/contracts read:
+- `docs/Canonical_Decision_Resolver_Contract.md`, `docs/llm/In_Action_Response_Registry.md`, `docs/Info_Help_Guidance_Layer.md`, `docs/Customization_Request_Layer.md`, `bot/services/decision_resolver.py`, and existing decision callback/work-time preview button implementations.
+
+Preflight/status:
+- Touched scopes: InfoHelp/Product Truth front-door routing, Customization Request preview state, shared DecisionResolver fallback, decision-button UI, docs, tests, changelog, project log.
+- Current implementation status: `partial`.
+- AI maturity level: partial Level 2 InfoHelp/Product Truth front-door plus existing partial Level 3 confirmation-gated request preview; no Level 4 learning and no code-agent handoff.
+- Out of scope: work-time logic, DB schema, Product Truth mutation, admin notification, new decision family, local confirmation dictionaries.
+- Product/user journey proof: an actionable Product Truth admin-review offer now enters `CustomizationRequestStates.waiting_preview_decision`, displays shared Schváliť / Upraviť / Zrušiť buttons, accepts text/voice decisions through DecisionResolver, and saves only after approval.
+- Self-learning hooks considered: none added; unresolved/admin-review requests must not become learned aliases or Product Truth updates.
+
+Docs updated:
+- `docs/llm/In_Action_Response_Registry.md`
+- `docs/Info_Help_Guidance_Layer.md`
+- `docs/Customization_Request_Layer.md`
+- `CHANGELOG.md`
+
+Verification:
+- `python -m pytest -q tests/test_decision_resolver.py tests/test_info_help.py tests/test_invoice_intent_prerouter.py` -> 919 passed.
+- `python -m pytest -q` -> 1941 passed, 7 subtests passed.
+- `git diff --check` -> clean; only LF-to-CRLF working-copy warnings.
 ## 2026-07-01 - Repair global InfoHelp unknown-business fallback
 
 Summary:

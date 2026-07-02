@@ -452,6 +452,8 @@ the UI:
 - `yes_no` for simple save/cancel;
 - `approve_edit_cancel` when the user can approve, edit, or cancel the draft.
 
+The InfoHelp/admin-request preview reuses the existing `customization_request_preview` context and standard `decision:approve`, `decision:edit`, and `decision:cancel` callback tokens. Button callbacks and text/voice decisions must dispatch into the same active-state handler path.
+
 Handler-level tests must prove that local confirmation parsers are not added.
 
 ## Storage Rules

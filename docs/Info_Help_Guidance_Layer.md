@@ -182,7 +182,7 @@ Truth-backed InfoHelp fast-paths exist for selected topics, and bounded
 Unknown / Discovery / Triage v1 classification exists. Business-like unknown
 inputs are triaged before generic command-list guidance. Eligible
 customization/admin/product-truth-gap candidates can enter the implemented
-confirmation-gated preview/save flow. Bounded InfoHelp resolver coverage is
+confirmation-gated preview/save flow with shared approve/edit/cancel buttons. Bounded InfoHelp resolver coverage is
 still not complete. Admin answer-only response-to-user exists as a separate
 admin-confirmed runtime flow, but InfoHelp itself does not send responses.
 InfoHelp Level 2 is not complete.
