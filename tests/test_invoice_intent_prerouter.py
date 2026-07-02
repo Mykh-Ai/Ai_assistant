@@ -40,11 +40,9 @@ class _DummyMessage:
         self.from_user = None
         self.answers: list[str] = []
         self.documents: list[str] = []
-        self.reply_markups: list[object] = []
 
-    async def answer(self, text: str, **kwargs) -> None:
+    async def answer(self, text: str) -> None:
         self.answers.append(text)
-        self.reply_markups.append(kwargs.get('reply_markup'))
 
     async def answer_document(self, document, caption: str | None = None) -> None:
         self.documents.append(caption or '')
@@ -128,16 +126,6 @@ def _authorized_message(text: str, telegram_id: int = 111) -> _DummyMessage:
     message.from_user = type('_User', (), {'id': telegram_id})()
     return message
 
-
-
-def _inline_button_labels(markup: object) -> list[str]:
-    rows = getattr(markup, 'inline_keyboard', None) or []
-    return [getattr(button, 'text', '') for row in rows for button in row]
-
-
-def _inline_button_callbacks(markup: object) -> list[str]:
-    rows = getattr(markup, 'inline_keyboard', None) or []
-    return [getattr(button, 'callback_data', '') for row in rows for button in row]
 
 def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(
@@ -2129,102 +2117,6 @@ def test_all_eligible_triage_classes_create_preview_only(
     assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
 
 
-def test_business_like_unknown_runtime_uses_triage_preview_not_command_list(tmp_path: Path, monkeypatch) -> None:
-    async def _resolver(**kwargs) -> str:
-        return 'unknown'
-
-    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _authorized_message('Chcem aby bot kontroloval zákazky')
-    state = _DummyState()
-
-    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
-
-    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
-    assert 'Návrh požiadavky' in message.answers[-1]
-    assert 'Nerozumiem, čo chcete spraviť.' not in message.answers[-1]
-    assert '- vytvoriť faktúru' not in message.answers[-1]
-    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
-
-
-
-def test_product_truth_admin_offer_enters_preview_with_standard_buttons(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _authorized_message('Vieš poslať faktúru emailom?', telegram_id=111)
-    state = _DummyState()
-
-    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
-
-    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
-    assert state.cleared is False
-    assert 'Odosielanie faktúr emailom' in message.answers[-1]
-    assert 'Návrh požiadavky' in message.answers[-1]
-    assert _inline_button_labels(message.reply_markups[-1]) == ['Schváliť', 'Upraviť', 'Zrušiť']
-    assert _inline_button_callbacks(message.reply_markups[-1]) == ['decision:approve', 'decision:edit', 'decision:cancel']
-    draft = state.data['customization_request_draft']
-    assert draft['source_capability_id'] == 'send_invoice_email'
-    assert draft['source_topic_id'] == 'product_capability'
-    assert draft['redacted_original_text'] == message.text
-    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
-
-
-
-def test_product_truth_admin_offer_without_activation_words_has_buttons(tmp_path: Path, monkeypatch) -> None:
-    async def _resolver(**kwargs) -> str:
-        return 'unknown'
-
-    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _authorized_message('salary dochadzka?', telegram_id=111)
-    state = _DummyState()
-
-    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
-
-    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
-    assert state.cleared is False
-    assert 'Evidencia pracovneho casu / Dochadzka' in message.answers[-1]
-    assert 'Ak chcete, môžem z toho pripraviť požiadavku na kontrolu správcom.' in message.answers[-1]
-    assert 'Návrh požiadavky' in message.answers[-1]
-    assert _inline_button_labels(message.reply_markups[-1]) == ['Schváliť', 'Upraviť', 'Zrušiť']
-    assert _inline_button_callbacks(message.reply_markups[-1]) == ['decision:approve', 'decision:edit', 'decision:cancel']
-    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
-
-def test_product_truth_admin_offer_text_approval_saves_after_decision_resolver(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _authorized_message('Vieš poslať faktúru emailom?', telegram_id=111)
-    state = _DummyState()
-
-    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
-    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
-
-    approve_message = _authorized_message('підтверджую', telegram_id=111)
-    asyncio.run(customization_request_preview_decision(message=approve_message, state=state, config=config))
-
-    records = CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111)
-    assert len(records) == 1
-    assert records[0].source_capability_id == 'send_invoice_email'
-    assert records[0].redacted_original_text == message.text
-    assert state.cleared is True
-
-
-def test_product_truth_admin_offer_text_cancel_saves_nothing(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _authorized_message('Vieš poslať faktúru emailom?', telegram_id=111)
-    state = _DummyState()
-
-    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
-    cancel_message = _authorized_message('zrušiť', telegram_id=111)
-    asyncio.run(customization_request_preview_decision(message=cancel_message, state=state, config=config))
-
-    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
-    assert state.cleared is True
-    assert cancel_message.answers[-1] == 'Zrušené. Požiadavku som neuložil.'
-
 def test_invoice_period_summary_resolver_fallback_is_product_truth_not_customization_preview(
     tmp_path: Path,
     monkeypatch,
@@ -2718,7 +2610,7 @@ def test_process_invoice_text_llm_possible_product_truth_candidate_asks_clarific
         db_path=tmp_path / 'test.db',
         storage_dir=tmp_path,
     )
-    message = _authorized_message('viete spravit veci okolo alpha beta?')
+    message = _authorized_message('viete spravit veci okolo workflow?')
     state = _DummyState()
 
     asyncio.run(
@@ -2726,7 +2618,7 @@ def test_process_invoice_text_llm_possible_product_truth_candidate_asks_clarific
             message=message,
             state=state,
             config=config,
-            invoice_text='viete spravit veci okolo alpha beta?',
+            invoice_text='viete spravit veci okolo workflow?',
         )
     )
 

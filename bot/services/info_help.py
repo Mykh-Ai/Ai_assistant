@@ -534,12 +534,6 @@ def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageR
         return _triage_result(TRIAGE_NEW_BUSINESS_FEATURE_REQUEST, confidence=0.8)
     if _is_customization_candidate(normalized, tokens):
         return _triage_result(TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE, confidence=0.75)
-    if _is_vague_business_unknown_request(normalized, tokens):
-        return _triage_result(TRIAGE_UNCLEAR_NEEDS_CLARIFICATION, confidence=0.72, needs_clarification=True)
-    if _is_broad_business_unknown_request(normalized, tokens):
-        if _is_help_like(normalized, tokens):
-            return _triage_result(TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE, confidence=0.68)
-        return _triage_result(TRIAGE_NEW_BUSINESS_FEATURE_REQUEST, confidence=0.7)
     if _is_possible_product_truth_candidate(normalized, tokens):
         return _triage_result(TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE, confidence=0.6)
     return InfoHelpTriageResult()
@@ -1372,144 +1366,6 @@ def _is_unclear_request(normalized: str, tokens: set[str]) -> bool:
 def _is_out_of_domain(normalized: str, tokens: set[str]) -> bool:
     return bool(tokens.intersection({'pocasie', 'weather', 'forecast', 'погода', 'погоду'}))
 
-_BROAD_BUSINESS_ACTION_TERMS = {
-    'chcem',
-    'potrebujem',
-    'treba',
-    'sprav',
-    'urob',
-    'vytvor',
-    'vies',
-    'vie',
-    'mozes',
-    'mozem',
-    'kontroloval',
-    'kontrolovat',
-    'sledovat',
-    'evidovat',
-    'viest',
-    'robit',
-    'robi',
-    'track',
-    'manage',
-    'create',
-    'make',
-    'can',
-    'could',
-    'want',
-    'need',
-    'можу',
-    'могу',
-    'можешь',
-    'можете',
-    'можно',
-    'хочу',
-    'нужно',
-    'потрібно',
-    'вести',
-    'контролировать',
-    'контролювати',
-    'отслеживать',
-    'відстежувати',
-    'учитывать',
-    'обліковувати',
-}
-
-_BROAD_BUSINESS_OBJECT_TERMS = {
-    'biznis',
-    'firma',
-    'firemne',
-    'robotu',
-    'pracu',
-    'pracovne',
-    'zakazky',
-    'zakazka',
-    'klienta',
-    'klientov',
-    'zakaznikov',
-    'projekt',
-    'projekty',
-    'objekt',
-    'objekty',
-    'material',
-    'materialov',
-    'sklad',
-    'tabulku',
-    'tabulka',
-    'vykaz',
-    'report',
-    'mesacny',
-    'ulohy',
-    'task',
-    'tasks',
-    'job',
-    'site',
-    'customer',
-    'customers',
-    'client',
-    'project',
-    'projects',
-    'materials',
-    'inventory',
-    'warehouse',
-    'work',
-    'workflow',
-    'timesheet',
-    'hours',
-    'time',
-    'business',
-    'учет',
-    'учёт',
-    'облік',
-    'отработанного',
-    'відпрацьованого',
-    'времени',
-    'часу',
-    'склад',
-    'материалов',
-    'матеріалів',
-    'объектам',
-    'обєктах',
-    'обєктам',
-    'обектах',
-    'объектах',
-    'заказы',
-    'замовлення',
-    'клиента',
-    'клієнта',
-    'задачи',
-    'завдання',
-}
-
-_VAGUE_BUSINESS_MARKERS = {
-    'nejaky',
-    'nejaku',
-    'nejake',
-    'taku',
-    'take',
-    'tabulku',
-    'tabulka',
-    'robotu',
-    'pracu',
-    'thing',
-    'stuff',
-}
-
-
-def _is_broad_business_unknown_request(normalized: str, tokens: set[str]) -> bool:
-    if not tokens.intersection(_BROAD_BUSINESS_OBJECT_TERMS):
-        return False
-    if tokens.intersection(_BROAD_BUSINESS_ACTION_TERMS):
-        return True
-    return _is_help_like(normalized, tokens)
-
-
-def _is_vague_business_unknown_request(normalized: str, tokens: set[str]) -> bool:
-    if not tokens.intersection(_VAGUE_BUSINESS_MARKERS):
-        return False
-    return bool(tokens.intersection({'chcem', 'potrebujem', 'treba', 'sprav', 'urob', 'nejaky', 'nejaku'})) and bool(
-        tokens.intersection({'robotu', 'pracu', 'tabulku', 'tabulka', 'work', 'business'})
-    )
 
 def _is_admin_review_request(normalized: str, tokens: set[str]) -> bool:
     mentions_admin = bool(tokens.intersection({'adminovi', 'admin', 'spravcovi', 'spravca', 'админу', 'адміну'}))
@@ -1781,7 +1637,8 @@ def _is_possible_product_truth_candidate(normalized: str, tokens: set[str]) -> b
     )
 
 
-def _build_generic_top_level_unknown_guidance() -> str:
+def build_top_level_unknown_guidance(*, user_input_text: str | None = None) -> str:
+    """Build deterministic Phase 1 guidance for idle top-level unknown input."""
     return (
         'Nerozumiem, čo chcete spraviť.\n\n'
         'Môžem vám pomôcť napríklad s týmito vecami:\n'
@@ -1795,12 +1652,3 @@ def _build_generic_top_level_unknown_guidance() -> str:
         'Skúste napísať konkrétne, čo chcete urobiť, napríklad „vytvor faktúru“, '
         '„súhrn faktúr za 2026“, „pridaj kontakt“ alebo „pridaj bloček“.'
     )
-
-
-def build_top_level_unknown_guidance(*, user_input_text: str | None = None) -> str:
-    """Build deterministic last-resort guidance for idle top-level unknown input."""
-    triage_result = classify_info_help_triage(user_input_text=user_input_text)
-    triage_guidance = render_info_help_triage_result(triage_result)
-    if triage_guidance is not None:
-        return triage_guidance
-    return _build_generic_top_level_unknown_guidance()

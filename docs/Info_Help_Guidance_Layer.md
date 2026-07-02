@@ -73,7 +73,7 @@ already exists.
 
 Unless later code proves otherwise:
 
-- current top-level unknown-input guidance remains a bounded last resort only after known Product Truth and Unknown / Discovery / Triage fail to resolve safely; business-like unknowns must not receive the generic command-list fallback first;
+- current top-level unknown-input guidance is Level 1 static guidance;
 - current Product Truth-backed InfoHelp is partial and limited to selected
   conservative topics plus bounded Unknown / Discovery / Triage v1
   classification;
@@ -179,10 +179,9 @@ These classes do not change Product Truth. They help choose a safe response:
 
 Current status: Product Truth MVP exists, deterministic Product
 Truth-backed InfoHelp fast-paths exist for selected topics, and bounded
-Unknown / Discovery / Triage v1 classification exists. Business-like unknown
-inputs are triaged before generic command-list guidance. Eligible
+Unknown / Discovery / Triage v1 classification exists. Eligible
 customization/admin/product-truth-gap candidates can enter the implemented
-confirmation-gated preview/save flow with shared approve/edit/cancel buttons. Bounded InfoHelp resolver coverage is
+confirmation-gated preview/save flow. Bounded InfoHelp resolver coverage is
 still not complete. Admin answer-only response-to-user exists as a separate
 admin-confirmed runtime flow, but InfoHelp itself does not send responses.
 InfoHelp Level 2 is not complete.
