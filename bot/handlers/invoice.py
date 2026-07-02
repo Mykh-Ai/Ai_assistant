@@ -3388,8 +3388,8 @@ async def process_invoice_text(
                 'not_this': ['create invoice', 'monthly report', 'manual full range without an open day'],
             },
             _ADD_WORK_TIME_ENTRY_INTENT: {
-                'meaning': 'user wants to manually add a complete work-time range for today or another date after forgetting live open/close',
-                'not_this': ['open a live work day now', 'invoice item editing'],
+                'meaning': 'user wants to manually add work time for today or another date, either as a full start/end range or as duration-only total hours after breaks',
+                'not_this': ['open a live work day now', 'invoice item editing', 'payroll or legal HR attendance'],
             },
             _GENERATE_WORK_TIME_REPORT_INTENT: {
                 'meaning': 'user wants to generate a monthly Excel work-time report / dochadzka / vykaz hodin for a selected month',

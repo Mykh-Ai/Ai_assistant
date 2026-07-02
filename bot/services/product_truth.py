@@ -974,11 +974,11 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         title='Work time tracking / Evidencia pracovneho casu',
         domain='work_hours',
         status=ProductTruthStatus.PARTIAL,
-        summary_for_user='Records open/close work days, preview-confirmed manual time ranges, and generates a monthly Excel work-time report.',
+        summary_for_user='Records open/close work days, preview-confirmed manual time ranges or duration-only totals, and generates a monthly Excel work-time report.',
         current_limitations=(
             'MVP supports one interval per user/day in the current controlled tenant-scoped runtime.',
             'It is not payroll, salary calculation, legal HR attendance compliance, multi-employee dochadzka, accounting/payroll software export, or automatic time detection.',
-            'Manual ranges and ambiguous extracted exact values require preview confirmation before save.',
+            'Manual ranges, duration-only totals, and ambiguous extracted exact values require preview confirmation before save.',
         ),
         runtime_owner='bot/handlers/work_time.py and bot/services/work_time.py',
         commands=('/dochadzka',),
@@ -992,7 +992,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         ),
         test_refs=('tests/test_work_time_service.py', 'tests/test_work_time_routing.py', 'tests/test_product_truth.py', 'tests/test_info_help.py'),
         safe_next_steps=(
-            'Say zacinam pracovny den, zatvor den o 17:00, pracoval som dnes od 5:30 do 17:00, or vytvor vykaz hodin za jun 2026.',
+            'Say zacinam pracovny den, zatvor den o 17:00, pracoval som dnes od 5:30 do 17:00, dnes 10 hodin, or vytvor vykaz hodin za jun 2026.',
         ),
         customization_allowed=True,
         requires_setup=True,

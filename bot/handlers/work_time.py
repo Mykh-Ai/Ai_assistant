@@ -27,8 +27,10 @@ from bot.services.work_time import (
     format_candidate_preview,
     format_day_summary,
     parse_close_candidate,
+    parse_duration_entry_candidate,
     parse_manual_range_candidate,
     parse_report_month,
+    resolve_work_time_entry_candidate,
 )
 
 
@@ -99,15 +101,24 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
     service = WorkTimeService(config.db_path)
     open_day = service.get_open_day(telegram_id=telegram_id)
     if open_day is None:
-        manual_candidate = parse_manual_range_candidate(text)
+        manual_candidate = await _resolve_manual_entry_candidate(text, config)
         if manual_candidate is not None:
             await _preview_manual_candidate(message, state, manual_candidate)
             return
         await state.clear()
-        await message.answer('Nemate otvoreny pracovny den. Ak chcete doplnit den spatne, napiste napriklad: pracoval som dnes od 5:30 do 17:00.')
+        await message.answer('Nemate otvoreny pracovny den. Ak chcete doplnit den spatne, napiste napriklad: pracoval som dnes od 5:30 do 17:00 alebo dnes 10 hodin.')
         return
 
     candidate = parse_close_candidate(text, open_day=open_day)
+    if candidate is not None and candidate.close_mode == 'close_now' and _should_try_llm_work_time_slots(text):
+        llm_candidate = await resolve_work_time_entry_candidate(
+            user_input_text=text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            open_day=open_day,
+        )
+        if llm_candidate is not None:
+            candidate = llm_candidate
     if candidate is None or candidate.close_mode == 'close_now':
         result = service.close_open_day(
             telegram_id=telegram_id,
@@ -132,10 +143,10 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
 
 
 async def start_add_work_time_entry(message: Message, state: FSMContext, config: Config, *, text: str) -> None:
-    candidate = parse_manual_range_candidate(text)
+    candidate = await _resolve_manual_entry_candidate(text, config)
     if candidate is None:
         await state.set_state(WorkTimeStates.waiting_manual_range_input)
-        await message.answer('Napiste cely rozsah, napriklad: pracoval som dnes od 5:30 do 17:00.')
+        await message.answer('Napiste rozsah alebo pocet hodin, napriklad: pracoval som dnes od 5:30 do 17:00 alebo dnes 10 hodin.')
         return
     await _preview_manual_candidate(message, state, candidate)
 
@@ -164,9 +175,9 @@ async def start_generate_work_time_report(message: Message, state: FSMContext, c
 
 @router.message(WorkTimeStates.waiting_manual_range_input)
 async def work_time_manual_range_input(message: Message, state: FSMContext, config: Config) -> None:
-    candidate = parse_manual_range_candidate(message.text or '')
+    candidate = await _resolve_manual_entry_candidate(message.text or '', config)
     if candidate is None:
-        await message.answer('Rozsah sa nepodarilo rozpoznat. Napiste napr.: dnes od 5:30 do 17:00, alebo zrusit.')
+        await message.answer('Cas sa nepodarilo rozpoznat. Napiste napr.: dnes od 5:30 do 17:00, dnes 10 hodin, alebo zrusit.')
         return
     await _preview_manual_candidate(message, state, candidate)
 
@@ -183,7 +194,17 @@ async def work_time_close_input(message: Message, state: FSMContext, config: Con
         await state.clear()
         await message.answer('Otvoreny pracovny den uz nie je dostupny.')
         return
-    candidate = parse_close_candidate(message.text or '', open_day=open_day)
+    raw_text = message.text or ''
+    candidate = parse_close_candidate(raw_text, open_day=open_day)
+    if candidate is not None and candidate.close_mode == 'close_now' and _should_try_llm_work_time_slots(raw_text):
+        llm_candidate = await resolve_work_time_entry_candidate(
+            user_input_text=raw_text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            open_day=open_day,
+        )
+        if llm_candidate is not None:
+            candidate = llm_candidate
     if candidate is None:
         await message.answer('Napiste cas odchodu alebo trvanie, napriklad: o 17:00 alebo 10 hodin.')
         return
@@ -228,11 +249,19 @@ async def work_time_manual_range_confirm(
         await state.clear()
         await message.answer('Nahlad uz nie je dostupny. Skuste rozsah zadat znova.')
         return
-    result = WorkTimeService(config.db_path).add_manual_range(
-        telegram_id=telegram_id,
-        candidate=candidate,
-        source_message_id=getattr(message, 'message_id', None),
-    )
+    service = WorkTimeService(config.db_path)
+    if candidate.start_time is None and candidate.duration_minutes is not None:
+        result = service.add_duration_entry(
+            telegram_id=telegram_id,
+            candidate=candidate,
+            source_message_id=getattr(message, 'message_id', None),
+        )
+    else:
+        result = service.add_manual_range(
+            telegram_id=telegram_id,
+            candidate=candidate,
+            source_message_id=getattr(message, 'message_id', None),
+        )
     await state.clear()
     await _answer_work_time_result(message, result, success_prefix='Pracovny cas je ulozeny.')
 
@@ -340,6 +369,24 @@ async def work_time_missing_days_choice(
         await message.answer('V poriadku, chybajuce dni teraz neriesim.')
         return
     await answer_with_decision_keyboard(message, 'Vyberte jednu moznost.', work_time_missing_days_keyboard())
+
+
+async def _resolve_manual_entry_candidate(text: str, config: Config) -> WorkTimeCandidate | None:
+    candidate = parse_manual_range_candidate(text) or parse_duration_entry_candidate(text)
+    if candidate is not None:
+        return candidate
+    return await resolve_work_time_entry_candidate(
+        user_input_text=text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+
+
+def _should_try_llm_work_time_slots(text: str) -> bool:
+    lowered = (text or '').casefold()
+    if any(term in lowered for term in ('teraz', 'now')):
+        return False
+    return len(lowered.split()) > 2
 
 
 async def _preview_manual_candidate(message: Message, state: FSMContext, candidate: WorkTimeCandidate) -> None:

@@ -232,10 +232,10 @@ invoice/accounting data. Receipt, expense, and incoming-invoice analytics are ha
 Supported top-level actions:
 - `open_work_day` - start the current work day;
 - `close_work_day` - close the open day with a preview-confirmed end time or duration;
-- `add_work_time_entry` - add one preview-confirmed manual interval;
+- `add_work_time_entry` - add one preview-confirmed manual interval or duration-only total;
 - `generate_work_time_report` - generate a monthly Excel report.
 
-The module is not payroll, salary calculation, legal HR attendance compliance, multi-employee attendance, automatic time detection, or accounting/payroll export. It stores one interval per authorized user/day and treats exact time values as preview-confirmed before save.
+The module is not payroll, salary calculation, legal HR attendance compliance, multi-employee attendance, automatic time detection, or accounting/payroll export. It stores one entry per authorized user/day and treats exact time or duration values as preview-confirmed before save.
 ### Accounting Document Analytics
 
 `accounting_document_analytics` is implemented as a partial read-only pilot for
