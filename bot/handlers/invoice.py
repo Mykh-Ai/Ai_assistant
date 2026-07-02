@@ -1050,41 +1050,12 @@ def _format_customization_request_preview(draft: dict[str, object]) -> str:
     )
 
 
-def _looks_like_admin_request_offer_activation(user_input_text: str) -> bool:
-    normalized = (user_input_text or '').casefold()
-    if not normalized.strip():
-        return False
-    activation_markers = (
-        'chcem',
-        'potrebujem',
-        'môžem',
-        'mozem',
-        'vieš',
-        'vies',
-        'viete',
-        'can ',
-        'could ',
-        'want',
-        'need',
-        'custom',
-        'додати',
-        'добавить',
-        'можу',
-        'могу',
-        'можно',
-        'хочу',
-        'потрібно',
-        'нужно',
-    )
-    return any(marker in normalized for marker in activation_markers)
-
-
 def _product_truth_admin_request_capability_id(
     *,
     user_input_text: str,
     resolved_top_level_intent: str | None,
 ) -> str | None:
-    if not _looks_like_admin_request_offer_activation(user_input_text):
+    if '?' not in (user_input_text or ''):
         return None
     capability_id = classify_info_help_capability(
         user_input_text=user_input_text,

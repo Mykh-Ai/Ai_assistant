@@ -2170,6 +2170,28 @@ def test_product_truth_admin_offer_enters_preview_with_standard_buttons(tmp_path
     assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
 
 
+
+def test_product_truth_admin_offer_without_activation_words_has_buttons(tmp_path: Path, monkeypatch) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('salary dochadzka?', telegram_id=111)
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert state.cleared is False
+    assert 'Evidencia pracovneho casu / Dochadzka' in message.answers[-1]
+    assert 'Ak chcete, môžem z toho pripraviť požiadavku na kontrolu správcom.' in message.answers[-1]
+    assert 'Návrh požiadavky' in message.answers[-1]
+    assert _inline_button_labels(message.reply_markups[-1]) == ['Schváliť', 'Upraviť', 'Zrušiť']
+    assert _inline_button_callbacks(message.reply_markups[-1]) == ['decision:approve', 'decision:edit', 'decision:cancel']
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(telegram_id=111) == []
+
 def test_product_truth_admin_offer_text_approval_saves_after_decision_resolver(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)

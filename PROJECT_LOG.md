@@ -1,3 +1,13 @@
+## 2026-07-02 - Fix Product Truth admin-offer buttons
+
+Summary:
+- Removed the extra activation-phrase gate from Product Truth admin-request preview routing.
+- When Product Truth already renders an admin-review offer for a non-supported customization-allowed capability, the handler now enters the existing Customization Request preview state and sends the standard Schváliť / Upraviť / Zrušiť buttons.
+- Kept voice/text handling in the existing `customization_request_preview` DecisionResolver path; no InfoHelp-local parser, new decision family, or business phrase dictionary was added.
+
+Verification:
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py::test_product_truth_admin_offer_without_activation_words_has_buttons tests\test_invoice_intent_prerouter.py::test_product_truth_admin_offer_enters_preview_with_standard_buttons tests\test_invoice_intent_prerouter.py::test_product_truth_admin_offer_text_approval_saves_after_decision_resolver tests\test_voice_state_routing.py::test_voice_customization_preview_approve_saves_one_request tests\test_voice_state_routing.py::test_voice_idle_transcript_can_start_customization_request_preview` -> 5 passed.
+- `git diff --check` -> clean; only LF-to-CRLF working-copy warnings.
 ## 2026-07-02 - Polish InfoHelp admin request preview flow
 
 Summary:
