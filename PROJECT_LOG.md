@@ -1,3 +1,29 @@
+## 2026-07-03 - OfficeFlow Work-Time Preview/Edit UX Polish
+
+Summary:
+- Fixed manual work-time preview/edit recovery after the b45525d live smoke: `_preview_manual_candidate` now receives `config` explicitly and no longer crashes or goes silent after edit input.
+- Unknown replies in manual and close preview states now repeat the full pending preview with date, arrival, departure, net hours, and approve/edit/cancel buttons instead of a naked confirmation prompt.
+- Active preview FSM state still wins over text/voice top-level report requests; voice dispatch remains STT -> same state-aware handler path with no work-time phrase dictionary in `voice.py`.
+- Added real UTF-8 yesterday parsing for `vcera`, `v?era`, `?????`, `?????`, and `?????`, plus clearer duration-only preview/saved-summary wording.
+- Kept lunch-break net/gross semantics, delete-month behavior, global InfoHelp unknown fallback, invoice, blocek/accounting, and admin-request preview/buttons out of scope.
+
+Docs/contracts read:
+- `AGENTS.md`, `README.md`, `PROJECT_LOG.md`, `CHANGELOG.md`, `docs/Product_Doctrine_2030.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/Canonical_Decision_Resolver_Contract.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `docs/llm/New_Action_Design_Checklist.md`, `bot/handlers/work_time.py`, `bot/services/work_time.py`, `bot/handlers/voice.py`, `bot/services/semantic_action_resolver.py`, `bot/services/decision_resolver.py`, and focused work-time/voice/decision tests.
+
+Preflight/status:
+- Touched scopes: FSM, confirmation recovery, voice state routing tests, work-time parsing/display, in-action registry, changelog, project log, tests.
+- Current implementation status: `partial` OfficeFlow work-time MVP.
+- AI maturity level: bounded state-aware in-FSM control under existing Level 2 Product Truth/InfoHelp truth; no new top-level capability, no customization request, and no self-learning behavior added.
+- Persisted data impact: no schema migration and no data rewrite; display wording and parsing only.
+- Product/user journey proof: edit -> corrected range returns preview/buttons, unknown text/voice in pending previews repeats full context, Cyrillic/Slovak yesterday resolves to the previous date, duration-only rows no longer display as `- - -`, and existing lunch/delete-month regressions stay covered.
+- Self-learning hooks considered: none added; this is deterministic FSM recovery and parser support.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py tests\test_voice_state_routing.py tests\test_decision_resolver.py` - 750 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py tests\test_info_help.py tests\test_product_truth.py` - 344 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2015 passed, 7 subtests passed.
+- `git diff --check` - clean.
+
 ## 2026-07-02 - OfficeFlow Work-Time Lunch Break Settings And Net Report Hours
 
 Summary:

@@ -944,6 +944,8 @@ async def resolve_work_time_entry_candidate(
 
 def format_day_summary(day: WorkTimeDay) -> str:
     if day.status == STATUS_CLOSED:
+        if day.start_time is None and day.end_time is None:
+            return f"{_format_date_sk(day.work_date)}: bez presneho prichodu/odchodu ({_format_duration(day.total_minutes or 0)})"
         return f"{_format_date_sk(day.work_date)}: {day.start_time or '-'} - {day.end_time or '-'} ({_format_duration(day.total_minutes or 0)})"
     if day.status == STATUS_OPEN:
         return f"{_format_date_sk(day.work_date)}: otvoreny od {day.start_time or '-'}"
@@ -979,8 +981,12 @@ def format_candidate_preview(
             // 60
         )
         total = _format_duration(max(0, total_minutes - max(0, lunch_break_minutes)))
+    entry_type = ''
+    if start_value is None and end_value is None and candidate.duration_minutes is not None:
+        entry_type = 'Typ: pocet hodin bez presneho prichodu/odchodu\n'
     return (
         f"Datum: {_format_date_sk(candidate.work_date.isoformat())}\n"
+        f"{entry_type}"
         f"Prichod: {_format_time(start_value) if start_value else '-'}\n"
         f"Odchod: {_format_time(end_value) if end_value else '-'}\n"
         f"Hodiny: {total or '-'}"
@@ -1137,7 +1143,16 @@ def _parse_match_time(match: tuple[str, str]) -> time | None:
 
 def _resolve_relative_date(normalized: str, *, today: date | None = None) -> date:
     current = today or date.today()
-    if any(term in normalized for term in ('vcera', 'vДЌera', 'vchera', 'РІС‡РѕСЂР°', 'РІС‡РµСЂР°')):
+    yesterday_terms = {
+        'vcera',
+        'vchera',
+        'вчора',
+        'учора',
+        'вчера',
+        'вчорашній',
+        'вчерашний',
+    }
+    if any(term in normalized for term in yesterday_terms):
         return current - timedelta(days=1)
     return current
 

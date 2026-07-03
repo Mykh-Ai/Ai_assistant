@@ -13,6 +13,7 @@ from bot.services.work_time import (
     WorkTimeCandidate,
     WorkTimeService,
     format_candidate_preview,
+    format_day_summary,
     parse_close_candidate,
     parse_duration_entry_candidate,
     parse_lunch_break_minutes,
@@ -108,7 +109,14 @@ def test_duration_only_entry_stores_total_without_start_end(tmp_path: Path) -> N
     assert result.day.start_time is None
     assert result.day.end_time is None
     assert result.day.total_minutes == 570
-    assert format_candidate_preview(candidate) == 'Datum: 02.07.2026\nPrichod: -\nOdchod: -\nHodiny: 9,5 hod.'
+    assert format_candidate_preview(candidate) == (
+        'Datum: 02.07.2026\n'
+        'Typ: pocet hodin bez presneho prichodu/odchodu\n'
+        'Prichod: -\n'
+        'Odchod: -\n'
+        'Hodiny: 9,5 hod.'
+    )
+    assert format_day_summary(result.day) == '02.07.2026: bez presneho prichodu/odchodu (9,5 hod.)'
 
 
 
@@ -380,4 +388,49 @@ def test_llm_slot_extractor_normalizes_duration_only(monkeypatch) -> None:
     assert candidate.start_time is None
     assert candidate.end_time is None
     assert candidate.duration_minutes == 570
-    assert format_candidate_preview(candidate) == 'Datum: 02.07.2026\nPrichod: -\nOdchod: -\nHodiny: 9,5 hod.'
+    assert format_candidate_preview(candidate) == (
+        'Datum: 02.07.2026\n'
+        'Typ: pocet hodin bez presneho prichodu/odchodu\n'
+        'Prichod: -\n'
+        'Odchod: -\n'
+        'Hodiny: 9,5 hod.'
+    )
+
+
+
+def test_manual_range_relative_date_yesterday_variants() -> None:
+    examples = [
+        'včera od 6:00 do 16:30',
+        'vcera od 6:00 do 16:30',
+        'вчора з 6:00 до 18:00',
+        'учора з 6:00 до 18:00',
+        'вчера с 6:00 до 18:00',
+    ]
+    for text in examples:
+        candidate = parse_manual_range_candidate(text, today=date(2026, 7, 2))
+        assert candidate is not None, text
+        assert candidate.work_date == date(2026, 7, 1)
+
+
+def test_lunch_math_regressions_stay_net_gross_safe(tmp_path: Path) -> None:
+    db_path = tmp_path / 'test.db'
+    init_db(db_path)
+    service = WorkTimeService(db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=60)
+
+    explicit = parse_manual_range_candidate('dnes od 9:00 do 21:00', today=date(2026, 7, 2))
+    assert explicit is not None
+    saved = service.add_manual_range(telegram_id=1001, candidate=explicit)
+    assert saved.ok
+    assert saved.day is not None
+    assert service.report_net_minutes(saved.day, settings=service.get_lunch_break_settings(telegram_id=1001)) == 660
+
+    deleted = service.delete_month(telegram_id=1001, year=2026, month=7)
+    assert deleted.row_count == 1
+    opened = service.open_day(telegram_id=1001, now=datetime(2026, 7, 2, 7, 12))
+    assert opened.ok
+    closed = service.close_open_day(telegram_id=1001, duration_minutes=600)
+    assert closed.ok
+    assert closed.day is not None
+    assert closed.day.end_time == '18:12'
+    assert service.report_net_minutes(closed.day, settings=service.get_lunch_break_settings(telegram_id=1001)) == 600

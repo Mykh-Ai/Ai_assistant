@@ -119,7 +119,7 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
     if open_day is None:
         manual_candidate = await _resolve_manual_entry_candidate(text, config)
         if manual_candidate is not None:
-            await _preview_manual_candidate(message, state, manual_candidate)
+            await _preview_manual_candidate(message, state, config, manual_candidate)
             return
         await state.clear()
         await message.answer('Nemate otvoreny pracovny den. Ak chcete doplnit den spatne, napiste napriklad: pracoval som dnes od 5:30 do 17:00 alebo dnes 10 hodin.')
@@ -164,7 +164,7 @@ async def start_add_work_time_entry(message: Message, state: FSMContext, config:
         await state.set_state(WorkTimeStates.waiting_manual_range_input)
         await message.answer('Napiste rozsah alebo pocet hodin, napriklad: pracoval som dnes od 5:30 do 17:00 alebo dnes 10 hodin.')
         return
-    await _preview_manual_candidate(message, state, candidate)
+    await _preview_manual_candidate(message, state, config, candidate)
 
 
 async def start_generate_work_time_report(
@@ -404,7 +404,7 @@ async def work_time_manual_range_input(message: Message, state: FSMContext, conf
     if candidate is None:
         await message.answer('Cas sa nepodarilo rozpoznat. Napiste napr.: dnes od 5:30 do 17:00, dnes 10 hodin, alebo zrusit.')
         return
-    await _preview_manual_candidate(message, state, candidate)
+    await _preview_manual_candidate(message, state, config, candidate)
 
 
 @router.message(WorkTimeStates.waiting_close_input)
@@ -466,7 +466,7 @@ async def work_time_manual_range_confirm(
         await message.answer('Doplnenie pracovneho casu som zrusil. Nic sa neulozilo.')
         return
     if decision != 'approve':
-        await answer_with_decision_keyboard(message, 'Schvalit, upravit alebo zrusit?', approve_edit_cancel_keyboard())
+        await _repeat_pending_manual_preview(message, state, config)
         return
     telegram_id = _telegram_id(message)
     candidate = _candidate_from_state((await state.get_data()).get('work_time_manual_candidate'))
@@ -513,7 +513,7 @@ async def work_time_close_preview_confirm(
         await message.answer('Uzavretie pracovneho dna som zrusil. Nic sa nezmenilo.')
         return
     if decision != 'approve':
-        await answer_with_decision_keyboard(message, 'Schvalit, upravit alebo zrusit?', approve_edit_cancel_keyboard())
+        await _repeat_pending_close_preview(message, state, config)
         return
     telegram_id = _telegram_id(message)
     candidate = _candidate_from_state((await state.get_data()).get('work_time_close_candidate'))
@@ -717,13 +717,68 @@ def _should_try_llm_work_time_slots(text: str) -> bool:
     return len(lowered.split()) > 2
 
 
-async def _preview_manual_candidate(message: Message, state: FSMContext, candidate: WorkTimeCandidate) -> None:
+async def _preview_manual_candidate(message: Message, state: FSMContext, config: Config, candidate: WorkTimeCandidate) -> None:
     await state.update_data(work_time_manual_candidate=_candidate_to_state(candidate))
     await state.set_state(WorkTimeStates.waiting_manual_range_confirm)
+    await _send_manual_candidate_preview(
+        message,
+        config,
+        candidate,
+        prefix='Skontrolujte doplnenie pracovneho casu:',
+    )
+
+
+async def _send_manual_candidate_preview(
+    message: Message,
+    config: Config,
+    candidate: WorkTimeCandidate,
+    *,
+    prefix: str,
+) -> None:
     await answer_with_decision_keyboard(
         message,
-        'Skontrolujte doplnenie pracovneho casu:\n'
+        f'{prefix}\n'
         f'{format_candidate_preview(candidate, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, _telegram_id(message)))}\n\n'
+        'Schvalit, upravit alebo zrusit?',
+        approve_edit_cancel_keyboard(),
+    )
+
+
+async def _repeat_pending_manual_preview(message: Message, state: FSMContext, config: Config) -> None:
+    candidate = _candidate_from_state((await state.get_data()).get('work_time_manual_candidate'))
+    if candidate is None:
+        await state.clear()
+        await message.answer('Nahlad uz nie je dostupny. Skuste rozsah zadat znova.')
+        return
+    await _send_manual_candidate_preview(
+        message,
+        config,
+        candidate,
+        prefix='Mate rozpracovany nahlad doplnenia pracovneho casu. Najprv ho schvalte, upravte alebo zruste.',
+    )
+
+
+async def _repeat_pending_close_preview(message: Message, state: FSMContext, config: Config) -> None:
+    data = await state.get_data()
+    candidate = _candidate_from_state(data.get('work_time_close_candidate'))
+    telegram_id = _telegram_id(message)
+    open_day = None
+    try:
+        open_day_id = int(data.get('work_time_close_open_day_id'))
+    except (TypeError, ValueError):
+        open_day_id = None
+    if telegram_id is not None and open_day_id is not None:
+        open_day = WorkTimeService(config.db_path).get_day_by_id(open_day_id)
+        if open_day is not None and open_day.telegram_id != telegram_id:
+            open_day = None
+    if candidate is None or open_day is None:
+        await state.clear()
+        await message.answer('Nahlad uz nie je dostupny. Skuste uzavretie zadat znova.')
+        return
+    await answer_with_decision_keyboard(
+        message,
+        'Mate rozpracovany nahlad doplnenia pracovneho casu. Najprv ho schvalte, upravte alebo zruste.\n'
+        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, telegram_id))}\n\n'
         'Schvalit, upravit alebo zrusit?',
         approve_edit_cancel_keyboard(),
     )

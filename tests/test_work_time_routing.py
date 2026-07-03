@@ -3,13 +3,15 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from datetime import date
+from datetime import datetime, date
 from pathlib import Path
 
 from bot.config import Config
 from bot.handlers import voice
 from bot.handlers.work_time import (
     WorkTimeStates,
+    start_add_work_time_entry,
+    start_close_work_day,
     start_delete_work_time_month,
     start_generate_work_time_report,
     start_update_work_time_lunch_break,
@@ -17,6 +19,9 @@ from bot.handlers.work_time import (
     work_time_lunch_break_initial_choice,
     work_time_lunch_break_update_confirm,
     work_time_lunch_break_value,
+    work_time_close_preview_confirm,
+    work_time_manual_range_confirm,
+    work_time_manual_range_input,
 )
 from bot.services.db import init_db
 from bot.services.info_help import build_product_truth_guidance
@@ -32,9 +37,11 @@ class _DummyMessage:
         self.message_id = 88
         self.answers: list[str] = []
         self.documents: list[tuple[object, str | None]] = []
+        self.reply_markups: list[object | None] = []
 
     async def answer(self, text: str, **kwargs) -> None:
         self.answers.append(text)
+        self.reply_markups.append(kwargs.get('reply_markup'))
 
     async def answer_document(self, document, caption: str | None = None, **kwargs) -> None:
         self.documents.append((document, caption))
@@ -306,6 +313,84 @@ def test_lunch_break_update_and_disable_are_confirmation_gated(tmp_path: Path) -
     disabled = WorkTimeService(config.db_path).get_lunch_break_settings(telegram_id=1001)
     assert disabled.enabled is False
     assert disabled.minutes == 0
+
+
+def test_manual_preview_edit_then_vcera_input_returns_full_preview_and_buttons(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    initial = _DummyMessage('dnes 10 hodin')
+
+    asyncio.run(start_add_work_time_entry(message=initial, state=state, config=config, text=initial.text))
+    assert state.current_state == WorkTimeStates.waiting_manual_range_confirm.state
+
+    asyncio.run(work_time_manual_range_confirm(message=_DummyMessage('upravit'), state=state, config=config, canonical_decision='edit'))
+    assert state.current_state == WorkTimeStates.waiting_manual_range_input.state
+
+    corrected = _DummyMessage('včera od 6:00 do 16:30')
+    asyncio.run(work_time_manual_range_input(message=corrected, state=state, config=config))
+
+    assert state.current_state == WorkTimeStates.waiting_manual_range_confirm.state
+    assert 'Skontrolujte doplnenie pracovneho casu' in corrected.answers[-1]
+    assert 'Datum:' in corrected.answers[-1]
+    assert 'Prichod: 06:00' in corrected.answers[-1]
+    assert 'Odchod: 16:30' in corrected.answers[-1]
+    assert corrected.reply_markups[-1] is not None
+
+
+def test_unknown_manual_preview_decision_repeats_full_context_and_buttons(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    message = _DummyMessage('pracoval som dnes od 6:00 do 16:30')
+
+    asyncio.run(start_add_work_time_entry(message=message, state=state, config=config, text=message.text))
+    unclear = _DummyMessage('vytvor vykaz hodin za jul')
+    asyncio.run(work_time_manual_range_confirm(message=unclear, state=state, config=config, canonical_decision='unknown'))
+
+    assert state.current_state == WorkTimeStates.waiting_manual_range_confirm.state
+    assert 'Mate rozpracovany nahlad doplnenia pracovneho casu' in unclear.answers[-1]
+    assert 'Datum:' in unclear.answers[-1]
+    assert 'Prichod: 06:00' in unclear.answers[-1]
+    assert 'Odchod: 16:30' in unclear.answers[-1]
+    assert 'Hodiny:' in unclear.answers[-1]
+    assert unclear.reply_markups[-1] is not None
+    assert unclear.documents == []
+
+
+def test_unknown_close_preview_decision_repeats_full_context_and_buttons(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=60)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 2, 7, 12)).ok
+    state = _DummyState()
+    close = _DummyMessage('zatvor den 10 hodin')
+
+    asyncio.run(start_close_work_day(message=close, state=state, config=config, text=close.text))
+    unclear = _DummyMessage('pokaž dochadzku')
+    asyncio.run(work_time_close_preview_confirm(message=unclear, state=state, config=config, canonical_decision='unknown'))
+
+    assert state.current_state == WorkTimeStates.waiting_close_preview_confirm.state
+    assert 'Mate rozpracovany nahlad doplnenia pracovneho casu' in unclear.answers[-1]
+    assert 'Prichod: 07:12' in unclear.answers[-1]
+    assert 'Odchod: 18:12' in unclear.answers[-1]
+    assert 'Hodiny: 10 hod.' in unclear.answers[-1]
+    assert unclear.reply_markups[-1] is not None
+
+
+def test_manual_preview_missing_candidate_clears_state_and_asks_for_range(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState()
+    asyncio.run(state.set_state(WorkTimeStates.waiting_manual_range_confirm))
+    message = _DummyMessage('neviem')
+
+    asyncio.run(work_time_manual_range_confirm(message=message, state=state, config=config, canonical_decision='unknown'))
+
+    assert state.current_state is None
+    assert 'Nahlad uz nie je dostupny' in message.answers[-1]
+
 def test_delete_work_time_month_missing_month_asks_without_deleting(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)

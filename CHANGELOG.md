@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Polished OfficeFlow work-time manual/close preview recovery: edit now re-renders previews safely, unknown preview replies repeat full context with buttons, active voice/text preview states no longer fall through to report routing, duration-only rows have clearer wording, and UTF-8 yesterday variants are parsed without changing lunch net/gross math.
 - Added partial OfficeFlow work-time / dochadzka MVP with top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, `update_work_time_lunch_break`, and `delete_work_time_month`, additive user-scoped SQLite tables/settings, preview-confirmed time/lunch/delete writes, shared DecisionResolver route choices, Product Truth/InfoHelp coverage, monthly Excel report generation with net hours after configured lunch deduction, and confirmed deletion of selected-month DB records. Payroll, legal HR compliance, multi-employee attendance, export, and automatic time detection remain unsupported.
 
 ### Added

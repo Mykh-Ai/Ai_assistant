@@ -34,7 +34,7 @@ class _DummyMessage:
         self.message_id = 77
         self.from_user = type('_User', (), {'id': 111})()
 
-    async def answer(self, text: str) -> None:
+    async def answer(self, text: str, **kwargs) -> None:
         self.answers.append(text)
 
 
@@ -1456,6 +1456,38 @@ def test_voice_work_time_lunch_break_update_confirm_routes_to_shared_handler(mon
     )
 
     assert calls == ['ulozit']
+
+
+
+
+def test_voice_active_work_time_manual_preview_repeats_preview_instead_of_top_level_report(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState(WorkTimeStates.waiting_manual_range_confirm.state)
+    state.data['work_time_manual_candidate'] = {
+        'work_date': '2026-07-02',
+        'start_time': '06:00',
+        'end_time': '16:30',
+        'duration_minutes': None,
+        'close_mode': 'manual_range',
+    }
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'vytvor vykaz hodin za jul'
+
+    async def _generic(**kwargs) -> None:
+        raise AssertionError('active work-time preview must not fall back to top-level report routing')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _generic)
+
+    message = _DummyMessage()
+    asyncio.run(handle_voice(message, _DummyBot(), config, state))
+
+    assert state.current_state == WorkTimeStates.waiting_manual_range_confirm.state
+    assert 'Mate rozpracovany nahlad doplnenia pracovneho casu' in message.answers[-1]
+    assert 'Prichod: 06:00' in message.answers[-1]
+    assert 'Odchod: 16:30' in message.answers[-1]
 
 
 def test_voice_work_time_delete_month_confirmation_routes_to_shared_handler(monkeypatch, tmp_path: Path) -> None:
