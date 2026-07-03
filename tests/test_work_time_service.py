@@ -434,3 +434,66 @@ def test_lunch_math_regressions_stay_net_gross_safe(tmp_path: Path) -> None:
     assert closed.day is not None
     assert closed.day.end_time == '18:12'
     assert service.report_net_minutes(closed.day, settings=service.get_lunch_break_settings(telegram_id=1001)) == 600
+
+
+
+def test_manual_range_explicit_numeric_date_is_not_confused_with_times() -> None:
+    examples = [
+        '1.07.2026 pracoval od 6:00 do 11:00',
+        '1.07 pracoval od 6.00 do 11.00',
+        '1 na 7 z 6.00 do 11.00',
+    ]
+    for text in examples:
+        candidate = parse_manual_range_candidate(text, today=date(2026, 7, 3))
+        assert candidate is not None, text
+        assert candidate.work_date == date(2026, 7, 1)
+        assert candidate.start_time is not None
+        assert candidate.start_time.strftime('%H:%M') == '06:00'
+        assert candidate.end_time is not None
+        assert candidate.end_time.strftime('%H:%M') == '11:00'
+
+
+def test_duration_only_explicit_numeric_date_uses_that_date_not_today() -> None:
+    examples = [
+        '1.07.2026 pracoval 6 hodin',
+        '1.07 pracoval 6 hodin',
+        '1 na 7 pracoval 6 hodin',
+    ]
+    for text in examples:
+        candidate = parse_duration_entry_candidate(text, today=date(2026, 7, 3))
+        assert candidate is not None, text
+        assert candidate.work_date == date(2026, 7, 1)
+        assert candidate.duration_minutes == 360
+
+
+def test_llm_slot_extractor_accepts_cyrillic_natural_range(monkeypatch) -> None:
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'date': '2026-07-01',
+            'start_time': '06:00',
+            'end_time': '17:00',
+            'duration_minutes': None,
+        }
+    )
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+
+    candidate = asyncio.run(
+        resolve_work_time_entry_candidate(
+            user_input_text='1 ?? 7 ???????? ? ?????? ????? ?? ????? ??????',
+            api_key='sk-test',
+            model='gpt-4o',
+            today=date(2026, 7, 3),
+        )
+    )
+
+    assert candidate is not None
+    assert candidate.work_date == date(2026, 7, 1)
+    assert candidate.start_time is not None
+    assert candidate.start_time.strftime('%H:%M') == '06:00'
+    assert candidate.end_time is not None
+    assert candidate.end_time.strftime('%H:%M') == '17:00'
+    assert candidate.duration_minutes is None
+    assert _WorkTimeSlotOpenAIFake.last_payload is not None
+    prompt = _WorkTimeSlotOpenAIFake.last_payload
+    assert prompt['today_iso'] == '2026-07-03'

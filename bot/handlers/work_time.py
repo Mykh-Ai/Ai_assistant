@@ -125,16 +125,7 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
         await message.answer('Nemate otvoreny pracovny den. Ak chcete doplnit den spatne, napiste napriklad: pracoval som dnes od 5:30 do 17:00 alebo dnes 10 hodin.')
         return
 
-    candidate = parse_close_candidate(text, open_day=open_day)
-    if candidate is not None and candidate.close_mode == 'close_now' and _should_try_llm_work_time_slots(text):
-        llm_candidate = await resolve_work_time_entry_candidate(
-            user_input_text=text,
-            api_key=config.openai_api_key,
-            model=config.openai_llm_model,
-            open_day=open_day,
-        )
-        if llm_candidate is not None:
-            candidate = llm_candidate
+    candidate = await _resolve_close_candidate(text, config, open_day)
     if candidate is None or candidate.close_mode == 'close_now':
         result = service.close_open_day(
             telegram_id=telegram_id,
@@ -420,16 +411,7 @@ async def work_time_close_input(message: Message, state: FSMContext, config: Con
         await message.answer('Otvoreny pracovny den uz nie je dostupny.')
         return
     raw_text = message.text or ''
-    candidate = parse_close_candidate(raw_text, open_day=open_day)
-    if candidate is not None and candidate.close_mode == 'close_now' and _should_try_llm_work_time_slots(raw_text):
-        llm_candidate = await resolve_work_time_entry_candidate(
-            user_input_text=raw_text,
-            api_key=config.openai_api_key,
-            model=config.openai_llm_model,
-            open_day=open_day,
-        )
-        if llm_candidate is not None:
-            candidate = llm_candidate
+    candidate = await _resolve_close_candidate(raw_text, config, open_day)
     if candidate is None:
         await message.answer('Napiste cas odchodu alebo trvanie, napriklad: o 17:00 alebo 10 hodin.')
         return
@@ -692,14 +674,26 @@ async def _preview_delete_month(
 
 
 async def _resolve_manual_entry_candidate(text: str, config: Config) -> WorkTimeCandidate | None:
-    candidate = parse_manual_range_candidate(text) or parse_duration_entry_candidate(text)
-    if candidate is not None:
-        return candidate
-    return await resolve_work_time_entry_candidate(
+    llm_candidate = await resolve_work_time_entry_candidate(
         user_input_text=text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
     )
+    if llm_candidate is not None:
+        return llm_candidate
+    return parse_manual_range_candidate(text) or parse_duration_entry_candidate(text)
+
+
+async def _resolve_close_candidate(text: str, config: Config, open_day) -> WorkTimeCandidate | None:
+    llm_candidate = await resolve_work_time_entry_candidate(
+        user_input_text=text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        open_day=open_day,
+    )
+    if llm_candidate is not None:
+        return llm_candidate
+    return parse_close_candidate(text, open_day=open_day)
 
 
 def _effective_lunch_break_minutes_for_user(config: Config, telegram_id: int | None) -> int:

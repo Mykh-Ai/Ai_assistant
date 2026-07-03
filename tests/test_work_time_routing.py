@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import asyncio
 import inspect
 import json
@@ -99,6 +100,19 @@ class _TopLevelActionOpenAIFake:
     async def create(self, **kwargs):
         _TopLevelActionOpenAIFake.last_payload = json.loads(kwargs['messages'][1]['content'])
         return _FakeResponse(_TopLevelActionOpenAIFake.output)
+
+
+class _WorkTimeSlotOpenAIFake:
+    output = '{"canonical":"unknown"}'
+    last_payload: dict | None = None
+
+    def __init__(self, *, api_key: str) -> None:
+        self.api_key = api_key
+        self.chat = type('_Chat', (), {'completions': self})()
+
+    async def create(self, **kwargs):
+        _WorkTimeSlotOpenAIFake.last_payload = json.loads(kwargs['messages'][1]['content'])
+        return _FakeResponse(_WorkTimeSlotOpenAIFake.output)
 
 
 WORK_TIME_ALLOWED = [
@@ -390,6 +404,33 @@ def test_manual_preview_missing_candidate_clears_state_and_asks_for_range(tmp_pa
 
     assert state.current_state is None
     assert 'Nahlad uz nie je dostupny' in message.answers[-1]
+
+
+
+def test_manual_entry_uses_bounded_llm_before_duration_fallback_for_date_range(monkeypatch, tmp_path: Path) -> None:
+    config = replace(_config(tmp_path), openai_api_key='sk-test')
+    init_db(config.db_path)
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'date': '2026-07-01',
+            'start_time': '06:00',
+            'end_time': '11:00',
+            'duration_minutes': None,
+        }
+    )
+    _WorkTimeSlotOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+
+    message = _DummyMessage('1 na 7 pracoval 6 hodin do 11')
+    state = _DummyState()
+    asyncio.run(start_add_work_time_entry(message=message, state=state, config=config, text=message.text))
+
+    assert state.current_state == WorkTimeStates.waiting_manual_range_confirm.state
+    assert _WorkTimeSlotOpenAIFake.last_payload is not None
+    assert 'Prichod: 06:00' in message.answers[-1]
+    assert 'Odchod: 11:00' in message.answers[-1]
+    assert 'Typ: pocet hodin bez presneho prichodu/odchodu' not in message.answers[-1]
 
 def test_delete_work_time_month_missing_month_asks_without_deleting(tmp_path: Path) -> None:
     config = _config(tmp_path)

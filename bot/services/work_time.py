@@ -776,8 +776,8 @@ def is_lunch_break_disable_request(text: str) -> bool:
     return any(term in normalized for term in disable_terms) and any(term in normalized for term in lunch_terms)
 def parse_manual_range_candidate(text: str, *, today: date | None = None) -> WorkTimeCandidate | None:
     normalized = _normalize(text)
-    work_date = _resolve_relative_date(normalized, today=today)
-    matches = re.findall(r'\b(\d{1,2})(?::(\d{2}))?\b', normalized)
+    work_date, parse_text = _resolve_work_date_and_strip_explicit_date(normalized, today=today)
+    matches = re.findall(r'\b(\d{1,2})(?:(?::|\.)(\d{2}))?\b', parse_text)
     if len(matches) < 2:
         return None
     start = _parse_match_time(matches[0])
@@ -789,11 +789,12 @@ def parse_manual_range_candidate(text: str, *, today: date | None = None) -> Wor
 
 def parse_duration_entry_candidate(text: str, *, today: date | None = None) -> WorkTimeCandidate | None:
     normalized = _normalize(text)
-    duration_minutes = _parse_duration_minutes(normalized)
+    work_date, parse_text = _resolve_work_date_and_strip_explicit_date(normalized, today=today)
+    duration_minutes = _parse_duration_minutes(parse_text)
     if duration_minutes is None:
         return None
     return WorkTimeCandidate(
-        work_date=_resolve_relative_date(normalized, today=today),
+        work_date=work_date,
         duration_minutes=duration_minutes,
         close_mode='manual_duration',
     )
@@ -885,10 +886,10 @@ async def resolve_work_time_entry_candidate(
                         'Extract only candidate work-time slots; never claim anything was saved. '
                         'Allowed shape: {"canonical":"work_time_entry","date":"YYYY-MM-DD","start_time":"HH:MM|null","end_time":"HH:MM|null","duration_minutes":<integer|null>} '
                         'or {"canonical":"unknown"}. '
-                        'If the user says today/dnes/ukrainian today, use today_iso. If a work day is already open, use open_day_date. '
-                        'Verbal hours such as "z piatej do deviatej", "from fifth morning to ninth morning", or "nine and a half hours" must be normalized to 24-hour HH:MM or duration minutes when clear. '
-                        'For duration-only requests like "zapis dnes 10 hodin" or "close today nine and a half hours", set start_time and end_time to null and duration_minutes to the total. '
-                        'Use unknown when date/time/duration is ambiguous.'
+                        'If the user says today/dnes/ukrainian today, use today_iso. If the user gives an explicit date such as 1.07, 1.07.2026, or 1 na 7, normalize it to YYYY-MM-DD using today_iso year when year is missing. If a work day is already open, use open_day_date. '
+                        'Verbal ranges such as "z piatej do deviatej", "from fifth morning to ninth morning", "z siestej rano do piatej vecer", or Cyrillic equivalents must be normalized to start_time and end_time in 24-hour HH:MM when clear. '
+                        'For duration-only requests like "zapis dnes 10 hodin" or "close today nine and a half hours", set start_time and end_time to null and duration_minutes to the total. Do not convert a range into duration-only just because one number looks like hours. '
+                        'If the input is a question about whether the bot can do work time tracking, return unknown rather than an executable work-time entry. Use unknown when date/time/duration is ambiguous.'
                     ),
                 },
                 {
@@ -1140,6 +1141,33 @@ def _parse_match_time(match: tuple[str, str]) -> time | None:
         return None
     return time(hour=hour, minute=minute)
 
+
+def _resolve_work_date_and_strip_explicit_date(normalized: str, *, today: date | None = None) -> tuple[date, str]:
+    current = today or date.today()
+    explicit = _parse_explicit_work_date(normalized, today=current)
+    if explicit is not None:
+        work_date, span = explicit
+        return work_date, f'{normalized[:span[0]]} {normalized[span[1]:]}'
+    return _resolve_relative_date(normalized, today=current), normalized
+
+
+def _parse_explicit_work_date(normalized: str, *, today: date) -> tuple[date, tuple[int, int]] | None:
+    patterns = (
+        r'\b(?P<day>0?[1-9]|[12]\d|3[01])\s*[./-]\s*(?P<month>0?[1-9]|1[0-2])(?:\s*[./-]\s*(?P<year>(?:19|20)\d{2}))?\b',
+        r'\b(?P<day>0?[1-9]|[12]\d|3[01])\s+(?:na|\u0437\u0430|\u043d\u0430)\s+(?P<month>0?[1-9]|1[0-2])(?:\s+(?P<year>(?:19|20)\d{2}))?\b',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, normalized)
+        if not match:
+            continue
+        day = int(match.group('day'))
+        month = int(match.group('month'))
+        year = int(match.group('year') or today.year)
+        try:
+            return date(year, month, day), match.span()
+        except ValueError:
+            return None
+    return None
 
 def _resolve_relative_date(normalized: str, *, today: date | None = None) -> date:
     current = today or date.today()

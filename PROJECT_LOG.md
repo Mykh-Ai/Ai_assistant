@@ -1,3 +1,24 @@
+## 2026-07-03 - OfficeFlow Work-Time Bounded LLM Slot Extraction
+
+Summary:
+- Moved work-time manual-entry and close-day slot extraction to bounded LLM-first normalization after the top-level resolver has already selected the work-time action.
+- The LLM may return only `work_time_entry` slots (`date`, `start_time`, `end_time`, `duration_minutes`) or `unknown`; Python validates the date/time/duration shape, previews the candidate, applies lunch/net rules where relevant, and saves only after approval.
+- Added prompt guidance for explicit numeric dates (`1.07`, `1.07.2026`, `1 na 7`), multilingual/verbal ranges, duration-only requests, and capability-style questions that should return `unknown` instead of becoming executable entries.
+- Kept deterministic parser support as fallback for missing API key, bounded-LLM errors, and focused local/dev tests, not as the primary natural-language interpretation layer.
+
+Docs/contracts read:
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/llm/Bounded_Resolver_Prompt_Template.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `bot/handlers/work_time.py`, `bot/services/work_time.py`, and focused work-time tests.
+
+Preflight/status:
+- Touched scopes: LLM slot extraction, FSM work-time manual/close entry, fallback parser hardening, canonical/in-action registry docs, changelog, project log, tests.
+- Current implementation status: `partial` OfficeFlow work-time MVP.
+- AI maturity level: bounded Python-owned action execution with LLM slot canonicalization inside an already-selected work-time action; no new Product Truth capability, customization request, or self-learning behavior added.
+- Persisted data impact: no schema migration and no existing data rewrite; only new candidate normalization before the existing preview/confirmation write path.
+- Product/user journey proof: natural text like `1 na 7 z 6.00 do 11.00`, `1.07.2026 pracoval 6 hodin`, and Cyrillic-style natural ranges resolve to the intended date/time/duration candidate before preview instead of defaulting to today's duration entry.
+- Self-learning hooks considered: none added; slot extraction is bounded per-request normalization, not learned aliases.
+
+Verification:
+- Pending in this session.
 ## 2026-07-03 - OfficeFlow Work-Time Preview/Edit UX Polish
 
 Summary:
@@ -69,7 +90,10 @@ Preflight/status:
 - Self-learning hooks considered: none added; delete wording is a canonical resolver action, not learned aliases.
 
 Verification:
-- Pending in this session.
+- `python -m pytest -q tests\\test_work_time_service.py tests\\test_work_time_routing.py tests\\test_voice_state_routing.py tests\\test_decision_resolver.py` - 754 passed.
+- `python -m pytest -q tests\\test_invoice_intent_prerouter.py tests\\test_info_help.py tests\\test_product_truth.py` - 344 passed.
+- `='utf-8'; python -m pytest -q` - 2019 passed, 7 subtests passed.
+- `git diff --check` - clean.
 
 ## 2026-07-01 - OfficeFlow Work-Time / Dochadzka MVP
 
