@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import json
+import logging
+import os
 import re
 import sqlite3
 import unicodedata
@@ -27,6 +30,9 @@ SOURCE_CLOSED_LIVE = 'closed_live'
 SOURCE_MANUAL_RANGE = 'manual_range'
 SOURCE_MANUAL_DURATION = 'manual_duration'
 SOURCE_GENERATED_CALENDAR = 'generated_calendar'
+DEFAULT_WORK_TIME_TIMEZONE = 'Europe/Bratislava'
+_WORK_TIME_TIMEZONE_ENV = 'OFFICEFLOW_TIMEZONE'
+_LOGGER = logging.getLogger(__name__)
 
 
 MONTH_NAMES_SK = {
@@ -826,7 +832,7 @@ def parse_close_candidate(text: str, *, open_day: WorkTimeDay, today: date | Non
 
 
 def parse_report_month(text: str, *, today: date | None = None) -> tuple[int, int]:
-    current = today or date.today()
+    current = today or work_time_local_date()
     normalized = _normalize(text)
     explicit_year = re.findall(r'\b((?:19|20)\d{2})\b', normalized)
     year = int(explicit_year[-1]) if explicit_year else current.year
@@ -840,7 +846,7 @@ def parse_report_month(text: str, *, today: date | None = None) -> tuple[int, in
 
 
 def parse_explicit_month(text: str, *, today: date | None = None) -> tuple[int, int] | None:
-    current = today or date.today()
+    current = today or work_time_local_date()
     normalized = _normalize(text)
     explicit_year = re.findall(r'\b((?:19|20)\d{2})\b', normalized)
     year = int(explicit_year[-1]) if explicit_year else current.year
@@ -870,7 +876,7 @@ async def resolve_work_time_entry_candidate(
     cleaned = user_input_text.strip()
     if not cleaned or not api_key or not api_key.startswith('sk-'):
         return None
-    current = today or date.today()
+    current = today or work_time_local_date()
     try:
         client = AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
@@ -1065,9 +1071,41 @@ def _minutes_between(start_value: str, end_value: str) -> int | None:
     return int((end_dt - start_dt).total_seconds() // 60)
 
 
-def _local_now(value: datetime | None = None) -> datetime:
-    return (value or datetime.now()).replace(second=0, microsecond=0)
+def work_time_timezone_name() -> str:
+    return os.getenv(_WORK_TIME_TIMEZONE_ENV, '').strip() or DEFAULT_WORK_TIME_TIMEZONE
 
+
+def work_time_zoneinfo() -> ZoneInfo:
+    timezone_name = work_time_timezone_name()
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        _LOGGER.warning(
+            'Invalid %s=%r; falling back to %s for OfficeFlow work-time clock',
+            _WORK_TIME_TIMEZONE_ENV,
+            timezone_name,
+            DEFAULT_WORK_TIME_TIMEZONE,
+        )
+        return ZoneInfo(DEFAULT_WORK_TIME_TIMEZONE)
+
+
+def _runtime_now_utc() -> datetime:
+    return datetime.now(UTC)
+
+
+def work_time_local_now(value: datetime | None = None) -> datetime:
+    source = value if value is not None else _runtime_now_utc()
+    if source.tzinfo is None:
+        return source.replace(second=0, microsecond=0)
+    return source.astimezone(work_time_zoneinfo()).replace(second=0, microsecond=0, tzinfo=None)
+
+
+def work_time_local_date(value: datetime | None = None) -> date:
+    return work_time_local_now(value).date()
+
+
+def _local_now(value: datetime | None = None) -> datetime:
+    return work_time_local_now(value)
 
 def _format_time(value: time) -> str:
     return value.replace(second=0, microsecond=0).strftime('%H:%M')
@@ -1160,7 +1198,7 @@ def _parse_match_time(match: tuple[str, str]) -> time | None:
 
 
 def _resolve_work_date_and_strip_explicit_date(normalized: str, *, today: date | None = None) -> tuple[date, str]:
-    current = today or date.today()
+    current = today or work_time_local_date()
     explicit = _parse_explicit_work_date(normalized, today=current)
     if explicit is not None:
         work_date, span = explicit
@@ -1187,7 +1225,7 @@ def _parse_explicit_work_date(normalized: str, *, today: date) -> tuple[date, tu
     return None
 
 def _resolve_relative_date(normalized: str, *, today: date | None = None) -> date:
-    current = today or date.today()
+    current = today or work_time_local_date()
     yesterday_terms = {
         'vcera',
         'vchera',

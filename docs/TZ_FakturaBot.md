@@ -1468,6 +1468,7 @@ Current status: `partial`.
 Implemented runtime slice:
 - top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, `update_work_time_lunch_break`, and `delete_work_time_month`;
 - Telegram text and voice entry through the existing bounded top-level action router;
+- work-time runtime `now`/`today`/`yesterday`/default report month uses `OFFICEFLOW_TIMEZONE`, default `Europe/Bratislava`, not the server/container UTC clock;
 - `/dochadzka` help command;
 - additive SQLite storage in `work_time_days`, `work_time_events`, and `work_time_settings` scoped by `telegram_id`; `delete_work_time_month` removes only the current user's rows/events for the selected month after preview confirmation;
 - additive `work_time_days` columns for gross minutes, lunch-break snapshot, net-duration override, and close input mode; existing rows are not rewritten;

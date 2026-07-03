@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from datetime import datetime, date
+from datetime import UTC, datetime, date
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -13,6 +13,7 @@ from bot.services.work_time import (
     WorkTimeCandidate,
     WorkTimeDay,
     WorkTimeService,
+    work_time_local_date,
     format_candidate_preview,
     format_day_summary,
     parse_close_candidate,
@@ -687,3 +688,104 @@ def test_parser_fallback_does_not_expand_to_broad_natural_language() -> None:
 
     for text in unsupported_examples:
         assert parse_manual_range_candidate(text, today=date(2026, 7, 3)) is None, text
+
+def test_open_day_uses_bratislava_time_by_default(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv('OFFICEFLOW_TIMEZONE', raising=False)
+    monkeypatch.setattr(
+        'bot.services.work_time._runtime_now_utc',
+        lambda: datetime(2026, 7, 3, 9, 37, tzinfo=UTC),
+    )
+    config_db = tmp_path / 'work_time.db'
+    init_db(config_db)
+
+    result = WorkTimeService(config_db).open_day(telegram_id=1001)
+
+    assert result.ok
+    assert result.day is not None
+    assert result.day.work_date == '2026-07-03'
+    assert result.day.start_time == '11:37'
+    assert result.day.start_time != '09:37'
+
+
+def test_close_now_uses_bratislava_time_by_default(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv('OFFICEFLOW_TIMEZONE', raising=False)
+    config_db = tmp_path / 'work_time.db'
+    init_db(config_db)
+    service = WorkTimeService(config_db)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 3, 7, 0)).ok
+    monkeypatch.setattr(
+        'bot.services.work_time._runtime_now_utc',
+        lambda: datetime(2026, 7, 3, 15, 45, tzinfo=UTC),
+    )
+
+    result = WorkTimeService(config_db).close_open_day(telegram_id=1001)
+
+    assert result.ok
+    assert result.day is not None
+    assert result.day.end_time == '17:45'
+    assert result.day.end_time != '15:45'
+
+
+def test_open_day_uses_bratislava_date_boundary(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv('OFFICEFLOW_TIMEZONE', raising=False)
+    monkeypatch.setattr(
+        'bot.services.work_time._runtime_now_utc',
+        lambda: datetime(2026, 7, 3, 22, 30, tzinfo=UTC),
+    )
+    config_db = tmp_path / 'work_time.db'
+    init_db(config_db)
+
+    result = WorkTimeService(config_db).open_day(telegram_id=1001)
+
+    assert result.ok
+    assert result.day is not None
+    assert result.day.work_date == '2026-07-04'
+    assert result.day.start_time == '00:30'
+
+
+def test_llm_today_iso_uses_bratislava_date(monkeypatch) -> None:
+    monkeypatch.delenv('OFFICEFLOW_TIMEZONE', raising=False)
+    monkeypatch.setattr(
+        'bot.services.work_time._runtime_now_utc',
+        lambda: datetime(2026, 7, 3, 22, 30, tzinfo=UTC),
+    )
+    _WorkTimeSlotOpenAIFake.output = json.dumps({'canonical': 'unknown'})
+    _WorkTimeSlotOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+
+    candidate = asyncio.run(
+        resolve_work_time_entry_candidate(
+            user_input_text='dnes 8 hodin',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert candidate is None
+    assert _WorkTimeSlotOpenAIFake.last_payload is not None
+    assert _WorkTimeSlotOpenAIFake.last_payload['today_iso'] == '2026-07-04'
+
+
+def test_parser_relative_date_and_report_month_use_bratislava_date(monkeypatch) -> None:
+    monkeypatch.delenv('OFFICEFLOW_TIMEZONE', raising=False)
+    monkeypatch.setattr(
+        'bot.services.work_time._runtime_now_utc',
+        lambda: datetime(2026, 7, 3, 22, 30, tzinfo=UTC),
+    )
+
+    yesterday = parse_manual_range_candidate('vcera od 6:00 do 16:30')
+
+    assert yesterday is not None
+    assert yesterday.work_date == date(2026, 7, 3)
+    assert parse_report_month('vytvor vykaz') == (2026, 7)
+
+
+def test_invalid_officeflow_timezone_falls_back_with_warning(monkeypatch, caplog) -> None:
+    monkeypatch.setenv('OFFICEFLOW_TIMEZONE', 'Invalid/Timezone')
+    monkeypatch.setattr(
+        'bot.services.work_time._runtime_now_utc',
+        lambda: datetime(2026, 7, 3, 22, 30, tzinfo=UTC),
+    )
+
+    assert work_time_local_date() == date(2026, 7, 4)
+    assert 'Invalid OFFICEFLOW_TIMEZONE' in caplog.text

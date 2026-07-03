@@ -1,3 +1,27 @@
+## 2026-07-03 - OfficeFlow Work-Time Bratislava Runtime Clock
+
+Summary:
+- Fixed OfficeFlow work-time runtime `now`/`today` semantics to use IANA timezone `Europe/Bratislava` by default through `OFFICEFLOW_TIMEZONE`.
+- Added centralized work-time clock helpers in `bot/services/work_time.py` for local now/date and timezone resolution, with warning + fallback to Bratislava on invalid timezone values.
+- Updated open-day, close-now, relative date parsing, default report month, and bounded work-time slot `today_iso` to use the work-time local date/time instead of server/container UTC.
+- Preserved parser dictionaries, LLM intent routing, invoice/blocek/accounting flows, DB schema, close-now safety, and lunch math.
+
+Docs/contracts read:
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `docs/TZ_FakturaBot.md`, `bot/services/work_time.py`, `bot/handlers/work_time.py`, `bot/handlers/voice.py`, and focused work-time tests.
+
+Preflight/status:
+- Touched scopes: work-time runtime clock, bounded slot extraction payload date, strict parser default date, report month default, env examples, README, TZ, canonical registry, changelog, project log, tests.
+- Current implementation status: `partial` OfficeFlow work-time MVP.
+- AI maturity level: unchanged; Python-owned runtime clock feeding bounded LLM slot context, no new LLM authority.
+- Persisted data impact: no schema migration and no existing data rewrite; new writes use Bratislava local clock going forward.
+- Product/user journey proof: UTC `2026-07-03T09:37:00Z` opens as `11:37`, UTC `2026-07-03T15:45:00Z` close-now saves `17:45`, and UTC midnight boundary `2026-07-03T22:30:00Z` resolves to local date `2026-07-04`.
+- Self-learning hooks considered: none; this is runtime clock configuration, not learned behavior.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py tests\test_voice_state_routing.py tests\test_decision_resolver.py` - 771 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py tests\test_info_help.py tests\test_product_truth.py` - 344 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2036 passed, 7 subtests passed.
+- `git diff --check` - clean.
 ## 2026-07-03 - OfficeFlow Work-Time Close-Now Safety Fix
 
 Summary:
