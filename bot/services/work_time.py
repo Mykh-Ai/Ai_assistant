@@ -1126,11 +1126,7 @@ def _excel_duration_value(total_minutes: int) -> float:
 def _format_duration(total_minutes: int) -> str:
     total_minutes = int(total_minutes)
     hours, minutes = divmod(total_minutes, 60)
-    if minutes == 0:
-        return f'{hours} hod.'
-    decimal_hours = total_minutes / 60
-    value = f'{decimal_hours:.2f}'.rstrip('0').rstrip('.').replace('.', ',')
-    return f'{value} hod.'
+    return f'{hours}:{minutes:02d}'
 
 
 def _parse_duration_minutes(normalized: str) -> int | None:

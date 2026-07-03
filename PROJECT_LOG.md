@@ -1,3 +1,13 @@
+## 2026-07-03 - OfficeFlow Work-Time Preview h:mm Duration Display
+
+Summary:
+- Fixed Telegram work-time preview, saved-day summaries, and month/delete summaries to display durations as `h:mm` instead of decimal-hour labels such as `8,4 hod.`.
+- Kept stored `total_minutes`, lunch math, duration-only semantics, Excel `[h]:mm` report values, parser/LLM/routing/timezone/DB/invoice/accounting flows unchanged.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py` - 67 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2038 passed, 7 subtests passed.
+
 ## 2026-07-03 - OfficeFlow Work-Time Excel h:mm Duration Display
 
 Summary:
@@ -7,7 +17,8 @@ Summary:
 
 Verification:
 - `python -m pytest -q tests\test_work_time_service.py` - 36 passed.
-- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py` - 66 passed.
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py` - 67 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2038 passed, 7 subtests passed.
 - `python -m pytest -q tests\test_voice_state_routing.py tests\test_decision_resolver.py` - 706 passed.
 - `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2037 passed, 7 subtests passed.
 - `git diff --check` - clean.

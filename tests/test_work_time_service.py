@@ -131,9 +131,9 @@ def test_duration_only_entry_stores_total_without_start_end(tmp_path: Path) -> N
         'Typ: pocet hodin bez presneho prichodu/odchodu\n'
         'Prichod: -\n'
         'Odchod: -\n'
-        'Hodiny: 9,5 hod.'
+        'Hodiny: 9:30'
     )
-    assert format_day_summary(result.day) == '02.07.2026: bez presneho prichodu/odchodu (9,5 hod.)'
+    assert format_day_summary(result.day) == '02.07.2026: bez presneho prichodu/odchodu (9:30)'
 
 
 
@@ -354,11 +354,21 @@ def test_report_clamps_break_larger_than_explicit_gross_to_zero(tmp_path: Path) 
     report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports')
     _assert_excel_duration_cell(load_workbook(report.report_path).active['D5'], minutes=0, display='0:00')
 
-def test_format_duration_uses_compact_hour_labels() -> None:
-    assert _format_duration(540) == '9 hod.'
-    assert _format_duration(570) == '9,5 hod.'
-    assert _format_duration(6000) == '100 hod.'
-    assert _format_duration(6030) == '100,5 hod.'
+def test_format_duration_uses_h_mm_labels() -> None:
+    assert _format_duration(504) == '8:24'
+    assert _format_duration(540) == '9:00'
+    assert _format_duration(570) == '9:30'
+    assert _format_duration(6000) == '100:00'
+    assert _format_duration(6030) == '100:30'
+
+
+def test_duration_preview_uses_h_mm_instead_of_decimal_hours() -> None:
+    candidate = WorkTimeCandidate(work_date=date(2026, 7, 3), duration_minutes=504, close_mode='manual_duration')
+
+    preview = format_candidate_preview(candidate)
+
+    assert 'Hodiny: 8:24' in preview
+    assert '8,4 hod.' not in preview
 
 
 def test_parsers_separate_duration_from_clock_time() -> None:
@@ -448,7 +458,7 @@ def test_llm_slot_extractor_normalizes_duration_only(monkeypatch) -> None:
         'Typ: pocet hodin bez presneho prichodu/odchodu\n'
         'Prichod: -\n'
         'Odchod: -\n'
-        'Hodiny: 9,5 hod.'
+        'Hodiny: 9:30'
     )
 
 

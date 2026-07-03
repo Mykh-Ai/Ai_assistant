@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Changed OfficeFlow work-time Telegram preview/saved/month summaries from decimal-hour labels such as `8,4 hod.` to `h:mm` labels such as `8:24`, keeping stored minutes and lunch math unchanged.
 - Changed OfficeFlow work-time monthly Excel report duration cells from decimal-hour text to Excel duration values formatted as `[h]:mm`, with header `Hodiny (h:mm)` and totals that can exceed 24 hours.
 - Fixed OfficeFlow work-time runtime clock to use `OFFICEFLOW_TIMEZONE` with default `Europe/Bratislava` for open/close-now, today/yesterday, default report month, and bounded slot `today_iso`; invalid timezone values log a warning and fall back to Bratislava instead of silently using UTC.
 - Fixed OfficeFlow work-time close-now safety: unclear close input no longer closes an open day, bounded slot extraction now requires explicit mode values, range endpoints beat duration-only interpretation, and strict parser fallback remains limited to numeric HH:MM/HH.MM ranges.

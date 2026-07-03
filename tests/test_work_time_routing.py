@@ -390,7 +390,7 @@ def test_unknown_close_preview_decision_repeats_full_context_and_buttons(tmp_pat
     assert 'Mate rozpracovany nahlad doplnenia pracovneho casu' in unclear.answers[-1]
     assert 'Prichod: 07:12' in unclear.answers[-1]
     assert 'Odchod: 18:12' in unclear.answers[-1]
-    assert 'Hodiny: 10 hod.' in unclear.answers[-1]
+    assert 'Hodiny: 10:00' in unclear.answers[-1]
     assert unclear.reply_markups[-1] is not None
 
 
@@ -577,7 +577,7 @@ def test_close_by_duration_previews_and_saves_only_after_approve(monkeypatch, tm
     assert WorkTimeService(config.db_path).get_open_day(telegram_id=1001) is not None
     assert 'Prichod: 07:12' in message.answers[-1]
     assert 'Odchod: 18:12' in message.answers[-1]
-    assert 'Hodiny: 10 hod.' in message.answers[-1]
+    assert 'Hodiny: 10:00' in message.answers[-1]
 
     asyncio.run(work_time_close_preview_confirm(message=_DummyMessage('schvalit'), state=state, config=config, canonical_decision='approve'))
     day = WorkTimeService(config.db_path).get_day(telegram_id=1001, work_date='2026-07-03')
