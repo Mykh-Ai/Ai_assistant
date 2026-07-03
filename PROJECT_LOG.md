@@ -1,3 +1,29 @@
+## 2026-07-03 - OfficeFlow Work-Time Close-Now Safety Fix
+
+Summary:
+- Fixed the post-af03b94 close-day safety gap: unclear close input now returns a clarification prompt and never falls through to `close_now`.
+- Added explicit `mode` support to bounded work-time slot extraction (`manual_range`, `manual_duration`, `close_at_time`, `close_with_duration`, `close_now`, `unknown`) and made missing/unknown/invalid modes fail safe.
+- Kept broad natural-language interpretation in the bounded LLM layer; strict parser fallback now accepts numeric HH:MM/HH.MM ranges only and does not learn verbal/Cyrillic broad phrase dictionaries.
+- Preserved preview-before-save, DecisionResolver approve/edit/cancel, lunch net/gross math, delete-month flow, Product Truth, InfoHelp, invoice, blocek/accounting, and voice routing boundaries.
+
+Docs/contracts read:
+- `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/llm/Bounded_Resolver_Prompt_Template.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `bot/handlers/work_time.py`, `bot/services/work_time.py`, `bot/handlers/voice.py`, and focused work-time/voice/decision tests.
+
+Preflight/status:
+- Touched scopes: LLM slot extraction, close-day FSM safety, strict parser fallback, work-time routing tests, service tests, canonical/in-action registry docs, changelog, project log.
+- Current implementation status: `partial` OfficeFlow work-time MVP.
+- AI maturity level: bounded Python-owned action execution with LLM slot canonicalization inside already-selected work-time actions; no new Product Truth capability, customization request, or self-learning behavior added.
+- Persisted data impact: no schema migration and no existing data rewrite; the change prevents accidental close writes and preserves the existing confirmation-gated write path.
+- Product/user journey proof: unclear close text keeps the day open, explicit `teraz` closes now, exact close time and close duration show preview until approve, and Cyrillic natural ranges from the bounded LLM stay manual ranges rather than duration-only entries.
+- Self-learning hooks considered: none added; slot extraction is bounded per-request normalization, not learned aliases.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py tests\test_voice_state_routing.py tests\test_decision_resolver.py` - 765 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py tests\test_info_help.py tests\test_product_truth.py` - 344 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2030 passed, 7 subtests passed.
+- `git diff --check` - clean.
+- `rg -n "work_time|dochadz|zatvor|teraz|od 6|do 11|manual_range|close_now" bot\handlers\voice.py` - only state dispatch references, no work-time phrase dictionary.
+
 ## 2026-07-03 - OfficeFlow Work-Time Bounded LLM Slot Extraction
 
 Summary:
@@ -18,7 +44,10 @@ Preflight/status:
 - Self-learning hooks considered: none added; slot extraction is bounded per-request normalization, not learned aliases.
 
 Verification:
-- Pending in this session.
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py tests\test_voice_state_routing.py tests\test_decision_resolver.py` - 754 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py tests\test_info_help.py tests\test_product_truth.py` - 344 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2019 passed, 7 subtests passed.
+- `git diff --check` - clean.
 ## 2026-07-03 - OfficeFlow Work-Time Preview/Edit UX Polish
 
 Summary:

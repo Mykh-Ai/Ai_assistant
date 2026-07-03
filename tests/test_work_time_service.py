@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 from bot.services.db import init_db
 from bot.services.work_time import (
     WorkTimeCandidate,
+    WorkTimeDay,
     WorkTimeService,
     format_candidate_preview,
     format_day_summary,
@@ -335,6 +336,7 @@ def test_llm_slot_extractor_normalizes_human_spoken_range(monkeypatch) -> None:
     _WorkTimeSlotOpenAIFake.output = json.dumps(
         {
             'canonical': 'work_time_entry',
+            'mode': 'manual_range',
             'date': '2026-07-02',
             'start_time': '05:00',
             'end_time': '09:00',
@@ -366,6 +368,7 @@ def test_llm_slot_extractor_normalizes_duration_only(monkeypatch) -> None:
     _WorkTimeSlotOpenAIFake.output = json.dumps(
         {
             'canonical': 'work_time_entry',
+            'mode': 'manual_duration',
             'date': '2026-07-02',
             'start_time': None,
             'end_time': None,
@@ -441,6 +444,7 @@ def test_manual_range_explicit_numeric_date_is_not_confused_with_times() -> None
     examples = [
         '1.07.2026 pracoval od 6:00 do 11:00',
         '1.07 pracoval od 6.00 do 11.00',
+        '1.07 od 6:00 do 11:00',
         '1 na 7 z 6.00 do 11.00',
     ]
     for text in examples:
@@ -470,6 +474,7 @@ def test_llm_slot_extractor_accepts_cyrillic_natural_range(monkeypatch) -> None:
     _WorkTimeSlotOpenAIFake.output = json.dumps(
         {
             'canonical': 'work_time_entry',
+            'mode': 'manual_range',
             'date': '2026-07-01',
             'start_time': '06:00',
             'end_time': '17:00',
@@ -497,3 +502,188 @@ def test_llm_slot_extractor_accepts_cyrillic_natural_range(monkeypatch) -> None:
     assert _WorkTimeSlotOpenAIFake.last_payload is not None
     prompt = _WorkTimeSlotOpenAIFake.last_payload
     assert prompt['today_iso'] == '2026-07-03'
+
+
+def test_close_parser_requires_explicit_now_or_strict_value() -> None:
+    day = WorkTimeDay(
+        id=1,
+        telegram_id=1001,
+        work_date='2026-07-03',
+        start_time='07:00',
+        end_time=None,
+        total_minutes=None,
+        status='open',
+        source='opened_live',
+        note=None,
+    )
+
+    assert parse_close_candidate('neviem ako vcera', open_day=day) is None
+    assert parse_close_candidate('zatvor pracovny den teraz', open_day=day).close_mode == 'close_now'
+    assert parse_close_candidate('zatvor den o 17:00', open_day=day).close_mode == 'close_at_time'
+    assert parse_close_candidate('zatvor den 10 hodin', open_day=day).close_mode == 'close_with_duration'
+
+
+def test_strict_parser_fallback_yesterday_range_keeps_range() -> None:
+    candidate = parse_manual_range_candidate('vcera od 6:00 do 16:30', today=date(2026, 7, 3))
+
+    assert candidate is not None
+    assert candidate.work_date == date(2026, 7, 2)
+    assert candidate.start_time is not None
+    assert candidate.start_time.strftime('%H:%M') == '06:00'
+    assert candidate.end_time is not None
+    assert candidate.end_time.strftime('%H:%M') == '16:30'
+    assert candidate.duration_minutes is None
+    assert candidate.close_mode == 'manual_range'
+
+
+def test_llm_slot_extractor_mode_validation_fails_safe(monkeypatch) -> None:
+    invalid_outputs = [
+        {
+            'canonical': 'work_time_entry',
+            'date': '2026-07-01',
+            'start_time': '06:00',
+            'end_time': '11:00',
+            'duration_minutes': None,
+        },
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'manual_range',
+            'date': '2026-07-01',
+            'start_time': '06:00',
+            'end_time': None,
+            'duration_minutes': None,
+        },
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'close_at_time',
+            'date': None,
+            'start_time': None,
+            'end_time': '25:99',
+            'duration_minutes': None,
+        },
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'manual_duration',
+            'date': '2026-07-01',
+            'start_time': None,
+            'end_time': None,
+            'duration_minutes': 0,
+        },
+        {'canonical': 'work_time_entry', 'mode': 'unknown'},
+    ]
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+
+    for output in invalid_outputs:
+        _WorkTimeSlotOpenAIFake.output = json.dumps(output)
+        candidate = asyncio.run(
+            resolve_work_time_entry_candidate(
+                user_input_text='work time input',
+                api_key='sk-test',
+                model='gpt-4o',
+                today=date(2026, 7, 3),
+            )
+        )
+        assert candidate is None, output
+
+
+def test_llm_slot_extractor_mode_close_variants(monkeypatch) -> None:
+    open_day = WorkTimeDay(
+        id=1,
+        telegram_id=1001,
+        work_date='2026-07-03',
+        start_time='07:00',
+        end_time=None,
+        total_minutes=None,
+        status='open',
+        source='opened_live',
+        note=None,
+    )
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'close_now',
+            'date': None,
+            'start_time': None,
+            'end_time': None,
+            'duration_minutes': None,
+        }
+    )
+    close_now = asyncio.run(
+        resolve_work_time_entry_candidate(
+            user_input_text='zatvor teraz',
+            api_key='sk-test',
+            model='gpt-4o',
+            today=date(2026, 7, 3),
+            open_day=open_day,
+        )
+    )
+    assert close_now is not None
+    assert close_now.close_mode == 'close_now'
+    assert close_now.needs_confirmation is False
+
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'close_with_duration',
+            'date': None,
+            'start_time': None,
+            'end_time': None,
+            'duration_minutes': 600,
+        }
+    )
+    close_duration = asyncio.run(
+        resolve_work_time_entry_candidate(
+            user_input_text='zatvor 10 hodin',
+            api_key='sk-test',
+            model='gpt-4o',
+            today=date(2026, 7, 3),
+            open_day=open_day,
+        )
+    )
+    assert close_duration is not None
+    assert close_duration.close_mode == 'close_with_duration'
+    assert close_duration.duration_minutes == 600
+
+
+def test_llm_slot_extractor_cyrillic_range_mode_beats_duration(monkeypatch) -> None:
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'manual_range',
+            'date': '2026-07-02',
+            'start_time': '06:00',
+            'end_time': '11:00',
+            'duration_minutes': None,
+        }
+    )
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+
+    candidate = asyncio.run(
+        resolve_work_time_entry_candidate(
+            user_input_text='вчора од 6-ї до 11-ї',
+            api_key='sk-test',
+            model='gpt-4o',
+            today=date(2026, 7, 3),
+        )
+    )
+
+    assert candidate is not None
+    assert candidate.work_date == date(2026, 7, 2)
+    assert candidate.start_time is not None
+    assert candidate.start_time.strftime('%H:%M') == '06:00'
+    assert candidate.end_time is not None
+    assert candidate.end_time.strftime('%H:%M') == '11:00'
+    assert candidate.duration_minutes is None
+    assert candidate.close_mode == 'manual_range'
+
+def test_parser_fallback_does_not_expand_to_broad_natural_language() -> None:
+    unsupported_examples = [
+        'од 6-ї до 11-ї',
+        'z siestej do jedenastej',
+        'з шостої до одинадцятої',
+    ]
+
+    for text in unsupported_examples:
+        assert parse_manual_range_candidate(text, today=date(2026, 7, 3)) is None, text

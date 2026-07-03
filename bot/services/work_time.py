@@ -777,7 +777,7 @@ def is_lunch_break_disable_request(text: str) -> bool:
 def parse_manual_range_candidate(text: str, *, today: date | None = None) -> WorkTimeCandidate | None:
     normalized = _normalize(text)
     work_date, parse_text = _resolve_work_date_and_strip_explicit_date(normalized, today=today)
-    matches = re.findall(r'\b(\d{1,2})(?:(?::|\.)(\d{2}))?\b', parse_text)
+    matches = re.findall(r'\b(\d{1,2})(?::|\.)(\d{2})\b', parse_text)
     if len(matches) < 2:
         return None
     start = _parse_match_time(matches[0])
@@ -820,9 +820,9 @@ def parse_close_candidate(text: str, *, open_day: WorkTimeDay, today: date | Non
         if end_time is not None:
             return WorkTimeCandidate(work_date=work_date, end_time=end_time, close_mode='close_at_time')
 
-    if any(term in normalized for term in ('teraz', 'now', 'Р·Р°СЂР°Р·', 'СЃРµР№С‡Р°СЃ')):
+    if any(term in normalized for term in ('teraz', 'now', 'zaraz', 'sejcas', 'зараз', 'сейчас', 'Р·Р°СЂР°Р·', 'СЃРµР№С‡Р°СЃ')):
         return WorkTimeCandidate(work_date=_resolve_relative_date(normalized, today=today), close_mode='close_now', needs_confirmation=False)
-    return WorkTimeCandidate(work_date=work_date, close_mode='close_now', needs_confirmation=False)
+    return None
 
 
 def parse_report_month(text: str, *, today: date | None = None) -> tuple[int, int]:
@@ -884,8 +884,11 @@ async def resolve_work_time_entry_candidate(
                         'You are a bounded slot extractor for OfficeFlow work-time tracking. '
                         'Return strict JSON only. Supported input languages are Slovak, Ukrainian, Russian, English, and mixed STT-noisy text. '
                         'Extract only candidate work-time slots; never claim anything was saved. '
-                        'Allowed shape: {"canonical":"work_time_entry","date":"YYYY-MM-DD","start_time":"HH:MM|null","end_time":"HH:MM|null","duration_minutes":<integer|null>} '
+                        'Allowed shape: {"canonical":"work_time_entry","mode":"manual_range|manual_duration|close_at_time|close_with_duration|close_now|unknown","date":"YYYY-MM-DD|null","start_time":"HH:MM|null","end_time":"HH:MM|null","duration_minutes":<integer|null>} '
                         'or {"canonical":"unknown"}. '
+                        'Use mode=close_now only when the user clearly says closing now/teraz/now/zaraz/sejcas or equivalent. '
+                        'Use mode=close_at_time only when closing an already open day by exact end time. Use mode=close_with_duration only when closing an open day by worked duration. '
+                        'Use mode=manual_range when the user gives a standalone work interval with start and end time. Use mode=manual_duration only when the user gives a standalone total duration. '
                         'If the user says today/dnes/ukrainian today, use today_iso. If the user gives an explicit date such as 1.07, 1.07.2026, or 1 na 7, normalize it to YYYY-MM-DD using today_iso year when year is missing. If a work day is already open, use open_day_date. '
                         'Verbal ranges such as "z piatej do deviatej", "from fifth morning to ninth morning", "z siestej rano do piatej vecer", or Cyrillic equivalents must be normalized to start_time and end_time in 24-hour HH:MM when clear. '
                         'For duration-only requests like "zapis dnes 10 hodin" or "close today nine and a half hours", set start_time and end_time to null and duration_minutes to the total. Do not convert a range into duration-only just because one number looks like hours. '
@@ -903,7 +906,8 @@ async def resolve_work_time_entry_candidate(
                             'user_input_text': cleaned,
                             'expected_output': {
                                 'canonical': 'work_time_entry or unknown',
-                                'date': 'YYYY-MM-DD',
+                                'mode': 'manual_range, manual_duration, close_at_time, close_with_duration, close_now, or unknown',
+                                'date': 'YYYY-MM-DD or null',
                                 'start_time': 'HH:MM or null',
                                 'end_time': 'HH:MM or null',
                                 'duration_minutes': 'positive integer or null',
@@ -920,6 +924,16 @@ async def resolve_work_time_entry_candidate(
 
     if str(parsed.get('canonical') or '').strip() != 'work_time_entry':
         return None
+    mode = str(parsed.get('mode') or '').strip()
+    if mode == 'unknown' or mode not in {
+        'manual_range',
+        'manual_duration',
+        'close_at_time',
+        'close_with_duration',
+        'close_now',
+    }:
+        return None
+
     fallback_date = current if open_day is None else date.fromisoformat(open_day.work_date)
     candidate_date = _parse_llm_date(str(parsed.get('date') or ''), fallback=fallback_date)
     if candidate_date is None:
@@ -930,17 +944,20 @@ async def resolve_work_time_entry_candidate(
 
     if open_day is not None:
         candidate_date = date.fromisoformat(open_day.work_date)
-        if duration_minutes is not None:
+        if mode == 'close_now':
+            return WorkTimeCandidate(work_date=candidate_date, close_mode='close_now', needs_confirmation=False)
+        if mode == 'close_with_duration' and duration_minutes is not None:
             return WorkTimeCandidate(work_date=candidate_date, duration_minutes=duration_minutes, close_mode='close_with_duration')
-        if end_time is not None:
+        if mode == 'close_at_time' and end_time is not None:
             return WorkTimeCandidate(work_date=candidate_date, end_time=end_time, close_mode='close_at_time')
         return None
 
-    if start_time is not None and end_time is not None:
+    if mode == 'manual_range' and start_time is not None and end_time is not None:
         return WorkTimeCandidate(work_date=candidate_date, start_time=start_time, end_time=end_time, close_mode='manual_range')
-    if duration_minutes is not None:
+    if mode == 'manual_duration' and duration_minutes is not None:
         return WorkTimeCandidate(work_date=candidate_date, duration_minutes=duration_minutes, close_mode='manual_duration')
     return None
+
 
 
 def format_day_summary(day: WorkTimeDay) -> str:
@@ -1116,10 +1133,10 @@ def _parse_llm_hhmm(value: object) -> time | None:
         return None
     if not re.fullmatch(r'\d{2}:\d{2}', raw):
         return None
-    parsed = _parse_time_value(raw)
-    if parsed.hour > 23 or parsed.minute > 59:
+    try:
+        return _parse_time_value(raw)
+    except ValueError:
         return None
-    return parsed
 
 
 def _parse_llm_duration(value: object) -> int | None:

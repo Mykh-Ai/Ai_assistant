@@ -126,7 +126,10 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
         return
 
     candidate = await _resolve_close_candidate(text, config, open_day)
-    if candidate is None or candidate.close_mode == 'close_now':
+    if candidate is None:
+        await message.answer('Napiste cas odchodu alebo trvanie, napriklad: o 17:00 alebo 10 hodin.')
+        return
+    if candidate.close_mode == 'close_now':
         result = service.close_open_day(
             telegram_id=telegram_id,
             source_message_id=getattr(message, 'message_id', None),
@@ -414,6 +417,14 @@ async def work_time_close_input(message: Message, state: FSMContext, config: Con
     candidate = await _resolve_close_candidate(raw_text, config, open_day)
     if candidate is None:
         await message.answer('Napiste cas odchodu alebo trvanie, napriklad: o 17:00 alebo 10 hodin.')
+        return
+    if candidate.close_mode == 'close_now':
+        result = WorkTimeService(config.db_path).close_open_day(
+            telegram_id=telegram_id,
+            source_message_id=getattr(message, 'message_id', None),
+        )
+        await state.clear()
+        await _answer_work_time_result(message, result, success_prefix='Pracovny den je uzavrety.')
         return
     await state.update_data(work_time_close_candidate=_candidate_to_state(candidate), work_time_close_open_day_id=open_day.id)
     await state.set_state(WorkTimeStates.waiting_close_preview_confirm)

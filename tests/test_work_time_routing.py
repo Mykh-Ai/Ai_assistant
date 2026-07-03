@@ -21,6 +21,7 @@ from bot.handlers.work_time import (
     work_time_lunch_break_update_confirm,
     work_time_lunch_break_value,
     work_time_close_preview_confirm,
+    work_time_close_input,
     work_time_manual_range_confirm,
     work_time_manual_range_input,
 )
@@ -413,6 +414,7 @@ def test_manual_entry_uses_bounded_llm_before_duration_fallback_for_date_range(m
     _WorkTimeSlotOpenAIFake.output = json.dumps(
         {
             'canonical': 'work_time_entry',
+            'mode': 'manual_range',
             'date': '2026-07-01',
             'start_time': '06:00',
             'end_time': '11:00',
@@ -479,3 +481,138 @@ def test_delete_work_time_month_cancel_does_not_delete(tmp_path: Path) -> None:
 
     assert state.current_state is None
     assert len(service.list_days_for_month(telegram_id=1001, year=2026, month=7)) == 1
+
+
+def test_unknown_close_input_does_not_close_open_day(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 3, 7, 0)).ok
+    state = _DummyState()
+    message = _DummyMessage('neviem ako vcera')
+
+    asyncio.run(start_close_work_day(message=message, state=state, config=config, text=message.text))
+
+    open_day = WorkTimeService(config.db_path).get_open_day(telegram_id=1001)
+    assert open_day is not None
+    assert open_day.end_time is None
+    assert state.current_state is None
+    assert 'Napiste cas odchodu alebo trvanie' in message.answers[-1]
+
+
+def test_explicit_close_now_closes_open_day(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 3, 7, 0)).ok
+    state = _DummyState()
+    message = _DummyMessage('zatvor pracovny den teraz')
+
+    asyncio.run(start_close_work_day(message=message, state=state, config=config, text=message.text))
+
+    assert WorkTimeService(config.db_path).get_open_day(telegram_id=1001) is None
+    day = WorkTimeService(config.db_path).get_day(telegram_id=1001, work_date='2026-07-03')
+    assert day is not None
+    assert day.status == 'closed'
+    assert state.current_state is None
+    assert 'Pracovny den je uzavrety' in message.answers[-1]
+
+
+def test_close_at_exact_time_previews_and_saves_only_after_approve(monkeypatch, tmp_path: Path) -> None:
+    config = replace(_config(tmp_path), openai_api_key='sk-test')
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 3, 7, 0)).ok
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'close_at_time',
+            'date': None,
+            'start_time': None,
+            'end_time': '17:00',
+            'duration_minutes': None,
+        }
+    )
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+    state = _DummyState()
+    message = _DummyMessage('zatvor den o 17:00')
+
+    asyncio.run(start_close_work_day(message=message, state=state, config=config, text=message.text))
+
+    assert state.current_state == WorkTimeStates.waiting_close_preview_confirm.state
+    assert WorkTimeService(config.db_path).get_open_day(telegram_id=1001) is not None
+    assert 'Prichod: 07:00' in message.answers[-1]
+    assert 'Odchod: 17:00' in message.answers[-1]
+
+    asyncio.run(work_time_close_preview_confirm(message=_DummyMessage('schvalit'), state=state, config=config, canonical_decision='approve'))
+    day = WorkTimeService(config.db_path).get_day(telegram_id=1001, work_date='2026-07-03')
+    assert day is not None
+    assert day.status == 'closed'
+    assert day.end_time == '17:00'
+
+
+def test_close_by_duration_previews_and_saves_only_after_approve(monkeypatch, tmp_path: Path) -> None:
+    config = replace(_config(tmp_path), openai_api_key='sk-test')
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=60)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 3, 7, 12)).ok
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'close_with_duration',
+            'date': None,
+            'start_time': None,
+            'end_time': None,
+            'duration_minutes': 600,
+        }
+    )
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+    state = _DummyState()
+    message = _DummyMessage('zatvor den 10 hodin')
+
+    asyncio.run(start_close_work_day(message=message, state=state, config=config, text=message.text))
+
+    assert state.current_state == WorkTimeStates.waiting_close_preview_confirm.state
+    assert WorkTimeService(config.db_path).get_open_day(telegram_id=1001) is not None
+    assert 'Prichod: 07:12' in message.answers[-1]
+    assert 'Odchod: 18:12' in message.answers[-1]
+    assert 'Hodiny: 10 hod.' in message.answers[-1]
+
+    asyncio.run(work_time_close_preview_confirm(message=_DummyMessage('schvalit'), state=state, config=config, canonical_decision='approve'))
+    day = WorkTimeService(config.db_path).get_day(telegram_id=1001, work_date='2026-07-03')
+    assert day is not None
+    assert day.status == 'closed'
+    assert day.end_time == '18:12'
+
+
+def test_manual_cyrillic_range_from_llm_is_not_duration_only(monkeypatch, tmp_path: Path) -> None:
+    config = replace(_config(tmp_path), openai_api_key='sk-test')
+    init_db(config.db_path)
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'manual_range',
+            'date': '2026-07-02',
+            'start_time': '06:00',
+            'end_time': '11:00',
+            'duration_minutes': None,
+        }
+    )
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+    state = _DummyState()
+    message = _DummyMessage('вчора од 6-ї до 11-ї')
+
+    asyncio.run(start_add_work_time_entry(message=message, state=state, config=config, text=message.text))
+
+    assert state.current_state == WorkTimeStates.waiting_manual_range_confirm.state
+    data = asyncio.run(state.get_data())
+    candidate = data['work_time_manual_candidate']
+    assert candidate['work_date'] == '2026-07-02'
+    assert candidate['start_time'] == '06:00'
+    assert candidate['end_time'] == '11:00'
+    assert candidate['duration_minutes'] is None
+    assert candidate['close_mode'] == 'manual_range'
+    assert 'Prichod: 06:00' in message.answers[-1]
+    assert 'Odchod: 11:00' in message.answers[-1]
+    assert 'Typ: pocet hodin bez presneho prichodu/odchodu' not in message.answers[-1]
