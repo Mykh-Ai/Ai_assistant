@@ -409,7 +409,7 @@ class WorkTimeService:
         sheet['A1'].font = Font(bold=True, size=13)
         sheet.merge_cells('A1:D1')
         sheet.append([])
-        sheet.append(['Dátum', 'Príchod', 'Odchod', 'Hodiny'])
+        sheet.append(['Dátum', 'Príchod', 'Odchod', 'Hodiny (h:mm)'])
         thin_side = Side(style='thin', color='D9E2EC')
         strong_side = Side(style='medium', color='7A8794')
         table_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
@@ -428,9 +428,9 @@ class WorkTimeService:
             record = by_date.get(current_date.isoformat())
             if record and record.status == STATUS_CLOSED and record.total_minutes is not None:
                 report_minutes = self.report_net_minutes(record, settings=settings)
-                hours = _format_duration(report_minutes)
+                duration_value = _excel_duration_value(report_minutes)
                 total_minutes += report_minutes
-                row_values = [current_date.strftime('%d.%m.%Y'), record.start_time or '', record.end_time or '', hours]
+                row_values = [current_date.strftime('%d.%m.%Y'), record.start_time or '', record.end_time or '', duration_value]
             elif record and record.status == STATUS_SKIPPED:
                 row_values = [current_date.strftime('%d.%m.%Y'), '', '', 'preskocene']
             else:
@@ -438,11 +438,15 @@ class WorkTimeService:
             sheet.append(row_values)
             for cell in sheet[sheet.max_row]:
                 cell.border = table_border
+            duration_cell = sheet.cell(row=sheet.max_row, column=4)
+            if isinstance(duration_cell.value, (int, float)):
+                duration_cell.number_format = '[h]:mm'
             if current_date.weekday() == 6:
                 for cell in sheet[sheet.max_row]:
                     cell.fill = sunday_fill
 
-        sheet.append(['Spolu', '', '', _format_duration(total_minutes)])
+        sheet.append(['Spolu', '', '', _excel_duration_value(total_minutes)])
+        sheet.cell(row=sheet.max_row, column=4).number_format = '[h]:mm'
         for cell in sheet[sheet.max_row]:
             cell.font = Font(bold=True)
             cell.border = total_border
@@ -1113,6 +1117,10 @@ def _format_time(value: time) -> str:
 
 def _parse_time_value(value: str) -> time:
     return datetime.strptime(value, '%H:%M').time()
+
+
+def _excel_duration_value(total_minutes: int) -> float:
+    return int(total_minutes) / (24 * 60)
 
 
 def _format_duration(total_minutes: int) -> str:

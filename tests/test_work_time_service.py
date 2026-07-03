@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import pytest
 
-from datetime import UTC, datetime, date
+from datetime import UTC, datetime, date, time, timedelta
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -25,6 +26,20 @@ from bot.services.work_time import (
     resolve_work_time_entry_candidate,
     _format_duration,
 )
+
+
+def _assert_excel_duration_cell(cell, *, minutes: int, display: str) -> None:
+    assert cell.number_format == '[h]:mm'
+    if isinstance(cell.value, timedelta):
+        total_minutes = round(cell.value.total_seconds() / 60)
+    elif isinstance(cell.value, time):
+        total_minutes = cell.value.hour * 60 + cell.value.minute
+    else:
+        assert cell.value == pytest.approx(minutes / (24 * 60))
+        total_minutes = round(float(cell.value) * 24 * 60)
+    assert total_minutes == minutes
+    hours, remainder = divmod(total_minutes, 60)
+    assert f'{hours}:{remainder:02d}' == display
 
 
 class _FakeChoice:
@@ -169,9 +184,45 @@ def test_duration_only_entry_appears_in_report_without_times(tmp_path: Path) -> 
 
     workbook = load_workbook(report.report_path)
     sheet = workbook.active
-    assert [sheet[f'{column}5'].value for column in 'ABCD'] == ['02.07.2026', None, None, '10 hod.']
-    assert sheet['D35'].value == '10 hod.'
+    assert [sheet[f'{column}5'].value for column in 'ABC'] == ['02.07.2026', None, None]
+    _assert_excel_duration_cell(sheet['D5'], minutes=600, display='10:00')
+    _assert_excel_duration_cell(sheet['D35'], minutes=600, display='10:00')
 
+
+def test_report_duration_cells_use_h_mm_and_total_over_24_hours(tmp_path: Path) -> None:
+    db_path = tmp_path / 'test.db'
+    init_db(db_path)
+    service = WorkTimeService(db_path)
+    assert service.add_duration_entry(
+        telegram_id=1001,
+        candidate=WorkTimeCandidate(work_date=date(2026, 7, 1), duration_minutes=534, close_mode='manual_duration'),
+    ).ok
+    assert service.add_duration_entry(
+        telegram_id=1001,
+        candidate=WorkTimeCandidate(work_date=date(2026, 7, 2), duration_minutes=300, close_mode='manual_duration'),
+    ).ok
+    for day_number in range(3, 12):
+        assert service.add_duration_entry(
+            telegram_id=1001,
+            candidate=WorkTimeCandidate(work_date=date(2026, 7, day_number), duration_minutes=570, close_mode='manual_duration'),
+        ).ok
+    assert service.add_duration_entry(
+        telegram_id=1001,
+        candidate=WorkTimeCandidate(work_date=date(2026, 7, 12), duration_minutes=66, close_mode='manual_duration'),
+    ).ok
+
+    report = service.generate_monthly_report(
+        telegram_id=1001,
+        year=2026,
+        month=7,
+        output_dir=tmp_path / 'reports',
+    )
+    sheet = load_workbook(report.report_path).active
+
+    assert sheet['D3'].value == 'Hodiny (h:mm)'
+    _assert_excel_duration_cell(sheet['D4'], minutes=534, display='8:54')
+    _assert_excel_duration_cell(sheet['D5'], minutes=300, display='5:00')
+    _assert_excel_duration_cell(sheet['D35'], minutes=6030, display='100:30')
 
 def test_report_includes_all_days_sundays_and_total(tmp_path: Path) -> None:
     db_path = tmp_path / 'test.db'
@@ -201,15 +252,15 @@ def test_report_includes_all_days_sundays_and_total(tmp_path: Path) -> None:
     assert sheet['A1'].value == 'Dochádzka — júl 2026'
     assert sheet['A1'].font.bold
     assert sheet['A1'].font.sz == 13
-    assert [sheet[f'{column}3'].value for column in 'ABCD'] == ['Dátum', 'Príchod', 'Odchod', 'Hodiny']
+    assert [sheet[f'{column}3'].value for column in 'ABCD'] == ['Dátum', 'Príchod', 'Odchod', 'Hodiny (h:mm)']
     assert all(sheet[f'{column}3'].font.bold for column in 'ABCD')
     assert all(sheet[f'{column}3'].border.bottom.style == 'medium' for column in 'ABCD')
     assert sheet['A4'].value == '01.07.2026'
     assert sheet['B4'].value == '08:00'
     assert sheet['C4'].value == '17:00'
-    assert sheet['D4'].value == '9 hod.'
+    _assert_excel_duration_cell(sheet['D4'], minutes=540, display='9:00')
     assert sheet['A35'].value == 'Spolu'
-    assert sheet['D35'].value == '9 hod.'
+    _assert_excel_duration_cell(sheet['D35'], minutes=540, display='9:00')
     assert sheet['A35'].font.bold
     assert sheet['D35'].font.bold
     assert all(sheet[f'{column}35'].border.top.style == 'medium' for column in 'ABCD')
@@ -245,13 +296,13 @@ def test_explicit_range_report_subtracts_current_lunch_break(tmp_path: Path) -> 
 
     report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports')
     sheet = load_workbook(report.report_path).active
-    assert sheet['D5'].value == '11 hod.'
-    assert sheet['D35'].value == '11 hod.'
+    _assert_excel_duration_cell(sheet['D5'], minutes=660, display='11:00')
+    _assert_excel_duration_cell(sheet['D35'], minutes=660, display='11:00')
 
     service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=30)
     updated_report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports2')
     updated_sheet = load_workbook(updated_report.report_path).active
-    assert updated_sheet['D5'].value == '11,5 hod.'
+    _assert_excel_duration_cell(updated_sheet['D5'], minutes=690, display='11:30')
 
 
 def test_duration_close_keeps_requested_net_and_extends_end_by_lunch(tmp_path: Path) -> None:
@@ -271,11 +322,11 @@ def test_duration_close_keeps_requested_net_and_extends_end_by_lunch(tmp_path: P
     assert closed.day.net_work_minutes_override == 600
     report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports')
     sheet = load_workbook(report.report_path).active
-    assert sheet['D5'].value == '10 hod.'
+    _assert_excel_duration_cell(sheet['D5'], minutes=600, display='10:00')
 
     service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=30)
     updated_report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports2')
-    assert load_workbook(updated_report.report_path).active['D5'].value == '10 hod.'
+    _assert_excel_duration_cell(load_workbook(updated_report.report_path).active['D5'], minutes=600, display='10:00')
 
 
 def test_duration_close_with_lunch_disabled_keeps_old_end_semantics(tmp_path: Path) -> None:
@@ -301,7 +352,7 @@ def test_report_clamps_break_larger_than_explicit_gross_to_zero(tmp_path: Path) 
     candidate = WorkTimeCandidate(work_date=date(2026, 7, 2), start_time=datetime.strptime('09:00', '%H:%M').time(), end_time=datetime.strptime('10:00', '%H:%M').time())
     assert service.add_manual_range(telegram_id=1001, candidate=candidate).ok
     report = service.generate_monthly_report(telegram_id=1001, year=2026, month=7, output_dir=tmp_path / 'reports')
-    assert load_workbook(report.report_path).active['D5'].value == '0 hod.'
+    _assert_excel_duration_cell(load_workbook(report.report_path).active['D5'], minutes=0, display='0:00')
 
 def test_format_duration_uses_compact_hour_labels() -> None:
     assert _format_duration(540) == '9 hod.'

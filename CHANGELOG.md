@@ -1,7 +1,8 @@
 # Changelog
 
 ## Unreleased
-- Fixed OfficeFlow work-time runtime clock to use OFFICEFLOW_TIMEZONE with default Europe/Bratislava for open/close-now, today/yesterday, default report month, and bounded slot 	oday_iso; invalid timezone values log a warning and fall back to Bratislava instead of silently using UTC.
+- Changed OfficeFlow work-time monthly Excel report duration cells from decimal-hour text to Excel duration values formatted as `[h]:mm`, with header `Hodiny (h:mm)` and totals that can exceed 24 hours.
+- Fixed OfficeFlow work-time runtime clock to use `OFFICEFLOW_TIMEZONE` with default `Europe/Bratislava` for open/close-now, today/yesterday, default report month, and bounded slot `today_iso`; invalid timezone values log a warning and fall back to Bratislava instead of silently using UTC.
 - Fixed OfficeFlow work-time close-now safety: unclear close input no longer closes an open day, bounded slot extraction now requires explicit mode values, range endpoints beat duration-only interpretation, and strict parser fallback remains limited to numeric HH:MM/HH.MM ranges.
 - Moved OfficeFlow work-time manual/close slot extraction to bounded LLM-first normalization for natural multilingual text such as explicit dates, verbal time ranges, and duration-only entries; Python still validates, previews, confirms, and saves, with parser fallback only for non-LLM/dev paths.
 - Polished OfficeFlow work-time manual/close preview recovery: edit now re-renders previews safely, unknown preview replies repeat full context with buttons, active voice/text preview states no longer fall through to report routing, duration-only rows have clearer wording, and UTF-8 yesterday variants are parsed without changing lunch net/gross math.

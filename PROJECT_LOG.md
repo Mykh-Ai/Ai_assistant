@@ -1,3 +1,16 @@
+## 2026-07-03 - OfficeFlow Work-Time Excel h:mm Duration Display
+
+Summary:
+- Changed generated work-time Excel report duration cells from decimal-hour text to Excel duration values formatted as `[h]:mm`.
+- Updated the report header from `Hodiny` to `Hodiny (h:mm)` and kept totals as full elapsed hours so values over 24 hours render as totals such as `100:30`.
+- Kept Prichod/Odchod as `HH:MM`, lunch math semantics unchanged, duration-only rows unchanged semantically, and parser/LLM/routing/timezone/DB/invoice/accounting flows out of scope.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_service.py` - 36 passed.
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py` - 66 passed.
+- `python -m pytest -q tests\test_voice_state_routing.py tests\test_decision_resolver.py` - 706 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2037 passed, 7 subtests passed.
+- `git diff --check` - clean.
 ## 2026-07-03 - OfficeFlow Work-Time Bratislava Runtime Clock
 
 Summary:
