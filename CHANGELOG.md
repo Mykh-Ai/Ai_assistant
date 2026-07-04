@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Strengthened top-level routing hints for OfficeFlow work-time deletion so mixed text such as `vidali dochadzku` routes to `delete_work_time_month` instead of invoice deletion, while invoice-specific delete requests still route to `delete_existing_invoice`.
 - Changed OfficeFlow work-time Telegram preview/saved/month summaries from decimal-hour labels such as `8,4 hod.` to `h:mm` labels such as `8:24`, keeping stored minutes and lunch math unchanged.
 - Changed OfficeFlow work-time monthly Excel report duration cells from decimal-hour text to Excel duration values formatted as `[h]:mm`, with header `Hodiny (h:mm)` and totals that can exceed 24 hours.
 - Fixed OfficeFlow work-time runtime clock to use `OFFICEFLOW_TIMEZONE` with default `Europe/Bratislava` for open/close-now, today/yesterday, default report month, and bounded slot `today_iso`; invalid timezone values log a warning and fall back to Bratislava instead of silently using UTC.

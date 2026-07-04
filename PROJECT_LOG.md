@@ -1,3 +1,15 @@
+## 2026-07-04 - OfficeFlow Work-Time Delete Routing Disambiguation
+
+Summary:
+- Strengthened top-level action hints so mixed Ukrainian/Latin requests like `vidali dochadzku` are treated as OfficeFlow work-time month deletion, not outgoing invoice deletion.
+- Added regression coverage for both local resolver priority and the full `process_invoice_text` path, while preserving invoice-specific deletion such as `vidaliti fakturu 02`.
+- Kept parser dictionaries, work-time slot extraction, DB schema, invoice deletion execution, accounting flows, timezone, and lunch math unchanged.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_routing.py tests\test_invoice_intent_prerouter.py::test_process_invoice_text_top_level_hints_disambiguate_work_time_delete_from_invoice_delete tests\test_invoice_intent_prerouter.py::test_process_invoice_text_mixed_dochadzka_delete_routes_to_work_time_not_invoice` - 33 passed.
+- `python -m pytest -q tests\test_work_time_routing.py tests\test_invoice_intent_prerouter.py` - 252 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2041 passed, 7 subtests passed.
+
 ## 2026-07-03 - OfficeFlow Work-Time Preview h:mm Duration Display
 
 Summary:

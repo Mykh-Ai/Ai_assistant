@@ -3407,10 +3407,18 @@ async def process_invoice_text(
             },
             _DELETE_WORK_TIME_MONTH_INTENT: {
                 'meaning': (
-                    'user wants to delete stored OfficeFlow work-time / dochadzka records for one selected month; '
-                    'Python must resolve month/year, preview row count and total hours, and delete only after confirmation'
+                    'user wants to delete stored OfficeFlow work-time / dochadzka / attendance / timesheet records '
+                    'for one selected month; Python must resolve month/year, preview row count and total hours, '
+                    'and delete only after confirmation'
                 ),
-                'not_this': ['generate Excel work-time report', 'delete invoice', 'delete whole user database', 'payroll/legal HR attendance'],
+                'positive_examples': [
+                    'vymaz dochadzku za jul',
+                    'vidali dochadzku',
+                    'видали dochadzku',
+                    'видалити табель за липень',
+                    'удали табель рабочего времени за июль',
+                ],
+                'not_this': ['generate Excel work-time report', 'delete invoice/faktura', 'delete whole user database', 'payroll/legal HR attendance'],
             },
             _DELETE_USER_DATABASE_INTENT: {
                 'meaning': (
@@ -3436,10 +3444,14 @@ async def process_invoice_text(
             },
             _DELETE_EXISTING_INVOICE_INTENT: {
                 'meaning': (
-                    'user wants to delete one already created/persisted outgoing invoice by invoice number, suffix, or reference; '
-                    'this is invoice-scoped deletion and Python keeps the existing manual confirmation gate'
+                    'user wants to delete one already created/persisted outgoing invoice/faktura by invoice number, '
+                    'suffix, or reference; this is invoice-scoped deletion and Python keeps the existing manual confirmation gate'
                 ),
-                'not_this': ['cancel current draft preview', 'delete the whole user database/account'],
+                'not_this': [
+                    'cancel current draft preview',
+                    'delete the whole user database/account',
+                    'delete OfficeFlow work-time, dochadzka, attendance, timesheet, vykaz hodin, or tabel records',
+                ],
             },
             _MARK_EXISTING_INVOICE_PAID_INTENT: {
                 'meaning': (

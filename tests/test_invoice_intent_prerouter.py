@@ -19,6 +19,7 @@ from bot.handlers.invoice import (
     process_invoice_text,
     semantic_top_level_input,
 )
+from bot.handlers.work_time import WorkTimeStates
 from bot.services.customization_requests import CustomizationRequestService
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.product_truth import list_capabilities
@@ -1044,6 +1045,39 @@ def test_process_invoice_text_show_existing_invoice_is_read_only_and_clears_stat
     assert 'Číslo faktúry: 20260004' in message.answers[0]
     assert 'Celkom: 10.00 EUR' in message.answers[0]
 
+
+def test_process_invoice_text_top_level_hints_disambiguate_work_time_delete_from_invoice_delete(tmp_path: Path, monkeypatch) -> None:
+    captured: dict = {}
+
+    async def _resolver(**kwargs):
+        captured.update(kwargs)
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('видали dochadzku')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    hints = captured['action_hints']
+    assert 'видали dochadzku' in hints['delete_work_time_month']['positive_examples']
+    assert any('dochadzka' in item for item in hints['delete_existing_invoice']['not_this'])
+    assert 'delete_work_time_month' in captured['allowed_actions']
+    assert 'delete_existing_invoice' in captured['allowed_actions']
+
+def test_process_invoice_text_mixed_dochadzka_delete_routes_to_work_time_not_invoice(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('видали dochadzku')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == WorkTimeStates.waiting_delete_month_input
+    assert 'Za ktory mesiac' in message.answers[-1]
+    assert 'faktúry' not in message.answers[-1].lower()
 
 def test_process_invoice_text_delete_existing_invoice_ambiguous_suffix(tmp_path: Path, monkeypatch) -> None:
     config = _config(tmp_path)

@@ -208,6 +208,36 @@ def test_voice_router_has_no_work_time_phrase_dictionary() -> None:
     assert 'vykaz hodin' not in source
 
 
+def test_top_level_work_time_delete_month_beats_invoice_delete_for_mixed_dochadzka_text() -> None:
+    allowed = [*WORK_TIME_ALLOWED, 'delete_existing_invoice']
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='видали dochadzku',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'delete_work_time_month'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='видалити dochádzku',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'delete_work_time_month'
+    assert asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=allowed,
+            user_input_text='видалити фактуру 02',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'delete_existing_invoice'
+
 def test_product_truth_work_time_tracking_is_partial() -> None:
     payload = get_safe_answer_payload('work_time_tracking')
     result = get_capability('work_time_tracking')
