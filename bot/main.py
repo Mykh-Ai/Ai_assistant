@@ -8,6 +8,7 @@ from aiogram.enums import ParseMode
 
 from bot.config import load_config
 from bot.handlers import routers
+from bot.services.active_fsm_guard import ActiveFsmMessageMiddleware
 from bot.services.authorization import TelegramUserAuthorizationMiddleware
 from bot.services.db import init_db
 from bot.services.google_drive_archive_scheduler import run_google_drive_archive_scheduler
@@ -29,6 +30,7 @@ async def main() -> None:
     )
     dp = Dispatcher()
     dp.message.outer_middleware(TelegramUserAuthorizationMiddleware())
+    dp.message.outer_middleware(ActiveFsmMessageMiddleware())
     dp.callback_query.outer_middleware(TelegramUserAuthorizationMiddleware())
 
     for router in routers:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from aiogram.types import CallbackQuery, User
 
 from bot.config import Config
+from bot.services.active_fsm_guard import ACTIVE_FSM_EXPIRED_MESSAGE, ACTIVE_FSM_LAST_ACTIVITY_AT_KEY
 from bot.handlers.access_admin import CustomizationRequestAdminResponseStates
 from bot.handlers.contacts import ContactStates
 from bot.handlers.decision_callbacks import _dispatch_decision_token, decision_callback
@@ -164,6 +166,11 @@ def _customization_request_draft(request_id: str = 'cr_callback') -> dict:
     }
 
 
+def _active_fsm_metadata(*, minutes_ago: int = 0) -> dict:
+    return {
+        ACTIVE_FSM_LAST_ACTIVITY_AT_KEY: (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat(),
+    }
+
 def _callback(user_id: int, data: str) -> CallbackQuery:
     callback = CallbackQuery(
         id='callback-id',
@@ -215,6 +222,48 @@ def test_stale_callback_is_rejected_without_dispatch(tmp_path: Path) -> None:
     assert callback.answers == [('Toto rozhodnutie už nie je dostupné. Pokračujte aktuálnym krokom v chate.', True)]
     assert state.cleared is False
 
+
+def test_legacy_decision_callback_with_missing_timestamp_fails_closed(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_legacy'),
+            'customization_request_saved_id': None,
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+    callback = _callback(AUTHORIZED_ID, 'decision:approve')
+
+    asyncio.run(decision_callback(callback, state, config))
+
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+    assert state.cleared is True
+    assert callback.answers == [(ACTIVE_FSM_EXPIRED_MESSAGE, True)]
+
+
+def test_stale_decision_callback_with_old_timestamp_fails_closed(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_callback_stale'),
+            'customization_request_saved_id': None,
+            **_active_fsm_metadata(minutes_ago=60),
+        },
+        CustomizationRequestStates.waiting_preview_decision.state,
+    )
+    callback = _callback(AUTHORIZED_ID, 'decision:approve')
+
+    asyncio.run(decision_callback(callback, state, config))
+
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+    assert state.cleared is True
+    assert callback.answers == [(ACTIVE_FSM_EXPIRED_MESSAGE, True)]
 
 def test_button_approve_on_invoice_preview_uses_same_finalization_path(tmp_path: Path, monkeypatch) -> None:
     contact_id = _setup_supplier_and_contact(tmp_path / 'invoice-approve.db')
@@ -278,6 +327,7 @@ def test_decision_callback_customization_approve_routes_and_saves(tmp_path: Path
         {
             'customization_request_draft': _customization_request_draft('cr_callback_wrapper_approve'),
             'customization_request_saved_id': None,
+            **_active_fsm_metadata(),
         },
         CustomizationRequestStates.waiting_preview_decision.state,
     )
@@ -301,6 +351,7 @@ def test_decision_callback_customization_cancel_routes_and_saves_nothing(tmp_pat
         {
             'customization_request_draft': _customization_request_draft('cr_callback_wrapper_cancel'),
             'customization_request_saved_id': None,
+            **_active_fsm_metadata(),
         },
         CustomizationRequestStates.waiting_preview_decision.state,
     )
@@ -323,6 +374,7 @@ def test_decision_callback_customization_edit_routes_to_text_edit(tmp_path: Path
         {
             'customization_request_draft': _customization_request_draft('cr_callback_wrapper_edit'),
             'customization_request_saved_id': None,
+            **_active_fsm_metadata(),
         },
         CustomizationRequestStates.waiting_preview_decision.state,
     )

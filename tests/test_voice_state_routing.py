@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import json
 import logging
 from pathlib import Path
@@ -17,6 +18,7 @@ from bot.handlers.work_time import WorkTimeStates
 from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates
 from bot.handlers.supplier import ServiceAliasStates
 from bot.handlers.voice import handle_voice
+from bot.services.active_fsm_guard import ACTIVE_FSM_LAST_ACTIVITY_AT_KEY
 from bot.services.customization_requests import CustomizationRequestService
 from bot.services.db import init_db
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
@@ -89,8 +91,10 @@ class _DummyState:
         self.data.update(kwargs)
 
     async def get_data(self) -> dict:
-        return dict(self.data)
-
+        data = dict(self.data)
+        if self.current_state is not None and ACTIVE_FSM_LAST_ACTIVITY_AT_KEY not in data:
+            data[ACTIVE_FSM_LAST_ACTIVITY_AT_KEY] = datetime.now(UTC).isoformat()
+        return data
     async def clear(self) -> None:
         self.current_state = None
         self.data.clear()
@@ -611,27 +615,21 @@ def test_voice_global_cancel_in_active_state_runs_shared_cancel(monkeypatch, tmp
     calls: list[str] = []
 
     async def _stt(*args, **kwargs) -> str:
-        return '\u0432\u0456\u0434\u043c\u0456\u043d\u0438\u0442\u0438'
-
-    async def _cancel(**kwargs) -> None:
-        calls.append('cancel')
+        return 'відмінити'
 
     async def _scope(**kwargs) -> None:
         calls.append('edit_scope')
 
     monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
-    monkeypatch.setattr('bot.handlers.voice.cancel_current_state', _cancel)
     monkeypatch.setattr('bot.handlers.voice.invoice_edit_scope', _scope)
 
-    asyncio.run(
-        handle_voice(
-            _DummyMessage(),
-            _DummyBot(),
-            _config(tmp_path),
-            _DummyState(InvoiceStates.waiting_edit_scope.state),
-        )
-    )
-    assert calls == ['cancel']
+    message = _DummyMessage()
+    state = _DummyState(InvoiceStates.waiting_edit_scope.state)
+    asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), state))
+
+    assert calls == []
+    assert state.current_state is None
+    assert message.answers == ['Rozpracovaná akcia bola zrušená. Bot je v režime čakania.']
 
 
 def test_voice_exact_global_cancel_bypasses_llm_resolver(monkeypatch, tmp_path: Path) -> None:
@@ -640,9 +638,6 @@ def test_voice_exact_global_cancel_bypasses_llm_resolver(monkeypatch, tmp_path: 
     async def _stt(*args, **kwargs) -> str:
         return 'скасувати'
 
-    async def _cancel(**kwargs) -> None:
-        calls.append('cancel')
-
     async def _unexpected_resolver(**kwargs) -> str:
         raise AssertionError('exact global cancel transcript must not call LLM resolver')
 
@@ -650,20 +645,16 @@ def test_voice_exact_global_cancel_bypasses_llm_resolver(monkeypatch, tmp_path: 
         calls.append('edit_scope')
 
     monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
-    monkeypatch.setattr('bot.handlers.voice.cancel_current_state', _cancel)
-    monkeypatch.setattr('bot.handlers.voice.resolve_global_cancel', _unexpected_resolver)
+    monkeypatch.setattr('bot.services.decision_resolver.resolve_semantic_action', _unexpected_resolver)
     monkeypatch.setattr('bot.handlers.voice.invoice_edit_scope', _scope)
 
-    asyncio.run(
-        handle_voice(
-            _DummyMessage(),
-            _DummyBot(),
-            _config(tmp_path),
-            _DummyState(InvoiceStates.waiting_edit_scope.state),
-        )
-    )
-    assert calls == ['cancel']
+    message = _DummyMessage()
+    state = _DummyState(InvoiceStates.waiting_edit_scope.state)
+    asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), state))
 
+    assert calls == []
+    assert state.current_state is None
+    assert message.answers == ['Rozpracovaná akcia bola zrušená. Bot je v režime čakania.']
 
 def test_voice_waiting_edit_item_target_routes_to_item_target_handler(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
@@ -1540,3 +1531,52 @@ def test_voice_work_time_delete_month_input_routes_to_month_handler(monkeypatch,
     )
 
     assert calls == ['jul 2026']
+
+
+def test_voice_active_fsm_navigation_guard_handles_transcript_before_state_routing(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'hlavné menu'
+
+    guard_calls: list[tuple[str, str]] = []
+
+    async def _guard(**kwargs) -> bool:
+        guard_calls.append((kwargs['text'], kwargs['input_channel']))
+        return True
+
+    async def _unexpected_state_handler(**kwargs) -> None:
+        raise AssertionError('state-specific voice handler must not run after handled navigation')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.handle_active_fsm_text_update', _guard)
+    monkeypatch.setattr('bot.handlers.voice.work_time_close_input', _unexpected_state_handler)
+
+    state = _DummyState(WorkTimeStates.waiting_close_input.state)
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), state))
+
+    assert guard_calls == [('hlavné menu', 'voice')]
+    assert state.current_state == WorkTimeStates.waiting_close_input.state
+
+
+def test_voice_active_fsm_navigation_pass_through_continues_existing_state_handler(monkeypatch, tmp_path: Path) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return '16:30'
+
+    guard_calls: list[str] = []
+    state_calls: list[str] = []
+
+    async def _guard(**kwargs) -> bool:
+        guard_calls.append(kwargs['text'])
+        return False
+
+    async def _close_input(**kwargs) -> None:
+        state_calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.handle_active_fsm_text_update', _guard)
+    monkeypatch.setattr('bot.handlers.voice.work_time_close_input', _close_input)
+
+    state = _DummyState(WorkTimeStates.waiting_close_input.state)
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), state))
+
+    assert guard_calls == ['16:30']
+    assert state_calls == ['16:30']

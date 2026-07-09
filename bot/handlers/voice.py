@@ -55,7 +55,6 @@ from bot.handlers.officeflow_attachment_router import (
     handle_officeflow_route_choice_text,
     handle_officeflow_unknown_clarification_text,
 )
-from bot.handlers.state_control import cancel_current_state
 from bot.handlers.work_time import (
     WorkTimeStates,
     work_time_close_input,
@@ -72,7 +71,7 @@ from bot.handlers.work_time import (
     work_time_open_day_conflict_choice,
 )
 from bot.handlers.supplier import ServiceAliasStates
-from bot.services.decision_resolver import is_global_cancel_text, resolve_global_cancel
+from bot.services.active_fsm_guard import handle_active_fsm_text_update, touch_active_fsm_activity
 from bot.services.speech_to_text import transcribe_audio
 
 router = Router(name='voice')
@@ -146,19 +145,16 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             return
 
         if current_state is not None:
-            if is_global_cancel_text(recognized_text):
-                await cancel_current_state(message=message, state=state, config=config)
-                return
-            cancel_decision = await resolve_global_cancel(
-                context_name='global_state_cancel',
-                user_input_text=recognized_text,
-                api_key=config.openai_api_key,
-                model=config.openai_llm_model,
+            handled_by_active_guard = await handle_active_fsm_text_update(
+                message=message,
+                state=state,
+                config=config,
+                text=recognized_text,
+                input_channel='voice',
+                request_id=request_id,
             )
-            if cancel_decision == 'cancel':
-                await cancel_current_state(message=message, state=state, config=config)
+            if handled_by_active_guard:
                 return
-
         text_message = _inject_recognized_text(message, recognized_text)
         if current_state == InvoiceStates.waiting_input.state:
             await process_invoice_text(
@@ -509,6 +505,8 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 request_id=request_id,
                 input_channel='voice',
             )
+
+        await touch_active_fsm_activity(state)
 
     finally:
         voice_path.unlink(missing_ok=True)

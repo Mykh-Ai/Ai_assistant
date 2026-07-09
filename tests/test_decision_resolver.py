@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from bot.services import decision_resolver as decision_resolver_module
 from bot.handlers import accounting_document_intake, invoice, officeflow_attachment_router, voice
 from bot.services.decision_resolver import (
     is_global_cancel_text,
@@ -871,3 +872,43 @@ def test_work_time_missing_days_context_matrix_exact_mappings(context_name: str,
             model='gpt-4o',
         )
     ) == expected
+
+def test_active_fsm_navigation_exact_menu_shortcut_is_shared_layer() -> None:
+    assert asyncio.run(
+        decision_resolver_module.resolve_active_fsm_navigation(
+            context_name='active_fsm_navigation',
+            user_input_text='hlavné menu',
+            current_state='WorkTimeStates:waiting_close_input',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'show_main_menu'
+
+
+def test_active_fsm_navigation_ordinary_state_input_passes_through_without_llm() -> None:
+    assert asyncio.run(
+        decision_resolver_module.resolve_active_fsm_navigation(
+            context_name='active_fsm_navigation',
+            user_input_text='16:30',
+            current_state='WorkTimeStates:waiting_close_input',
+            api_key=None,
+            model='gpt-4o',
+        )
+    ) == 'pass_through'
+
+
+def test_active_fsm_navigation_invalid_bounded_output_passes_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _resolver(**kwargs) -> str:
+        return 'delete_invoice'
+
+    monkeypatch.setattr(decision_resolver_module, 'resolve_semantic_action', _resolver)
+
+    assert asyncio.run(
+        decision_resolver_module.resolve_active_fsm_navigation(
+            context_name='active_fsm_navigation',
+            user_input_text='nejaky hlasovy text',
+            current_state='InvoiceStates:waiting_confirm',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    ) == 'pass_through'

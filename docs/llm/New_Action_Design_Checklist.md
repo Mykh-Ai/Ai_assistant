@@ -261,6 +261,43 @@ Exact typed destructive exception:
 
 ---
 
+
+### 6.1 Active FSM / stale-state / callback-confirmation gate
+
+Any new top-level action, subflow, preview, confirmation, callback-driven flow,
+or pending user decision must declare its active-state safety coverage before it
+can be accepted.
+
+- [ ] If the action starts or continues an FSM state, it is covered by the
+  shared active-FSM navigation/stale-state layer in
+  `bot/services/active_fsm_guard.py`.
+- [ ] Active text input uses the shared guard before state-specific business
+  parsing; `pass_through` must continue to the existing state handler and must
+  not be swallowed by a catch-all router.
+- [ ] Active voice transcripts use the same shared guard after STT and before
+  state-specific voice routing; `voice.py` must not add navigation phrase
+  dictionaries.
+- [ ] Every active FSM state records shared activity metadata, and stale-state
+  evaluation reads the old timestamp before any refresh.
+- [ ] Stale or legacy approve/save/delete/pay/send/mark-paid-like replies fail
+  closed and cannot execute business side effects.
+- [ ] If stale recovery replays a fresh business request, it first clears or
+  safely cleans the old FSM state and routes through the existing idle
+  top-level entry path exactly once.
+- [ ] Callback confirmations validate authorization, expected current FSM state
+  or pending callback context, activity timestamp or callback timestamp where
+  available, and expiration before side effects.
+- [ ] Legacy, missing-state, mismatched-state, or expired callbacks fail closed.
+- [ ] Callback payloads that mutate data should include a timestamp, nonce, or
+  equivalent pending-decision context where the existing keyboard API allows it.
+- [ ] Fresh active-FSM safe switch confirmation is implemented only if the
+  previous FSM state/data and original user request can be preserved or restored
+  with tests. If that cannot be proven, document the follow-up gap instead of
+  implementing an unsafe approximation.
+- [ ] A stateless/read-only action that does not create an FSM state, pending
+  decision, callback confirmation, recoverable draft, or preview explicitly
+  documents why this shared guard is not required.
+
 ## 7. Dangerous boundary checklist
 
 Apply this checklist before exposing or changing actions that touch destructive behavior, authorization, tenant scope, DB/storage, or external document intake.

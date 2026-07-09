@@ -180,6 +180,41 @@ Preview decision semantics:
 
 ---
 
+
+## 5A) Active FSM navigation and stale-state recovery
+
+Active FSM state owns the conversation before idle/top-level routing. The
+shared active-FSM navigation resolver is state-aware and bounded; it is not a
+public top-level action resolver and it must run only when an FSM state or
+pending decision is active.
+
+Allowed active-FSM navigation outputs:
+- `cancel_current_flow`
+- `show_main_menu`
+- `resume_start_status`
+- `pass_through`
+
+Python remains the executor:
+- `cancel_current_flow` calls the existing `cancel_current_state()` cleanup path.
+- `show_main_menu` clears the active state safely and reuses the existing
+  `cmd_menu()` / `MENU_MESSAGE` path.
+- `resume_start_status` clears the active state safely and reuses the existing
+  `cmd_start()` staged setup/status path.
+- `pass_through` means the global guard does not intervene; the existing active
+  state handler must receive the message or voice transcript unchanged.
+
+Stale-state recovery uses shared FSM activity metadata. Runtime order is
+mandatory: read current state and old timestamp, evaluate stale/legacy status,
+recover or fail closed if stale, and only then refresh activity metadata after a
+fresh pass-through handler or new safe state is accepted. A stale approval,
+save, delete, pay, send, or mark-paid-like reply must not execute side effects.
+
+Fresh active-FSM safe switch confirmation is not considered implemented unless
+tests prove exact preservation/restoration of the previous FSM state/data and
+safe replay of the original user request through the existing idle top-level
+path. If that cannot be proven, the switch feature must remain deferred rather
+than implemented approximately.
+
 ## 6) Canonical value resolution
 
 The same resolver pattern applies to structured values/slots.

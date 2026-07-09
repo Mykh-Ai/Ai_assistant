@@ -4,7 +4,7 @@ import re
 from typing import Any
 import unicodedata
 
-from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply
+from bot.services.semantic_action_resolver import resolve_bounded_confirmation_reply, resolve_semantic_action
 
 
 ApproveEditCancelDecision = str
@@ -12,6 +12,7 @@ YesNoDecision = str
 AttachmentRouteChoiceDecision = str
 AttachmentDocumentTypeChoiceDecision = str
 GlobalCancelDecision = str
+ActiveFsmNavigationDecision = str
 WorkTimeOpenConflictChoiceDecision = str
 WorkTimeMissingDaysChoiceDecision = str
 AccountingDocumentCategoryPreviewDecision = str
@@ -32,6 +33,12 @@ _ATTACHMENT_DOCUMENT_TYPE_CHOICE_OUTPUTS = [
     'unknown',
 ]
 _GLOBAL_CANCEL_OUTPUTS = ['cancel', 'unknown']
+_ACTIVE_FSM_NAVIGATION_OUTPUTS = [
+    'cancel_current_flow',
+    'show_main_menu',
+    'resume_start_status',
+    'pass_through',
+]
 _WORK_TIME_OPEN_CONFLICT_OUTPUTS = ['close_day', 'fill_time', 'skip_day', 'cancel', 'unknown']
 _WORK_TIME_MISSING_DAYS_OUTPUTS = ['fill', 'skip', 'cancel', 'unknown']
 _ACCOUNTING_CATEGORY_PREVIEW_OUTPUTS = [
@@ -71,6 +78,40 @@ _GLOBAL_CANCEL_SHORTCUTS = {
     'начать сначала',
 }
 
+_ACTIVE_FSM_NAVIGATION_SHORTCUTS = {
+    'cancel_current_flow': {
+        'cancel',
+        'zrusit',
+        'skoncit',
+        'spat',
+        'naspat',
+        'скасувати',
+        'відмінити',
+        'отменить',
+    },
+    'show_main_menu': {
+        'menu',
+        'hlavne menu',
+        'hlavny zoznam',
+        'ukaz menu',
+        'zobraz menu',
+        'меню',
+        'головне меню',
+        'главное меню',
+    },
+    'resume_start_status': {
+        'start',
+        'zacat',
+        'zacat odznova',
+        'spustit znova',
+        'start over',
+        'почати',
+        'почати спочатку',
+        'почни з початку',
+        'начать',
+        'начать сначала',
+    },
+}
 _APPROVE_EDIT_CANCEL_MAP = {
     'schvalit': 'approve',
     'upravit': 'edit',
@@ -196,6 +237,55 @@ async def resolve_global_cancel(
     return decision if decision in _GLOBAL_CANCEL_OUTPUTS else _UNKNOWN
 
 
+async def resolve_active_fsm_navigation(
+    *,
+    context_name: str,
+    user_input_text: str,
+    current_state: str | None,
+    api_key: str | None,
+    model: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> ActiveFsmNavigationDecision:
+    normalized = _normalize_text(user_input_text)
+    for decision, shortcuts in _ACTIVE_FSM_NAVIGATION_SHORTCUTS.items():
+        if normalized in {_normalize_text(value) for value in shortcuts}:
+            return decision
+
+    decision = await resolve_semantic_action(
+        context_name=context_name,
+        allowed_actions=_ACTIVE_FSM_NAVIGATION_OUTPUTS,
+        user_input_text=user_input_text,
+        api_key=api_key,
+        model=model,
+        auxiliary_context={
+            'current_state': current_state,
+            'state_scope': 'active_fsm_navigation_interrupt',
+            'supported_languages': ['sk', 'uk', 'ru'],
+            'failure_mode': 'pass_through_for_fresh_updates',
+            **(diagnostics or {}),
+        },
+        action_hints={
+            'cancel_current_flow': {
+                'meaning': 'the user wants to abandon the current unfinished FSM action only',
+                'not_this': ['approval, save, send, pay, mark-paid, or edit-current-preview intent'],
+            },
+            'show_main_menu': {
+                'meaning': 'the user wants the existing main menu or list of available bot actions',
+                'not_this': ['creating an invoice, choosing a category, approving a preview'],
+            },
+            'resume_start_status': {
+                'meaning': 'the user wants to restart from the existing /start staged setup/status router',
+                'not_this': ['approve current preview, edit current draft, enter a date/time/value'],
+            },
+            'pass_through': {
+                'meaning': (
+                    'ordinary state-owned input, approval/edit/yes/no, time, date, category, '
+                    'document answer, or business value that the active FSM handler must process unchanged'
+                ),
+            },
+        },
+    )
+    return decision if decision in _ACTIVE_FSM_NAVIGATION_OUTPUTS else 'pass_through'
 async def resolve_accounting_document_category_preview_decision(
     *,
     context_name: str,

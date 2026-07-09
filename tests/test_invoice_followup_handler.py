@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from bot.config import Config
@@ -9,6 +10,7 @@ from bot.handlers.invoice_followup import (
     INVOICE_FOLLOWUP_DECISION_MUTE,
     INVOICE_FOLLOWUP_DECISION_REMIND_LATER,
     _callback_data,
+    _parse_followup_callback,
     invoice_followup_callback,
 )
 from bot.services.access_control import AccessControlService
@@ -176,7 +178,11 @@ def test_automatic_due_date_check_sends_overdue_invoice_card_with_three_decision
         'Pripomenut neskor',
         'Viac nepripominat',
     ]
-    assert buttons[0].callback_data == _callback_data(INVOICE_FOLLOWUP_DECISION_MARK_PAID, invoice_id)
+    parsed_callback = _parse_followup_callback(buttons[0].callback_data)
+    assert parsed_callback is not None
+    assert parsed_callback[0] == INVOICE_FOLLOWUP_DECISION_MARK_PAID
+    assert parsed_callback[1] == invoice_id
+    assert parsed_callback[2] is not None
     state = InvoiceFollowupService(config.db_path).get_state(invoice_id=invoice_id)
     assert state is not None
     assert state.remind_after is not None
@@ -231,6 +237,42 @@ def test_mark_paid_callback_persists_state_and_shows_drive_stub(tmp_path: Path) 
     assert 'Google Drive este nie je aktivna' in source_message.answers[-1]
     assert 'ostava ulozena lokalne' in source_message.answers[-1]
 
+
+def test_legacy_mark_paid_callback_without_timestamp_fails_closed(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    invoice_id = _setup_invoice(config)
+    source_message = _DummyMessage(user_id=USER_A)
+    callback = _DummyCallback(
+        data=f'invoice_followup:{INVOICE_FOLLOWUP_DECISION_MARK_PAID}:{invoice_id}',
+        user_id=USER_A,
+        message=source_message,
+    )
+
+    asyncio.run(invoice_followup_callback(callback, config))
+
+    state = InvoiceFollowupService(config.db_path).get_state(invoice_id=invoice_id)
+    assert state is None
+    assert callback.answers == [('Tato pripomienka uz nie je dostupna pre vas ucet.', True)]
+    assert source_message.cleared_reply_markups == []
+
+
+def test_stale_mark_paid_callback_with_old_timestamp_fails_closed(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    invoice_id = _setup_invoice(config)
+    issued_at = datetime.now(UTC) - timedelta(days=2)
+    source_message = _DummyMessage(user_id=USER_A)
+    callback = _DummyCallback(
+        data=_callback_data(INVOICE_FOLLOWUP_DECISION_MARK_PAID, invoice_id, now=issued_at),
+        user_id=USER_A,
+        message=source_message,
+    )
+
+    asyncio.run(invoice_followup_callback(callback, config))
+
+    state = InvoiceFollowupService(config.db_path).get_state(invoice_id=invoice_id)
+    assert state is None
+    assert callback.answers == [('Tato pripomienka uz nie je dostupna pre vas ucet.', True)]
+    assert source_message.cleared_reply_markups == []
 
 def test_remind_later_callback_persists_snoozed_state_without_drive_stub(tmp_path: Path) -> None:
     config = _config(tmp_path)

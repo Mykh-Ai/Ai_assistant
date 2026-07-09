@@ -35,6 +35,12 @@ from bot.handlers.work_time import (
     work_time_missing_days_choice,
     work_time_open_day_conflict_choice,
 )
+from bot.services.active_fsm_guard import (
+    ACTIVE_FSM_EXPIRED_MESSAGE,
+    clear_current_state_safely,
+    is_active_fsm_callback_stale_or_legacy,
+    touch_active_fsm_activity,
+)
 from bot.keyboards.decision import (
     DECISION_APPROVE,
     DECISION_CALLBACK_PREFIX,
@@ -85,6 +91,13 @@ async def decision_callback(callback: CallbackQuery, state: FSMContext, config: 
     if token is None:
         await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
         return
+    if current_state is None:
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+        return
+    if await is_active_fsm_callback_stale_or_legacy(state=state, current_state=current_state):
+        await clear_current_state_safely(state=state, config=config)
+        await callback.answer(ACTIVE_FSM_EXPIRED_MESSAGE, show_alert=True)
+        return
 
     adapter = _CallbackMessageAdapter(callback)
     handled = await _dispatch_decision_token(
@@ -101,7 +114,7 @@ async def decision_callback(callback: CallbackQuery, state: FSMContext, config: 
 
     await _clear_inline_keyboard(callback)
     await callback.answer()
-
+    await touch_active_fsm_activity(state)
 
 def _parse_decision_token(data: str | None) -> str | None:
     if not data or not data.startswith(DECISION_CALLBACK_PREFIX):

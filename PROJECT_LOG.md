@@ -1,3 +1,32 @@
+## 2026-07-09 - Active FSM Navigation and Stale-State Guard
+
+Summary:
+- Added a shared active-FSM navigation/stale-state guard in `bot/services/active_fsm_guard.py`, wired as message middleware after authorization and reused by `voice.py` after STT.
+- Added bounded active-FSM navigation classification in `bot/services/decision_resolver.py` with only `cancel_current_flow`, `show_main_menu`, `resume_start_status`, and `pass_through` outputs.
+- Reused existing Python behavior: `cancel_current_state()`, `cmd_menu()` / `MENU_MESSAGE`, `cmd_start()` / staged status, and existing idle `process_invoice_text()` only after stale-state clearing.
+- Added shared FSM activity metadata and timeout policy: destructive exact confirmation 5 minutes, destructive confirmation 10 minutes, preview/decision/choice 15 minutes, data-entry 30 minutes.
+- Added stale callback guards for shared `decision:*` callbacks and timestamped `invoice_followup:*` callbacks; legacy/missing/expired callbacks fail closed before save/delete/pay/send/mark-paid side effects.
+- Deferred fresh active-FSM safe switch confirmation because the current idle top-level route executes actions directly and there is no proven dry-run probe plus previous-FSM restore contract.
+
+Docs/contracts read:
+- `AGENTS.md`, `docs/Product_Doctrine_2030.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/Product_Truth_Layer.md`, `docs/Product_Truth_Registry_MVP_Design.md`, `docs/Self_Learning_Layer.md`, `docs/Evaluation_and_Smoke_Test_Standards.md`, `docs/Product_UX_Eval_Artifacts.md`, `docs/TZ_FakturaBot.md`, `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `docs/llm/New_Action_Design_Checklist.md`, `docs/llm/Bounded_Resolver_Prompt_Template.md`, `docs/Canonical_Decision_Resolver_Contract.md`, OfficeFlow/Document Intake contracts, `docs/User_Access_Model_Roadmap.md`, and the affected handlers/tests.
+
+Preflight/status:
+- Touched scopes: routing, FSM, voice/STT post-processing, DecisionResolver-adjacent bounded navigation, callback safety, docs/tests/log. No DB schema, storage model, PDF/layout, access model, Product Truth capability, InfoHelp capability, server, deployment, or self-learning change.
+- Current implementation status: `implemented` for explicit active-FSM navigation and stale-state recovery; `implemented` for covered stale callbacks; `deferred` for fresh active-FSM safe switch confirmation.
+- AI maturity level: bounded Python-owned canonicalization inside an active FSM guard; no new autonomous execution or product capability claim.
+- Product/user journey proof: active `/menu`, `/start`, `/cancel` and semantic navigation escape old FSM states; stale work-time/invoice/document states do not parse later requests as old state input; stale approve/delete/pay/save-like replies and callbacks fail closed.
+- Self-learning hooks considered: none; navigation, stale recovery, and callback expiry must not learn aliases or mutate semantic memory.
+- Source of truth for user-facing claims: runtime code and this log; Product Truth/InfoHelp not updated because this is a safety/runtime behavior, not a user-visible business capability.
+
+Verification:
+- `python -m pytest -q tests\test_active_fsm_guard.py tests\test_decision_resolver.py tests\test_decision_callbacks.py tests\test_invoice_followup_handler.py tests\test_voice_state_routing.py` - 749 passed.
+- `python -m pytest -q tests\test_accounting_document_intake_flow.py tests\test_officeflow_attachment_router.py tests\test_active_fsm_guard.py tests\test_voice_state_routing.py` - 154 passed.
+- `python -m pytest -q` - 2061 passed, 7 subtests passed.
+- `git diff --check` - clean (Git reported existing LF-to-CRLF normalization warnings only).
+
+Known follow-up gap:
+- Fresh active FSM + clear new top-level business request still requires explicit navigation/cancel or future safe switch confirmation. Do not implement safe switch until a top-level dry-run/probe and exact previous FSM state/data restore are proven by tests.
 ## 2026-07-09 - OfficeFlow Work-Time Close Input Recovery
 
 Summary:

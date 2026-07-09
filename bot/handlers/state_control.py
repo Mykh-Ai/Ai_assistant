@@ -67,6 +67,18 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
         await message.answer(PERSISTED_EDIT_CANCELLED_MESSAGE)
         return
 
+    await clear_current_state_safely(state=state, config=config)
+    await message.answer(STATE_CANCELLED_MESSAGE)
+
+
+async def clear_current_state_safely(*, state: FSMContext, config: Config) -> None:
+    current_state = await state.get_state()
+    if current_state is None:
+        await state.clear()
+        return
+
+    data = await state.get_data()
+
     if _is_accounting_intake_state(current_state):
         _cleanup_accounting_temp(config=config, data=data)
 
@@ -74,7 +86,6 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
         _cleanup_officeflow_temp(config=config, data=data)
 
     await state.clear()
-    await message.answer(STATE_CANCELLED_MESSAGE)
 
 
 def _is_accounting_intake_state(current_state: str | None) -> bool:
