@@ -825,6 +825,12 @@ def parse_close_candidate(text: str, *, open_day: WorkTimeDay, today: date | Non
         return WorkTimeCandidate(work_date=work_date, duration_minutes=hours * 60 + minutes, close_mode='close_with_duration')
 
     time_match = re.search(r'(?:\bo\b|\bv\b|\bat\b|РІ|Рѕ)\s*(\d{1,2})(?::(\d{2}))\b', normalized)
+    plain_time_match = re.fullmatch(r'\s*(\d{1,2}):(\d{2})\s*', normalized)
+    if plain_time_match:
+        end_time = _parse_match_time((plain_time_match.group(1), plain_time_match.group(2)))
+        if end_time is not None:
+            return WorkTimeCandidate(work_date=work_date, end_time=end_time, close_mode='close_at_time')
+
     if time_match:
         end_time = _parse_match_time((time_match.group(1), time_match.group(2)))
         if end_time is not None:

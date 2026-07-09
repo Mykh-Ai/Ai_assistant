@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fixed OfficeFlow work-time close recovery after ambiguous close commands such as zakry den 16.07: the bot now stays in close-time input state and accepts a plain HH:MM reply such as 16:07 instead of falling back to idle top-level routing.
 - Strengthened top-level routing hints for OfficeFlow work-time deletion so mixed text such as `vidali dochadzku` routes to `delete_work_time_month` instead of invoice deletion, while invoice-specific delete requests still route to `delete_existing_invoice`.
 - Changed OfficeFlow work-time Telegram preview/saved/month summaries from decimal-hour labels such as `8,4 hod.` to `h:mm` labels such as `8:24`, keeping stored minutes and lunch math unchanged.
 - Changed OfficeFlow work-time monthly Excel report duration cells from decimal-hour text to Excel duration values formatted as `[h]:mm`, with header `Hodiny (h:mm)` and totals that can exceed 24 hours.

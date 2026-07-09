@@ -526,9 +526,32 @@ def test_unknown_close_input_does_not_close_open_day(tmp_path: Path) -> None:
     open_day = WorkTimeService(config.db_path).get_open_day(telegram_id=1001)
     assert open_day is not None
     assert open_day.end_time is None
-    assert state.current_state is None
+    assert state.current_state == WorkTimeStates.waiting_close_input.state
     assert 'Napiste cas odchodu alebo trvanie' in message.answers[-1]
 
+
+def test_close_command_with_ambiguous_dot_time_keeps_state_and_accepts_plain_hhmm(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 7, 8, 6, 33)).ok
+    state = _DummyState()
+    first = _DummyMessage('\u0417\u0430\u043a\u0440\u0438\u0439 \u043c\u0435\u043d\u0456 \u043f\u0440\u0430\u0446\u044c\u043e\u0432\u043d\u0438\u0439 \u0434\u0435\u043d\u044c 16.07')
+
+    asyncio.run(start_close_work_day(message=first, state=state, config=config, text=first.text))
+
+    assert state.current_state == WorkTimeStates.waiting_close_input.state
+    assert WorkTimeService(config.db_path).get_open_day(telegram_id=1001) is not None
+    assert 'Napiste cas odchodu alebo trvanie' in first.answers[-1]
+
+    second = _DummyMessage('16:07')
+    asyncio.run(work_time_close_input(message=second, state=state, config=config))
+
+    assert state.current_state == WorkTimeStates.waiting_close_preview_confirm.state
+    assert WorkTimeService(config.db_path).get_open_day(telegram_id=1001) is not None
+    assert 'Prichod: 06:33' in second.answers[-1]
+    assert 'Odchod: 16:07' in second.answers[-1]
+    assert second.reply_markups[-1] is not None
 
 def test_explicit_close_now_closes_open_day(tmp_path: Path) -> None:
     config = _config(tmp_path)

@@ -1,3 +1,16 @@
+## 2026-07-09 - OfficeFlow Work-Time Close Input Recovery
+
+Summary:
+- Investigated 2026-07-08 live logs for the failed close-day smoke: STT and top-level routing selected `close_work_day`, but the unresolved `16.07` input did not keep the user in close-time input state, so the follow-up `16:07` was routed as idle top-level `unknown`.
+- Fixed `start_close_work_day()` to enter `WorkTimeStates.waiting_close_input` when the close action is recognized but the close time/duration is missing or ambiguous.
+- Added close-candidate support for plain `HH:MM` replies such as `16:07` in the active close flow, while keeping dotted `16.07` from being treated as a time.
+- Kept parser dictionaries, LLM intent routing, DB schema, invoice/accounting flows, timezone, and lunch math unchanged.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py` - 69 passed.
+- `python -m pytest -q tests\test_work_time_service.py tests\test_work_time_routing.py tests\test_voice_state_routing.py` - 132 passed.
+- `$env:PYTHONIOENCODING='utf-8'; python -m pytest -q` - 2042 passed, 7 subtests passed.
+
 ## 2026-07-04 - OfficeFlow Work-Time Delete Routing Disambiguation
 
 Summary:

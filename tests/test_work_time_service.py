@@ -581,6 +581,12 @@ def test_close_parser_requires_explicit_now_or_strict_value() -> None:
 
     assert parse_close_candidate('neviem ako vcera', open_day=day) is None
     assert parse_close_candidate('zatvor pracovny den teraz', open_day=day).close_mode == 'close_now'
+    plain_time = parse_close_candidate('16:07', open_day=day)
+    assert plain_time is not None
+    assert plain_time.close_mode == 'close_at_time'
+    assert plain_time.end_time is not None
+    assert plain_time.end_time.strftime('%H:%M') == '16:07'
+    assert parse_close_candidate('16.07', open_day=day) is None
     assert parse_close_candidate('zatvor den o 17:00', open_day=day).close_mode == 'close_at_time'
     assert parse_close_candidate('zatvor den 10 hodin', open_day=day).close_mode == 'close_with_duration'
 

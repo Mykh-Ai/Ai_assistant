@@ -127,7 +127,8 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
 
     candidate = await _resolve_close_candidate(text, config, open_day)
     if candidate is None:
-        await message.answer('Napiste cas odchodu alebo trvanie, napriklad: o 17:00 alebo 10 hodin.')
+        await state.set_state(WorkTimeStates.waiting_close_input)
+        await message.answer('Napiste cas odchodu alebo trvanie, napriklad: 17:00, o 17:00 alebo 10 hodin.')
         return
     if candidate.close_mode == 'close_now':
         result = service.close_open_day(
@@ -416,7 +417,8 @@ async def work_time_close_input(message: Message, state: FSMContext, config: Con
     raw_text = message.text or ''
     candidate = await _resolve_close_candidate(raw_text, config, open_day)
     if candidate is None:
-        await message.answer('Napiste cas odchodu alebo trvanie, napriklad: o 17:00 alebo 10 hodin.')
+        await state.set_state(WorkTimeStates.waiting_close_input)
+        await message.answer('Napiste cas odchodu alebo trvanie, napriklad: 17:00, o 17:00 alebo 10 hodin.')
         return
     if candidate.close_mode == 'close_now':
         result = WorkTimeService(config.db_path).close_open_day(
