@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Moved OfficeFlow work-time report timesheet wording from Python fast-path variants into bounded LLM `positive_examples` for `generate_work_time_report`, keeping examples contextual rather than a whitelist.
 - Fixed OfficeFlow work-time report routing so Ukrainian timesheet wording such as `Покажи мені табель працівного часу.` resolves to `generate_work_time_report` instead of `unknown`.
 - Added a shared active-FSM navigation/stale-state guard for text and voice transcripts, plus stale callback protection for shared decision buttons and invoice follow-up buttons; fresh active-FSM safe switch confirmation remains deferred until FSM restore can be proven by tests.
 - Fixed OfficeFlow work-time close recovery after ambiguous close commands such as zakry den 16.07: the bot now stays in close-time input state and accepts a plain HH:MM reply such as 16:07 instead of falling back to idle top-level routing.

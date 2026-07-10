@@ -1,3 +1,19 @@
+## 2026-07-10 - OfficeFlow Work-Time Report Bundle Examples
+
+Summary:
+- Corrected the previous work-time report routing hotfix to follow the bounded resolver contract: removed Ukrainian/Russian timesheet variants from the Python report fast-path and moved the timesheet context into the LLM `positive_examples` for `generate_work_time_report`.
+- Strengthened the `generate_work_time_report` semantic boundary with a broader `meaning` and explicit `not_this` separations from add/open/close/delete/lunch/payroll actions.
+- Added tests proving the top-level bundle includes `Покажи табель рабочего времени` as a contextual positive example and that `Покажи мені табель працівного часу.` is resolved through the LLM bundle path, not by expanding Python phrase dictionaries.
+
+Scope:
+- Touched scopes: top-level semantic routing bundle, tests, changelog/project log. No voice.py phrase dictionary, parser dictionary, slot extraction, DB schema, invoice/accounting flow, timezone, lunch math, or report generation change.
+- Current implementation status: `partial` work-time MVP unchanged; this is a routing-bundle quality repair for an existing top-level action.
+- AI maturity level: bounded semantic canonicalization with Python-owned allowed actions and LLM contextual examples; no new side effects and no self-learning.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_routing.py` - 33 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py` - 222 passed.
+- `git diff --check` - clean (Git reported existing LF-to-CRLF normalization warnings only).
 ## 2026-07-10 - OfficeFlow Work-Time Report Timesheet Routing
 
 Summary:

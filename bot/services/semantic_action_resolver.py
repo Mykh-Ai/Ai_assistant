@@ -181,38 +181,8 @@ def _matches_work_time_manual_range_request(tokens: set[str]) -> bool:
 
 
 def _matches_work_time_report_request(tokens: set[str]) -> bool:
-    report_terms = {
-        'vykaz',
-        'dochadzka',
-        'tabulka',
-        'report',
-        'tabel',
-        'otcet',
-        'zvit',
-        '\u0442\u0430\u0431\u0435\u043b\u044c',
-        '\u0442\u0430\u0431\u0435\u043b\u044e',
-        '\u0442\u0430\u0431\u0435\u043b\u044c\u043a\u0443',
-        '\u0437\u0432\u0456\u0442',
-        '\u0437\u0432\u0438\u0442',
-        '\u043e\u0442\u0447\u0435\u0442',
-        '\u043e\u0442\u0447\u0451\u0442',
-    }
-    hour_terms = {
-        'hodin',
-        'hodiny',
-        'pracovneho',
-        'dochadzka',
-        'hours',
-        'casov',
-        'godin',
-        'casu',
-        '\u043f\u0440\u0430\u0446\u0456\u0432\u043d\u043e\u0433\u043e',
-        '\u043f\u0440\u0430\u0446\u044c\u043e\u0432\u043d\u043e\u0433\u043e',
-        '\u0440\u043e\u0431\u043e\u0447\u043e\u0433\u043e',
-        '\u0440\u0430\u0431\u043e\u0447\u0435\u0433\u043e',
-        '\u0447\u0430\u0441\u0443',
-        '\u0432\u0440\u0435\u043c\u0435\u043d\u0438',
-    }
+    report_terms = {'vykaz', 'dochadzka', 'tabulka', 'report', 'tabel', 'otcet', 'zvit'}
+    hour_terms = {'hodin', 'hodiny', 'pracovneho', 'dochadzka', 'hours', 'casov', 'godin'}
     return bool(tokens.intersection(report_terms)) and bool(tokens.intersection(hour_terms))
 
 

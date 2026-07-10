@@ -3398,8 +3398,25 @@ async def process_invoice_text(
                 'not_this': ['open a live work day now', 'invoice item editing', 'payroll or legal HR attendance'],
             },
             _GENERATE_WORK_TIME_REPORT_INTENT: {
-                'meaning': 'user wants to show or generate a monthly Excel work-time report / dochadzka / vykaz hodin / tabel or timesheet of worked time for a selected or current month',
-                'not_this': ['invoice analytics', 'official payroll or legal HR attendance', 'delete saved work-time records'],
+                'meaning': (
+                    'user wants to view, show, create, generate, export, or receive a work-time / attendance / '
+                    'timesheet report for saved work-time records, usually for the current or selected month'
+                ),
+                'positive_examples': [
+                    'pokaž tabuľku pracovného času',
+                    'show my timesheet',
+                    'Покажи табель рабочего времени',
+                    'Покажи мені табель працівного часу',
+                    'chcem výkaz odpracovaných hodín',
+                ],
+                'not_this': [
+                    'record or add worked hours for a date',
+                    'open/start today live work day',
+                    'close the currently open work day',
+                    'delete stored work-time records',
+                    'change lunch-break settings',
+                    'payroll, salary, or legal HR compliance',
+                ],
             },
             _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT: {
                 'meaning': 'user wants to set, change, or disable the fixed lunch break deduction used by OfficeFlow work-time reports',

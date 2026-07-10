@@ -180,8 +180,35 @@ def test_top_level_work_time_report_routes_from_month_request() -> None:
     assert _resolve('vytvor vykaz hodin za jun') == 'generate_work_time_report'
 
 
-def test_top_level_work_time_report_routes_from_ukrainian_timesheet_request() -> None:
-    assert _resolve('Покажи мені табель працівного часу.') == 'generate_work_time_report'
+def test_top_level_work_time_report_routes_from_timesheet_request_through_llm_bundle(monkeypatch) -> None:
+    _TopLevelActionOpenAIFake.output = json.dumps({'canonical_action': 'generate_work_time_report'})
+    _TopLevelActionOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
+
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=WORK_TIME_ALLOWED,
+            user_input_text='Покажи мені табель працівного часу.',
+            api_key='sk-test',
+            model='gpt-4o',
+            action_hints={
+                'generate_work_time_report': {
+                    'meaning': 'user wants to view, show, create, generate, export, or receive a work-time / attendance / timesheet report for saved work-time records',
+                    'positive_examples': ['Покажи табель рабочего времени'],
+                    'not_this': ['record or add worked hours for a date', 'delete stored work-time records'],
+                },
+            },
+        )
+    )
+
+    assert result == 'generate_work_time_report'
+    payload = _TopLevelActionOpenAIFake.last_payload
+    assert payload is not None
+    assert payload['user_input_text'] == 'Покажи мені табель працівного часу.'
+    hint = payload['action_hints']['generate_work_time_report']
+    assert 'timesheet report' in hint['meaning']
+    assert 'Покажи табель рабочего времени' in hint['positive_examples']
 
 
 def test_top_level_work_time_lunch_break_update_routes_from_examples() -> None:

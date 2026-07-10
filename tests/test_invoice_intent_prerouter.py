@@ -1067,6 +1067,30 @@ def test_process_invoice_text_top_level_hints_disambiguate_work_time_delete_from
     assert 'delete_work_time_month' in captured['allowed_actions']
     assert 'delete_existing_invoice' in captured['allowed_actions']
 
+
+def test_process_invoice_text_top_level_work_time_report_hint_uses_positive_examples(tmp_path: Path, monkeypatch) -> None:
+    captured: dict = {}
+
+    async def _resolver(**kwargs):
+        captured.update(kwargs)
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Покажи мені табель працівного часу.')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    hints = captured['action_hints']
+    report_hint = hints['generate_work_time_report']
+    assert 'positive_examples' in report_hint
+    assert 'Покажи табель рабочего времени' in report_hint['positive_examples']
+    assert 'timesheet report' in report_hint['meaning']
+    assert 'delete stored work-time records' in report_hint['not_this']
+    assert 'generate_work_time_report' in captured['allowed_actions']
+
 def test_process_invoice_text_mixed_dochadzka_delete_routes_to_work_time_not_invoice(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
