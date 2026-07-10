@@ -1,3 +1,25 @@
+## 2026-07-10 - OfficeFlow Work-Time Report Timesheet Routing
+
+Summary:
+- Investigated live top-level routing miss where STT text `Покажи мені табель працівного часу.` returned `unknown` instead of `generate_work_time_report`.
+- Strengthened the bounded top-level work-time report fast-path for Ukrainian/Russian timesheet/table wording such as `табель`, `табелю`, `робочого/працівного часу`, while preserving Python-owned allowed-action routing.
+- Updated the `generate_work_time_report` action hint so the LLM understands show/generate timesheet/report wording as the same OfficeFlow work-time report intent.
+- Kept voice.py free of work-time phrase dictionaries and did not touch parser dictionaries, slot extraction, DB schema, invoice/accounting flows, timezone, lunch math, or report generation.
+
+Docs/contracts read:
+- `AGENTS.md`, `docs/Product_Doctrine_2030.md`, `docs/AI_Layer_Implementation_Standards.md`, `docs/Product_Truth_Layer.md`, `docs/Product_Truth_Registry_MVP_Design.md`, `docs/Self_Learning_Layer.md`, `docs/Evaluation_and_Smoke_Test_Standards.md`, `docs/Product_UX_Eval_Artifacts.md`, `docs/TZ_FakturaBot.md`, `docs/FakturaBot_LLM_Orchestrator_Contract.md`, `docs/llm/Canonical_Action_Registry.md`, `docs/llm/In_Action_Response_Registry.md`, `docs/llm/New_Action_Design_Checklist.md`, `docs/llm/Bounded_Resolver_Prompt_Template.md`, and `docs/local-only/FakturaBot_Server_Agent_Context.md`.
+
+Preflight/status:
+- Touched scopes: top-level semantic routing, LLM action hint, tests, changelog/project log, server deploy. No confirmation, FSM, STT prompt, LMM, storage, DB, access, PDF/layout, Product Truth status, InfoHelp capability, self-learning, or report-generation semantics changed.
+- Current implementation status: `partial` work-time MVP unchanged; this is a routing-quality repair for an existing implemented canonical action.
+- AI maturity level: bounded semantic canonicalization repair inside existing Python-owned action resolver; no new autonomous execution and no new product capability claim.
+- Product/user journey proof: user can say `Покажи мені табель працівного часу.` and the resolver returns `generate_work_time_report` instead of `unknown`.
+- Self-learning hooks considered: none; broad action-alias learning is not implemented and this fix remains registry/test-owned.
+
+Verification:
+- `python -m pytest -q tests\test_work_time_routing.py` - 33 passed.
+- `python -m pytest -q tests\test_invoice_intent_prerouter.py` - 221 passed.
+- `git diff --check` - clean (Git reported existing LF-to-CRLF normalization warnings only).
 ## 2026-07-09 - Active FSM Navigation and Stale-State Guard
 
 Summary:

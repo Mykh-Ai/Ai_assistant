@@ -180,6 +180,9 @@ def test_top_level_work_time_report_routes_from_month_request() -> None:
     assert _resolve('vytvor vykaz hodin za jun') == 'generate_work_time_report'
 
 
+def test_top_level_work_time_report_routes_from_ukrainian_timesheet_request() -> None:
+    assert _resolve('Покажи мені табель працівного часу.') == 'generate_work_time_report'
+
 
 def test_top_level_work_time_lunch_break_update_routes_from_examples() -> None:
     assert _resolve('zmeň obednú prestávku na 30 minút') == 'update_work_time_lunch_break'

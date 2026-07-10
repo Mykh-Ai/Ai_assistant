@@ -3398,7 +3398,7 @@ async def process_invoice_text(
                 'not_this': ['open a live work day now', 'invoice item editing', 'payroll or legal HR attendance'],
             },
             _GENERATE_WORK_TIME_REPORT_INTENT: {
-                'meaning': 'user wants to generate a monthly Excel work-time report / dochadzka / vykaz hodin for a selected month',
+                'meaning': 'user wants to show or generate a monthly Excel work-time report / dochadzka / vykaz hodin / tabel or timesheet of worked time for a selected or current month',
                 'not_this': ['invoice analytics', 'official payroll or legal HR attendance', 'delete saved work-time records'],
             },
             _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT: {
