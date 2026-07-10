@@ -100,6 +100,25 @@ active source of truth, mandatory pre-read material, or proof that a capability
 is current. If an archived document is useful for background, verify every
 claim against active docs, code, and `PROJECT_LOG.md`.
 
+## Documentation Preflight And Maintenance
+
+Before starting non-trivial work, inspect the relevant current documents under
+`docs/` and follow the project rules they define. Do not treat `docs/archive/`
+or example/local placeholder files as active truth unless an active source
+points to them and the claim is verified against current code/logs.
+
+If the current docs, code, `PROJECT_LOG.md`, or runtime evidence disagree,
+state the mismatch clearly before changing behavior and propose the needed
+documentation or implementation repair.
+
+At the end of each meaningful work session, update the relevant existing
+documentation under `docs/` when the work changes product behavior, runtime
+architecture, capability truth, AI/LLM contracts, storage, access, deployment,
+or user-facing workflows. Prefer updating the current source-of-truth document
+over creating a new one; create a new document only when no existing active doc
+can own the decision or behavior cleanly. Tiny read-only answers and trivial
+commands do not require documentation churn.
+
 ## Mandatory Contract Reads
 
 Before changing handlers, FSM flows, top-level actions, in-action decisions,

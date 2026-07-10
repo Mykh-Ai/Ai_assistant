@@ -1,3 +1,16 @@
+## 2026-07-10 - Agent Documentation Preflight Rule
+
+Summary:
+- Updated `AGENTS.md` to require relevant `docs/` preflight before non-trivial work, project-rule compliance, mismatch reporting, and repair proposals when docs/code/logs/runtime evidence disagree.
+- Clarified that meaningful work sessions should update the relevant active `docs/` source of truth when behavior, architecture, capability truth, AI/LLM contracts, storage, access, deployment, or user-facing workflows change.
+- Clarified that existing active docs should be updated before creating new docs, and that trivial read-only answers or commands do not require documentation churn.
+
+Scope:
+- Touched scopes: agent workflow documentation and project log only. No runtime code, tests, server, DB/storage, product behavior, parser, LLM routing, or deployment changed.
+
+Verification:
+- Documentation-only change; no runtime tests required.
+
 ## 2026-07-10 - OfficeFlow Work-Time Report Period Slots
 
 Summary:
