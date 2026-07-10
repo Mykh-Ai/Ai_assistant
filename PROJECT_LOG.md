@@ -1,3 +1,34 @@
+## 2026-07-10 - OfficeFlow Work-Time Report Period Slots
+
+Summary:
+- Recorded the defect/root cause: the earlier work-time report month flow incorrectly trusted Python text parsing for natural-language month semantics after the top-level action was known. That violates the bounded LLM contract because Python should validate/default structured slots, not own multilingual month dictionaries as the primary path.
+- Integrated bounded LLM period slots for `generate_work_time_report`: the top-level resolver can now return `slots.period` with `month` 1-12 and optional `year` for phrases such as `покажи табель рабочего времени за May`.
+- Kept Python as validator/executor: it validates structured month/year, defaults missing year/month from the Europe/Bratislava business date, and only uses the older text month parser for no-LLM/legacy direct calls.
+- Confirmed report files are generated on demand under `storage_dir/work_time_reports/<telegram_id>/dochadzka_YYYY_MM.xlsx`; DB rows remain canonical and an existing same-month file is overwritten by regeneration.
+
+Scope:
+- Touched scopes: top-level LLM routing payload/diagnostics, work-time report period validation, LLM contract/checklist governance, tests, canonical registry, changelog/project log. No DB schema, parser dictionary expansion, invoice/accounting side effects, lunch math, report Excel layout, STT prompt, or server state changed.
+- Current implementation status: `partial` work-time MVP unchanged; selected report month routing is now bounded LLM-slot aware when an API key is configured.
+- AI maturity level: bounded semantic canonicalization with Python-owned validation/defaults and deterministic report generation.
+
+Verification:
+- Focused tests cover LLM period slot capture, router-to-handler period passing, Python defaults for missing year/month, invalid month rejection, and existing report generation flow.
+- Contract/checklist docs now explicitly forbid making Python broad human-language dictionaries the primary owner for bounded variable slot interpretation.
+
+## 2026-07-10 - LLM Action Hint Boundary Contract
+
+Summary:
+- Tightened the LLM Orchestrator Contract for ambiguous top-level semantic actions: compact `action_hints` are now mandatory when allowed-action tokens alone cannot separate nearby meanings.
+- Made `meaning`, `positive_examples`, and `not_this` required fields for hinted actions, with examples treated as illustrative semantic context rather than literal whitelists.
+- Added boundary coverage requirements for overlapping verbs, shared business nouns, top-level vs in-action/subflow meanings, and read/write or destructive/read-only separation.
+
+Scope:
+- Touched scopes: AI orchestration contract and project log only. No runtime code, parser dictionaries, STT prompt, LLM routing implementation, DB/storage, invoice/accounting/work-time handlers, tests, deploy, or server state changed.
+- Current implementation status: governance/documentation contract update for future bounded resolver bundle work.
+- AI maturity level: contract-level bounded semantic canonicalization guidance; no new runtime capability or side effect.
+
+Verification:
+- Read-only diff review of `docs/FakturaBot_LLM_Orchestrator_Contract.md`.
 ## 2026-07-10 - OfficeFlow Work-Time Report Bundle Examples
 
 Summary:

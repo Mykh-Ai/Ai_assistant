@@ -164,6 +164,9 @@ The bounded resolver is a semantic canonicalizer, not a command executor and not
 - [ ] `action_hints` describe product meaning. They are not a whitelist of phrases.
 - [ ] Examples in `action_hints` are illustrative only; tests must not require literal example matching.
 - [ ] Deterministic Python fast-paths are allowed only when they are actually used and tested as narrow shortcuts.
+- [ ] Variable natural-language slots are extracted by bounded LLM into structured values before Python validation; Python must not become the primary multilingual dictionary/parser for months, dates, periods, customer/service wording, or other business slots.
+- [ ] Python slot parsers are limited to strict structural syntax, no-LLM compatibility fallback, or explicitly documented narrow deterministic ownership; any fallback parser must be named non-primary in docs/tests.
+- [ ] Missing structured slot values use Python-owned business defaults only when the rule is explicit; invalid structured slot values fail loud or ask clarification instead of falling back to broad text guessing.
 - [ ] LLM fallback remains available when fast-path aliases fail and an API key is configured.
 - [ ] Resolver tests include semantic paraphrases, multilingual/noisy input, and nearby-action separation.
 - [ ] Runtime tests prove Python validates the returned token before execution.

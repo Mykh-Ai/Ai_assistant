@@ -68,6 +68,33 @@ After STT, the transcript still flows through the same Python-owned state routin
 
 No free-form intent execution is allowed.
 
+### Slot extraction boundary
+
+For variable business values in natural language, the bounded LLM layer owns
+semantic extraction/canonicalization and Python owns validation/defaults.
+
+Examples of variable values include report periods, months, years, dates,
+clock ranges, durations, customer/service selections, document types, and
+other user-provided slots whose wording may appear in multiple languages or
+STT-noisy forms.
+
+Rules:
+- Python must not use broad human-language dictionaries as the primary path for
+  variable slot interpretation after a top-level action is selected.
+- Python may use deterministic parsers only for narrow structural syntax
+  (for example ISO dates, numeric `HH:MM`, numeric ids, strict decimals),
+  compatibility fallback when no LLM is configured, or local/dev tests where the
+  fallback is explicitly documented as non-primary.
+- Python may apply defaults to missing structured slots when the business rule
+  says so, such as current business year/month for a monthly report.
+- Python must validate structured slots from LLM and fail loud or ask for
+  clarification on invalid values; it must not silently reinterpret failed
+  natural-language text through a growing parser dictionary.
+- Adding natural-language aliases, month names, or multilingual phrase lists to
+  Python to recover a bounded LLM slot is a contract violation unless the task
+  explicitly documents why that narrow deterministic parser is the correct
+  primary owner.
+
 ---
 
 ## 3) Canonical action resolution
@@ -106,15 +133,27 @@ OfficeFlow/Document Intake actions may be top-level only when explicitly registe
 
 ---
 
-## 4) Optional semantic action hints for ambiguous actions
+## 4) Semantic action hints for ambiguous actions
 
 Some canonical actions are semantically ambiguous in multilingual/noisy user input.
-For such actions, Python may provide optional compact `action_hints` in resolver context.
+For such actions, Python must provide compact `action_hints` in resolver context.
 
 Rules:
-- hints are **optional** (not required for every action),
-- use them selectively when plain allowed-actions list is not stable enough,
-- hints are contextual guidance for bounded resolution, not ontology and not keyword-parser replacement.
+- hints are not required for every action, but they are mandatory when plain allowed-action tokens are not stable enough to separate nearby meanings,
+- hints are required for overlapping top-level actions and for top-level actions whose user verbs also appear in in-action/subflow controls,
+- hints are contextual guidance for bounded resolution, not ontology and not keyword-parser replacement,
+- hints must describe semantic boundaries, not only happy-path labels.
+
+Hint content requirements:
+- `meaning` is required and must describe the business/user outcome owned by the canonical action, including the Python-owned execution boundary,
+- `positive_examples` is required for hinted actions and must include a compact set of realistic paraphrases across supported languages/noisy wording where relevant; these examples are illustrative context, not a whitelist and not a demand for literal matching,
+- `not_this` is required for hinted actions and must include the nearest confusable top-level actions, in-action/subflow controls, and unsupported interpretations that share verbs, nouns, or business objects with this action.
+
+Boundary coverage requirements:
+- if a user verb such as show/view/open/list/export/delete/update can target multiple product areas, each affected hinted action must say what it is and what nearby target classes it is not,
+- if a noun such as report/document/invoice/profile/contact/service/time record can appear at both top-level and subflow level, the hint must separate the top-level action from the subflow/control meaning,
+- if a destructive or state-changing action shares wording with a read-only action, `not_this` must make the read/write boundary explicit,
+- adding examples must not replace registry, Product Truth, Python validation, FSM ownership, or deterministic side-effect gates.
 
 Reference ambiguous action:
 - `add_service_alias` is implemented as a user-facing top-level action through `/sluzbu` plus semantic text/voice invoke. The runtime starts the existing service-alias FSM. Its precision-sensitive alias/display-name values remain text-only.
@@ -126,8 +165,8 @@ Profile and data-management actions:
 
 Hint fields:
 - `meaning`
-- optional `positive_examples`
-- optional `not_this`
+- `positive_examples`
+- `not_this`
 
 ---
 

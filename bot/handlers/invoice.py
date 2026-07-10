@@ -99,6 +99,7 @@ from bot.services.safe_python_analytics_executor import (
     execute_invoice_analytics_code,
 )
 from bot.services.supplier_service import SupplierService
+from bot.services.work_time import work_time_local_date, work_time_timezone_name
 from bot.services.validation import parse_strict_date_dd_mm_yyyy
 
 router = Router(name='invoice')
@@ -3231,6 +3232,7 @@ async def process_invoice_text(
 ) -> None:
     flow_request_id = request_id or str(uuid4())
     message_id = getattr(message, 'message_id', None)
+    top_level_diagnostics: dict[str, object] = {}
 
     top_level_intent = await resolve_semantic_action(
         context_name='top_level_action',
@@ -3263,6 +3265,15 @@ async def process_invoice_text(
         user_input_text=invoice_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
+        auxiliary_context={
+            'business_timezone': work_time_timezone_name(),
+            'current_business_date': work_time_local_date().isoformat(),
+            'slot_defaults': {
+                'work_time_report_period_year': 'current business year when omitted',
+                'work_time_report_period_month': 'current business month when omitted',
+            },
+        },
+        diagnostics=top_level_diagnostics,
         action_hints={
             _START_INTENT: {
                 'meaning': (
@@ -3408,7 +3419,17 @@ async def process_invoice_text(
                     'Покажи табель рабочего времени',
                     'Покажи мені табель працівного часу',
                     'chcem výkaz odpracovaných hodín',
+                    'show work-time report for May',
+                    'покажи табель рабочего времени за May',
                 ],
+                'slots': {
+                    'period': (
+                        'Extract the requested report month as {"type":"month","year":YYYY|null,"month":1-12|null}. '
+                        'Normalize human month wording and STT mixed-language month names such as May/maj/máj/май/травень into month numbers. '
+                        'If year is omitted, return year null. If month is omitted, return month null. '
+                        'Do not default inside the model; Python applies current Europe/Bratislava year/month defaults.'
+                    ),
+                },
                 'not_this': [
                     'record or add worked hours for a date',
                     'open/start today live work day',
@@ -3546,7 +3567,19 @@ async def process_invoice_text(
         await start_add_work_time_entry(message=message, state=state, config=config, text=invoice_text)
         return
     if top_level_intent == _GENERATE_WORK_TIME_REPORT_INTENT:
-        await start_generate_work_time_report(message=message, state=state, config=config, text=invoice_text, source_channel=input_channel)
+        report_period: dict[str, object] | None = None
+        slots = top_level_diagnostics.get('slots')
+        if isinstance(slots, dict):
+            period = slots.get('period')
+            report_period = period if isinstance(period, dict) else {}
+        await start_generate_work_time_report(
+            message=message,
+            state=state,
+            config=config,
+            text=invoice_text,
+            source_channel=input_channel,
+            report_period=report_period,
+        )
         return
     if top_level_intent == _DELETE_WORK_TIME_MONTH_INTENT:
         await start_delete_work_time_month(message=message, state=state, config=config, text=invoice_text)

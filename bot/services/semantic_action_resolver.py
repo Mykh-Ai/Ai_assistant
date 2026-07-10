@@ -1400,6 +1400,7 @@ async def resolve_semantic_action(
     model: str,
     auxiliary_context: dict[str, Any] | None = None,
     action_hints: dict[str, Any] | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> str:
     allowed = {value.strip() for value in allowed_actions if value and value.strip()}
     if _UNKNOWN not in allowed:
@@ -1430,7 +1431,12 @@ async def resolve_semantic_action(
         'delete_work_time_month',
         'update_work_time_lunch_break',
     }:
-        return local_priority
+        if not (
+            local_priority == 'generate_work_time_report'
+            and api_key
+            and api_key.startswith('sk-')
+        ):
+            return local_priority
 
     if api_key and api_key.startswith('sk-'):
         try:
@@ -1444,11 +1450,12 @@ async def resolve_semantic_action(
                         'role': 'system',
                         'content': (
                             'You are a bounded semantic canonicalizer. '
-                            'Return JSON only: {"canonical_action":"..."} where value is one allowed action or "unknown". '
+                            'Return JSON only: {"canonical_action":"..."} where value is one allowed action or "unknown". When action_hints request slots, include a "slots" object; otherwise omit it. '
                             'Never return explanations. '
                             'User input may be Slovak, Ukrainian, Russian, mixed-language, colloquial, or STT-noisy. '
                             'First infer the user meaning and internally normalize it to Slovak FakturaBot product semantics. '
                             'Then choose exactly one allowed canonical action or "unknown". '
+                            'For requested slots, normalize human wording into structured business values inside Python-provided bounds. '
                             'Do not require literal command, alias, or example matching. '
                             'Action hints describe product meaning; any examples are illustrative only and never a whitelist. '
                             'Apply action_hints boundaries before positive examples: if a request contains bank, cashflow, DPH/VAT, tax/accounting judgement, danovo/danove/dane/uznatelne expense judgement, accounting export, sync, edit, or delete semantics, do not choose receipt or invoice analytics unless a specific allowed action explicitly covers that unsupported domain. '
@@ -1467,7 +1474,10 @@ async def resolve_semantic_action(
                                 'supported_languages': _SUPPORTED_CONFIRM_LANGUAGES,
                                 'allowed_actions': sorted(allowed),
                                 'user_input_text': cleaned,
-                                'expected_output': {'canonical_action': 'one allowed token or unknown'},
+                                'expected_output': {
+                                    'canonical_action': 'one allowed token or unknown',
+                                    'slots': 'optional object only when requested by action_hints',
+                                },
                                 'auxiliary_context': auxiliary_context or {},
                                 'action_hints': action_hints or {},
                             },
@@ -1480,6 +1490,12 @@ async def resolve_semantic_action(
             parsed = json.loads(raw)
             canonical = str(parsed.get('canonical_action', _UNKNOWN)).strip()
             if canonical in allowed:
+                if diagnostics is not None:
+                    diagnostics['raw_model_output'] = raw
+                    diagnostics['parsed_model_output'] = parsed
+                    diagnostics['canonical_action'] = canonical
+                    slots = parsed.get('slots')
+                    diagnostics['slots'] = slots if isinstance(slots, dict) else {}
                 return canonical
         except Exception:
             pass

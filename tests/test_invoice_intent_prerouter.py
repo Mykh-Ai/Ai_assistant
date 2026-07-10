@@ -1091,6 +1091,33 @@ def test_process_invoice_text_top_level_work_time_report_hint_uses_positive_exam
     assert 'delete stored work-time records' in report_hint['not_this']
     assert 'generate_work_time_report' in captured['allowed_actions']
 
+def test_process_invoice_text_passes_llm_report_period_slot_to_work_time(tmp_path: Path, monkeypatch) -> None:
+    captured_resolver: dict = {}
+    captured_report: dict = {}
+
+    async def _resolver(**kwargs):
+        captured_resolver.update(kwargs)
+        diagnostics = kwargs.get('diagnostics')
+        if isinstance(diagnostics, dict):
+            diagnostics['slots'] = {'period': {'type': 'month', 'year': None, 'month': 5}}
+        return 'generate_work_time_report'
+
+    async def _start_report(**kwargs):
+        captured_report.update(kwargs)
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.start_generate_work_time_report', _start_report)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('покажи табель рабочего времени за May')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert captured_resolver['auxiliary_context']['business_timezone'] == 'Europe/Bratislava'
+    assert captured_resolver['action_hints']['generate_work_time_report']['slots']['period']
+    assert captured_report['report_period'] == {'type': 'month', 'year': None, 'month': 5}
+
 def test_process_invoice_text_mixed_dochadzka_delete_routes_to_work_time_not_invoice(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
@@ -1516,7 +1543,10 @@ def test_top_level_natural_phrase_uses_bounded_resolver_payload(monkeypatch) -> 
     payload = _TopLevelActionOpenAIFake.last_payload
     assert payload is not None
     assert payload['allowed_actions'] == ['add_receipt', 'show_recent_accounting_documents', 'unknown']
-    assert payload['expected_output'] == {'canonical_action': 'one allowed token or unknown'}
+    assert payload['expected_output'] == {
+        'canonical_action': 'one allowed token or unknown',
+        'slots': 'optional object only when requested by action_hints',
+    }
     assert 'show_recent_accounting_documents' in payload['action_hints']
     assert 'internally normalize it to Slovak FakturaBot product semantics' in (
         _TopLevelActionOpenAIFake.last_system_prompt or ''

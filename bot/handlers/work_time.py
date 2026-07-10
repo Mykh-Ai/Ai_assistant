@@ -38,6 +38,7 @@ from bot.services.work_time import (
     parse_manual_range_candidate,
     parse_report_month,
     resolve_work_time_entry_candidate,
+    work_time_local_date,
 )
 
 
@@ -169,12 +170,20 @@ async def start_generate_work_time_report(
     *,
     text: str,
     source_channel: str = 'text',
+    report_period: dict[str, object] | None = None,
 ) -> None:
     telegram_id = _telegram_id(message)
     if telegram_id is None:
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         return
-    year, month = parse_report_month(text)
+    if report_period is None:
+        year, month = parse_report_month(text)
+    else:
+        selected_period = _resolve_report_period_slot(report_period)
+        if selected_period is None:
+            await message.answer('Mesiac vykazu sa nepodarilo overit. Napiste napriklad: vykaz za maj 2026 alebo vykaz za tento mesiac.')
+            return
+        year, month = selected_period
     service = WorkTimeService(config.db_path)
     settings = service.get_lunch_break_settings(telegram_id=telegram_id)
     if not settings.configured:
@@ -590,6 +599,34 @@ async def work_time_missing_days_choice(
         return
     await answer_with_decision_keyboard(message, 'Vyberte jednu moznost.', work_time_missing_days_keyboard())
 
+
+def _parse_report_period_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if cleaned.isdigit():
+            return int(cleaned)
+    return None
+
+
+def _resolve_report_period_slot(report_period: dict[str, object]) -> tuple[int, int] | None:
+    current = work_time_local_date()
+    month = _parse_report_period_int(report_period.get('month'))
+    year = _parse_report_period_int(report_period.get('year'))
+    if month is None:
+        month = current.month
+    if year is None:
+        year = current.year
+    if month < 1 or month > 12:
+        return None
+    if year < 1900 or year > 2100:
+        return None
+    return year, month
 
 async def _preview_lunch_break_update(message: Message, state: FSMContext, *, enabled: bool, minutes: int) -> None:
     await state.update_data(

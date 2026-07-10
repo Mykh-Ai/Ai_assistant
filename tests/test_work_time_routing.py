@@ -211,6 +211,41 @@ def test_top_level_work_time_report_routes_from_timesheet_request_through_llm_bu
     assert 'Покажи табель рабочего времени' in hint['positive_examples']
 
 
+def test_top_level_work_time_report_month_slot_comes_from_llm_bundle(monkeypatch) -> None:
+    _TopLevelActionOpenAIFake.output = json.dumps(
+        {
+            'canonical_action': 'generate_work_time_report',
+            'slots': {'period': {'type': 'month', 'year': None, 'month': 5}},
+        }
+    )
+    _TopLevelActionOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
+    diagnostics: dict = {}
+
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=WORK_TIME_ALLOWED,
+            user_input_text='vytvor vykaz hodin za May',
+            api_key='sk-test',
+            model='gpt-4o',
+            diagnostics=diagnostics,
+            action_hints={
+                'generate_work_time_report': {
+                    'meaning': 'generate monthly work-time report',
+                    'slots': {'period': 'extract month/year as structured values'},
+                    'positive_examples': ['show work-time report for May'],
+                    'not_this': ['show invoice'],
+                },
+            },
+        )
+    )
+
+    assert result == 'generate_work_time_report'
+    assert diagnostics['slots']['period']['month'] == 5
+    assert _TopLevelActionOpenAIFake.last_payload is not None
+    assert _TopLevelActionOpenAIFake.last_payload['expected_output']['slots'] == 'optional object only when requested by action_hints'
+
 def test_top_level_work_time_lunch_break_update_routes_from_examples() -> None:
     assert _resolve('zmeň obednú prestávku na 30 minút') == 'update_work_time_lunch_break'
     assert _resolve('nastav obednú prestávku 1 hodina') == 'update_work_time_lunch_break'
@@ -298,6 +333,72 @@ def test_info_help_answers_work_time_and_refuses_payroll_overclaim() -> None:
 
 
 
+
+
+def test_report_period_slot_defaults_missing_year(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    monkeypatch.setattr('bot.handlers.work_time.work_time_local_date', lambda: date(2026, 7, 10))
+    message = _DummyMessage('покажи табель рабочего времени за May')
+    state = _DummyState()
+
+    asyncio.run(
+        start_generate_work_time_report(
+            message=message,
+            state=state,
+            config=config,
+            text=message.text,
+            report_period={'type': 'month', 'year': None, 'month': 5},
+        )
+    )
+
+    assert state.current_state == WorkTimeStates.waiting_lunch_break_initial_choice.state
+    assert state.data['work_time_pending_report_year'] == 2026
+    assert state.data['work_time_pending_report_month'] == 5
+
+
+
+def test_report_period_slot_defaults_current_month_when_omitted(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    monkeypatch.setattr('bot.handlers.work_time.work_time_local_date', lambda: date(2026, 7, 10))
+    message = _DummyMessage('покажи табель рабочего времени')
+    state = _DummyState()
+
+    asyncio.run(
+        start_generate_work_time_report(
+            message=message,
+            state=state,
+            config=config,
+            text=message.text,
+            report_period={},
+        )
+    )
+
+    assert state.current_state == WorkTimeStates.waiting_lunch_break_initial_choice.state
+    assert state.data['work_time_pending_report_year'] == 2026
+    assert state.data['work_time_pending_report_month'] == 7
+
+
+
+def test_report_period_slot_rejects_invalid_month(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage('покажи табель рабочего времени за nonsense')
+    state = _DummyState()
+
+    asyncio.run(
+        start_generate_work_time_report(
+            message=message,
+            state=state,
+            config=config,
+            text=message.text,
+            report_period={'type': 'month', 'year': 2026, 'month': 13},
+        )
+    )
+
+    assert state.current_state is None
+    assert 'Mesiac vykazu sa nepodarilo overit' in message.answers[-1]
 
 def test_first_report_without_lunch_setting_asks_and_stores_pending_request(tmp_path: Path) -> None:
     config = _config(tmp_path)

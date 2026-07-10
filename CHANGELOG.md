@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added bounded LLM period slots for OfficeFlow work-time report generation so phrases such as `покажи табель рабочего времени за May` can route to the selected month while Python only validates/defaults missing year or month using the Bratislava business date.
 - Moved OfficeFlow work-time report timesheet wording from Python fast-path variants into bounded LLM `positive_examples` for `generate_work_time_report`, keeping examples contextual rather than a whitelist.
 - Fixed OfficeFlow work-time report routing so Ukrainian timesheet wording such as `Покажи мені табель працівного часу.` resolves to `generate_work_time_report` instead of `unknown`.
 - Added a shared active-FSM navigation/stale-state guard for text and voice transcripts, plus stale callback protection for shared decision buttons and invoice follow-up buttons; fresh active-FSM safe switch confirmation remains deferred until FSM restore can be proven by tests.
