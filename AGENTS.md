@@ -181,6 +181,25 @@ For server-side operations, first check the private local runbook:
 Never use `docs/local-only/*.example.md` as the live server runbook. Example
 files are public-safe placeholders only.
 
+## Top-Level / Subflow Architecture Gate
+
+For a new or materially changed top-level action, structured slot, in-FSM
+control, subflow, preview/confirmation flow, callback flow, or state-aware
+text/voice/button route:
+
+1. a task-specific Architecture Design Proof must exist under
+   `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`;
+2. its verdict must be `ready_for_handoff` before an implementation prompt is
+   written or code changes begin;
+3. the implementation prompt must transfer the approved action boundary,
+   slots, route, FSM graph, decision/callback rules, side effects, negative
+   space, Product Truth target, and acceptance scenarios without asking the
+   coding agent to invent them;
+4. the coding agent must stop on `material_design_variance` rather than silently
+   creating a replacement architecture;
+5. post-implementation evidence must include the Conversation Acceptance Proof
+   defined in `docs/Evaluation_and_Smoke_Test_Standards.md`.
+
 ## Agent Preflight
 
 Before implementation, the agent must state or record:
@@ -195,6 +214,10 @@ Before implementation, the agent must state or record:
 - AI maturity level being implemented;
 - what is explicitly out of scope;
 - what product/user journey proves the change works;
+- for new or materially changed top-level/subflow/FSM work, the approved
+  Architecture Design Proof path and verdict;
+- the required post-implementation Conversation Acceptance Proof artifact and
+  verdict model from `docs/Evaluation_and_Smoke_Test_Standards.md`;
 - what self-learning hooks were considered;
 - what source of truth backs every user-facing product claim.
 
@@ -372,316 +395,82 @@ approval.
 
 ## Self-Learning Layer
 
-Controlled learning is expected for semantic layers, but it must be safe.
-The detailed umbrella contract is `docs/Self_Learning_Layer.md`.
+Controlled learning is expected for semantic layers, but learning must be
+confirmed, tenant-scoped, reviewable, and bounded. Read
+`docs/Self_Learning_Layer.md` and
+`docs/Confirmed_Semantic_Alias_Learning_Contract.md` before adding learning.
 
-Valid learning candidates include:
+Do not:
 
-- action aliases;
-- InfoHelp topic aliases;
-- capability question phrasings;
-- contact/customer aliases;
-- service aliases;
-- document classification hints;
-- recurring customization patterns.
+- learn from rejected/cancelled output;
+- store raw full transcripts as reusable aliases;
+- let learned mappings change Product Truth;
+- let learned mappings create canonical actions;
+- let one tenant's learning affect another tenant.
 
-Learning rules:
+## Routing And FSM Rules
 
-- learn only after successful resolution or explicit user confirmation;
-- never learn destructive confirmations;
-- never invent canonical actions;
-- never bypass the canonical action registry;
-- store scoped aliases/patterns, not raw sensitive full transcripts;
-- separate intent from slots;
-- variable commands must be patterns, not literal aliases;
-- limit count, allow review, and support expiry/cleanup where practical.
+Active FSM owns ordinary continuation input. Idle top-level routing, InfoHelp,
+and generic fallback must not consume input that belongs to an active state.
 
-Current implemented learning is partial. Do not generalize it beyond what code
-and docs prove.
+For new or changed stateful flows:
 
-## State-Aware Runtime Explanation
+- use shared active-FSM navigation/stale-state behavior;
+- preserve text/voice/button convergence;
+- use Canonical DecisionResolver for confirmation-like replies;
+- fail closed for stale, wrong-state, legacy, or expired callbacks;
+- reject voice where exact typed values are required;
+- keep unknown/ambiguous input recoverable and side-effect free.
 
-When a user is inside an FSM flow, that state owns the conversation.
+## Authorization And Tenant Rules
 
-The bot should explain:
+Authorization must happen before STT/LLM/LMM, temp files, storage directories,
+DB rows, or business side effects.
 
-- what is happening now;
-- what input is expected;
-- what format is required;
-- why the previous input failed;
-- how to cancel safely.
+All lookups and writes must use the current tenant/workspace/user scope. Never
+accept model output as tenant identity or authorization.
 
-Active FSM state must not fall back into top-level routing, idle attachment
-classification, or generic InfoHelp unless the flow explicitly allows it.
+## Data, Migration, And Server Safety
 
-## Canonical Action Completion Gate
+Persisted-data changes require current-shape audit, migration/repair decision,
+backup, rollback, and dry-run plan where practical. Server/runtime writes,
+deployment, and migrations require explicit approval.
 
-A new canonical top-level action is not `implemented` until the full runtime,
-docs, and tests loop is complete:
+Use the private local runbook only for real server operations. Never claim a
+server, migration, deployment, or external integration was verified when it was
+not.
 
-- action registered in `docs/llm/Canonical_Action_Registry.md`;
-- Python execution owner exists: handler/FSM/service route;
-- top-level resolver receives action only through Python-provided
-  `allowed_actions`;
-- `action_hints`, if used, describe semantic meaning, not a literal alias
-  whitelist;
-- text/command route works or is explicitly not applicable;
-- voice reachability works and has tests, or a documented reason says voice is
-  not applicable;
-- active FSM states do not fall back into top-level routing;
-- in-FSM controls/confirmations are documented in
-  `docs/llm/In_Action_Response_Registry.md`;
-- precision-sensitive exact-value steps stay text/file-only where needed;
-- README/user-facing architecture docs are updated when the action changes the
-  surface map;
-- `PROJECT_LOG.md` and `CHANGELOG.md` are updated when required;
-- product UX evals prove the actual user journey, not just unit branches.
+## Test And Evaluation Rules
 
-## Capability Completion Rule
-
-A user-facing capability, top-level action, admin command, integration,
-workflow, or support surface is not complete if Product Truth, InfoHelp, tests,
-evals, forbidden claims, or the project log are stale.
-
-Before the final report for any user-facing feature, the agent must check and
-report:
-
-- Runtime changed?
-- Canonical action / resolver updated, if applicable?
-- Product Truth updated?
-- InfoHelp updated?
-- UX/eval smoke updated?
-- Tests added or updated?
-- Forbidden claims checked?
-- `PROJECT_LOG.md` updated?
-- Docs maturity label updated?
-
-If a runtime change is intentionally not user-facing, say why. If Product Truth
-or InfoHelp is intentionally not changed, explain why the user cannot ask about
-that behavior as a capability.
-
-## Voice Rules
-
-Voice may:
-
-- start top-level actions;
-- choose bounded actions/fields/options in FSM;
-- provide non-precision natural language where the flow supports it.
-
-Voice must not fill precision-sensitive exact values unless a specific
-documented flow safely normalizes and validates them:
-
-- IBAN;
-- IČO;
-- DIČ;
-- IČ DPH;
-- email;
-- invoice number;
-- item numeric values, prices, quantities;
-- final item descriptions;
-- service alias names;
-- exact destructive confirmations.
-
-## Canonical DecisionResolver Rule
-
-All confirmation-like replies must go through:
-
-- `bot/services/decision_resolver.py`
-
-Do not add local parsers for:
-
-- `ano` / `nie`;
-- `ok` / `tak`;
-- `schvalit` / `upravit` / `zrusit`;
-- Slovak diacritics variants;
-- Cyrillic or multilingual confirmation variants.
-
-Every new confirmation-like flow must:
-
-- choose the decision family: `yes_no` or `approve_edit_cancel`;
-- register the context in resolver tests;
-- add handler-level tests proving shared resolver usage, not local branching.
-
-## Access And Security Boundary
-
-Unknown or unauthorized Telegram users must not create:
-
-- supplier profiles;
-- contacts;
-- invoices;
-- invoice PDFs;
-- accounting documents;
-- document metadata;
-- temporary upload files;
-- tenant storage directories;
-- workspaces.
-
-Unknown or unauthorized users must not trigger:
-
-- LLM calls;
-- STT calls;
-- LMM/Vision calls;
-- document classification/extraction calls.
-
-Pending access requests are not tenants, not supplier profiles, and not
-business onboarding. Approval is required before `/supplier` and before any
-business flow.
-
-## OfficeFlow Attachment And Document Intake Boundary
-
-Idle photo/PDF classification may happen only after authorization.
-
-Active FSM state wins over idle classifier. If the user is in an active FSM
-flow, attachment routing must respect that state before any idle OfficeFlow
-classifier.
-
-No automatic contact creation from receipts, incoming invoices, PDFs, photos,
-or idle attachments.
-
-No automatic expense/accounting document save before user approval. AI/LMM may
-extract or draft; Python validates; user confirms; only then Python saves.
-
-## Data Migration And Persisted Data Safety
-
-Any change that can affect already-saved data is migration-sensitive.
-
-Persisted data includes:
-
-- SQLite or future DB rows;
-- invoice `pdf_path` values and generated PDF files;
-- storage folders, file names, and path conventions;
-- accounting document originals and metadata JSON sidecars;
-- tenant/workspace keys;
-- `telegram_id` / `supplier_telegram_id` scoping;
-- JSON metadata schemas;
-- backup, archive, cleanup, and deletion routines.
-
-Before migration-sensitive implementation, do not proceed directly to code or
-server writes.
-
-Required pre-work:
-
-1. identify existing persisted data affected by the change;
-2. describe current shape and proposed shape;
-3. state whether migration or repair is required;
-4. provide a read-only audit plan;
-5. provide backup and rollback plan for server-side data;
-6. provide dry-run migration/repair plan where practical;
-7. ask explicit approval before any write, migration, cleanup, delete, or path
-   rewrite;
-8. record the decision in `PROJECT_LOG.md`;
-9. update `docs/TZ_FakturaBot.md` or a dedicated migration/runbook doc if
-   runtime behavior, data ownership, or storage architecture changes.
-
-Forbidden:
-
-- silently changing DB/storage semantics;
-- relying on cross-tenant fallback reads instead of migration;
-- rewriting persisted paths without backup;
-- deleting legacy data because new code no longer reads it;
-- treating local/dev absolute paths as canonical server paths;
-- changing DB engine, schema, tenant scoping, or storage layout because it
-  seems cleaner.
-
-## Evaluation Standards
-
-AI/product changes require more than unit tests.
-The detailed evaluation contract is
-`docs/Evaluation_and_Smoke_Test_Standards.md`.
-
-Use focused unit tests for code behavior and product UX evals/smoke tests for
-real journeys, including:
-
-- first `/start` journey;
-- `/menu` clarity;
-- arbitrary capability questions;
-- unknown plausible business request;
-- active FSM confusion;
-- destructive action safety;
-- unsupported feature honesty;
-- customization request confirmation;
-- no hidden side effects;
-- no fake support claims;
-- voice and text parity where promised;
-- tenant/access isolation where data is touched.
-
-Do not mark a phase complete if only primitive fallback behavior is present.
-
-## Test Commands
-
-Run tests from `D:\AI_Model\Ai_assistant`.
-
-Use:
+Use focused tests during development and run the full suite before claiming
+runtime completion when feasible:
 
 ```powershell
 python -m pytest -q
 ```
 
-Avoid bare `pytest -q`; it may not include the project root on `sys.path` and
-can fail to import `bot`.
+User-facing changes require the evaluation layers defined in
+`docs/Evaluation_and_Smoke_Test_Standards.md`. Unit tests alone are not enough
+for Level 2+ or a new stateful journey.
 
-## Documentation And Project Log
+## Documentation Synchronization
 
-After every meaningful session, update `PROJECT_LOG.md`.
+When behavior changes, update the existing active owner documents, registries,
+Product Truth, InfoHelp, `PROJECT_LOG.md`, and `CHANGELOG.md` where appropriate.
+Prefer existing owners over creating a new document. Do not maintain duplicate
+contracts for the same responsibility.
 
-If a change affects product logic, MVP scope, architecture, capability truth,
-or user-facing behavior, update `docs/TZ_FakturaBot.md` or the relevant
-contract doc.
+## Completion And Reporting
 
-No hidden conceptual changes.
+Final output must distinguish:
 
-Documentation must distinguish:
+- implemented behavior;
+- partial/reserved/planned behavior;
+- tests/evals run and not run;
+- real versus mocked/manual evidence;
+- remaining limitations;
+- migration/server/deploy actions actually performed or not performed;
+- Architecture Design Proof and Conversation Acceptance Proof verdicts when
+  applicable.
 
-- runtime-supported;
-- partial;
-- planned;
-- unsupported;
-- unknown;
-- dangerous;
-- requires setup/admin/external credentials.
-
-## Result Format
-
-After project changes, default to:
-
-1. short summary of what changed;
-2. unified diff;
-3. no unrelated improvements.
-
-If the user asks for another format, follow the user's format.
-
-## What Not To Do
-
-Do not:
-
-- reduce OfficeFlow/FakturaBot to a command menu bot;
-- answer capability questions with only `/menu`;
-- call Level 0/1 fallback a completed AI layer;
-- hide unsupported capabilities behind vague wording;
-- invent features, integrations, or setup state;
-- bypass Product Truth;
-- add handler-local confirmation parsers;
-- auto-save AI/LMM results without confirmation;
-- trigger AI calls for unauthorized users;
-- expand controlled tenant-scoped runtime into full SaaS without explicit
-  product decision and docs update;
-- add billing, public signup, per-client bot token orchestration, or complex
-  role/workspace admin flows without explicit scope decision;
-- add external lookup as a critical dependency without product and failure-mode
-  approval;
-- add modules that expand scope without acceptance criteria and evaluation.
-
-## Definition Of Done
-
-A task is not done if:
-
-- code changed but the decision was not logged;
-- concept changed but product docs were not updated;
-- a new flow exists but docs/contracts do not mention it;
-- a user-facing capability exists but Product Truth or InfoHelp cannot explain
-  it truthfully;
-- eval/smoke artifacts do not cover the changed capability surface;
-- MVP scope changed but no source-of-truth doc records it;
-- AI layer level is overstated;
-- only unit tests pass but the relevant user journey is not evaluated;
-- user-facing copy claims capabilities the runtime cannot prove.
+Passing tests is not permission to merge or deploy.

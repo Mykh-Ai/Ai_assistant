@@ -50,9 +50,7 @@ Companion docs:
 - `docs/llm/Canonical_Action_Registry.md`;
 - `docs/llm/In_Action_Response_Registry.md`;
 - `docs/llm/New_Action_Design_Checklist.md`;
-- `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`;
-- `docs/llm/Top_Level_Subflow_Implementation_Handoff_Template.md`;
-- `docs/llm/Conversation_Acceptance_Proof_Contract.md`.
+- `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`.
 
 ## Core Rule
 
@@ -375,10 +373,14 @@ Required Conversation Acceptance Proof path and verdict model:
 Expected output:
 ```
 
-For top-level/subflow/FSM work, build the prompt from
-`docs/llm/Top_Level_Subflow_Implementation_Handoff_Template.md`. The prompt
-must not delegate unresolved architecture classification, slot ownership, FSM
-graph, semantic negative space, or side-effect boundaries to the coding agent.
+For top-level/subflow/FSM work, derive the prompt directly from the approved
+Architecture Design Proof and the implementation gate in
+`docs/llm/New_Action_Design_Checklist.md`. The prompt must reference the exact
+proof path/verdict and carry forward its action classification, slots, route,
+FSM graph, semantic negative space, decision/callback rules, side-effect
+ownership, Product Truth target, acceptance scenarios, and out-of-scope
+boundaries. It must not delegate those decisions to the coding agent or create
+a parallel handoff contract.
 
 The implementation agent must follow
 `docs/Implementation_Agent_Checklist.md` before editing code.
@@ -412,8 +414,9 @@ The Code-Agent Handoff Layer is not complete until:
 - top-level/subflow task packages cannot reach `approved_for_agent` without an
   approved Architecture Design Proof;
 - implementation output cannot reach `ready_for_human_review` without the
-  required Conversation Acceptance Proof or an explicit `runtime_not_proven`
-  status.
+  Conversation Acceptance Proof required by
+  `docs/Evaluation_and_Smoke_Test_Standards.md` or an explicit
+  `runtime_not_proven` status.
 
 ## No-Go Rules
 

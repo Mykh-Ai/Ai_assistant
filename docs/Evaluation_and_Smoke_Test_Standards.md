@@ -2,187 +2,211 @@
 
 ## Purpose
 
-This document defines how OfficeFlow/FakturaBot proves that a product or AI
-layer actually works for real business users.
+This contract defines how OfficeFlow / FakturaBot proves that a product or AI
+change works for a real user. Unit tests are necessary, but they do not prove a
+complete conversation, truthful Product Truth, safe state handling, or absence
+of hidden side effects.
 
-Unit tests are necessary, but they are not enough. A layer that passes unit
-tests but answers capability questions with `/menu`, hides unsupported
-features, breaks active FSM recovery, or creates hidden side effects is not
-product-grade.
+Use this contract for AI/LLM behavior, Product Truth and InfoHelp, FSM flows,
+voice/text/button parity, callbacks, destructive or sensitive actions,
+authorization and tenant boundaries, document intake, storage/migrations, PDF
+layout, and deployment smoke.
 
-The goal of evaluation is to prove user journeys, truthfulness, safety,
-state-awareness, and regression resistance.
-
-## Current Status
-
-This is a docs-first contract.
-
-As of this documentation reset:
-
-- there is no complete unified product UX eval suite unless later code proves
-  otherwise;
-- many runtime areas have useful unit tests;
-- AI/product layers still need explicit smoke/eval scenarios before any phase
-  can be called complete;
-- Level 0/1 fallback behavior must not be accepted as Level 2+ because it has
-  tests.
-
-## Normative Status
-
-This is a mandatory-read contract for work touching:
-
-- AI-layer implementation;
-- InfoHelp/capability answers;
-- Product Truth;
-- customization requests;
-- self-learning;
-- code-agent handoff;
-- FSM recovery behavior;
-- voice/text parity;
-- destructive actions;
-- access/tenant boundaries;
-- accounting document intake;
-- PDF/layout behavior;
-- server/runtime deployment checks.
-
-Companion docs:
-
-- `docs/Product_Doctrine_2030.md`;
-- `docs/AI_Layer_Implementation_Standards.md`;
-- `docs/Product_Truth_Layer.md`;
-- `docs/Info_Help_Guidance_Layer.md`;
-- `docs/Customization_Request_Layer.md`;
-- `docs/Self_Learning_Layer.md`;
-- `docs/Code_Agent_Handoff_Contract.md`;
-- `docs/Implementation_Agent_Checklist.md`;
-- `docs/Product_UX_Eval_Artifacts.md`;
-- `docs/FakturaBot_Data_Migration_Runbook.md`;
-- `docs/FakturaBot_PDF_Layout_Spec.md`;
-- `docs/Canonical_Decision_Resolver_Contract.md`;
-- `docs/llm/Canonical_Action_Registry.md`;
-- `docs/llm/In_Action_Response_Registry.md`.
+Companion contracts include `AGENTS.md`,
+`docs/Implementation_Agent_Checklist.md`,
+`docs/Code_Agent_Handoff_Contract.md`,
+`docs/Canonical_Decision_Resolver_Contract.md`,
+`docs/llm/New_Action_Design_Checklist.md`, and, for new or materially changed
+top-level/subflow/FSM work,
+`docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md` plus the
+approved task-specific Architecture Design Proof.
 
 ## Core Rule
 
-A feature is not complete until the evaluation matches the claimed maturity
-level.
-
-Examples:
-
-- Level 1 static fallback needs tests that it is safe, honest, and has no
-  hidden side effects.
-- Level 2 capability-aware InfoHelp needs evals for arbitrary capability
-  questions and Product Truth-backed answers.
-- Level 3 customization request creation needs evals proving draft, edit,
-  confirm, cancel, storage, and no-save-before-confirmation behavior.
-- Level 4 self-learning needs evals proving learning improves future
-  recognition without bypassing Product Truth or tenant boundaries.
-- Level 5 code-agent handoff needs evals proving task packages include docs,
-  scope, tests, no-go constraints, and human approval gates.
+A change is not complete until the evidence matches the claimed maturity and
+scope. Do not call a fallback an AI layer, a partial route supported, or a set
+of component tests a proven user journey.
 
 ## Evaluation Layers
 
-Use the right evaluation layer for the risk.
+### Unit tests
 
-### Unit Tests
+Use for deterministic parsing, validation, registries, services, exact values,
+and fail-safe branches.
 
-Purpose:
+### Handler and integration tests
 
-- deterministic parsing/validation;
-- service logic;
-- registry lookup;
-- safety branch behavior;
-- exact-value validation.
+Use for public routing, FSM transitions, DecisionResolver, callbacks,
+authorization, tenant scoping, DB/file effects, and text/voice convergence.
 
-Unit tests are required for runtime logic but do not prove product experience
-alone.
+### Product UX smoke
 
-### Handler / Integration Tests
+Use realistic user inputs to prove discoverability, truthful answers, recovery,
+next steps, and no hidden action execution. Automate when practical; otherwise
+record an explicit manual smoke.
 
-Purpose:
+### Visual and layout evaluation
 
-- Telegram handler flow;
-- FSM state transitions;
-- DecisionResolver use;
-- DB/storage side effects;
-- access/tenant scoping;
-- voice/text route parity where promised.
+For PDF/layout changes, verify rendered output, wrapping, long values,
+multi-item cases, QR/Pay by Square placement, footer placement, and regressions.
+Code compilation alone is not evidence.
 
-### Product UX Smoke Tests
+### Migration, server, and external-service smoke
 
-Purpose:
+When persisted data, paths, credentials, external services, or deployment are
+in scope, record backup/rollback readiness, tenant isolation, failure behavior,
+post-deploy checks, and whether the evidence used a real or mocked service.
 
-- realistic user journeys;
-- first-run experience;
-- natural language capability questions;
-- unsupported feature honesty;
-- active FSM confusion;
-- safe next steps.
+## Conversation Acceptance Proof
 
-These may be automated where possible or documented as manual smoke checks
-when automation is not yet practical.
+This section is the canonical owner of post-implementation acceptance evidence
+for new or materially changed top-level actions, structured slots, canonical
+in-FSM controls, subflows, previews/confirmations, callbacks, active-FSM
+navigation, and state-aware text/voice/button routes. Do not create a parallel
+acceptance-proof contract.
 
-### Conversation Acceptance Proof
+### Verdict
 
-Purpose:
+Use exactly one:
 
-- prove the complete public-entry journey for new or materially changed
-  top-level actions, structured slots, in-FSM controls, subflows, and
-  callback/confirmation behavior;
-- map exact user inputs to resolver action/slots, handler ownership, FSM
-  transitions, side effect or no-side-effect, final state, and user-facing
-  response;
-- prove text/voice/button convergence or explicit tested exclusions;
-- prove nearby-action negative space and fail-closed stale/wrong-state behavior.
+- `safe_to_commit` — all applicable required scenarios pass, no unapproved
+  material design deviation remains, and the declared runtime scope is proven;
+- `needs_revision` — an implementation defect or required evidence gap remains;
+- `blocked_by_design_gap` — the approved architecture is incomplete or is
+  materially contradicted by current runtime and needs an architect/user
+  decision;
+- `runtime_not_proven` — code may exist, but required journey, manual, server,
+  or external-service evidence was not run or is insufficient.
 
-The task-specific artifact must follow
-`docs/llm/Conversation_Acceptance_Proof_Contract.md`. Resolver, handler, or
-service unit tests alone do not satisfy this layer. At least one applicable
-trace must begin at the real public router/handler rather than the final helper.
+`safe_to_commit` is not merge or deploy approval.
 
-### AI Capability Evals
+### Artifact
 
-Purpose:
+Prefer:
 
-- bounded resolver behavior;
-- Product Truth classification;
-- no hallucinated capability claims;
-- `unknown` handling;
-- no hidden action execution;
-- self-learning candidate safety.
+```text
+docs/evals/<task_id>_conversation_acceptance_proof.md
+```
 
-AI evals must use fixed scenarios and expected statuses, not "the answer sounds
-good".
+The artifact must reference the approved Architecture Design Proof and record
+branch/commit or working-tree state, environment, mocked versus real
+boundaries, tests/evals not run, and the final verdict.
 
-### Visual / Layout Evals
+### Public-entry trace
 
-Purpose:
+At least one applicable trace must start at the real public router/handler, not
+at a final helper. For every scenario record:
 
-- invoice PDF layout;
-- QR / Pay by Square position;
-- table wrapping;
-- long names/descriptions;
-- footer placement;
-- snapshot/manual rendered-PDF checks.
+```text
+scenario id and purpose
+precondition / user / workspace state
+entry mode: text | command | voice | button | file
+exact user input(s)
+state before each input
+authorization / active-FSM / callback guard result
+observed resolver action and structured slots
+observed Python handler/service owner
+observed FSM transitions
+observed canonical decision token, if any
+expected and observed side effect or explicit no-side-effect
+idempotency / rollback result where applicable
+observed final state
+observed user-facing response and keyboard behavior
+evidence reference; real/mocked/disabled boundaries
+result: pass | fail | not_applicable
+```
 
-PDF layout changes are not complete just because code compiles.
+### Required scenario matrix
 
-### Migration / Server Smoke Tests
+Apply every relevant case; `not_applicable` requires a reason:
 
-Purpose:
+1. Primary text happy path from the public entrypoint.
+2. Action plus structured slots in the first message.
+3. Missing required slot enters an explicit continuation state.
+4. Invalid or ambiguous slot fails safe and does not default to a write.
+5. Clarification reply is consumed by the intended state handler, not idle
+   top-level routing.
+6. Command path converges into the same owner where applicable.
+7. Voice reaches the same state-aware business helper after STT, or an exact
+   value/destructive exclusion is explicitly tested.
+8. Equivalent buttons, text, and voice map to one canonical decision and shared
+   execution helper.
+9. Active FSM wins over idle top-level routing for ordinary continuation input.
+10. Back, cancel, navigation, stale recovery, and post-success exit state.
+11. Nearby-action and `not_this` negative space.
+12. `unknown` has no hidden side effect or accidental useful-state loss.
+13. Product Truth / InfoHelp questions do not execute the action.
+14. Wrong-state, stale, expired, legacy, and duplicate callbacks fail closed.
+15. Unauthorized users cannot trigger STT/LLM/LMM, temp files, DB/storage, or
+    business effects.
+16. Tenant/workspace isolation.
+17. Persisted-data/file-output success and failure safety where applicable.
+18. At least one unchanged old journey through every modified shared layer.
 
-- persisted data safety;
-- backup/rollback readiness;
-- tenant storage paths;
-- deployment sanity;
-- no secret leakage;
-- post-deploy critical path checks.
+### Design-to-code and slot evidence
 
-Use this layer when DB/storage/server behavior changes.
+Map every material Architecture Design Proof requirement to a file/symbol and a
+named test/eval. For any difference record the design requirement, implemented
+difference, reason, risk, and architect/user approval status. An unapproved
+material difference prevents `safe_to_commit`.
+
+For each changed slot prove, where applicable: valid supplied value, missing
+value with an explicit Python-owned default, missing required value,
+invalid/out-of-range value, precision boundary, and documented no-LLM fallback.
+Resolver output alone is insufficient; prove that the public route transfers
+the slot to the Python owner and Python validates it.
+
+### Side-effect and Product Truth evidence
+
+For each side effect prove that it happens only after authorization, state and
+slot validation, and required confirmation. Also prove at least one applicable
+no-side-effect path such as capability question, `unknown`, invalid input,
+cancel, stale callback, or unauthorized user.
+
+Show exact capability/how-to questions and verify Product Truth status,
+limitations, setup/admin/external-credential requirements, forbidden claims,
+and safe next steps. Informational questions must not execute the action.
+
+### False-green rejection
+
+Reject the proof when any of these is true:
+
+- only resolver, service, or final-handler tests are shown;
+- action recognition is proven but slot transfer is not;
+- clarification copy is shown without a proven continuation state;
+- text works but reachable voice follows another business route;
+- buttons, text, and voice duplicate business logic instead of converging;
+- positive examples pass but neighboring actions are not checked;
+- the data mutation works but final FSM state or keyboard is wrong/unproven;
+- ambiguous or `unknown` input executes a write default;
+- stale/wrong-state/duplicate callbacks can repeat a business effect;
+- Product Truth or InfoHelp claims exceed runtime evidence;
+- tests/evals not run are hidden;
+- a material design deviation lacks approval.
+
+## Baseline Product Smoke Set
+
+For user-facing changes, select relevant scenarios from this baseline:
+
+- unknown, approved, and ready users through `/start` and `/menu`;
+- arbitrary capability and how-to questions with truthful Product Truth status;
+- plausible unsupported request with a safe next step and no false promise;
+- confused input inside active FSM with state-aware recovery and cancel path;
+- sensitive/destructive action with deterministic confirmation and voice
+  precision boundary;
+- unauthorized and cross-tenant attempts with no AI/storage/business effect;
+- customization draft/edit/approve/cancel and no save before confirmation;
+- self-learning confirmed write, rejection no-write, tenant isolation, and no
+  Product Truth/canonical-action mutation;
+- document intake classification, preview approval, unknown type, and active-FSM
+  ownership;
+- PDF long-text, multi-item, QR, footer, and manual/snapshot review;
+- code-agent handoff package with approved design, tests/evals, no-go rules, and
+  human review before merge/deploy.
 
 ## Evaluation Record
 
-Every meaningful AI/product change should record:
+Record:
 
 ```text
 feature_or_layer
@@ -193,290 +217,53 @@ unit_tests
 handler_integration_tests
 product_ux_evals
 conversation_acceptance_proof
-ai_capability_evals
 visual_layout_evals
-migration_server_smoke
+migration_server_external_smoke
 manual_checks
 known_gaps
 not_run_and_why
 decision
 ```
 
-This record may live in `PROJECT_LOG.md`, a PR/task summary, or a dedicated
-eval artifact when the suite becomes larger.
+The record may live in `PROJECT_LOG.md`, a task/PR summary, or the dedicated
+eval artifact.
 
-The first repository convention for dedicated eval artifacts is defined in
-`docs/Product_UX_Eval_Artifacts.md`.
+## Commands And Manual Evidence
 
-## Mandatory Baseline Product Smoke Set
-
-These scenarios define the minimum recurring smoke set for AI/product-facing
-changes.
-
-### Start And Menu
-
-- unknown user sends `/start`;
-- approved user sends `/start`;
-- ready user sees operational next steps;
-- `/menu` shows real user-facing capabilities without fake claims;
-- `/menu` is navigation, not proof of intelligence.
-
-### Capability Questions
-
-- "Can you send invoices by email?"
-- "Can you send SMS reminders?"
-- "Can you store invoices on Google Drive?"
-- "Can you export to accounting software?"
-- "Can you use my old PDF template?"
-- "Can you categorize receipts?"
-- "Can you remind me about unpaid invoices?"
-
-Expected:
-
-- answer comes from Product Truth;
-- status is supported/partial/planned/unsupported/unknown as appropriate;
-- unsupported features are not phrased as available;
-- safe next step is offered.
-
-### Unknown Plausible Business Request
-
-- user asks for a business feature that is not implemented;
-- bot does not say only `/menu`;
-- bot does not promise support;
-- bot offers customization request only if request layer exists.
-
-### Active FSM Confusion
-
-- user is inside invoice edit/date flow and sends confused text;
-- bot explains current state, expected input format, why input failed, and how
-  to cancel;
-- active FSM does not fall through to idle top-level routing.
-
-### Destructive Action Safety
-
-- user asks to delete invoice/database;
-- warning appears;
-- exact deterministic confirmation is required where applicable;
-- voice cannot pass exact destructive confirmation;
-- cancellation leaves data intact.
-
-### Access And Tenant Safety
-
-- unauthorized user cannot trigger LLM/STT/LMM;
-- unauthorized user cannot create DB rows, files, temp uploads, invoices,
-  contacts, supplier profile, accounting docs, or workspace directories;
-- tenant/workspace data does not leak across users.
-
-### Customization Request
-
-- user asks for Google Drive storage;
-- draft states current unsupported/credential-dependent status;
-- request is not saved before confirmation;
-- cancel does not save;
-- edit allows correction;
-- high-risk request requires admin review.
-
-### Self-Learning
-
-- learned alias improves later recognition;
-- no learning after cancel/edit/reject;
-- no raw full transcript is stored as reusable alias;
-- learned mapping cannot change Product Truth;
-- learned mapping cannot create canonical actions;
-- tenant scope is enforced.
-
-### Code-Agent Handoff
-
-- confirmed request becomes a task package only after approval;
-- package includes docs/contracts/files/scope/tests/evals/no-go constraints;
-- high-risk work has human approval gate;
-- task does not imply merge/deploy.
-
-### Document Intake
-
-- authorized idle photo/PDF is classified before route proposal;
-- active FSM attachments do not bypass current state;
-- no accounting document is saved before user approval;
-- unknown document type produces safe next step.
-
-### PDF/Layout
-
-- normal invoice renders;
-- long supplier/customer names render without overlap;
-- long item descriptions wrap;
-- multi-item invoice renders;
-- QR/Pay by Square placement remains valid;
-- footer does not overlap content;
-- manual or snapshot check is recorded when layout changed.
-
-## Layer-Specific Acceptance
-
-### Product Truth
-
-Not complete until evals cover:
-
-- `supported`;
-- `partial`;
-- `planned`;
-- `unsupported`;
-- `unknown`;
-- `requires_setup`;
-- `requires_admin`;
-- `requires_external_credentials`;
-- `dangerous`;
-- forbidden claims.
-
-### InfoHelp
-
-Not complete until evals cover:
-
-- arbitrary capability questions;
-- how-to question for supported action;
-- direct action request phrased as a question;
-- unsupported feature honesty;
-- unknown plausible request;
-- active FSM confusion;
-- no mutation from informational question.
-
-### Customization Requests
-
-Not complete until evals cover:
-
-- draft;
-- approve;
-- edit;
-- cancel;
-- unauthorized user;
-- no save before confirmation;
-- high-risk admin review;
-- no credential collection in ordinary chat.
-
-### Self-Learning
-
-Not complete until evals cover:
-
-- confirmed write;
-- rejected/cancelled no-write;
-- cap/duplicate behavior;
-- tenant isolation;
-- no raw transcript learning;
-- no Product Truth override;
-- no canonical action creation.
-
-### Code-Agent Handoff
-
-Not complete until evals cover:
-
-- task package generation;
-- required docs/contracts present;
-- no-go constraints present;
-- tests/evals present;
-- rollback/migration notes when needed;
-- PDF/layout criteria when relevant;
-- human approval before merge/deploy.
-
-## Completion Language
-
-Use honest completion language.
-
-Allowed:
-
-- "Level 1 fallback implemented and tested."
-- "Docs-first contract added; runtime not implemented."
-- "Partial support implemented for text route only."
-- "Runtime supports X, but Y requires setup."
-
-Forbidden:
-
-- "InfoHelp complete" when only static fallback exists.
-- "Self-learning complete" when only invoice aliases exist.
-- "Code-agent handoff implemented" when only a prompt/doc exists.
-- "Google Drive supported" when no runtime integration/credentials exist.
-- "Phase complete" when product UX evals are missing.
-
-## Capability Smoke Tests
-
-Every new or changed user-facing capability must have smoke coverage that
-checks both behavior and truthful explanation.
-
-Capability smoke tests must verify:
-
-- Product Truth answer and status;
-- InfoHelp answer and safe next step;
-- runtime behavior for the supported happy path;
-- setup/admin/external-credential behavior where applicable;
-- no stale unsupported wording after implementation;
-- no false supported wording for partial or unsupported scope;
-- no side effects from informational questions;
-- forbidden claims are absent from user-facing copy;
-- direct executable actions still route before InfoHelp when the user clearly
-  asks to act;
-- active FSM state still wins over top-level routing.
-
-If the feature is an integration, include overclaim tests for automatic sync,
-credential assumptions, unsupported document types, hidden sends, and delivery
-guarantees. If the feature is not implemented, the eval must prove that
-InfoHelp says so and offers human review only when that flow exists.
-
-## Test Command Standard
-
-Default full test command from repo root:
+Default full test command from repository root:
 
 ```powershell
 python -m pytest -q
 ```
 
-Use focused test commands for narrow changes, but record when the full suite
-was not run and why.
+Focused commands are allowed during development. If the full suite or required
+manual/server/external smoke was not run, state exactly why.
 
-Do not use bare `pytest -q` as the default project command.
+Manual evidence must state setup, exact input, expected behavior, observed
+behavior, pass/fail, artifacts/screenshots where relevant, and remaining risk.
 
-## Manual Eval Standard
+## Completion Language
 
-Manual evals are acceptable when automation is not yet practical, but they must
-be explicit.
+Use evidence-matched wording such as:
 
-Record:
+- `Level 1 fallback implemented and tested.`
+- `Docs-first contract added; runtime not implemented.`
+- `Partial support implemented for text only.`
+- `Runtime supports X; Y requires setup.`
 
-- scenario;
-- setup/account state;
-- exact user input;
-- expected status/behavior;
-- observed behavior;
-- pass/fail;
-- screenshots/PDF artifacts if relevant;
-- remaining risk.
-
-Manual evals are not a license to skip deterministic tests where tests are
-practical.
-
-## Regression Rules
-
-When changing a shared layer, evaluate adjacent behavior:
-
-- InfoHelp changes must not break direct action routing.
-- Product Truth changes must not change runtime support claims without
-  evidence.
-- Self-learning changes must not affect unsupported-feature truth.
-- Customization request changes must not save before confirmation.
-- Voice changes must not fill precision-sensitive exact values.
-- PDF changes must not regress long-text wrapping or QR/footer placement.
-- Access changes must not allow unauthorized AI calls or storage writes.
+Do not say a layer, integration, or phase is complete when the required Product
+Truth, journey proof, visual review, migration/server smoke, or external setup
+is missing.
 
 ## No-Go Rules
 
 Do not:
 
-- accept unit tests alone for Level 2+ AI/product layers;
-- call a fallback complete because tests pass;
-- skip unsupported-feature honesty evals;
-- skip active FSM confusion evals for state-aware changes;
-- call a new or changed public stateful journey complete without a public-entry
-  Conversation Acceptance Proof;
-- treat direct final-helper tests as proof that the complete route works;
-- skip destructive-action safety evals;
-- hide tests not run;
+- accept unit/component tests alone for a public stateful journey;
 - replace evals with model confidence;
-- ignore visual/manual review for PDF layout changes;
-- ignore migration/server smoke checks when persisted data or deployment is
-  touched.
+- hide tests, smoke, or external checks not run;
+- skip nearby-action, active-FSM, authorization, tenant, or no-side-effect
+  evidence;
+- ignore visual review for layout changes;
+- ignore migration/server checks when persisted data or deployment is touched;
+- create another standalone Conversation Acceptance Proof contract.

@@ -1,399 +1,314 @@
 # New Canonical Action Implementation Guide
 
-Purpose: practical implementation gate before adding or upgrading a canonical top-level action or related in-FSM control in FakturaBot / OfficeFlow.
+## Purpose
 
-This guide is evidence-based. It exists because project history repeatedly showed the same failure modes:
-- treating the LLM as a Python command dictionary instead of a bounded semantic canonicalizer;
-- requiring literal alias/example matching instead of resolving product meaning;
-- adding phrase dictionaries in `voice.py` instead of shared resolver/state-aware handlers;
-- exposing a canonical token before a Python handler/service exists;
-- marking an action implemented before text, command, voice, tests, and docs are synchronized;
-- confusing `edit_invoice` draft/in-FSM editing with `edit_existing_invoice` persisted invoice editing;
-- accepting voice in exact-value states such as IBAN, ICO, DIC, email, invoice number, prices, quantities, item descriptions, or final destructive confirmation;
-- treating a blocek/accounting document as if it were an editable generated outgoing invoice;
-- parsing confirmations locally instead of using the Canonical DecisionResolver;
-- calling STT/LLM/LMM before authorization;
-- letting callbacks or voice handlers own business logic instead of converging into state-aware Python handlers;
-- forgetting registry, tests, README, `PROJECT_LOG.md`, and TZ synchronization.
+This is the canonical implementation gate for adding or materially changing a
+top-level action, structured action slot, canonical in-FSM control, subflow,
+preview/confirmation flow, callback flow, or state-aware text/voice/button
+route in FakturaBot / OfficeFlow.
 
-Do not use this guide to invent architecture. If the runtime, registry, TZ, and project log do not prove that a behavior exists, treat it as not implemented.
+It exists because project history repeatedly showed the same failures: action
+tokens without a reachable runtime owner, weak nearby-action boundaries,
+Python phrase dictionaries replacing bounded semantic extraction, lost slots,
+clarification without a continuation state, voice bypasses, local confirmation
+parsers, stale callbacks, unsafe `unknown` defaults, and green component tests
+without a proven user journey.
 
----
+## Mandatory Architecture Gate
 
-## 0. Capability truth gate
+Before an implementation prompt is written, the architect must complete
+`docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md` and a
+task-specific Architecture Design Proof with verdict `ready_for_handoff`.
 
-Every new top-level action, alias, command, or user-visible workflow must first
-answer:
+The proof must decide, before coding:
 
-- Is this an executable action or an informational capability?
-- Does it require a Product Truth record or update?
-- What should InfoHelp say when the user asks whether the bot can do this?
-- What should InfoHelp say when the user asks how to use it?
-- What unsupported, partial, setup-required, or credential-required questions
-  may users ask about it?
-- Which claims are forbidden?
-- What happens if the user asks about it before setup is complete?
-- Is voice/STT allowed to start it, control it, or fill values?
-- Which active FSM states must win over this top-level action?
-- Which tests and eval/smoke cases prove runtime behavior and truthful
-  explanation?
+- new top-level versus extension, subflow, slot, internal strategy, or InfoHelp;
+- action meaning and neighboring-action negative space;
+- structured slots, defaults, validation, and precision boundaries;
+- text/command/voice/button convergence;
+- FSM graph, continuation, back/cancel, stale behavior, and exit state;
+- DecisionResolver/callback contract;
+- side-effect and tenant ownership;
+- Product Truth / InfoHelp target;
+- exact acceptance scenarios and out-of-scope gaps.
 
-Do not add top-level aliases that only route an action while leaving the bot
-unable to explain the capability. If the user can execute it, the user can ask
-about it, and Product Truth / InfoHelp must answer within current evidence.
+Do not use this guide to invent architecture. The implementation agent
+implements an approved design and reports a contradiction instead of silently
+redesigning it.
 
----
+## Required Reading
 
-## 1. Source-of-truth reading order
+Before editing, read:
 
-Before touching code for top-level actions, in-action decisions, LLM routing, voice/text routing, FSM controls, confirmations, OfficeFlow intake, storage, DB, or access, read the relevant contracts first.
+1. `AGENTS.md`;
+2. the approved task-specific Architecture Design Proof;
+3. `docs/Product_Doctrine_2030.md`;
+4. `docs/AI_Layer_Implementation_Standards.md`;
+5. `docs/Product_Truth_Layer.md`;
+6. `docs/Info_Help_Guidance_Layer.md`;
+7. `docs/Evaluation_and_Smoke_Test_Standards.md`;
+8. `docs/Implementation_Agent_Checklist.md`;
+9. `docs/Code_Agent_Handoff_Contract.md`;
+10. `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+11. `docs/Canonical_Decision_Resolver_Contract.md`;
+12. `docs/llm/Canonical_Action_Registry.md`;
+13. `docs/llm/In_Action_Response_Registry.md`;
+14. `docs/llm/Bounded_Resolver_Prompt_Template.md`;
+15. relevant domain, storage, access, migration, PDF, and recent
+    `PROJECT_LOG.md` evidence.
 
-Required baseline:
-1. `AGENTS.md`
-2. `docs/Product_Doctrine_2030.md`
-3. `docs/AI_Layer_Implementation_Standards.md`
-4. `docs/Product_Truth_Layer.md`
-5. `docs/Info_Help_Guidance_Layer.md`
-6. `docs/Evaluation_and_Smoke_Test_Standards.md`
-7. `docs/TZ_FakturaBot.md`
-8. `PROJECT_LOG.md`
-9. `docs/FakturaBot_LLM_Orchestrator_Contract.md`
-10. `docs/Canonical_Decision_Resolver_Contract.md`
-11. `docs/llm/Canonical_Action_Registry.md`
-12. `docs/llm/In_Action_Response_Registry.md`
-13. `docs/llm/Bounded_Resolver_Prompt_Template.md`
-14. this guide
+## Read-Only Design Verification
 
-Extra scopes:
-- OfficeFlow / Document Intake: read OfficeFlow and Document Intake contracts before changing attachment routing, accounting intake, LMM prompts, storage, duplicate checks, or document previews.
-- Access / authorization: read `docs/User_Access_Model_Roadmap.md` before changing `/start`, middleware, admin approval, unknown users, or user deletion.
-- Migration-sensitive work: read the data migration/runbook docs and prepare audit, backup, rollback, and dry-run plans before any DB/storage/path/schema change.
+Before code, verify the approved design against current code, docs, registries,
+and tests. Report one status:
 
-Implementation summary must explicitly state:
-- contracts read;
-- constraints extracted;
-- touched scopes: confirmation, routing, LLM/STT/LMM, FSM, storage, DB, access, server.
+- `design_matches_runtime`;
+- `minor_nonsemantic_variance` — symbol/file placement changed but approved
+  semantics and ownership remain intact;
+- `material_design_variance` — the current runtime contradicts action
+  classification, slots, route, FSM, side-effect, safety, or Product Truth
+  assumptions.
 
----
+For `material_design_variance`, stop implementation and report the exact
+contradiction plus the minimum architecture decision needed. Do not invent a
+replacement architecture.
 
-## 2. Definition of Done for a new top-level action
+## Definition Of Done
 
-A top-level action is not done when a token is added to a registry. It is done only when every applicable item below is true.
+A token or handler is not a completed action. Every applicable item must hold:
 
-- [ ] Canonical action identity is defined: name, product meaning, status, and nearby-action separation.
-- [ ] `docs/llm/Canonical_Action_Registry.md` has an evidence-backed row with real source evidence.
-- [ ] For `implemented` status, a real Python runtime owner exists: command handler, text route, FSM entry, or service call.
-- [ ] Reserved/planned actions are not treated as runtime owners and cannot be marked `implemented`.
-- [ ] `allowed_actions` includes the token only in contexts where Python has a real state-aware route to execute it or fail safely.
-- [ ] Reserved/planned tokens are not added to runtime `allowed_actions` as if they were implemented.
-- [ ] `action_hints` are added if plain token names are not enough to separate nearby meanings.
-- [ ] Text route is wired and tested.
-- [ ] Command route exists if the action is command-backed.
-- [ ] Voice route is wired and tested, or the registry explicitly documents why voice is intentionally not applicable.
-- [ ] Active FSM state wins over idle/top-level routing.
-- [ ] In-FSM controls are documented in `docs/llm/In_Action_Response_Registry.md` where applicable.
-- [ ] Exact-value boundaries are documented and enforced.
-- [ ] Confirmation-like steps use `bot/services/decision_resolver.py`.
-- [ ] Buttons, text, and voice converge into the same state-aware execution path where buttons exist.
-- [ ] Unauthorized users cannot trigger STT, LLM, LMM, temp files, storage folders, DB rows, invoices, contacts, supplier profiles, or documents.
-- [ ] Handler/service tests prove route, side effects, wrong-state behavior, and unauthorized behavior.
-- [ ] Voice reachability tests exist, or intentional voice exclusion is documented and tested.
-- [ ] Exact-value voice rejection tests exist for precision/destructive states.
-- [ ] Product Truth is synchronized: new capability status, limitations, setup/admin/external-credential flags, forbidden claims, and safe next steps are documented or updated in the runtime registry when it exists.
-- [ ] InfoHelp/support truth is synchronized: capability/how-to questions for the new action have a truthful answer path or a documented pending gap if runtime InfoHelp is not yet implemented.
-- [ ] Product UX evals include at least one capability/how-to question for the new action and one unsupported/unknown nearby-action case where relevant.
-- [ ] Docs are synchronized: TZ if product behavior changed, project log, Product Truth, InfoHelp guidance, registries, changelog when appropriate, and README architecture tree/navigation when action surfaces change.
+- [ ] Approved Architecture Design Proof exists and still matches runtime.
+- [ ] Canonical token/status/meaning and Python runtime owner are explicit.
+- [ ] A reserved/planned token is not exposed as implemented or placed in
+      executable `allowed_actions` without a safe runtime owner.
+- [ ] Nearby actions, `positive_examples`, and `not_this` boundaries are tested.
+- [ ] Structured slots reach the runtime owner and are validated by Python.
+- [ ] Missing/invalid/ambiguous input enters or remains in a recoverable state;
+      `unknown` never defaults to a write.
+- [ ] Text, command, voice transcript, and buttons converge into shared
+      state-aware Python owners where semantically equivalent.
+- [ ] Active FSM wins over idle top-level routing.
+- [ ] Precision-sensitive values and destructive exact confirmations enforce
+      typed/file-only boundaries where required.
+- [ ] Confirmation-like decisions use `bot/services/decision_resolver.py`.
+- [ ] Callback authorization, state/context, expiry, stale/legacy behavior, and
+      idempotency are fail-closed.
+- [ ] Side effects are Python-owned, scoped, validated, and tenant-safe.
+- [ ] Post-success, cancel, back, no-result, and error states/keyboards are
+      correct.
+- [ ] Product Truth, InfoHelp, registries, focused docs, and logs are synchronized.
+- [ ] The Conversation Acceptance Proof required by
+      `docs/Evaluation_and_Smoke_Test_Standards.md` has an honest verdict.
 
-If any item is intentionally out of scope, document that explicitly as `reserved`, `partial`, or `not voice-applicable`. Do not mark the action `implemented`.
+If a required mode or branch is intentionally absent, mark the capability
+`partial`, `reserved`, or explicitly not applicable. Do not call it implemented.
 
----
+## Action Classification And Identity
 
-## 3. Top-level action implementation checklist
+Before adding a token, prove why the change is a distinct standalone business
+intent rather than:
 
-### 3.1 Action identity
+- an extension of an existing action;
+- a structured slot or mode;
+- an in-FSM control;
+- an internal deterministic strategy/fast-path;
+- Product Truth / InfoHelp only;
+- a reserved/planned capability.
 
-- [ ] Choose one canonical machine token.
-- [ ] Define whether this is `implemented`, `reserved`, `partial`, or `unclear`.
-- [ ] State the user-facing product meaning in plain language.
-- [ ] Identify the existing command/manual flow, if one already exists.
-- [ ] If no real Python runtime owner exists, keep the action `reserved` or `planned`; do not expose it as runtime-implemented.
-- [ ] A reserved fallback may be documented in registries, but it is not implementation evidence.
+For a canonical action define:
 
-### 3.2 Nearby-action separation
-
-- [ ] List neighboring actions that users may confuse with this action.
-- [ ] Add `not_this` guidance where confusion is likely.
-- [ ] Verify known project separations:
-  - `create_invoice` creates an outgoing invoice draft.
-  - `add_receipt` starts upload for an external receipt/incoming invoice; it does not create an outgoing invoice from voice text.
-  - `show_recent_accounting_documents` is read-only recent accounting metadata; it is not a broad document browser.
-  - `edit_invoice` is reserved for current draft/in-FSM invoice editing semantics.
-  - `edit_existing_invoice` edits an already persisted invoice after supplier-scoped Python lookup.
-  - `delete_existing_invoice` deletes one invoice after confirmation.
-  - `delete_user_database` starts a whole-user destructive warning flow and then requires exact typed confirmation.
-  - `add_service_alias` creates a reusable service naming mapping; it does not create a concrete invoice.
-
-### 3.3 Runtime route
-
-- [ ] Identify the exact handler function that receives the canonical token.
-- [ ] Ensure the handler validates `message.from_user`.
-- [ ] Ensure supplier/contact/invoice/accounting lookups are scoped to the current Telegram user.
-- [ ] Ensure Python validates all preconditions before side effects.
-- [ ] Ensure `unknown` returns bounded Slovak guidance and does not clear useful state unless the state is unrecoverable.
-- [ ] Ensure callbacks and voice handlers call the same state-aware helper instead of duplicating business logic.
-
-### 3.4 Side effects
-
-- [ ] List DB writes, file writes, storage moves, cleanup, access changes, external calls, and FSM transitions.
-- [ ] For every side effect, identify the Python service that owns it.
-- [ ] Confirm LLM/STT/LMM never performs or claims the side effect.
-- [ ] If DB/storage/path/schema behavior changes, stop and run the migration-sensitive pre-work before implementation.
-
----
-
-## 4. Bounded resolver checklist
-
-The bounded resolver is a semantic canonicalizer, not a command executor and not an alias dictionary.
-
-- [ ] Python provides `context_name`, `allowed_actions` or `allowed_values`, user text, optional `auxiliary_context`, and optional `action_hints`.
-- [ ] Runtime `allowed_actions` contains only tokens with a state-aware Python route for execution or safe refusal.
-- [ ] Reserved/planned tokens may appear in docs as future or fallback contract markers, but must not be advertised through runtime `allowed_actions` as implemented behavior.
-- [ ] The resolver may return only one allowed token or `unknown`.
-- [ ] The model cannot invent action names.
-- [ ] `unknown` is always allowed and handled by Python.
-- [ ] `action_hints` describe product meaning. They are not a whitelist of phrases.
-- [ ] Examples in `action_hints` are illustrative only; tests must not require literal example matching.
-- [ ] Deterministic Python fast-paths are allowed only when they are actually used and tested as narrow shortcuts.
-- [ ] Variable natural-language slots are extracted by bounded LLM into structured values before Python validation; Python must not become the primary multilingual dictionary/parser for months, dates, periods, customer/service wording, or other business slots.
-- [ ] Python slot parsers are limited to strict structural syntax, no-LLM compatibility fallback, or explicitly documented narrow deterministic ownership; any fallback parser must be named non-primary in docs/tests.
-- [ ] Missing structured slot values use Python-owned business defaults only when the rule is explicit; invalid structured slot values fail loud or ask clarification instead of falling back to broad text guessing.
-- [ ] LLM fallback remains available when fast-path aliases fail and an API key is configured.
-- [ ] Resolver tests include semantic paraphrases, multilingual/noisy input, and nearby-action separation.
-- [ ] Runtime tests prove Python validates the returned token before execution.
-
-Bad pattern:
 ```text
-If text contains one of these phrases, execute the action.
+canonical token
+status: implemented | partial | reserved | planned | unclear
+plain-language product meaning
+runtime owner
+allowed-action contexts
+entry modes
 ```
 
-Required pattern:
+## Semantic Boundary
+
+List the closest neighboring actions, including shared verbs, nouns, business
+objects, and top-level versus in-FSM meanings. Every ambiguous action needs:
+
 ```text
-Python supplies allowed outputs -> resolver returns one token or unknown -> Python validates context -> Python executes existing handler/service.
+meaning
+positive_examples
+not_this
 ```
 
-### 4.1 InfoHelp Unknown / Discovery / Triage
+These examples are semantic context, not a Python phrase whitelist. Tests must
+prove both the new/changed action and representative old neighboring routes.
 
-InfoHelp bounded resolution is not a top-level action resolver. It must not
-return executable action tokens. It may return a known Product Truth
-`capability_id` / topic or, when no known capability fits, one Python-owned
-triage class:
+## Structured Slot Gate
+
+For each slot define:
 
 ```text
-known_product_capability
-new_business_feature_request
-customization_request_candidate
-admin_review_candidate
-out_of_domain
-spam_or_abuse
-smalltalk
-unclear_needs_clarification
-possible_product_truth_candidate
-unknown
+name and type / allowed values
+source: bounded LLM | Python deterministic | callback | typed text | file
+required or optional
+Python-owned default, if any
+validation and invalid behavior
+precision/voice boundary
+continuation state for missing or ambiguous values
 ```
 
 Rules:
 
-- [ ] `unknown capability_id` triggers safe triage only after auth/state/routing
-  gates allow it.
-- [ ] Triage classes never mark a feature as supported.
-- [ ] Triage classes never create canonical actions.
-- [ ] Triage classes never save customization requests or notify admins.
-- [ ] Out-of-domain, spam/noise, smalltalk, and unclear input are separated
-  from business/customization candidates.
-- [ ] Direct executable actions still win before InfoHelp/triage.
-- [ ] Active FSM state still wins before InfoHelp/triage.
-- [ ] Voice transcripts follow the same state-aware path.
-- [ ] Tests cover Slovak, Ukrainian, Russian, mixed/surzhyk, and noisy-STT
-  examples.
+- The bounded LLM may extract variable natural-language business slots only
+  within Python-provided schema/options.
+- Python validates, applies explicit business defaults, and executes.
+- Python must not become the primary multilingual dictionary for months, dates,
+  periods, customers, services, or other variable business semantics.
+- Strict structural parsers or documented no-LLM compatibility fallbacks may
+  exist, but they are non-primary and must fail safely.
+- A resolver test is insufficient unless a public-route test proves the slots
+  reach the handler/service.
 
----
+## Public Route And Voice Gate
 
-## 5. Voice coverage gate
+For each entry mode identify the public router, authorization and active-FSM
+guards, resolver/helper, shared Python owner, and result.
 
-Voice support is part of the user-facing FakturaBot MVP, but it is bounded.
+Rules:
 
-- [ ] A new top-level action is not `implemented` unless voice reachability is implemented and tested, or explicitly documented as intentionally not voice-applicable.
-- [ ] `voice.py` stays transport/STT/state router only.
-- [ ] Do not add business phrase dictionaries to `voice.py`.
-- [ ] Active FSM state wins over idle top-level routing.
-- [ ] Voice may choose actions, fields, bounded options, item targets, routes, and confirmation options when Python supplies allowed outputs.
-- [ ] Voice may provide the natural-language invoice request in idle state or in `InvoiceStates.waiting_input`.
-- [ ] Voice must not fill precision-sensitive exact values.
-- [ ] Unhandled active FSM voice input must ask for text and must not fall through to top-level action routing.
+- authorization happens before STT/LLM/LMM/temp/storage/business work;
+- active FSM is checked before idle top-level routing;
+- `voice.py` remains transport/STT/state routing and does not own business phrase
+  dictionaries or duplicate execution;
+- unhandled active-FSM voice input does not fall through to idle routing;
+- text, command, voice transcript, and callbacks route exactly once;
+- capability/how-to questions go to Product Truth / InfoHelp without executing
+  the action.
 
-Text/file-only or typed-only examples:
-- IBAN, ICO, DIC, IC DPH, email;
-- invoice number and exact invoice references when precision matters;
-- prices, quantities, totals, due-days when ambiguity is unsafe;
-- final item descriptions and service alias names/titles;
-- contact missing-field intake values;
-- supplier profile new field values;
-- destructive exact confirmation for `delete_user_database`.
+Voice may select bounded actions/options where safe. It must not fill
+precision-sensitive exact values such as legal/tax identifiers, IBAN/email,
+invoice references, prices/quantities/totals, long final descriptions, or exact
+destructive confirmation where the flow requires typed input.
 
----
+## FSM And Recovery Gate
 
-## 6. Decision and confirmation gate
+For every state define entry condition, accepted inputs, unknown behavior,
+allowed side effects, success state, back/cancel, stale behavior, and keyboard.
 
-All confirmation-like decisions must use `bot/services/decision_resolver.py` unless an explicit exact typed destructive exception is documented.
+Prove:
 
-- [ ] Decide whether the user reply is `yes_no`, `approve_edit_cancel`, an existing route/document-type family, a new bounded family, or not a decision.
-- [ ] Register every new confirmation context in the central resolver tests.
-- [ ] Do not add local `ano` / `nie` / `ok` / `schvalit` / `upravit` / `zrusit` parsing in handlers.
-- [ ] Do not add per-flow multilingual synonym dictionaries.
-- [ ] Handlers branch only on canonical outputs such as `yes`, `no`, `approve`, `edit`, `cancel`, route tokens, document-type tokens, or `unknown`.
-- [ ] Buttons emit canonical `decision:*` tokens only.
-- [ ] Button callbacks must validate authorization and current FSM state before side effects.
-- [ ] Stale or wrong-state callbacks fail without business side effects.
-- [ ] Text, voice transcript, and button callback paths converge into the same state-aware handler/helper.
-- [ ] Destructive actions must fail safe on ambiguity.
+- immediate completion versus pending-state entry;
+- explicit continuation state after missing/invalid input;
+- return to the correct parent/preview state after each sub-action;
+- cleanup of obsolete state data;
+- shared active-FSM navigation/stale-state guard;
+- post-success final state and next step;
+- fresh unrelated-FSM switching only when preservation/restoration is designed
+  and tested; otherwise document the gap.
 
-Exact typed destructive exception:
-- `delete_user_database` final confirmation is not yes/no.
-- It requires exact typed text `vymazať databázu`.
-- Voice is rejected before STT in that final confirmation state.
+Showing clarification copy without setting the matching state is a failure.
 
----
+## Decision And Callback Gate
 
+All confirmation-like replies use `bot/services/decision_resolver.py` unless an
+explicit exact typed sensitive-action exception is documented.
 
-### 6.1 Active FSM / stale-state / callback-confirmation gate
+- [ ] Define decision family and canonical outputs.
+- [ ] Buttons emit canonical tokens, not localized business logic.
+- [ ] Text, voice transcript, and button callback converge into one state-aware
+      helper.
+- [ ] No local multilingual yes/no/approve/edit/cancel parser.
+- [ ] Authorization and expected state/pending context are checked before effects.
+- [ ] Timestamp/nonce/expiry is checked where available.
+- [ ] Stale, legacy, missing, mismatched, and duplicate callbacks fail closed.
+- [ ] Ambiguity never executes a write.
 
-Any new top-level action, subflow, preview, confirmation, callback-driven flow,
-or pending user decision must declare its active-state safety coverage before it
-can be accepted.
+## Side Effects, Authorization, And Tenant Safety
 
-- [ ] If the action starts or continues an FSM state, it is covered by the
-  shared active-FSM navigation/stale-state layer in
-  `bot/services/active_fsm_guard.py`.
-- [ ] Active text input uses the shared guard before state-specific business
-  parsing; `pass_through` must continue to the existing state handler and must
-  not be swallowed by a catch-all router.
-- [ ] Active voice transcripts use the same shared guard after STT and before
-  state-specific voice routing; `voice.py` must not add navigation phrase
-  dictionaries.
-- [ ] Every active FSM state records shared activity metadata, and stale-state
-  evaluation reads the old timestamp before any refresh.
-- [ ] Stale or legacy approve/save/delete/pay/send/mark-paid-like replies fail
-  closed and cannot execute business side effects.
-- [ ] If stale recovery replays a fresh business request, it first clears or
-  safely cleans the old FSM state and routes through the existing idle
-  top-level entry path exactly once.
-- [ ] Callback confirmations validate authorization, expected current FSM state
-  or pending callback context, activity timestamp or callback timestamp where
-  available, and expiration before side effects.
-- [ ] Legacy, missing-state, mismatched-state, or expired callbacks fail closed.
-- [ ] Callback payloads that mutate data should include a timestamp, nonce, or
-  equivalent pending-decision context where the existing keyboard API allows it.
-- [ ] Fresh active-FSM safe switch confirmation is implemented only if the
-  previous FSM state/data and original user request can be preserved or restored
-  with tests. If that cannot be proven, document the follow-up gap instead of
-  implementing an unsafe approximation.
-- [ ] A stateless/read-only action that does not create an FSM state, pending
-  decision, callback confirmation, recoverable draft, or preview explicitly
-  documents why this shared guard is not required.
+List every DB/file/storage/external/FSM side effect and its Python owner.
 
-## 7. Dangerous boundary checklist
+- LLM/STT/LMM and callback payloads select bounded values only.
+- Python validates preconditions and tenant/workspace scope.
+- Queries/writes use the current user/workspace keys.
+- No unauthorized AI call, temp file, directory, DB row, invoice, contact,
+  supplier profile, or accounting document.
+- DB/storage/path/schema changes require migration audit, backup, rollback, and
+  approved server work.
+- Cleanup is restricted to known temporary or tenant-owned paths.
 
-Apply this checklist before exposing or changing actions that touch destructive behavior, authorization, tenant scope, DB/storage, or external document intake.
+## Product Truth And InfoHelp Gate
 
-- [ ] Unknown or unauthorized Telegram users cannot pass into the action.
-- [ ] Authorization runs before STT, LLM, LMM, upload staging, temp workspace creation, DB writes, or storage writes.
-- [ ] Tenant/user scope is deterministic Python logic, not resolver/LLM output.
-- [ ] DB queries filter by `telegram_id` / `supplier_telegram_id` where relevant.
-- [ ] Storage paths use current tenant/workspace rules; no cross-tenant fallback reads.
-- [ ] Delete database flow requires exact typed confirmation and scoped deletion only.
-- [ ] Invoice deletion remains separate from invoice creation and requires confirmation.
-- [ ] Receipt/accounting document intake treats blocek/incoming invoice as an external source document, not as an editable outgoing invoice.
-- [ ] No automatic contact creation from receipts, PDFs, photos, or idle attachments.
-- [ ] No automatic accounting document save before preview approval.
-- [ ] No server/storage/schema/path changes unless explicitly in scope and migration-sensitive pre-work is approved.
-- [ ] Cleanup code is restricted to known temp paths or explicitly scoped tenant-owned paths.
+For the capability define status, supported subset, limitations,
+setup/admin/external-credential requirements, forbidden claims, safe next steps,
+and answers to “Can you do this?” and “How do I use this?”.
 
----
+Executable requests must still route before InfoHelp where designed, but an
+informational question must not mutate data or start the business action.
 
-## 8. Required tests
+## Required Tests And Acceptance Evidence
 
-Use focused tests for the changed surface, then run the full suite with:
+Run focused tests, then the full suite when feasible:
 
 ```powershell
 python -m pytest -q
 ```
 
-Minimum test matrix for a new or upgraded action:
+Minimum relevant coverage:
 
-- [ ] Resolver tests for canonical token, `unknown`, multilingual/noisy/STT-like input, and nearby-action separation.
-- [ ] Handler route tests for text and command entry.
-- [ ] Voice reachability tests for top-level action or documented voice exclusion.
-- [ ] Active-FSM tests proving state wins over top-level routing.
-- [ ] In-FSM control tests for action/field/option selection.
-- [ ] Exact-value voice rejection tests for typed-only states.
-- [ ] DecisionResolver family tests for every confirmation-like context.
-- [ ] Handler tests proving no local confirmation parser drives the branch.
-- [ ] Callback tests if buttons are present: canonical token, authorization, stale/wrong state, and convergence into handler.
-- [ ] Unauthorized tests proving no STT/LLM/LMM, temp files, DB rows, storage paths, invoices, contacts, supplier profiles, or documents are created.
-- [ ] Side-effect tests for DB/storage writes, cleanup, and rollback/fail-safe behavior.
-- [ ] Wrong-state/stale-state tests proving no accidental clear or side effect.
-- [ ] Full suite run before marking complete.
+- resolver token, slots, `unknown`, multilingual/noisy input, and nearby actions;
+- public text/command route;
+- voice reachability or tested exclusion;
+- active-FSM ownership and clarification continuation;
+- exact-value voice rejection;
+- DecisionResolver family and no local parser;
+- callback authorization/state/stale/expiry/idempotency;
+- unauthorized and tenant isolation;
+- side-effect, rollback, cleanup, and no-side-effect branches;
+- Product Truth / InfoHelp capability questions;
+- old journeys through modified shared layers;
+- full Conversation Acceptance Proof from public entrypoints under
+  `docs/Evaluation_and_Smoke_Test_Standards.md`.
 
-If tests are not run, say exactly why and do not claim runtime completion.
+If evidence is not run, state why and do not claim completion.
 
----
+## Implementation Handoff And Final Output
 
-## 9. Docs synchronization
+The implementation prompt is owned by
+`docs/Code_Agent_Handoff_Contract.md`. It must reference the exact approved
+Architecture Design Proof and carry forward its classification, slots, route,
+FSM graph, semantic negative space, decision/callback rules, side-effect
+ownership, Product Truth target, acceptance scenarios, and out-of-scope gaps.
+Do not create a parallel handoff contract or ask the coding agent to decide
+these points.
 
-Docs must match runtime evidence. Do not update one registry and leave the rest stale.
+The agent’s final output must report:
 
-Update as applicable:
-- `PROJECT_LOG.md`: every meaningful session, constraints read, touched scopes, verification.
-- `CHANGELOG.md`: user-visible behavior or release-note-worthy changes.
-- `docs/TZ_FakturaBot.md`: product logic, MVP scope, authorization, storage, or runtime behavior changes.
-- `docs/Product_Truth_Layer.md` or the runtime Product Truth registry when it exists: capability status, limitations, setup/admin/external-credential flags, forbidden claims, safe next steps.
-- `docs/Info_Help_Guidance_Layer.md` or the runtime InfoHelp registry when it exists: how users should learn about the capability and what answer they receive when they ask whether/how the bot can do it.
-- `docs/Evaluation_and_Smoke_Test_Standards.md` or focused eval artifacts: product UX smoke scenarios for capability questions, unsupported nearby requests, active FSM confusion, and no hidden side effects.
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md`: bounded resolver contract changes.
-- `docs/Canonical_Decision_Resolver_Contract.md`: decision family or confirmation policy changes.
-- `docs/llm/Canonical_Action_Registry.md`: top-level action status, entry modes, source evidence.
-- `docs/llm/In_Action_Response_Registry.md`: in-FSM controls, decision families, slot/value groups.
-- README architecture tree/navigation: new files, handlers, services, commands, or public action surfaces.
+```text
+docs/contracts read
+design verification status
+files changed
+design-to-code mapping and deviations
+implementation summary
+tests/evals run and exact results
+tests/evals not run and why
+Product Truth / InfoHelp status
+Conversation Acceptance Proof path and verdict
+known limitations, migration/rollback/server notes
+git status; no merge/deploy claim unless actually performed
+```
 
-Status wording rules:
-- `implemented` means runtime exists, reachable modes are wired, tests cover it, and docs agree.
-- `reserved` means token/name may exist but runtime does not execute a standalone business flow.
-- `partial` means a bounded slice exists; document exactly what is and is not implemented.
-- `unclear` means evidence is insufficient; investigate before coding.
+## No-Go Rules
 
----
+Do not:
 
-## 10. Final implementation pre-flight
-
-Before code changes, the implementation agent must be able to answer:
-
-- [ ] What exact user problem does this action solve?
-- [ ] Which existing flow owns execution?
-- [ ] Which canonical token is returned by the resolver?
-- [ ] Which `allowed_actions` context includes it?
-- [ ] What happens on `unknown`?
-- [ ] Does voice reach it, and if not, why?
-- [ ] Which active FSM states must intercept voice/text before top-level routing?
-- [ ] Which exact values are text/file-only?
-- [ ] Which DecisionResolver family is used?
-- [ ] What side effects occur, and which Python service owns them?
-- [ ] What tenant/user scope is enforced?
-- [ ] What is the Product Truth status after this change?
-- [ ] How will InfoHelp answer "can you do this?" and "how do I use this?" for this action?
-- [ ] Which unsupported or partial claims must InfoHelp refuse?
-- [ ] Which setup/admin/external-credential state changes the answer?
-- [ ] What tests prove the route, voice behavior, authorization, wrong-state safety, exact-value safety, and docs/runtime synchronization?
-- [ ] What product UX eval proves the user can discover and understand the new capability?
-- [ ] Which docs are updated in the same patch?
-
-If any answer depends on guessing, the implementation is not ready.
+- create a token or module to avoid extending the correct existing owner;
+- expose planned/reserved behavior as implemented;
+- replace bounded semantics with multilingual Python phrase dictionaries;
+- re-parse the whole request independently after action/slot resolution;
+- show clarification without a continuation state;
+- put business routing/execution in `voice.py`;
+- add local confirmation parsers;
+- let `unknown` or ambiguity default to a write;
+- weaken authorization, tenant, precision, active-FSM, stale-state, or callback
+  guards;
+- silently deviate from the approved Architecture Design Proof;
+- treat passing component tests as proof of the complete user journey;
+- create separate implementation-handoff or conversation-acceptance contracts
+  that duplicate the existing owners.

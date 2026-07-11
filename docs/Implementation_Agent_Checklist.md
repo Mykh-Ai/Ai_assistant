@@ -9,8 +9,8 @@ feature implementation.
 It is the general implementation gate for changes that are not necessarily new
 top-level canonical actions. For top-level actions or in-FSM canonical
 controls, also use `docs/llm/New_Action_Design_Checklist.md`, the task-specific
-approved Architecture Design Proof, and
-`docs/llm/Conversation_Acceptance_Proof_Contract.md`.
+approved Architecture Design Proof, and the Conversation Acceptance Proof
+section of `docs/Evaluation_and_Smoke_Test_Standards.md`.
 
 The goal is to prevent shallow "just patch it" work. The agent must understand
 the product need, read the governing docs, inspect the current code, choose the
@@ -96,7 +96,7 @@ Required docs:
 Tests/evals expected:
 Approval gates:
 Architecture Design Proof path and verdict, when applicable:
-Required Conversation Acceptance Proof path, when applicable:
+Required Conversation Acceptance Proof artifact/path and verdict model, when applicable:
 ```
 
 If the task came from a user customization request, the agent must also know:
@@ -137,7 +137,8 @@ For AI/LLM/FSM/routing/action work, also read:
 - `docs/llm/New_Action_Design_Checklist.md`;
 - `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`;
 - the task-specific approved Architecture Design Proof;
-- `docs/llm/Conversation_Acceptance_Proof_Contract.md`.
+- the Conversation Acceptance Proof section of
+  `docs/Evaluation_and_Smoke_Test_Standards.md`.
 
 For confirmation-like replies, read:
 
