@@ -448,7 +448,7 @@ Active source-of-truth / contract docs:
 - `docs/Evaluation_and_Smoke_Test_Standards.md`
 - `docs/Product_UX_Eval_Artifacts.md`
 - `docs/TZ_FakturaBot.md`
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`
 - `docs/Canonical_Decision_Resolver_Contract.md`
 - `docs/Info_Help_Guidance_Layer.md`
 - `docs/Confirmed_Semantic_Alias_Learning_Contract.md`
@@ -461,8 +461,9 @@ Active source-of-truth / contract docs:
 
 Planning / proposal docs:
 
-- `docs/OfficeFlow_Architecture_Framing.md`
-- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/architecture/OfficeFlow_Architecture_Framing.md`
+- `docs/architecture/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/architecture/MULTI_WORKSPACE_BUSINESS_PROFILES_ARCHITECTURE_DESIGN_PROOF.md`
 - `docs/Document_Intake_Module_Proposal.md`
 - `docs/Document_Intake_MVP_Implementation_Plan.md`
 - `docs/FakturaBot_Server_Rollout_Roadmap.md`

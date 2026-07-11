@@ -218,7 +218,7 @@ Accounting Document Intake Phase 1 is the current exception to the previously pu
 
 See also:
 - `docs/Document_Intake_Module_Proposal.md`
-- `docs/OfficeFlow_Storage_Model_Proposal.md`, including the future Google Drive sync rule that confirmed accounting metadata should use storage-relative paths resolved from `STORAGE_ROOT`, not host-only absolute paths.
+- `docs/architecture/OfficeFlow_Storage_Model_Proposal.md`, including the future Google Drive sync rule that confirmed accounting metadata should use storage-relative paths resolved from `STORAGE_ROOT`, not host-only absolute paths.
 
 ---
 

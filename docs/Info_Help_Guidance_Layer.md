@@ -40,7 +40,7 @@ Required companion docs:
 - `docs/Self_Learning_Layer.md`;
 - `docs/Evaluation_and_Smoke_Test_Standards.md`;
 - `docs/TZ_FakturaBot.md`;
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`;
 - `docs/llm/Canonical_Action_Registry.md`;
 - `docs/llm/In_Action_Response_Registry.md`;
 - `docs/llm/Bounded_Resolver_Prompt_Template.md`;

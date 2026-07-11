@@ -136,7 +136,7 @@ For any AI-layer or user-facing intelligence task, read:
 - `docs/Evaluation_and_Smoke_Test_Standards.md`
 - `docs/Product_UX_Eval_Artifacts.md`
 - `docs/TZ_FakturaBot.md`
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md`
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`
 - `docs/llm/Canonical_Action_Registry.md`
 - `docs/llm/In_Action_Response_Registry.md`
 - `docs/llm/New_Action_Design_Checklist.md`
@@ -165,8 +165,8 @@ For confirmation-like decisions, read:
 
 For OfficeFlow / accounting / document intake / idle attachments, read:
 
-- `docs/OfficeFlow_Architecture_Framing.md`
-- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/architecture/OfficeFlow_Architecture_Framing.md`
+- `docs/architecture/OfficeFlow_Storage_Model_Proposal.md`
 - `docs/Document_Intake_Module_Proposal.md`
 - `docs/Document_Intake_MVP_Implementation_Plan.md`
 

@@ -44,7 +44,7 @@ Companion docs:
 - `docs/Self_Learning_Layer.md`;
 - `docs/Implementation_Agent_Checklist.md`;
 - `docs/Evaluation_and_Smoke_Test_Standards.md`;
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`;
 - `docs/FakturaBot_Data_Migration_Runbook.md`;
 - `docs/FakturaBot_PDF_Layout_Spec.md`;
 - `docs/llm/Canonical_Action_Registry.md`;
@@ -155,7 +155,7 @@ AI-layer task examples:
 - `docs/Customization_Request_Layer.md`;
 - `docs/Self_Learning_Layer.md`;
 - `docs/Implementation_Agent_Checklist.md`;
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`;
 - `docs/llm/Canonical_Action_Registry.md`;
 - `docs/llm/In_Action_Response_Registry.md`.
 

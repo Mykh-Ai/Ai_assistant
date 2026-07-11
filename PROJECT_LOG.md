@@ -1,3 +1,21 @@
+## 2026-07-11 - Architecture And LLM Docs Reorganization
+
+Summary:
+- Created `docs/architecture/` as the active folder for architecture/design-proof documents.
+- Moved OfficeFlow architecture/storage proposal docs under `docs/architecture/`.
+- Added `docs/architecture/MULTI_WORKSPACE_BUSINESS_PROFILES_ARCHITECTURE_DESIGN_PROOF.md` from the handoff-ready design proof file.
+- Moved the LLM orchestrator contract to `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`.
+- Updated active README/AGENTS/current-doc/code references to the new paths.
+
+Scope:
+- Touched scopes: documentation organization, active documentation references, and Product Truth source-reference strings only.
+- No runtime code behavior, DB/storage schema, migrations, LLM/STT/LMM routing, FSM flows, server state, tests, or deployment changed.
+- Current implementation status for multi-workspace business profiles remains `planned / unsupported in current runtime` until implementation, migration, Product Truth/InfoHelp updates, tests, and acceptance proof are complete.
+
+Verification:
+- Documentation-only reorganization; no runtime tests required.
+- Read-only path/reference audit performed with `rg`.
+
 ## 2026-07-10 - Agent Documentation Preflight Rule
 
 Summary:

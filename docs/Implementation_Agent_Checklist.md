@@ -130,7 +130,7 @@ For customization/request-driven work, also read:
 
 For AI/LLM/FSM/routing/action work, also read:
 
-- `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`;
 - `docs/llm/Canonical_Action_Registry.md`;
 - `docs/llm/In_Action_Response_Registry.md`;
 - `docs/llm/Bounded_Resolver_Prompt_Template.md`;
@@ -162,8 +162,8 @@ For DB/storage/path/server-impacting work, read:
 
 For OfficeFlow/document intake work, read:
 
-- `docs/OfficeFlow_Architecture_Framing.md`;
-- `docs/OfficeFlow_Storage_Model_Proposal.md`;
+- `docs/architecture/OfficeFlow_Architecture_Framing.md`;
+- `docs/architecture/OfficeFlow_Storage_Model_Proposal.md`;
 - `docs/Document_Intake_Module_Proposal.md`;
 - `docs/Document_Intake_MVP_Implementation_Plan.md`.
 

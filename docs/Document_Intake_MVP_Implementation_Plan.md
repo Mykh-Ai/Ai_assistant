@@ -5,8 +5,8 @@
 This document does not implement runtime behavior. It defines the first safe runtime slice to implement later, after separate approval.
 
 Related docs:
-- `docs/OfficeFlow_Architecture_Framing.md`
-- `docs/OfficeFlow_Storage_Model_Proposal.md`
+- `docs/architecture/OfficeFlow_Architecture_Framing.md`
+- `docs/architecture/OfficeFlow_Storage_Model_Proposal.md`
 - `docs/Document_Intake_Module_Proposal.md`
 
 ---

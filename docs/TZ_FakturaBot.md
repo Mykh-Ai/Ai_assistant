@@ -1267,7 +1267,7 @@ faktura-bot/
 └── .env.example
 ```
 
-Майбутня OfficeFlow storage model описана в `docs/OfficeFlow_Storage_Model_Proposal.md` як non-runtime proposal. Вона не переносить існуючі PDF, не змінює `pdf_path` і не створює yearly folders у поточному коді.
+Майбутня OfficeFlow storage model описана в `docs/architecture/OfficeFlow_Storage_Model_Proposal.md` як non-runtime proposal. Вона не переносить існуючі PDF, не змінює `pdf_path` і не створює yearly folders у поточному коді.
 
 ---
 

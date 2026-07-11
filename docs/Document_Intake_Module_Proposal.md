@@ -142,7 +142,7 @@ Contracts should be treated as long-living reference documents unless a later ru
 
 ## 6. Storage Semantics
 
-Future storage should follow `docs/OfficeFlow_Storage_Model_Proposal.md`.
+Future storage should follow `docs/architecture/OfficeFlow_Storage_Model_Proposal.md`.
 
 High-level rule:
 - incoming accounting documents belong under `years/<YYYY>/`,

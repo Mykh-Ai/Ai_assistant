@@ -49,7 +49,7 @@ Before editing, read:
 7. `docs/Evaluation_and_Smoke_Test_Standards.md`;
 8. `docs/Implementation_Agent_Checklist.md`;
 9. `docs/Code_Agent_Handoff_Contract.md`;
-10. `docs/FakturaBot_LLM_Orchestrator_Contract.md`;
+10. `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`;
 11. `docs/Canonical_Decision_Resolver_Contract.md`;
 12. `docs/llm/Canonical_Action_Registry.md`;
 13. `docs/llm/In_Action_Response_Registry.md`;
