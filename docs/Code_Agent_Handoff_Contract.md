@@ -49,7 +49,10 @@ Companion docs:
 - `docs/FakturaBot_PDF_Layout_Spec.md`;
 - `docs/llm/Canonical_Action_Registry.md`;
 - `docs/llm/In_Action_Response_Registry.md`;
-- `docs/llm/New_Action_Design_Checklist.md`.
+- `docs/llm/New_Action_Design_Checklist.md`;
+- `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`;
+- `docs/llm/Top_Level_Subflow_Implementation_Handoff_Template.md`;
+- `docs/llm/Conversation_Acceptance_Proof_Contract.md`.
 
 ## Core Rule
 
@@ -63,7 +66,11 @@ A code-agent handoff is allowed only after:
 6. acceptance criteria;
 7. test/evaluation plan;
 8. no-go constraints;
-9. rollback/migration notes where relevant.
+9. rollback/migration notes where relevant;
+10. for new or materially changed top-level/subflow/FSM work, an approved
+    Architecture Design Proof with verdict `ready_for_handoff`;
+11. an explicit requirement for the implementation agent to produce a
+    post-implementation Conversation Acceptance Proof.
 
 The handoff must not imply merge, deploy, or production execution.
 
@@ -130,6 +137,10 @@ post_merge_verification
 status
 agent_output_refs
 review_notes
+architecture_design_proof_ref
+architecture_design_proof_verdict
+conversation_acceptance_proof_ref
+required_acceptance_proof_verdicts
 ```
 
 ## Required Docs To Include
@@ -318,7 +329,10 @@ A code agent must return:
 - known limitations;
 - migration/rollback notes if relevant;
 - docs updated;
-- remaining review questions.
+- remaining review questions;
+- design-to-code variance status when an Architecture Design Proof applies;
+- Conversation Acceptance Proof path and verdict when the task changes a
+  public stateful journey.
 
 The agent output is not approval. A human/developer review gate remains.
 
@@ -356,8 +370,15 @@ Security/access impact:
 PDF/layout criteria:
 No-go constraints:
 Approval gates:
+Approved Architecture Design Proof, when applicable:
+Required Conversation Acceptance Proof path and verdict model:
 Expected output:
 ```
+
+For top-level/subflow/FSM work, build the prompt from
+`docs/llm/Top_Level_Subflow_Implementation_Handoff_Template.md`. The prompt
+must not delegate unresolved architecture classification, slot ownership, FSM
+graph, semantic negative space, or side-effect boundaries to the coding agent.
 
 The implementation agent must follow
 `docs/Implementation_Agent_Checklist.md` before editing code.
@@ -387,7 +408,12 @@ The Code-Agent Handoff Layer is not complete until:
 - runtime claims are backed by Product Truth;
 - product UX evals cover at least one PDF/layout request and one integration
   request;
-- no production side effects happen automatically.
+- no production side effects happen automatically;
+- top-level/subflow task packages cannot reach `approved_for_agent` without an
+  approved Architecture Design Proof;
+- implementation output cannot reach `ready_for_human_review` without the
+  required Conversation Acceptance Proof or an explicit `runtime_not_proven`
+  status.
 
 ## No-Go Rules
 
@@ -400,4 +426,8 @@ Do not:
 - omit migration/rollback notes when data is touched;
 - allow code-agent output to bypass human review;
 - claim handoff exists in runtime before Product Truth proves it;
-- use handoff as a way to sneak in unrelated refactors.
+- use handoff as a way to sneak in unrelated refactors;
+- ask the implementation agent to invent missing top-level/subflow/FSM
+  architecture;
+- accept component-test output as a replacement for a public-entry
+  Conversation Acceptance Proof.

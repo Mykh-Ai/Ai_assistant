@@ -8,7 +8,9 @@ feature implementation.
 
 It is the general implementation gate for changes that are not necessarily new
 top-level canonical actions. For top-level actions or in-FSM canonical
-controls, also use `docs/llm/New_Action_Design_Checklist.md`.
+controls, also use `docs/llm/New_Action_Design_Checklist.md`, the task-specific
+approved Architecture Design Proof, and
+`docs/llm/Conversation_Acceptance_Proof_Contract.md`.
 
 The goal is to prevent shallow "just patch it" work. The agent must understand
 the product need, read the governing docs, inspect the current code, choose the
@@ -93,6 +95,8 @@ Risk level:
 Required docs:
 Tests/evals expected:
 Approval gates:
+Architecture Design Proof path and verdict, when applicable:
+Required Conversation Acceptance Proof path, when applicable:
 ```
 
 If the task came from a user customization request, the agent must also know:
@@ -130,7 +134,10 @@ For AI/LLM/FSM/routing/action work, also read:
 - `docs/llm/Canonical_Action_Registry.md`;
 - `docs/llm/In_Action_Response_Registry.md`;
 - `docs/llm/Bounded_Resolver_Prompt_Template.md`;
-- `docs/llm/New_Action_Design_Checklist.md`.
+- `docs/llm/New_Action_Design_Checklist.md`;
+- `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`;
+- the task-specific approved Architecture Design Proof;
+- `docs/llm/Conversation_Acceptance_Proof_Contract.md`.
 
 For confirmation-like replies, read:
 
@@ -179,10 +186,16 @@ Does this touch PDF/layout output?
 Does this touch AI/LLM/STT/LMM behavior?
 Does this touch confirmation or destructive behavior?
 What tests/evals will prove value and safety?
+For top-level/subflow/FSM work, does the approved Architecture Design Proof
+match the current repository?
+What exact public-entry conversation traces must the final acceptance proof
+contain?
 ```
 
 If any answer depends on guessing, inspect more code/docs or stop with a
-readiness report.
+readiness report. For a material contradiction between the approved design and
+current runtime, report `material_design_variance`; do not silently invent a
+replacement architecture.
 
 ## Codebase Exploration Rules
 
@@ -344,7 +357,11 @@ Common requirements:
 - Product Truth/InfoHelp tests for capability claims;
 - PDF/layout regression or manual rendered review for invoice layout;
 - migration dry-run tests where persisted data changes;
-- product UX smoke tests from `docs/Evaluation_and_Smoke_Test_Standards.md`.
+- product UX smoke tests from `docs/Evaluation_and_Smoke_Test_Standards.md`;
+- for new or materially changed top-level/subflow/FSM behavior, a task-specific
+  Conversation Acceptance Proof that starts at public entrypoints and proves
+  action/slot transfer, state transitions, side effects, final state, semantic
+  negative space, and Product Truth/InfoHelp behavior.
 
 Run focused tests during development and full suite before marking runtime
 complete when feasible:
@@ -433,7 +450,9 @@ The implementation agent must report:
 - forbidden claims checked;
 - docs updated;
 - migration/rollback notes if relevant;
-- remaining gaps or follow-up tasks.
+- remaining gaps or follow-up tasks;
+- Architecture Design Proof path and design-variance status when applicable;
+- Conversation Acceptance Proof path and final verdict when applicable.
 
 ## No-Go Rules
 
@@ -454,4 +473,8 @@ Do not:
 - change persisted data without migration pre-work;
 - change PDF layout without visual criteria;
 - skip product UX evals for Level 2+ behavior;
-- hide tests not run.
+- hide tests not run;
+- treat passing component tests as proof of a complete user journey;
+- claim a new/changed top-level or subflow complete without the required
+  Conversation Acceptance Proof;
+- silently deviate from an approved Architecture Design Proof.

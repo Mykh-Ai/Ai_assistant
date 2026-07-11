@@ -122,6 +122,24 @@ Purpose:
 These may be automated where possible or documented as manual smoke checks
 when automation is not yet practical.
 
+### Conversation Acceptance Proof
+
+Purpose:
+
+- prove the complete public-entry journey for new or materially changed
+  top-level actions, structured slots, in-FSM controls, subflows, and
+  callback/confirmation behavior;
+- map exact user inputs to resolver action/slots, handler ownership, FSM
+  transitions, side effect or no-side-effect, final state, and user-facing
+  response;
+- prove text/voice/button convergence or explicit tested exclusions;
+- prove nearby-action negative space and fail-closed stale/wrong-state behavior.
+
+The task-specific artifact must follow
+`docs/llm/Conversation_Acceptance_Proof_Contract.md`. Resolver, handler, or
+service unit tests alone do not satisfy this layer. At least one applicable
+trace must begin at the real public router/handler rather than the final helper.
+
 ### AI Capability Evals
 
 Purpose:
@@ -174,6 +192,7 @@ touched_scopes
 unit_tests
 handler_integration_tests
 product_ux_evals
+conversation_acceptance_proof
 ai_capability_evals
 visual_layout_evals
 migration_server_smoke
@@ -452,6 +471,9 @@ Do not:
 - call a fallback complete because tests pass;
 - skip unsupported-feature honesty evals;
 - skip active FSM confusion evals for state-aware changes;
+- call a new or changed public stateful journey complete without a public-entry
+  Conversation Acceptance Proof;
+- treat direct final-helper tests as proof that the complete route works;
 - skip destructive-action safety evals;
 - hide tests not run;
 - replace evals with model confidence;
