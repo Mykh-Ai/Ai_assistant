@@ -367,7 +367,10 @@ def test_info_help_llm_payload_contains_only_classification_fields() -> None:
         'triage_class',
         'confidence',
         'needs_clarification',
+        'admin_review_draft',
     }
+    assert 'workspace_setup' in payload['allowed_admin_review_domains']
+    assert payload['allowed_risk_levels'] == ['low', 'medium', 'high', 'critical']
 
     forbidden_keys = {
         'primary_status',
@@ -697,6 +700,7 @@ def test_llm_info_help_triage_classifier_valid_outputs(
         'triage_class',
         'confidence',
         'needs_clarification',
+        'admin_review_draft',
     }
 
 
@@ -928,6 +932,51 @@ def test_llm_info_help_triage_multilingual_noisy_payload_smoke(
     assert result.triage_class == expected_triage
     assert _InfoHelpOpenAIFake.last_payload is not None
     assert _InfoHelpOpenAIFake.last_payload['user_input_text'] == user_input
+
+
+def test_llm_info_help_triage_builds_structured_admin_review_draft(monkeypatch) -> None:
+    _InfoHelpOpenAIFake.output = json.dumps(
+        {
+            'capability_id': 'unknown',
+            'topic_id': 'admin_review',
+            'triage_class': TRIAGE_ADMIN_REVIEW_CANDIDATE,
+            'confidence': 0.86,
+            'needs_clarification': False,
+            'admin_review_draft': {
+                'business_need': 'User wants separate business profiles for SZCO and company in one bot.',
+                'detected_domain': 'workspace_setup',
+                'expected_outcome': 'Keep invoices, contacts, settings, and numbering separated by active profile.',
+                'clarification_questions': [
+                    'Should each profile have separate invoice numbering?',
+                    'Should contacts and documents be isolated per profile?',
+                ],
+                'proposed_title': 'Multiple business profiles in one bot',
+                'proposed_description': 'Review multi-workspace profile switching for SZCO and company use.',
+                'risk_level': 'critical',
+            },
+        }
+    )
+    _InfoHelpOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _InfoHelpOpenAIFake)
+
+    result = asyncio.run(
+        resolve_info_help_triage_with_llm(
+            user_input_text='Can I have two profiles: one SZCO and one company?',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert result.triage_class == TRIAGE_ADMIN_REVIEW_CANDIDATE
+    assert result.detected_domain == 'workspace_setup'
+    assert result.risk_level == 'critical'
+    assert 'separate business profiles' in result.business_need
+    assert result.clarification_questions == (
+        'Should each profile have separate invoice numbering?',
+        'Should contacts and documents be isolated per profile?',
+    )
+    assert _InfoHelpOpenAIFake.last_payload is not None
+    assert 'workspace_setup' in _InfoHelpOpenAIFake.last_payload['allowed_admin_review_domains']
 
 
 def test_info_help_triage_known_product_truth_email_question() -> None:

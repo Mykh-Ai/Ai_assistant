@@ -383,7 +383,35 @@ class InfoHelpTriageResult:
     confidence: float = 0.0
     needs_clarification: bool = False
     business_need: str = ''
+    detected_domain: str = 'other'
+    expected_outcome: str = ''
+    clarification_questions: tuple[str, ...] = ()
+    proposed_title: str = ''
+    proposed_description: str = ''
+    risk_level: str = 'medium'
 
+
+ALLOWED_ADMIN_REVIEW_DRAFT_DOMAINS = (
+    'invoice_pdf_layout',
+    'invoice_delivery',
+    'invoice_storage',
+    'invoice_fields',
+    'reminders',
+    'work_hours',
+    'reports',
+    'accounting_documents',
+    'accounting_export',
+    'contacts',
+    'supplier_profile',
+    'google_drive',
+    'email',
+    'sms',
+    'access_control',
+    'workspace_setup',
+    'other',
+)
+
+ALLOWED_ADMIN_REVIEW_RISK_LEVELS = ('low', 'medium', 'high', 'critical')
 
 def parse_info_help_triage_model_output(
     raw_model_output: str,
@@ -424,12 +452,39 @@ def parse_info_help_triage_model_output(
 
     confidence = _bounded_confidence(parsed.get('confidence'))
     needs_clarification = bool(parsed.get('needs_clarification')) or triage_class == TRIAGE_UNCLEAR_NEEDS_CLARIFICATION
+    draft = parsed.get('admin_review_draft')
+    if not isinstance(draft, dict):
+        draft = {}
+    draft_allowed = triage_class in {
+        TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+        TRIAGE_CUSTOMIZATION_REQUEST_CANDIDATE,
+        TRIAGE_ADMIN_REVIEW_CANDIDATE,
+        TRIAGE_POSSIBLE_PRODUCT_TRUTH_CANDIDATE,
+    }
+    detected_domain = _bounded_choice(
+        draft.get('detected_domain'),
+        allowed=ALLOWED_ADMIN_REVIEW_DRAFT_DOMAINS,
+        default='other',
+    )
+    risk_level = _bounded_choice(
+        draft.get('risk_level'),
+        allowed=ALLOWED_ADMIN_REVIEW_RISK_LEVELS,
+        default='medium',
+    )
+    questions = _bounded_text_list(draft.get('clarification_questions'), max_items=4, max_length=160)
     return InfoHelpTriageResult(
         capability_id=capability_id,
         topic_id=topic_id,
         triage_class=triage_class,
         confidence=confidence,
         needs_clarification=needs_clarification,
+        business_need=_bounded_text(draft.get('business_need'), max_length=500) if draft_allowed else '',
+        detected_domain=detected_domain if draft_allowed else 'other',
+        expected_outcome=_bounded_text(draft.get('expected_outcome'), max_length=500) if draft_allowed else '',
+        clarification_questions=questions if draft_allowed else (),
+        proposed_title=_bounded_text(draft.get('proposed_title'), max_length=100) if draft_allowed else '',
+        proposed_description=_bounded_text(draft.get('proposed_description'), max_length=800) if draft_allowed else '',
+        risk_level=risk_level if draft_allowed else 'medium',
     )
 
 
@@ -1298,6 +1353,34 @@ def _mentions_info_help(normalized: str, tokens: set[str]) -> bool:
 def _known_capability_ids() -> tuple[str, ...]:
     return tuple(capability.capability_id for capability in list_capabilities())
 
+
+def _bounded_text(value: object, *, max_length: int) -> str:
+    if not isinstance(value, str):
+        return ''
+    compacted = re.sub(r'\s+', ' ', value).strip()
+    if len(compacted) <= max_length:
+        return compacted
+    return compacted[: max_length - 1].rstrip() + '…'
+
+
+def _bounded_choice(value: object, *, allowed: tuple[str, ...], default: str) -> str:
+    candidate = str(value or '').strip()
+    if candidate in allowed:
+        return candidate
+    return default
+
+
+def _bounded_text_list(value: object, *, max_items: int, max_length: int) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    items: list[str] = []
+    for item in value:
+        clean = _bounded_text(item, max_length=max_length)
+        if clean:
+            items.append(clean)
+        if len(items) >= max_items:
+            break
+    return tuple(items)
 
 def _bounded_confidence(value: object) -> float:
     try:

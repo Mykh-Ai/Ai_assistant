@@ -1013,13 +1013,38 @@ def _build_customization_request_draft(
     capability_id: str | None,
     topic_id: str | None,
     confidence: float | None,
+    business_need: str | None = None,
+    detected_domain: str | None = None,
+    expected_outcome: str | None = None,
+    clarification_questions: tuple[str, ...] | list[str] | None = None,
+    proposed_title: str | None = None,
+    proposed_description: str | None = None,
+    risk_level: str | None = None,
 ) -> dict[str, object]:
     redacted_text = redact_customization_request_text(user_input_text) or ''
-    title_source = redacted_text or 'Nov\u00e1 po\u017eiadavka'
-    title = _compact_text(title_source, max_length=80)
+    clean_business_need = redact_customization_request_text(business_need) or redacted_text
+    clean_expected_outcome = redact_customization_request_text(expected_outcome) or ''
+    clean_description = redact_customization_request_text(proposed_description) or ''
+    clean_title_source = redact_customization_request_text(proposed_title) or clean_business_need or 'Nov\u00e1 po\u017eiadavka'
+    title = _compact_text(clean_title_source, max_length=80)
     if not title.lower().startswith('po\u017eiadavka'):
         title = _compact_text(f'Po\u017eiadavka: {title}', max_length=80)
-    summary = _compact_text(redacted_text or title, max_length=500)
+    clean_domain = detected_domain if detected_domain else 'other'
+    clean_risk = risk_level if risk_level in {'low', 'medium', 'high', 'critical'} else 'medium'
+    clean_questions = [
+        _compact_text(redact_customization_request_text(str(question)) or '', max_length=160)
+        for question in (clarification_questions or [])
+    ]
+    clean_questions = [question for question in clean_questions if question]
+    summary_parts = [
+        f'Co pouzivatel chce: {_compact_text(clean_business_need or redacted_text or title, max_length=220)}',
+        f'Domena: {clean_domain}',
+        f'Ocakavany vysledok: {_compact_text(clean_expected_outcome or clean_description or "vyzaduje ludsku kontrolu", max_length=220)}',
+    ]
+    if clean_questions:
+        summary_parts.append('Otazky na upresnenie: ' + '; '.join(clean_questions[:4]))
+    summary_parts.append(f'Riziko: {clean_risk}')
+    summary = _compact_text(' | '.join(summary_parts), max_length=900)
     return {
         'request_id': f'cr_{uuid4().hex}',
         'requester_telegram_id': int(requester_telegram_id),
@@ -1034,6 +1059,11 @@ def _build_customization_request_draft(
         'redacted_original_text': redacted_text or None,
         'raw_text_hash': hash_raw_text(user_input_text),
         'confidence': confidence,
+        'business_need': clean_business_need or None,
+        'detected_domain': clean_domain,
+        'expected_outcome': clean_expected_outcome or None,
+        'clarification_questions': clean_questions,
+        'risk_level': clean_risk,
     }
 
 
@@ -1063,6 +1093,13 @@ async def _start_customization_request_preview(
     capability_id: str | None,
     topic_id: str | None,
     confidence: float | None,
+    business_need: str | None = None,
+    detected_domain: str | None = None,
+    expected_outcome: str | None = None,
+    clarification_questions: tuple[str, ...] | list[str] | None = None,
+    proposed_title: str | None = None,
+    proposed_description: str | None = None,
+    risk_level: str | None = None,
 ) -> None:
     draft = _build_customization_request_draft(
         requester_telegram_id=requester_telegram_id,
@@ -1072,6 +1109,13 @@ async def _start_customization_request_preview(
         capability_id=capability_id,
         topic_id=topic_id,
         confidence=confidence,
+        business_need=business_need,
+        detected_domain=detected_domain,
+        expected_outcome=expected_outcome,
+        clarification_questions=clarification_questions,
+        proposed_title=proposed_title,
+        proposed_description=proposed_description,
+        risk_level=risk_level,
     )
     await state.update_data(
         **{
@@ -3840,6 +3884,13 @@ async def process_invoice_text(
                 capability_id=triage_result.capability_id,
                 topic_id=triage_result.topic_id,
                 confidence=triage_result.confidence,
+                business_need=triage_result.business_need,
+                detected_domain=triage_result.detected_domain,
+                expected_outcome=triage_result.expected_outcome,
+                clarification_questions=triage_result.clarification_questions,
+                proposed_title=triage_result.proposed_title,
+                proposed_description=triage_result.proposed_description,
+                risk_level=triage_result.risk_level,
             )
             return
         triage_guidance = render_info_help_triage_result(triage_result)

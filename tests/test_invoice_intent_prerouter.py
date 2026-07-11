@@ -9,6 +9,7 @@ from bot.config import Config
 from bot.handlers.invoice import (
     CustomizationRequestStates,
     InvoiceStates,
+    _build_customization_request_draft,
     _normalize_items_input,
     customization_request_edit_text,
     customization_request_preview_decision,
@@ -126,6 +127,37 @@ def _authorized_message(text: str, telegram_id: int = 111) -> _DummyMessage:
     message = _DummyMessage(text)
     message.from_user = type('_User', (), {'id': telegram_id})()
     return message
+
+
+
+def test_customization_request_draft_uses_structured_admin_review_fields() -> None:
+    draft = _build_customization_request_draft(
+        requester_telegram_id=111,
+        user_input_text='Can I have two profiles: one SZCO and one company?',
+        source_channel='voice',
+        triage_class='admin_review_candidate',
+        capability_id='unknown',
+        topic_id='admin_review',
+        confidence=0.86,
+        business_need='Separate profiles for SZCO and company in one bot.',
+        detected_domain='workspace_setup',
+        expected_outcome='Keep invoices, contacts, settings, and numbering isolated by profile.',
+        clarification_questions=(
+            'Should invoice numbering be separate?',
+            'Should contacts and documents be isolated?',
+        ),
+        proposed_title='Multiple business profiles in one bot',
+        proposed_description='Review multi-workspace profile switching.',
+        risk_level='critical',
+    )
+
+    assert draft['normalized_title'].endswith('Multiple business profiles in one bot')
+    assert draft['detected_domain'] == 'workspace_setup'
+    assert draft['risk_level'] == 'critical'
+    assert 'Co pouzivatel chce: Separate profiles for SZCO and company in one bot.' in draft['normalized_summary']
+    assert 'Domena: workspace_setup' in draft['normalized_summary']
+    assert 'Should invoice numbering be separate?' in draft['normalized_summary']
+    assert draft['source_capability_id'] is None
 
 
 def test_top_level_semantic_resolver_actions() -> None:
