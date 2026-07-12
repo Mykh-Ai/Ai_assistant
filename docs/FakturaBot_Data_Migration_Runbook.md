@@ -194,7 +194,7 @@ Do not implement cross-tenant fallback reads as a substitute for migration.
 
 ## Multi-Workspace Business Profiles V1 Tooling
 
-Current local implementation provides read-only audit and dry-run planning:
+Current local implementation provides read-only audit/dry-run planning and an explicitly gated apply/rollback path:
 
 python -m bot.multi_workspace_migration --mode audit --db-path <db-path> --storage-root <storage-root>
 python -m bot.multi_workspace_migration --mode dry-run --db-path <db-path> --storage-root <storage-root>
@@ -209,7 +209,39 @@ The report:
 - lists required workspace-column backfills and uniqueness rebuilds;
 - preserves existing valid invoice.pdf_path values and plans no PDF moves.
 
-Apply mode is intentionally unavailable until the full domain table rebuild, backup requirement, rollback plan, orphan/ambiguity gate, and post-apply audit are implemented and fixture-tested. Public /profily and switch_business_profile must remain disabled while this gate is closed.
+Apply and rollback tooling is implemented and locally fixture-tested. This closes the code/tooling gate only. It does not prove that the server database is eligible, migrated, deployed, or safe to restart. Public /profily and switch_business_profile remain production-gated until a server read-only dry-run is presented, the user explicitly approves the exact server apply/restart scope, apply succeeds, post-apply audit passes, and server smoke proves isolation.
+
+### Production-safe server sequence
+
+1. Run only the read-only server report first. Do not stop or restart Docker and do not write the DB:
+
+    python -m bot.multi_workspace_migration --mode dry-run --db-path <server-db-path> --storage-root <server-storage-root>
+
+The report must be retained and presented before approval. It contains a redacted logical database fingerprint, candidate/ownership counts, blocker codes, and apply_available; it must not expose Telegram IDs or tenant paths. writes_performed must be false.
+
+2. If apply_available is not true, stop. Resolve blockers with a new reviewed plan. Never force apply.
+
+3. After explicit approval for the reported server snapshot, stop every SQLite writer. Re-run dry-run after stop and use only that final fingerprint. Apply requires a backup directory outside storage/invoices and storage/workspaces:
+
+    python -m bot.multi_workspace_migration --mode apply --db-path <server-db-path> --storage-root <server-storage-root> --expected-fingerprint <final-dry-run-fingerprint> --backup-dir <external-backup-root> --confirm APPLY_MULTI_WORKSPACE_V1 --service-stopped
+
+Apply refuses a changed fingerprint, an active SQLite lock, ambiguous/orphan ownership, an already migrated database, insufficient backup capacity, or an unsafe backup destination.
+
+4. Apply creates a consistent SQLite backup, copies raw DB/WAL/SHM evidence when present, snapshots invoice/workspace storage, verifies DB integrity and logical fingerprint, and verifies content-hashed storage inventories. It builds and audits a separate target DB before an atomic same-directory replacement. Existing non-empty invoice.pdf_path and accounting paths are preserved; managed storage is not rewritten.
+
+5. Retain manifest_path and post_apply_fingerprint from the apply report. A successful post-apply audit requires SQLite integrity, source row-count parity, no unresolved workspace ownership, zero migration blockers, and workspace/membership foundation rows.
+
+6. Do not restart Docker merely because apply passed. Restart and server smoke require the explicit approval that follows the presented server dry-run report. Smoke must verify authorization, active profile, profile switching, contacts, invoices/PDF, accounting documents, work-time, and cross-workspace isolation.
+
+7. Before restart, rollback remains available while the current DB fingerprint and content-hashed storage inventory still match the apply manifest:
+
+    python -m bot.multi_workspace_migration --mode rollback --db-path <server-db-path> --storage-root <server-storage-root> --expected-fingerprint <post-apply-fingerprint> --manifest-path <manifest-path> --confirm ROLLBACK_MULTI_WORKSPACE_V1 --service-stopped
+
+Rollback verifies manifest state/version, current DB identity, backup SHA-256, backup integrity, and unchanged storage before atomic restore. It refuses rollback if DB or storage drifted. If post-swap target fingerprint verification fails during apply, apply performs an emergency restore from the verified pre-apply snapshot and records the failure status in the manifest.
+
+### Local proof coverage
+
+tests/test_multi_workspace_migration_apply.py covers legacy-schema dry-run/apply/post-audit/rollback, path and storage preservation, backup artifacts, orphan ownership, confirmation/fingerprint/service-stop gates, SQLite lock refusal, unsafe backup destination, storage-drift rollback refusal, mixed foundation preservation, repeated-apply refusal, empty datasets, and fault-injected emergency restore.
 ### Transitional supplier schema
 
 Fresh local schemas now support nullable UNIQUE(workspace_id) supplier ownership while retaining telegram_id only as actor compatibility data. Legacy deployed supplier schemas remain accepted by init_db and are not automatically converted to workspace ownership. Workspace-aware supplier writes fail closed with workspace_supplier_schema_migration_required on a legacy schema.

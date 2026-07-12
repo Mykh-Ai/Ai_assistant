@@ -1,3 +1,31 @@
+## 2026-07-12 - Production-Safe Multi-Workspace Legacy Migration Apply
+
+### Status
+- Implemented local migration dry-run/apply/rollback tooling for the legacy production SQLite shape.
+- Current implementation status: migration tooling implemented / locally fixture-proven; real server migration and Docker restart require explicit approval after the updated server read-only dry-run report.
+- Scope is deterministic Python DB/storage migration safety. AI maturity and LLM behavior are unchanged.
+- No real server DB/storage write, Docker restart, deploy, commit, or push was performed.
+
+### Safety implementation
+- Added a redacted read-only planner with deterministic legacy supplier-to-workspace mapping, logical database fingerprint, ownership counts, ambiguity/orphan blockers, no-op/already-migrated detection, and preserved invoice/accounting paths.
+- Added apply gates for the exact confirmation token, stopped-writer assertion, unchanged fingerprint, exclusive SQLite lock, blocker-free plan, safe external backup location, and backup disk capacity.
+- Added consistent SQLite backup with integrity/fingerprint verification, raw DB/WAL/SHM evidence, invoice/workspace snapshots, and content-hashed storage inventory verification.
+- Added separate canonical target DB construction, legacy/unknown column and table preservation, workspace ownership backfill, foundation upsert, source row-count parity, null-ownership audit, and atomic same-directory replacement.
+- Added manifest-bound rollback with current DB/storage drift refusal, backup SHA-256/integrity checks, and atomic restore.
+- Added emergency restore from the verified pre-apply snapshot when post-swap fingerprint validation is fault-injected to fail.
+- Extended the CLI with audit, dry-run, apply, and rollback modes and explicit fingerprint/backup/manifest/confirmation/service-stop arguments.
+
+### Verification
+- Focused migration apply/audit fixtures and CLI dry-run: 15 passed.
+- Covered round-trip rollback, backup artifacts, path/storage preservation, orphan ownership, confirmation/fingerprint/service-stop gates, active SQLite writer lock, unsafe backup placement, storage drift, mixed foundation state, repeated apply, empty supplier data, and emergency restore.
+- Broad migration/workspace regression: 52 passed.
+- Full regression: 2128 passed, 7 subtests passed in 309.34s.
+- Final whitespace verification passed.
+
+### Operational gate
+- The previous server dry-run was produced before this apply implementation and reported the migration gate closed.
+- A new read-only server dry-run from the exact candidate code must be presented before requesting approval for server DB apply or Docker restart.
+- Apply and restart are separate operational side effects; neither is authorized by this local implementation session.
 ## 2026-07-12 - Delivery Push And Server Migration Gate
 
 ### Status

@@ -26,7 +26,9 @@ BUSINESS_TABLES = (
     'accounting_document_archive_state',
 )
 WORKSPACE_COLUMN_REQUIRED = tuple(
-    table for table in BUSINESS_TABLES if table != 'invoice_item'
+    table
+    for table in BUSINESS_TABLES
+    if table not in {'invoice_item', 'supplier_service_alias'}
 )
 
 
@@ -116,6 +118,14 @@ class MultiWorkspaceMigrationAuditor:
                     }
                 )
 
+        from bot.services.multi_workspace_migration_apply import (
+            LegacyMultiWorkspaceMigrationPlanner,
+        )
+
+        ownership_plan = LegacyMultiWorkspaceMigrationPlanner(
+            db_path=self._db_path,
+            storage_root=self._storage_root,
+        ).plan().public_report()
         audit['mode'] = 'dry-run'
         audit['plan'] = {
             'writes_performed': False,
@@ -139,8 +149,12 @@ class MultiWorkspaceMigrationAuditor:
             'preserve_invoice_pdf_paths': True,
             'move_existing_invoice_pdfs': False,
             'ambiguous_or_orphan_rows': 'must_be_zero_or_explicitly_resolved_before_apply',
-            'apply_available': False,
-            'apply_block_reason': 'backup_rollback_and_full_domain_apply_not_approved_or_implemented',
+            **ownership_plan,
+            'apply_block_reason': (
+                None
+                if ownership_plan['apply_available']
+                else 'ownership_or_ambiguity_blockers_present'
+            ),
         }
         return audit
 

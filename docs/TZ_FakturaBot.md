@@ -399,7 +399,7 @@ This controlled shared-bot model is the current runtime model for safely onboard
 
 Ця future commercial / installation-as-a-service model не є поточним dry-run runtime і не є Phase 2 access-request automation. Її не можна трактувати як уже реалізовану або як вимогу для контрольованого другого користувача. Per-client Telegram bot tokens, per-client VPS/container, and per-client API keys are future/commercial options only.
 
-OfficeFlow framing now has a target-schema partial multi-workspace runtime: workspace context, isolated supplier/contact/invoice/accounting/work-time ownership, `/profily`, explicit `switch_business_profile`, and additional supplier-profile onboarding are implemented in code. Existing persisted/server databases remain migration-gated; this code state is not proof that the production DB has been migrated or that switching is deployed.
+OfficeFlow framing now has a target-schema partial multi-workspace runtime: workspace context, isolated supplier/contact/invoice/accounting/work-time ownership, /profily, explicit switch_business_profile, and additional supplier-profile onboarding are implemented in code. Production-safe legacy migration tooling is also implemented locally with read-only dry-run, redacted ownership blockers, fingerprint pinning, verified DB/storage backup, separately built target DB, atomic apply, post-apply audit, rollback, and fixture coverage. Existing persisted/server databases remain migration-gated: the server dry-run must be presented before explicit apply/restart approval, and this code state is not proof that the production DB has been migrated or that switching is deployed.
 
 ### 2.3 Стек технологій
 

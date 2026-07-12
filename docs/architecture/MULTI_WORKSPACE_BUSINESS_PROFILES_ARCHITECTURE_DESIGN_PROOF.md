@@ -9,7 +9,7 @@ Approved product decisions:
 3. `/vymazat_databazu` remains an account-level destructive action that removes every business workspace owned by the user and revokes bot access. Deleting only one workspace is outside MVP.
 
 Approval date: 2026-07-11
-Implementation checkpoint: 2026-07-12 target-schema runtime and public routes implemented locally; existing/server data migration and deploy remain blocked pending the migration runbook apply gate and approval.
+Implementation checkpoint: 2026-07-12 target-schema runtime, public routes, and production-safe local migration apply/rollback tooling are implemented and fixture-tested; the real server DB, deployment, and Docker restart remain blocked until the read-only server dry-run is presented and explicitly approved.
 
 ## 1. Task Identity And Product Need
 
@@ -579,6 +579,8 @@ Implementation may create migration tooling and local fixture tests. It must not
 - explicit user approval;
 - rollback plan;
 - post-migration audit and server smoke.
+
+Local tooling satisfies the implementation part of this gate with fingerprint-pinned dry-run/apply, exclusive-lock refusal, verified DB and content-hashed storage backup, separately audited target construction, atomic replacement, manifest-bound rollback, and emergency restore on post-swap mismatch. The operational gate remains closed: no server DB write or Docker restart is authorized by local test success.
 
 ## 17. Delete-Database Contract
 
