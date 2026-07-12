@@ -22,6 +22,8 @@ from bot.services.accounting_document_archive_service import (
 )
 from bot.services.accounting_document_registry import AccountingDocumentSummary, list_recent_accounting_documents
 from bot.services.accounting_document_storage import WORKSPACE_KEY, workspace_key_for_supplier
+from bot.services.supplier_service import SupplierService
+from bot.services.workspace_context import WorkspaceContextError, WorkspaceContextService
 
 
 router = Router()
@@ -62,16 +64,34 @@ async def _send_recent_accounting_documents(*, message: Message, config: Config)
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
     supplier_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
-    if supplier_telegram_id is None:
-        workspace_key = WORKSPACE_KEY
-        summaries = list_recent_accounting_documents(storage_dir=config.storage_dir, limit=5)
-    else:
-        workspace_key = workspace_key_for_supplier(supplier_telegram_id)
-        summaries = list_recent_accounting_documents(
-            storage_dir=config.storage_dir,
-            workspace_key=workspace_key,
-            limit=5,
-        )
+    workspace_key = WORKSPACE_KEY
+    archive_workspace_id = WORKSPACE_KEY
+    if supplier_telegram_id is not None:
+        context = None
+        if config.db_path.exists():
+            try:
+                context = WorkspaceContextService(config.db_path).resolve_for_user(supplier_telegram_id)
+            except WorkspaceContextError as workspace_error:
+                try:
+                    supplier = SupplierService(config.db_path).get_by_telegram_id(supplier_telegram_id)
+                except RuntimeError:
+                    supplier = None
+                if supplier is not None and supplier.workspace_id is not None:
+                    await message.answer(
+                        'Aktívny business profil pre doklady nie je dostupný alebo nie je vybraný.'
+                    )
+                    return
+        if context is not None:
+            workspace_key = context.storage_key
+            archive_workspace_id = context.workspace_id
+        else:
+            workspace_key = workspace_key_for_supplier(supplier_telegram_id)
+            archive_workspace_id = workspace_key
+    summaries = list_recent_accounting_documents(
+        storage_dir=config.storage_dir,
+        workspace_key=workspace_key,
+        limit=5,
+    )
     if not summaries:
         await message.answer('Zatiaľ nemáte uložené žiadne bločky ani prijaté doklady.')
         return
@@ -81,7 +101,7 @@ async def _send_recent_accounting_documents(*, message: Message, config: Config)
     for index, summary in enumerate(summaries, start=1):
         archive_status = _archive_status_for_summary(
             archive_service=archive_service,
-            workspace_key=workspace_key,
+            workspace_id=archive_workspace_id,
             summary=summary,
         )
         lines.extend(_format_summary(index, summary, archive_status=archive_status))
@@ -106,14 +126,14 @@ def _format_summary(index: int, summary: AccountingDocumentSummary, *, archive_s
 def _archive_status_for_summary(
     *,
     archive_service: AccountingDocumentArchiveService,
-    workspace_key: str,
+    workspace_id: str,
     summary: AccountingDocumentSummary,
 ) -> str:
     document_id = Path(summary.metadata_path).stem
     if not document_id:
         return 'not_configured'
     state = archive_service.get_state_read_only(
-        workspace_id=workspace_key,
+        workspace_id=workspace_id,
         document_id=document_id,
     )
     if state is None:

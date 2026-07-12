@@ -809,6 +809,37 @@ def _fallback_for_context(context_name: str, text: str, allowed: set[str]) -> st
 
         if 'start' in allowed and normalized_text in start_phrases:
             return 'start'
+        switch_profile_verbs = {
+            'prepni', 'prepnut', 'prepnite', 'switch', 'change',
+            '\u043f\u0435\u0440\u0435\u043c\u043a\u043d\u0438', '\u043f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438',
+            '\u043f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0441\u044c',
+        }
+        switch_profile_targets = {
+            'profil', 'profile', 'firmu', 'firma', 'company', 'business',
+            '\u043f\u0440\u043e\u0444\u0456\u043b\u044c', '\u043f\u0440\u043e\u0444\u0438\u043b\u044c',
+            '\u0444\u0456\u0440\u043c\u0443', '\u043a\u043e\u043c\u043f\u0430\u043d\u0456\u044e',
+        }
+        works_as_profile = any(
+            marker in normalized_text
+            for marker in (
+                'pracujeme ako', 'pracovat ako', 'work as',
+                '\u043f\u0440\u0430\u0446\u044e\u0454\u043c\u043e \u044f\u043a', '\u0440\u0430\u0431\u043e\u0442\u0430\u0435\u043c \u043a\u0430\u043a',
+            )
+        )
+        if (
+            'switch_business_profile' in allowed
+            and (
+                works_as_profile
+                or (
+                    tokens.intersection(switch_profile_verbs)
+                    and (
+                        tokens.intersection(switch_profile_targets)
+                        or any(term in normalized_text for term in ('na ', 'do ', '\u043d\u0430 '))
+                    )
+                )
+            )
+        ):
+            return 'switch_business_profile'
         if 'edit_supplier' in allowed and normalized_text in edit_supplier_phrases:
             return 'edit_supplier'
         if 'show_supplier_profile' in allowed and normalized_text in show_supplier_profile_phrases:

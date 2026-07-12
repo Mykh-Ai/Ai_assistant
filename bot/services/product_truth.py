@@ -538,6 +538,37 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         ),
     ),
     _capability(
+        capability_id='business_profiles',
+        title='Multiple business profiles',
+        domain='supplier_profile',
+        status=ProductTruthStatus.PARTIAL,
+        summary_for_user='Lets one authorized user list, create, and explicitly switch between isolated business workspaces.',
+        current_limitations=(
+            'Cross-workspace analytics, one-off per-request overrides, deleting one profile, and multi-member administration are outside MVP.',
+            'Existing persisted installations require the approved migration apply gate before public switching can be deployed.',
+        ),
+        runtime_owner='bot/handlers/business_profiles.py and bot/services/workspace_context.py',
+        commands=('/profily',),
+        canonical_actions=('switch_business_profile',),
+        linked_handlers=(
+            'bot/handlers/business_profiles.py',
+            'bot/handlers/onboarding.py',
+            'bot/services/workspace_context.py',
+        ),
+        truth_source_refs=(
+            'docs/architecture/MULTI_WORKSPACE_BUSINESS_PROFILES_ARCHITECTURE_DESIGN_PROOF.md',
+            'docs/llm/Canonical_Action_Registry.md',
+            'docs/TZ_FakturaBot.md',
+        ),
+        test_refs=(
+            'tests/test_business_profiles_handler.py',
+            'tests/test_workspace_context.py',
+            'tests/test_workspace_profile_service.py',
+        ),
+        safe_next_steps=('Use /profily while idle and select only an accessible profile.',),
+        requires_setup=True,
+        setup_state_keys=('authorized_user', 'supplier_profile'),
+    ),    _capability(
         capability_id='supplier_profile',
         title='Supplier profile',
         domain='supplier_profile',

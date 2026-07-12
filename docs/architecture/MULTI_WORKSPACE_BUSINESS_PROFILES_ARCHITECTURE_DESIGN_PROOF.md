@@ -9,6 +9,7 @@ Approved product decisions:
 3. `/vymazat_databazu` remains an account-level destructive action that removes every business workspace owned by the user and revokes bot access. Deleting only one workspace is outside MVP.
 
 Approval date: 2026-07-11
+Implementation checkpoint: 2026-07-12 target-schema runtime and public routes implemented locally; existing/server data migration and deploy remain blocked pending the migration runbook apply gate and approval.
 
 ## 1. Task Identity And Product Need
 
@@ -31,9 +32,9 @@ User-visible outcome:
 - data from one workspace never appears in the other;
 - Google Drive authorization remains shared, while archive destinations remain workspace-separated.
 
-Current Product Truth status: `planned / unsupported in current runtime`.
+Current Product Truth status (2026-07-12 code state): `partial / target-schema implemented / production migration required`.
 
-Target Product Truth status after full implementation and acceptance proof: `partial` for multi-business profiles, because profile deletion, cross-profile analytics, one-off per-request profile overrides, and multi-member workspace administration remain out of scope.
+Target Product Truth status after migration and deployment acceptance proof remains `partial` for multi-business profiles, because profile deletion, cross-profile analytics, one-off per-request profile overrides, and multi-member workspace administration remain out of scope.
 
 Risk level: high / migration-sensitive / tenant-isolation-sensitive.
 

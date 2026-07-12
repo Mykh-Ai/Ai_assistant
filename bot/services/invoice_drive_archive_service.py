@@ -8,9 +8,14 @@ from bot.services.archive_job_service import ArchiveJobRecord, ArchiveJobService
 from bot.services.google_drive_archive_stub import GoogleDriveArchiveStubService
 from bot.services.invoice_followup_service import (
     DRIVE_ARCHIVE_STATUS_PENDING,
+    DRIVE_ARCHIVE_STATUS_STUB_REQUESTED_AFTER_PAID,
+    DRIVE_ARCHIVE_STUB_NOTE,
+    DRIVE_ARCHIVE_STUB_USER_MESSAGE,
     InvoiceFollowupService,
 )
 from bot.services.invoice_service import InvoiceRecord
+from bot.services.workspace_context import WorkspaceContext
+from bot.services.workspace_invoice_followup_service import WorkspaceInvoiceFollowupService
 
 
 @dataclass(frozen=True)
@@ -82,6 +87,71 @@ class InvoiceDriveArchiveService:
             job=job,
         )
 
+    def request_after_paid_for_workspace(
+        self,
+        context: WorkspaceContext,
+        *,
+        invoice: InvoiceRecord,
+    ) -> InvoiceDriveArchiveRequestResult:
+        if invoice.workspace_id != context.workspace_id:
+            raise ValueError('invoice_workspace_mismatch')
+        followup = WorkspaceInvoiceFollowupService(self._config.db_path)
+        if not self._config.google_drive_enabled:
+            state = followup.record_drive_archive_status(
+                context,
+                invoice_id=invoice.id,
+                status=DRIVE_ARCHIVE_STATUS_STUB_REQUESTED_AFTER_PAID,
+                note=DRIVE_ARCHIVE_STUB_NOTE,
+            )
+            return InvoiceDriveArchiveRequestResult(
+                invoice_id=invoice.id,
+                supplier_telegram_id=context.actor_telegram_id,
+                status=state.drive_archive_status,
+                user_message=DRIVE_ARCHIVE_STUB_USER_MESSAGE,
+            )
+        if not invoice.pdf_path or not Path(invoice.pdf_path).is_file():
+            state = followup.record_drive_archive_status(
+                context,
+                invoice_id=invoice.id,
+                status='failed',
+                note='PDF faktury sa nenasiel, preto sa Drive archivacia nespustila.',
+            )
+            return InvoiceDriveArchiveRequestResult(
+                invoice_id=invoice.id,
+                supplier_telegram_id=context.actor_telegram_id,
+                status=state.drive_archive_status,
+                user_message='PDF faktury sa nenasiel, preto sa Google Drive archivacia nespustila.',
+            )
+
+        job = self._jobs.enqueue_job(
+            workspace_id=context.workspace_id,
+            telegram_id=context.actor_telegram_id,
+            document_id=str(invoice.id),
+            document_type='invoice_pdf',
+            local_file_path=invoice.pdf_path,
+            metadata_path=None,
+            target_folder_path=_invoice_target_folder_path(invoice.issue_date),
+            invoice_storage_key=context.storage_key,
+        )
+        state = followup.record_drive_archive_status(
+            context,
+            invoice_id=invoice.id,
+            status=DRIVE_ARCHIVE_STATUS_PENDING,
+            note=(
+                'PDF faktury je zaradeny do Google Drive archivacie. '
+                'Lokalny PDF ostava ulozeny v bote.'
+            ),
+        )
+        return InvoiceDriveArchiveRequestResult(
+            invoice_id=invoice.id,
+            supplier_telegram_id=context.actor_telegram_id,
+            status=state.drive_archive_status,
+            user_message=(
+                'PDF faktury som zaradil do Google Drive archivacie. '
+                'Lokalny PDF ostava ulozeny v bote, kym archivacia prebehne cez worker.'
+            ),
+            job=job,
+        )
 
 def _invoice_target_folder_path(issue_date: str) -> str:
     year = issue_date[:4]

@@ -18,6 +18,7 @@ from bot.config import Config
 from bot.handlers.accounting_document_intake import cmd_accounting_document_intake
 from bot.handlers.accounting_documents import cmd_blocky
 from bot.handlers.contacts import start_add_contact_intake
+from bot.handlers.business_profiles import start_switch_business_profile
 from bot.handlers.delete_user_database import DELETE_USER_DATABASE_INTENT, start_delete_user_database_flow
 from bot.handlers.onboarding import cmd_moj_profil, cmd_upravit_profil
 from bot.handlers.start import cmd_menu, cmd_start
@@ -93,6 +94,7 @@ from bot.services.semantic_action_resolver import (
     resolve_semantic_action,
 )
 from bot.services.semantic_action_resolver import resolve_quantity_unit_price_pair
+from bot.services.scoped_invoice_runtime import ScopedInvoiceRuntime
 from bot.services.safe_python_analytics_executor import (
     AnalyticsCodeValidationError,
     AnalyticsExecutionError,
@@ -100,6 +102,12 @@ from bot.services.safe_python_analytics_executor import (
 )
 from bot.services.supplier_service import SupplierService
 from bot.services.work_time import work_time_local_date, work_time_timezone_name
+from bot.services.workspace_invoice_followup_service import WorkspaceInvoiceFollowupService
+from bot.services.workspace_context import (
+    WorkspaceContext,
+    WorkspaceContextError,
+    WorkspaceContextService,
+)
 from bot.services.validation import parse_strict_date_dd_mm_yyyy
 
 router = Router(name='invoice')
@@ -125,6 +133,7 @@ _ADD_CONTACT_INTENT = 'add_contact'
 _ADD_SERVICE_ALIAS_INTENT = 'add_service_alias'
 _START_INTENT = 'start'
 _SHOW_SUPPLIER_PROFILE_INTENT = 'show_supplier_profile'
+_SWITCH_BUSINESS_PROFILE_INTENT = 'switch_business_profile'
 _EDIT_SUPPLIER_INTENT = 'edit_supplier'
 _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT = 'show_recent_accounting_documents'
 _ADD_RECEIPT_INTENT = 'add_receipt'
@@ -137,6 +146,89 @@ _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT = 'update_work_time_lunch_break'
 _DELETE_USER_DATABASE_INTENT = DELETE_USER_DATABASE_INTENT
 _UNKNOWN_INVOICE_INTENT = 'unknown'
 
+_INVOICE_WORKSPACE_ID_KEY = 'invoice_workspace_id'
+_INVOICE_SCOPED_ACTIONS = {
+    _SHOW_EXISTING_INVOICE_INTENT,
+    _SEND_INVOICE_INTENT,
+    _EDIT_EXISTING_INVOICE_INTENT,
+    _DELETE_EXISTING_INVOICE_INTENT,
+    _MARK_EXISTING_INVOICE_PAID_INTENT,
+    _EDIT_INVOICE_INTENT,
+}
+
+
+def _resolve_invoice_scope(config: Config, telegram_id: int) -> WorkspaceContext | None:
+    if not config.db_path.exists():
+        return None
+    try:
+        return WorkspaceContextService(config.db_path).resolve_for_user(telegram_id)
+    except WorkspaceContextError as workspace_error:
+        try:
+            supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+        except RuntimeError:
+            raise workspace_error
+        if supplier is None or supplier.workspace_id is None:
+            return None
+        raise workspace_error
+
+
+async def _require_invoice_runtime(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> ScopedInvoiceRuntime:
+    telegram_id = _message_supplier_telegram_id(message)
+    if telegram_id is None:
+        raise WorkspaceContextError('invoice_actor_required')
+    data = await state.get_data()
+    if _INVOICE_WORKSPACE_ID_KEY not in data:
+        context = _resolve_invoice_scope(config, telegram_id)
+        await state.update_data(
+            **{
+                _INVOICE_WORKSPACE_ID_KEY: (
+                    context.workspace_id if context is not None else ''
+                )
+            }
+        )
+    else:
+        workspace_id = str(data.get(_INVOICE_WORKSPACE_ID_KEY) or '').strip()
+        context = (
+            WorkspaceContextService(config.db_path).require_membership(
+                telegram_id,
+                workspace_id,
+            )
+            if workspace_id
+            else None
+        )
+    runtime = ScopedInvoiceRuntime(
+        db_path=config.db_path,
+        storage_dir=config.storage_dir,
+        actor_telegram_id=telegram_id,
+        context=context,
+        legacy_invoice_service=InvoiceService(config.db_path),
+    )
+    return runtime
+
+
+async def _invoice_runtime_or_recover(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> ScopedInvoiceRuntime | None:
+    try:
+        return await _require_invoice_runtime(
+            message=message,
+            state=state,
+            config=config,
+        )
+    except WorkspaceContextError:
+        await state.clear()
+        await message.answer(
+            'Aktívny business profil faktúry nie je dostupný alebo nie je vybraný.'
+        )
+        return None
 
 def _extract_invoice_reference(text: str) -> str | None:
     matches = re.findall(r'\d+', text)
@@ -550,7 +642,7 @@ async def _run_invoice_yearly_summary_fast_path(
     state: FSMContext,
     config: Config,
     user_question: str,
-    supplier_telegram_id: int,
+    runtime: ScopedInvoiceRuntime,
 ) -> bool:
     strategy = await _resolve_invoice_analytics_execution_strategy(user_question, config=config)
     if strategy != _INVOICE_ANALYTICS_WHOLE_YEAR_SUMMARY:
@@ -563,15 +655,14 @@ async def _run_invoice_yearly_summary_fast_path(
     period_label, start_date, end_date = period
     if not config.db_path.exists():
         summary = InvoicePeriodSummary(
-            supplier_telegram_id=supplier_telegram_id,
+            supplier_telegram_id=runtime.actor_telegram_id,
             start_date=start_date,
             end_date=end_date,
             invoice_count=0,
             totals_by_currency=(),
         )
     else:
-        summary = InvoiceService(config.db_path).summarize_invoices_for_supplier_period(
-            supplier_telegram_id=supplier_telegram_id,
+        summary = runtime.summarize_period(
             start_date=start_date,
             end_date=end_date,
         )
@@ -608,9 +699,20 @@ async def _run_accounting_document_analytics(
         )
         return
 
+    scoped_runtime = await _invoice_runtime_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if scoped_runtime is None:
+        return
     current_date = date.today()
     current_date_iso = current_date.isoformat()
-    workspace_key = workspace_key_for_supplier(supplier_telegram_id)
+    workspace_key = (
+        scoped_runtime.context.storage_key
+        if scoped_runtime.context is not None
+        else workspace_key_for_supplier(supplier_telegram_id)
+    )
     dataset_service = AccountingDocumentAnalyticsDatasetService(config.storage_dir)
     accounting_documents_df = dataset_service.build_dataframe_for_workspace(workspace_key=workspace_key)
     metadata = {
@@ -720,6 +822,12 @@ async def _run_invoice_analytics(
         await state.clear()
         return
 
+    runtime = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if runtime is None:
+        return
+
     if _is_unsupported_invoice_analytics_domain(user_question):
         capability_id = _unsupported_invoice_analytics_capability_id(user_question)
         await _start_customization_request_preview(
@@ -740,17 +848,13 @@ async def _run_invoice_analytics(
         state=state,
         config=config,
         user_question=user_question,
-        supplier_telegram_id=supplier_telegram_id,
+        runtime=runtime,
     ):
         return
 
     current_date = date.today()
     current_date_iso = current_date.isoformat()
-    dataset_service = InvoiceAnalyticsDatasetService(config.db_path)
-    invoices_df = dataset_service.build_invoice_dataframe_for_supplier(
-        supplier_telegram_id=supplier_telegram_id,
-        current_date=current_date,
-    )
+    invoices_df = runtime.build_analytics_dataframe(current_date=current_date)
     metadata = {
         'row_count': int(len(invoices_df)),
         'columns': list(invoices_df.columns),
@@ -862,19 +966,16 @@ async def _send_existing_invoice_view(
     *,
     message: Message,
     config: Config,
+    runtime: ScopedInvoiceRuntime,
     invoice,
 ) -> None:
     contact_name = 'Neznámy odberateľ'
-    supplier_telegram_id = _message_supplier_telegram_id(message)
-    if supplier_telegram_id is not None and invoice.contact_id is not None:
-        contact = ContactService(config.db_path).get_by_id_for_supplier(
-            telegram_id=supplier_telegram_id,
-            contact_id=invoice.contact_id,
-        )
+    if invoice.contact_id is not None:
+        contact = runtime.get_contact_by_id(invoice.contact_id)
         if contact is not None:
             contact_name = contact.name
 
-    matched_items = InvoiceService(config.db_path).get_items_by_invoice_id(invoice.id)
+    matched_items = runtime.get_items(invoice.id)
     await message.answer(
         _format_existing_invoice_summary(
             invoice_number=invoice.invoice_number,
@@ -1003,6 +1104,34 @@ def _compact_text(value: str, *, max_length: int) -> str:
         return compacted
     return compacted[: max_length - 1].rstrip() + '…'
 
+def _strip_request_title_prefix(value: str) -> str:
+    return re.sub(r'^požiadavka\s*:\s*', '', value.strip(), flags=re.IGNORECASE).strip() or value.strip()
+
+
+def _lowercase_first_business_letter(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return value
+    return value[0].lower() + value[1:]
+
+
+def _second_person_request_summary(value: object | None) -> str | None:
+    text = _clean_draft_text(value)
+    if text is None:
+        return None
+    replacements = (
+        ('Používateľ chce, aby ', 'Chcete, aby '),
+        ('Používateľ chce ', 'Chcete '),
+        ('Používateľ potrebuje ', 'Potrebujete '),
+        ('Používateľ má záujem o ', 'Máte záujem o '),
+    )
+    for prefix, replacement in replacements:
+        if text.startswith(prefix):
+            return replacement + _lowercase_first_business_letter(text[len(prefix):])
+    if text.startswith(('Chcete ', 'Potrebujete ', 'Máte záujem ')):
+        return text
+    return 'Chcete ' + _lowercase_first_business_letter(text)
+
 
 def _build_customization_request_draft(
     *,
@@ -1037,12 +1166,12 @@ def _build_customization_request_draft(
     ]
     clean_questions = [question for question in clean_questions if question]
     summary_parts = [
-        f'Co pouzivatel chce: {_compact_text(clean_business_need or redacted_text or title, max_length=220)}',
-        f'Domena: {clean_domain}',
-        f'Ocakavany vysledok: {_compact_text(clean_expected_outcome or clean_description or "vyzaduje ludsku kontrolu", max_length=220)}',
+        f'Čo používateľ chce: {_compact_text(clean_business_need or redacted_text or title, max_length=220)}',
+        f'Doména: {clean_domain}',
+        f'Očakávaný výsledok: {_compact_text(clean_expected_outcome or clean_description or "vyžaduje ľudskú kontrolu", max_length=220)}',
     ]
     if clean_questions:
-        summary_parts.append('Otazky na upresnenie: ' + '; '.join(clean_questions[:4]))
+        summary_parts.append('Otázky na upresnenie: ' + '; '.join(clean_questions[:4]))
     summary_parts.append(f'Riziko: {clean_risk}')
     summary = _compact_text(' | '.join(summary_parts), max_length=900)
     return {
@@ -1068,19 +1197,40 @@ def _build_customization_request_draft(
 
 
 def _format_customization_request_preview(draft: dict[str, object]) -> str:
-    title = str(draft.get('normalized_title') or 'Po\u017eiadavka')
-    summary = str(draft.get('normalized_summary') or 'Bez zhrnutia')
-    return (
-        'Vyzer\u00e1 to ako po\u017eiadavka na nov\u00fa funkciu alebo \u00fapravu. '
-        'M\u00f4\u017eem z nej pripravi\u0165 n\u00e1vrh po\u017eiadavky na neskor\u0161iu kontrolu.\n\n'
-        'N\u00e1vrh po\u017eiadavky:\n'
-        f'N\u00e1zov: {title}\n'
-        f'Zhrnutie: {summary}\n\n'
-        'Ulo\u017e\u00ed sa: stru\u010dn\u00fd popis po\u017eiadavky, stav, zdroj a v\u00e1\u0161 pracovn\u00fd kontext.\n'
-        'Nestane sa: ni\u010d neimplementujem, ni\u010d neposielam spr\u00e1vcovi, nemen\u00edm Product Truth.\n\n'
-        'Chcete t\u00fato po\u017eiadavku ulo\u017ei\u0165? Schv\u00e1li\u0165 / Upravi\u0165 / Zru\u0161i\u0165.'
-    )
+    title = _strip_request_title_prefix(str(draft.get('normalized_title') or 'Požiadavka'))
+    summary = _second_person_request_summary(draft.get('business_need'))
+    if summary is None:
+        summary = _second_person_request_summary(draft.get('normalized_summary')) or 'Chcete uložiť túto požiadavku na kontrolu správcom.'
+    expected_outcome = _clean_draft_text(draft.get('expected_outcome'))
 
+    lines = [
+        'Vyzerá to ako požiadavka na novú funkciu alebo úpravu.',
+        'Môžem ju uložiť na neskoršiu kontrolu správcom.',
+        '',
+        'Návrh požiadavky:',
+        f'Názov: {title}',
+        '',
+        'Zhrnutie:',
+        _compact_text(summary, max_length=500),
+    ]
+    if expected_outcome:
+        lines.extend(
+            [
+                '',
+                f'Očakávaný výsledok: {_compact_text(expected_outcome, max_length=300)}',
+            ]
+        )
+    lines.extend(
+        [
+            '',
+            'Po potvrdení požiadavku uložím na neskoršiu kontrolu správcom.',
+            'Nestane sa: nič neimplementujem, nič neposielam správcovi, nemením Product Truth.',
+            'Funkciu tým nezapínam ani nič nemením v systéme.',
+            '',
+            'Chcete požiadavku uložiť? Schváliť / Upraviť / Zrušiť.',
+        ]
+    )
+    return '\n'.join(lines)
 
 async def _start_customization_request_preview(
     *,
@@ -1240,8 +1390,8 @@ def _parse_positive_float(value: object) -> float | None:
     return parsed
 
 
-def _resolve_contact_lookup(contact_service: ContactService, telegram_id: int, name: str) -> ContactLookupResult:
-    return contact_service.resolve_contact_lookup(telegram_id, name)
+def _resolve_contact_lookup(runtime: ScopedInvoiceRuntime, name: str) -> ContactLookupResult:
+    return runtime.resolve_contact_lookup(name)
 
 
 _ALIAS_LEARNING_RESOLUTION_SOURCES = {'fuzzy_match', 'bounded_llm', 'raw_mention'}
@@ -1367,15 +1517,14 @@ def _safe_service_alias_candidate(value: object, *, original_text: str) -> str |
 
 async def _resolve_customer_candidate_bounded(
     *,
-    contact_service: ContactService,
-    telegram_id: int,
+    runtime: ScopedInvoiceRuntime,
     candidate_text: str,
     config: Config,
     context_name: str,
     bounded_contact_names: list[str] | None = None,
 ) -> tuple[ContactProfile | None, list[str]]:
     if bounded_contact_names is None:
-        contact_names = [contact.name for contact in contact_service.get_all_by_supplier(telegram_id)]
+        contact_names = [contact.name for contact in runtime.list_contacts()]
     else:
         contact_names = [name for name in bounded_contact_names if isinstance(name, str)]
 
@@ -1391,9 +1540,9 @@ async def _resolve_customer_candidate_bounded(
     if not deduplicated_names:
         return None, []
 
-    normalized_candidate, compressed_candidate = contact_service.normalize_lookup_forms(candidate_text)
+    normalized_candidate, compressed_candidate = ContactService.normalize_lookup_forms(candidate_text)
     for contact_name in deduplicated_names:
-        contact_normalized, contact_compressed = contact_service.normalize_lookup_forms(contact_name)
+        contact_normalized, contact_compressed = ContactService.normalize_lookup_forms(contact_name)
         if (
             normalized_candidate
             and contact_normalized
@@ -1403,11 +1552,11 @@ async def _resolve_customer_candidate_bounded(
             and contact_compressed
             and compressed_candidate == contact_compressed
         ):
-            return contact_service.get_by_name(telegram_id, contact_name), deduplicated_names
+            return runtime.get_contact_by_name(contact_name), deduplicated_names
 
     available_profiles = {
         contact.name: contact
-        for contact in contact_service.get_all_by_supplier(telegram_id)
+        for contact in runtime.list_contacts()
         if contact.name in deduplicated_names
     }
     option_descriptions = [
@@ -1429,7 +1578,7 @@ async def _resolve_customer_candidate_bounded(
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
         auxiliary_context={
-            'supplier_telegram_id': telegram_id,
+            'supplier_telegram_id': runtime.actor_telegram_id,
             'option_descriptions': option_descriptions,
         },
     )
@@ -1443,6 +1592,7 @@ async def _resolve_service_alias_bounded(
     *,
     alias_service: ServiceAliasService,
     supplier_telegram_id: int | None = None,
+    workspace_id: str | None = None,
     supplier_id: int,
     candidate_text: str,
     config: Config,
@@ -1473,6 +1623,7 @@ async def _resolve_service_alias_bounded(
             supplier_telegram_id=supplier_telegram_id,
             supplier_id=supplier_id,
             alias_text=candidate_text,
+            workspace_id=workspace_id,
         )
         if confirmed_match is not None:
             return (
@@ -2352,7 +2503,14 @@ async def _build_and_store_preview(
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    runtime = await _invoice_runtime_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if runtime is None:
+        return
+    supplier = runtime.get_supplier()
     if supplier is None:
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         await state.clear()
@@ -2370,14 +2528,13 @@ async def _build_and_store_preview(
         )
         return
 
-    contact_service = ContactService(config.db_path)
     raw_customer_alias_candidate = _safe_customer_alias_candidate(
         parsed_draft.get('customer_raw_mention'),
         original_text=raw_text,
     )
     alias_learning_candidate = raw_customer_alias_candidate or str(parsed_draft.get('customer_alias_candidate') or '').strip()
     contact_resolution_source = str(parsed_draft.get('customer_resolution_source') or '').strip()
-    normalized_lookup, _compressed_lookup = contact_service.normalize_lookup_forms(customer_name)
+    normalized_lookup, _compressed_lookup = ContactService.normalize_lookup_forms(customer_name)
     _emit_invoice_debug_log(
         config=config,
         event='invoice_lookup_before',
@@ -2389,7 +2546,7 @@ async def _build_and_store_preview(
             'lookup_normalized_input': normalized_lookup,
         },
     )
-    lookup_result = _resolve_contact_lookup(contact_service, message.from_user.id, customer_name)
+    lookup_result = _resolve_contact_lookup(runtime, customer_name)
     _emit_invoice_debug_log(
         config=config,
         event='invoice_lookup_after',
@@ -2435,11 +2592,10 @@ async def _build_and_store_preview(
         bounded_customer_candidates = (
             [candidate.name for candidate in lookup_result.candidates]
             if lookup_result.state == 'multiple_candidates'
-            else [candidate.name for candidate in contact_service.get_all_by_supplier(message.from_user.id)]
+            else [candidate.name for candidate in runtime.list_contacts()]
         )
         resolved_contact, allowed_customer_candidates = await _resolve_customer_candidate_bounded(
-            contact_service=contact_service,
-            telegram_id=message.from_user.id,
+            runtime=runtime,
             candidate_text=customer_name,
             config=config,
             context_name='invoice_customer_term_resolution',
@@ -2529,6 +2685,7 @@ async def _build_and_store_preview(
         service_short_name, service_display_name, allowed_aliases = await _resolve_service_alias_bounded(
             alias_service=service_alias_service,
             supplier_telegram_id=message.from_user.id,
+            workspace_id=(runtime.context.workspace_id if runtime.context is not None else None),
             supplier_id=int(supplier.id),
             candidate_text=service_short_name_input,
             config=config,
@@ -2699,11 +2856,7 @@ async def _build_and_store_preview(
             return
 
     due_date_obj = issue_date_obj + timedelta(days=due_days)
-    invoice_service = InvoiceService(config.db_path)
-    proposed_invoice_number = invoice_service.generate_next_invoice_number(
-        issue_date_obj.year,
-        supplier_telegram_id=message.from_user.id,
-    )
+    proposed_invoice_number = runtime.generate_next_invoice_number(issue_date_obj.year)
 
     normalized = {
         'raw_text': raw_text,
@@ -3004,18 +3157,18 @@ async def process_invoice_customer_alias_confirm(
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
-    contact_service = ContactService(config.db_path)
-    contact = contact_service.get_by_id_for_supplier(
-        telegram_id=message.from_user.id,
-        contact_id=contact_id,
+    runtime = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
     )
+    if runtime is None:
+        return
+    contact = runtime.get_contact_by_id(contact_id)
     if contact is None or contact.id is None:
         await state.clear()
         await message.answer('Odberateľ už nie je dostupný. Spustite /invoice znova.')
         return
 
-    contact_service.create_confirmed_contact_alias(
-        supplier_telegram_id=message.from_user.id,
+    runtime.create_confirmed_contact_alias(
         alias_text=candidate_text,
         contact_id=contact.id,
         source='invoice_customer_alias_confirm',
@@ -3204,13 +3357,20 @@ async def process_invoice_slot_clarification(
         if hasattr(message, 'from_user') and message.from_user is None:
             await message.answer('Nepodarilo sa identifikovať používateľa.')
             return
-        supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+        runtime = await _invoice_runtime_or_recover(
+            message=message, state=state, config=config
+        )
+        if runtime is None:
+            return
+        supplier = runtime.get_supplier()
         if supplier is None or supplier.id is None:
             await state.clear()
             await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
             return
         service_short_name, _service_display_name, allowed_aliases = await _resolve_service_alias_bounded(
             alias_service=ServiceAliasService(config.db_path),
+            supplier_telegram_id=message.from_user.id,
+            workspace_id=(runtime.context.workspace_id if runtime.context is not None else None),
             supplier_id=int(supplier.id),
             candidate_text=clarification_text,
             config=config,
@@ -3228,15 +3388,18 @@ async def process_invoice_slot_clarification(
         if hasattr(message, 'from_user') and message.from_user is None:
             await message.answer('Nepodarilo sa identifikovať používateľa.')
             return
-        contact_service = ContactService(config.db_path)
+        runtime = await _invoice_runtime_or_recover(
+            message=message, state=state, config=config
+        )
+        if runtime is None:
+            return
         bounded_customer_candidates = (
             partial.get('bounded_choices')
             if isinstance(partial.get('bounded_choices'), list)
             else None
         )
         resolved_contact, allowed_customer_candidates = await _resolve_customer_candidate_bounded(
-            contact_service=contact_service,
-            telegram_id=message.from_user.id,
+            runtime=runtime,
             candidate_text=clarification_text,
             config=config,
             context_name='invoice_customer_slot_clarification',
@@ -3287,6 +3450,7 @@ async def process_invoice_text(
             _INVOICE_ANALYTICS_INTENT,
             _ACCOUNTING_DOCUMENT_ANALYTICS_INTENT,
             _SHOW_SUPPLIER_PROFILE_INTENT,
+            _SWITCH_BUSINESS_PROFILE_INTENT,
             _EDIT_SUPPLIER_INTENT,
             _ADD_CONTACT_INTENT,
             _ADD_SERVICE_ALIAS_INTENT,
@@ -3586,11 +3750,29 @@ async def process_invoice_text(
             await state.clear()
             return
 
+    scoped_runtime: ScopedInvoiceRuntime | None = None
+    if top_level_intent in _INVOICE_SCOPED_ACTIONS:
+        scoped_runtime = await _invoice_runtime_or_recover(
+            message=message,
+            state=state,
+            config=config,
+        )
+        if scoped_runtime is None:
+            return
     if top_level_intent == _START_INTENT:
         await cmd_start(message=message, config=config, state=state)
         return
     if top_level_intent == _SHOW_SUPPLIER_PROFILE_INTENT:
         await cmd_moj_profil(message=message, state=state, config=config)
+        return
+    if top_level_intent == _SWITCH_BUSINESS_PROFILE_INTENT:
+        await start_switch_business_profile(
+            message=message,
+            state=state,
+            config=config,
+            profile_ref=invoice_text,
+            source_channel=input_channel,
+        )
         return
     if top_level_intent == _EDIT_SUPPLIER_INTENT:
         await cmd_upravit_profil(message=message, state=state, config=config)
@@ -3656,10 +3838,7 @@ async def process_invoice_text(
         if not invoice_reference:
             await message.answer('Napíšte číslo faktúry, ktorú chcete zobraziť.')
             return
-        invoice_matches = InvoiceService(config.db_path).find_invoices_for_supplier_by_number_reference(
-            supplier_telegram_id=message.from_user.id,
-            invoice_reference=invoice_reference,
-        )
+        invoice_matches = scoped_runtime.find_invoices(invoice_reference)
         if not invoice_matches:
             await message.answer('Faktúru s týmto číslom som nenašiel.')
             await state.clear()
@@ -3667,10 +3846,17 @@ async def process_invoice_text(
         if len(invoice_matches) > 1:
             await message.answer('Našiel som viac faktúr. Napíšte viac posledných číslic alebo celé číslo faktúry.')
             return
-        await _send_existing_invoice_view(message=message, config=config, invoice=invoice_matches[0])
+        await _send_existing_invoice_view(
+            message=message, config=config, runtime=scoped_runtime, invoice=invoice_matches[0]
+        )
         await state.clear()
         return
     if top_level_intent == _INVOICE_PERIOD_SUMMARY_INTENT:
+        scoped_runtime = await _invoice_runtime_or_recover(
+            message=message, state=state, config=config
+        )
+        if scoped_runtime is None:
+            return
         if hasattr(message, 'from_user') and message.from_user is None:
             await message.answer('Nepodarilo sa identifikovať používateľa.')
             await state.clear()
@@ -3700,8 +3886,7 @@ async def process_invoice_text(
             )
             await state.clear()
             return
-        summary = InvoiceService(config.db_path).summarize_invoices_for_supplier_period(
-            supplier_telegram_id=message.from_user.id,
+        summary = scoped_runtime.summarize_period(
             start_date=start_date,
             end_date=end_date,
         )
@@ -3736,10 +3921,7 @@ async def process_invoice_text(
         if not invoice_reference:
             await message.answer('Napíšte číslo faktúry, ktorú chcete upraviť.')
             return
-        invoice_matches = InvoiceService(config.db_path).find_invoices_for_supplier_by_number_reference(
-            supplier_telegram_id=message.from_user.id,
-            invoice_reference=invoice_reference,
-        )
+        invoice_matches = scoped_runtime.find_invoices(invoice_reference)
         if not invoice_matches:
             await message.answer('Faktúru s týmto číslom som nenašiel.')
             return
@@ -3747,7 +3929,9 @@ async def process_invoice_text(
             await message.answer('Našiel som viac faktúr. Napíšte celé číslo faktúry.')
             return
         matched_invoice = invoice_matches[0]
-        await _send_existing_invoice_view(message=message, config=config, invoice=matched_invoice)
+        await _send_existing_invoice_view(
+            message=message, config=config, runtime=scoped_runtime, invoice=matched_invoice
+        )
         await state.update_data(
             last_invoice_id=matched_invoice.id,
             last_invoice_number=matched_invoice.invoice_number,
@@ -3768,10 +3952,7 @@ async def process_invoice_text(
         if not invoice_reference:
             await message.answer('Napiste cislo faktury, ktoru chcete oznacit ako uhradenu.')
             return
-        invoice_matches = InvoiceService(config.db_path).find_invoices_for_supplier_by_number_reference(
-            supplier_telegram_id=message.from_user.id,
-            invoice_reference=invoice_reference,
-        )
+        invoice_matches = scoped_runtime.find_invoices(invoice_reference)
         if not invoice_matches:
             await message.answer('Fakturu s tymto cislom som nenasiel.')
             return
@@ -3804,10 +3985,7 @@ async def process_invoice_text(
         if not invoice_reference:
             await message.answer('Napíšte číslo faktúry, ktorú chcete vymazať.')
             return
-        invoice_matches = InvoiceService(config.db_path).find_invoices_for_supplier_by_number_reference(
-            supplier_telegram_id=message.from_user.id,
-            invoice_reference=invoice_reference,
-        )
+        invoice_matches = scoped_runtime.find_invoices(invoice_reference)
         if not invoice_matches:
             await message.answer('Faktúru s týmto číslom som nenašiel.')
             return
@@ -3817,13 +3995,10 @@ async def process_invoice_text(
         matched_invoice = invoice_matches[0]
         contact_name = 'Neznámy odberateľ'
         if matched_invoice.contact_id is not None:
-            contact = ContactService(config.db_path).get_by_id_for_supplier(
-                telegram_id=message.from_user.id,
-                contact_id=matched_invoice.contact_id,
-            )
+            contact = scoped_runtime.get_contact_by_id(matched_invoice.contact_id)
             if contact is not None:
                 contact_name = contact.name
-        matched_items = InvoiceService(config.db_path).get_items_by_invoice_id(matched_invoice.id)
+        matched_items = scoped_runtime.get_items(matched_invoice.id)
         await message.answer(
             _format_existing_invoice_summary(
                 invoice_number=matched_invoice.invoice_number,
@@ -4071,7 +4246,7 @@ async def _start_invoice_draft_edit_flow(*, message: Message, state: FSMContext)
 def _store_preview_confirmed_customer_alias(
     *,
     config: Config,
-    supplier_telegram_id: int,
+    runtime: ScopedInvoiceRuntime,
     draft: dict[str, object],
     contact_id: int,
 ) -> None:
@@ -4084,8 +4259,7 @@ def _store_preview_confirmed_customer_alias(
         return
 
     try:
-        ContactService(config.db_path).create_confirmed_contact_alias(
-            supplier_telegram_id=supplier_telegram_id,
+        runtime.create_confirmed_contact_alias(
             alias_text=alias_candidate,
             contact_id=contact_id,
             source=f'invoice_preview_approved_{source}',
@@ -4099,6 +4273,7 @@ def _store_preview_confirmed_service_aliases(
     config: Config,
     supplier_telegram_id: int,
     supplier_id: int,
+    workspace_id: str | None,
     draft: dict[str, object],
 ) -> None:
     alias_service = ServiceAliasService(config.db_path)
@@ -4141,6 +4316,7 @@ def _store_preview_confirmed_service_aliases(
                 alias_text=alias_candidate,
                 service_alias_id=service_alias_id,
                 source=f'invoice_preview_approved_{source}',
+                workspace_id=workspace_id,
             )
         except Exception:
             logger.exception('Failed to store preview-approved service alias')
@@ -4164,15 +4340,17 @@ async def _finalize_invoice_draft(
         await state.clear()
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    runtime = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if runtime is None:
+        return
+    supplier = runtime.get_supplier()
     if supplier is None:
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         await state.clear()
         return
-    contact = ContactService(config.db_path).get_by_name_case_insensitive(
-        message.from_user.id,
-        str(draft['customer_name']),
-    )
+    contact = runtime.get_contact_by_name(str(draft['customer_name']))
     if contact is None:
         await message.answer('Kontakt odberateľa sa nenašiel v databáze. Pridajte ho cez /contact.')
         await state.clear()
@@ -4180,9 +4358,8 @@ async def _finalize_invoice_draft(
 
     proposed_invoice_number = str(draft.get('invoice_number') or '').strip()
     if not proposed_invoice_number:
-        proposed_invoice_number = InvoiceService(config.db_path).generate_next_invoice_number(
-            int(str(draft['issue_date'])[:4]),
-            supplier_telegram_id=message.from_user.id,
+        proposed_invoice_number = runtime.generate_next_invoice_number(
+            int(str(draft['issue_date'])[:4])
         )
         draft['invoice_number'] = proposed_invoice_number
         await state.update_data(invoice_draft=draft)
@@ -4195,11 +4372,7 @@ async def _finalize_invoice_draft(
         await message.answer('Neplatné číslo faktúry. Zadajte číslo vo formáte RRRRNNNN.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
-    if not invoice_service.is_invoice_number_available(
-        invoice_number=proposed_invoice_number,
-        supplier_telegram_id=message.from_user.id,
-    ):
+    if not runtime.is_invoice_number_available(proposed_invoice_number):
         await state.update_data(edit_stage='draft')
         await state.set_state(InvoiceStates.waiting_edit_invoice_number_value)
         await message.answer(
@@ -4217,8 +4390,8 @@ async def _finalize_invoice_draft(
         if abs(computed_total - draft_total) > 0.01:
             raise RuntimeError('Nekonzistentné finančné údaje v potvrdenom návrhu faktúry.')
 
-        invoice_id = invoice_service.create_invoice_with_items(
-            supplier_telegram_id=message.from_user.id,
+        invoice = runtime.create_invoice_with_items(
+
             contact_id=int(contact_id),
             issue_date=str(draft['issue_date']),
             delivery_date=str(draft['delivery_date']),
@@ -4231,15 +4404,10 @@ async def _finalize_invoice_draft(
             invoice_number=proposed_invoice_number,
         )
 
-        invoice = invoice_service.get_invoice_for_supplier_by_id(
-            supplier_telegram_id=message.from_user.id,
-            invoice_id=invoice_id,
-        )
-        if invoice is None:
-            raise RuntimeError('Invoice save succeeded, but invoice cannot be loaded.')
+        invoice_id = invoice.id
 
-        items = invoice_service.get_items_by_invoice_id(invoice_id)
-        pdf_path = _invoice_pdf_path(config.storage_dir, message.from_user.id, invoice.invoice_number)
+        items = runtime.get_items(invoice_id)
+        pdf_path = runtime.pdf_target_path(invoice.invoice_number)
         generate_invoice_pdf(
             target_path=pdf_path,
             supplier=supplier,
@@ -4266,14 +4434,14 @@ async def _finalize_invoice_draft(
                 for item in items
             ],
         )
-        invoice_service.save_pdf_path(invoice.id, str(pdf_path))
+        runtime.save_pdf_path(invoice.id, pdf_path)
         await message.answer_document(
             FSInputFile(pdf_path),
             caption=f'PDF faktúra {invoice.invoice_number} bola vytvorená.',
         )
         _store_preview_confirmed_customer_alias(
             config=config,
-            supplier_telegram_id=message.from_user.id,
+            runtime=runtime,
             draft=draft,
             contact_id=int(contact_id),
         )
@@ -4282,6 +4450,7 @@ async def _finalize_invoice_draft(
                 config=config,
                 supplier_telegram_id=message.from_user.id,
                 supplier_id=int(supplier.id),
+                workspace_id=(runtime.context.workspace_id if runtime.context is not None else None),
                 draft=draft,
             )
         await state.clear()
@@ -4291,7 +4460,7 @@ async def _finalize_invoice_draft(
         db_cleanup_failed = False
         if invoice_id is not None:
             try:
-                invoice_service.delete_invoice_with_items(invoice_id)
+                runtime.delete_invoice_with_items(invoice_id=invoice_id)
             except Exception:
                 logger.exception('Cleanup after failed final PDF generation failed')
                 db_cleanup_failed = True
@@ -4543,7 +4712,11 @@ async def process_invoice_postpdf_decision(
         await state.clear()
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -4665,7 +4838,11 @@ async def _rebuild_pdf_for_existing_invoice(
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return False
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -4675,23 +4852,20 @@ async def _rebuild_pdf_for_existing_invoice(
         await message.answer('Faktúra už nie je dostupná. Spustite /invoice znova.')
         return False
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    supplier = invoice_service.get_supplier()
     if supplier is None:
         await state.clear()
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         return False
 
-    contact = ContactService(config.db_path).get_by_id_for_supplier(
-        telegram_id=message.from_user.id,
-        contact_id=invoice.contact_id,
-    )
+    contact = invoice_service.get_contact_by_id(invoice.contact_id)
     if contact is None:
         await state.clear()
         await message.answer('Kontakt odberateľa sa nenašiel v databáze.')
         return False
 
     items = invoice_service.get_items_by_invoice_id(invoice_id)
-    pdf_path = _invoice_pdf_path(config.storage_dir, message.from_user.id, invoice.invoice_number)
+    pdf_path = invoice_service.pdf_target_path(invoice.invoice_number)
     try:
         generate_invoice_pdf(
             target_path=pdf_path,
@@ -4719,7 +4893,7 @@ async def _rebuild_pdf_for_existing_invoice(
                 for item in items
             ],
         )
-        invoice_service.save_pdf_path(invoice.id, str(pdf_path))
+        invoice_service.save_pdf_path(invoice.id, pdf_path)
         await message.answer_document(
             FSInputFile(pdf_path),
             caption=f'Aktualizovaná PDF faktúra {invoice.invoice_number} je pripravená na kontrolu.',
@@ -4756,7 +4930,11 @@ async def start_invoice_edit_flow(
         await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -4900,20 +5078,30 @@ async def invoice_mark_existing_invoice_paid_confirm(
         return
 
     supplier_telegram_id = message.from_user.id
-    invoice = InvoiceService(config.db_path).get_invoice_for_supplier_by_id(
-        supplier_telegram_id=supplier_telegram_id,
-        invoice_id=invoice_id,
+    runtime = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
     )
+    if runtime is None:
+        return
+    invoice = runtime.get_invoice(invoice_id)
     if invoice is None or invoice.invoice_number != invoice_number:
         await state.clear()
         await message.answer('Fakturu uz neviem bezpecne najst v tomto ucte. Oznacenie bolo zastavene.')
         return
 
-    InvoiceFollowupService(config.db_path).mark_paid(
-        invoice_id=invoice_id,
-        supplier_telegram_id=supplier_telegram_id,
-    )
-    archive_result = InvoiceDriveArchiveService(config).request_after_paid(invoice=invoice)
+    if runtime.context is None:
+        InvoiceFollowupService(config.db_path).mark_paid(
+            invoice_id=invoice_id,
+            supplier_telegram_id=supplier_telegram_id,
+        )
+        archive_result = InvoiceDriveArchiveService(config).request_after_paid(invoice=invoice)
+    else:
+        WorkspaceInvoiceFollowupService(config.db_path).mark_paid(
+            runtime.context, invoice_id=invoice_id
+        )
+        archive_result = InvoiceDriveArchiveService(config).request_after_paid_for_workspace(
+            runtime.context, invoice=invoice
+        )
     await state.clear()
     await message.answer(
         f'Fakturu {invoice_number} som oznacil ako uhradenu.\n\n'
@@ -4962,7 +5150,11 @@ async def invoice_delete_existing_invoice_confirm(
         await message.answer('Nepodarilo sa overiť vlastníka faktúry. Vymazanie bolo zastavené.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -5128,7 +5320,11 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
         await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -5235,7 +5431,11 @@ async def invoice_edit_scope(message: Message, state: FSMContext, config: Config
         await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -5332,7 +5532,11 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
         await state.clear()
         await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
         return
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = _get_invoice_for_message_supplier(invoice_service, message, invoice_id)
     if invoice is None:
         await state.clear()
@@ -5458,7 +5662,11 @@ async def invoice_edit_item_action(message: Message, state: FSMContext, config: 
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -5506,6 +5714,11 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
     state_data = await state.get_data()
     invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
     target_item_id = state_data.get('edit_target_item_id')
+    runtime = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if runtime is None:
+        return
     if state_data.get('edit_stage') == 'draft':
         draft = state_data.get('invoice_draft')
         target_index = state_data.get('edit_target_item_index') or target_item_id
@@ -5514,7 +5727,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
             await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
             return
 
-        supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+        supplier = runtime.get_supplier()
         if supplier is None:
             await state.clear()
             await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
@@ -5523,6 +5736,8 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         alias_service = ServiceAliasService(config.db_path)
         resolved_alias, resolved_display_name, allowed_aliases = await _resolve_service_alias_bounded(
             alias_service=alias_service,
+            supplier_telegram_id=message.from_user.id,
+            workspace_id=(runtime.context.workspace_id if runtime.context is not None else None),
             supplier_id=int(supplier.id),
             candidate_text=new_service_candidate,
             config=config,
@@ -5559,7 +5774,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    supplier = runtime.get_supplier()
     if supplier is None:
         await state.clear()
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
@@ -5568,6 +5783,8 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
     alias_service = ServiceAliasService(config.db_path)
     resolved_alias, resolved_display_name, allowed_aliases = await _resolve_service_alias_bounded(
         alias_service=alias_service,
+        supplier_telegram_id=message.from_user.id,
+        workspace_id=(runtime.context.workspace_id if runtime.context is not None else None),
         supplier_id=int(supplier.id),
         candidate_text=new_service_candidate,
         config=config,
@@ -5583,7 +5800,7 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         await message.answer(_with_invoice_exact_value_recovery_hint(prompt))
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = runtime
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -5640,6 +5857,11 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
         return
 
     state_data = await state.get_data()
+    runtime = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if runtime is None:
+        return
     invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
     if state_data.get('edit_stage') == 'draft':
         draft = state_data.get('invoice_draft')
@@ -5658,10 +5880,7 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
                 )
             )
             return
-        if not InvoiceService(config.db_path).is_invoice_number_available(
-            invoice_number=candidate_number,
-            supplier_telegram_id=message.from_user.id,
-        ):
+        if not runtime.is_invoice_number_available(candidate_number):
             await message.answer(
                 _with_invoice_exact_value_recovery_hint('Číslo faktúry už existuje. Zadajte prosím iné číslo.')
             )
@@ -5681,7 +5900,7 @@ async def invoice_edit_invoice_number_value(message: Message, state: FSMContext,
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = runtime
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -5768,6 +5987,11 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         return
 
     state_data = await state.get_data()
+    runtime = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if runtime is None:
+        return
     date_operation = state_data.get('edit_invoice_date_operation')
     if date_operation not in {
         _EDIT_INVOICE_OPERATION_ISSUE_DATE,
@@ -5830,10 +6054,7 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         if date_operation == _EDIT_INVOICE_OPERATION_ISSUE_DATE:
             draft['issue_date'] = candidate_date_iso
             if not bool(draft.get('invoice_number_manual_override')):
-                draft['invoice_number'] = InvoiceService(config.db_path).generate_next_invoice_number(
-                    candidate_date_obj.year,
-                    supplier_telegram_id=message.from_user.id,
-                )
+                draft['invoice_number'] = runtime.generate_next_invoice_number(candidate_date_obj.year)
             success_text = 'Dátum vystavenia bol upravený.'
         elif date_operation == _EDIT_INVOICE_OPERATION_DELIVERY_DATE:
             draft['delivery_date'] = candidate_date_iso
@@ -5861,7 +6082,7 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         await message.answer('Nepodarilo sa identifikovaЕҐ pouЕѕГ­vateДѕa.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = runtime
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -6038,7 +6259,11 @@ async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, c
         await state.clear()
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,
@@ -6151,7 +6376,11 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
-    invoice_service = InvoiceService(config.db_path)
+    invoice_service = await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if invoice_service is None:
+        return
     invoice = invoice_service.get_invoice_for_supplier_by_id(
         supplier_telegram_id=message.from_user.id,
         invoice_id=invoice_id,

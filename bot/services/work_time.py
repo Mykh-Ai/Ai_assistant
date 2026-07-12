@@ -113,8 +113,51 @@ class WorkTimeCandidate:
 
 
 class WorkTimeService:
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, *, workspace_id: str | None = None) -> None:
         self.db_path = db_path
+        self.workspace_id = str(workspace_id).strip() if workspace_id else None
+
+    def _scope_condition(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        table: str,
+        telegram_id: int,
+    ) -> tuple[str, tuple[object, ...]]:
+        columns = {
+            str(row[1])
+            for row in connection.execute(f'PRAGMA table_info({table})').fetchall()
+        }
+        if 'workspace_id' not in columns:
+            if self.workspace_id is not None:
+                raise RuntimeError('work_time_workspace_migration_required')
+            return 'telegram_id = ?', (telegram_id,)
+        if self.workspace_id is None:
+            return 'workspace_id IS NULL AND telegram_id = ?', (telegram_id,)
+        return 'workspace_id = ? AND telegram_id = ?', (self.workspace_id, telegram_id)
+
+    @staticmethod
+    def _has_workspace_column(connection: sqlite3.Connection, table: str) -> bool:
+        return 'workspace_id' in {
+            str(row[1])
+            for row in connection.execute(f'PRAGMA table_info({table})').fetchall()
+        }
+
+    def _workspace_insert_value(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        table: str,
+    ) -> str | None:
+        columns = {
+            str(row[1])
+            for row in connection.execute(f'PRAGMA table_info({table})').fetchall()
+        }
+        if 'workspace_id' not in columns:
+            if self.workspace_id is not None:
+                raise RuntimeError('work_time_workspace_migration_required')
+            return None
+        return self.workspace_id
 
     def open_day(
         self,
@@ -137,14 +180,25 @@ class WorkTimeService:
             if existing is not None:
                 return WorkTimeOperationResult(ok=False, reason=f'already_{existing.status}', conflict_day=existing)
 
-            cursor = connection.execute(
-                """
-                INSERT INTO work_time_days
-                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, close_input_mode)
-                VALUES (?, ?, ?, NULL, NULL, ?, ?, NULL, NULL)
-                """,
-                (telegram_id, work_date, start_value, STATUS_OPEN, SOURCE_OPENED_LIVE),
-            )
+            workspace_id = self._workspace_insert_value(connection, table='work_time_days')
+            if self._has_workspace_column(connection, 'work_time_days'):
+                cursor = connection.execute(
+                    """
+                    INSERT INTO work_time_days
+                        (workspace_id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, close_input_mode)
+                    VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL)
+                    """,
+                    (workspace_id, telegram_id, work_date, start_value, STATUS_OPEN, SOURCE_OPENED_LIVE),
+                )
+            else:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO work_time_days
+                        (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, close_input_mode)
+                    VALUES (?, ?, ?, NULL, NULL, ?, ?, NULL, NULL)
+                    """,
+                    (telegram_id, work_date, start_value, STATUS_OPEN, SOURCE_OPENED_LIVE),
+                )
             day_id = int(cursor.lastrowid)
             self._record_event(
                 connection,
@@ -268,23 +322,31 @@ class WorkTimeService:
                 return WorkTimeOperationResult(ok=False, reason='conflict_same_day', conflict_day=existing)
             if existing is not None:
                 connection.execute('DELETE FROM work_time_days WHERE id = ? AND telegram_id = ?', (existing.id, telegram_id))
+            columns = [
+                'telegram_id', 'work_date', 'start_time', 'end_time', 'total_minutes',
+                'status', 'source', 'note', 'gross_minutes', 'close_input_mode',
+            ]
+            values: list[object] = [
+                telegram_id,
+                candidate.work_date.isoformat(),
+                _format_time(candidate.start_time),
+                _format_time(candidate.calculated_end_time),
+                total_minutes,
+                STATUS_CLOSED,
+                SOURCE_MANUAL_RANGE,
+                None,
+                gross_minutes,
+                'explicit_range',
+            ]
+            if self._has_workspace_column(connection, 'work_time_days'):
+                columns.insert(0, 'workspace_id')
+                values.insert(0, self._workspace_insert_value(connection, table='work_time_days'))
+            elif self.workspace_id is not None:
+                raise RuntimeError('work_time_workspace_migration_required')
             cursor = connection.execute(
-                """
-                INSERT INTO work_time_days
-                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, close_input_mode)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
-                """,
-                (
-                    telegram_id,
-                    candidate.work_date.isoformat(),
-                    _format_time(candidate.start_time),
-                    _format_time(candidate.calculated_end_time),
-                    total_minutes,
-                    STATUS_CLOSED,
-                    SOURCE_MANUAL_RANGE,
-                    gross_minutes,
-                    'explicit_range',
-                ),
+                f"INSERT INTO work_time_days ({', '.join(columns)}) "
+                f"VALUES ({', '.join('?' for _ in values)})",
+                values,
             )
             day_id = int(cursor.lastrowid)
             self._record_event(
@@ -319,23 +381,33 @@ class WorkTimeService:
             if existing is not None:
                 connection.execute('DELETE FROM work_time_days WHERE id = ? AND telegram_id = ?', (existing.id, telegram_id))
             lunch_snapshot = _effective_lunch_break_minutes(self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection))
+            columns = [
+                'telegram_id', 'work_date', 'start_time', 'end_time', 'total_minutes',
+                'status', 'source', 'note', 'lunch_break_minutes_snapshot',
+                'net_work_minutes_override', 'close_input_mode',
+            ]
+            values: list[object] = [
+                telegram_id,
+                candidate.work_date.isoformat(),
+                None,
+                None,
+                candidate.duration_minutes,
+                STATUS_CLOSED,
+                SOURCE_MANUAL_DURATION,
+                None,
+                lunch_snapshot,
+                candidate.duration_minutes,
+                'duration',
+            ]
+            if self._has_workspace_column(connection, 'work_time_days'):
+                columns.insert(0, 'workspace_id')
+                values.insert(0, self._workspace_insert_value(connection, table='work_time_days'))
+            elif self.workspace_id is not None:
+                raise RuntimeError('work_time_workspace_migration_required')
             cursor = connection.execute(
-                """
-                INSERT INTO work_time_days
-                    (telegram_id, work_date, start_time, end_time, total_minutes, status, source, note,
-                     lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode)
-                VALUES (?, ?, NULL, NULL, ?, ?, ?, NULL, ?, ?, ?)
-                """,
-                (
-                    telegram_id,
-                    candidate.work_date.isoformat(),
-                    candidate.duration_minutes,
-                    STATUS_CLOSED,
-                    SOURCE_MANUAL_DURATION,
-                    lunch_snapshot,
-                    candidate.duration_minutes,
-                    'duration',
-                ),
+                f"INSERT INTO work_time_days ({', '.join(columns)}) "
+                f"VALUES ({', '.join('?' for _ in values)})",
+                values,
             )
             day_id = int(cursor.lastrowid)
             self._record_event(
@@ -515,15 +587,18 @@ class WorkTimeService:
             if day_ids:
                 placeholders = ','.join('?' for _ in day_ids)
                 connection.execute(
-                    f'DELETE FROM work_time_events WHERE telegram_id = ? AND work_time_day_id IN ({placeholders})',
-                    (telegram_id, *day_ids),
+                    f'DELETE FROM work_time_events WHERE work_time_day_id IN ({placeholders})',
+                    day_ids,
+                )
+                scope_sql, scope_params = self._scope_condition(
+                    connection,
+                    table='work_time_days',
+                    telegram_id=telegram_id,
                 )
                 connection.execute(
-                    """
-                    DELETE FROM work_time_days
-                    WHERE telegram_id = ? AND work_date BETWEEN ? AND ?
-                    """,
-                    (telegram_id, start, end),
+                    f'DELETE FROM work_time_days WHERE {scope_sql} '
+                    'AND work_date BETWEEN ? AND ?',
+                    (*scope_params, start, end),
                 )
                 self._record_event(
                     connection,
@@ -549,15 +624,18 @@ class WorkTimeService:
         connection: sqlite3.Connection | None = None,
     ) -> WorkTimeDay | None:
         def _query(conn: sqlite3.Connection) -> WorkTimeDay | None:
+            scope_sql, scope_params = self._scope_condition(
+                conn,
+                table='work_time_days',
+                telegram_id=telegram_id,
+            )
             row = conn.execute(
-                """
-                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode
-                FROM work_time_days
-                WHERE telegram_id = ? AND status = ?
-                ORDER BY work_date ASC, id ASC
-                LIMIT 1
-                """,
-                (telegram_id, STATUS_OPEN),
+                'SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, '
+                'status, source, note, gross_minutes, lunch_break_minutes_snapshot, '
+                'net_work_minutes_override, close_input_mode FROM work_time_days '
+                f'WHERE {scope_sql} AND status = ? '
+                'ORDER BY work_date ASC, id ASC LIMIT 1',
+                (*scope_params, STATUS_OPEN),
             ).fetchone()
             return _row_to_day(row)
 
@@ -574,15 +652,17 @@ class WorkTimeService:
         connection: sqlite3.Connection | None = None,
     ) -> WorkTimeDay | None:
         def _query(conn: sqlite3.Connection) -> WorkTimeDay | None:
+            scope_sql, scope_params = self._scope_condition(
+                conn,
+                table='work_time_days',
+                telegram_id=telegram_id,
+            )
             row = conn.execute(
-                """
-                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode
-                FROM work_time_days
-                WHERE telegram_id = ? AND work_date = ?
-                ORDER BY id DESC
-                LIMIT 1
-                """,
-                (telegram_id, work_date),
+                'SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, '
+                'status, source, note, gross_minutes, lunch_break_minutes_snapshot, '
+                'net_work_minutes_override, close_input_mode FROM work_time_days '
+                f'WHERE {scope_sql} AND work_date = ? ORDER BY id DESC LIMIT 1',
+                (*scope_params, work_date),
             ).fetchone()
             return _row_to_day(row)
 
@@ -598,13 +678,24 @@ class WorkTimeService:
         connection: sqlite3.Connection | None = None,
     ) -> WorkTimeDay | None:
         def _query(conn: sqlite3.Connection) -> WorkTimeDay | None:
+            if self._has_workspace_column(conn, 'work_time_days'):
+                if self.workspace_id is None:
+                    scope_sql = 'workspace_id IS NULL'
+                    scope_params: tuple[object, ...] = ()
+                else:
+                    scope_sql = 'workspace_id = ?'
+                    scope_params = (self.workspace_id,)
+            elif self.workspace_id is not None:
+                raise RuntimeError('work_time_workspace_migration_required')
+            else:
+                scope_sql = '1 = 1'
+                scope_params = ()
             row = conn.execute(
-                """
-                SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode
-                FROM work_time_days
-                WHERE id = ?
-                """,
-                (day_id,),
+                'SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, '
+                'status, source, note, gross_minutes, lunch_break_minutes_snapshot, '
+                'net_work_minutes_override, close_input_mode FROM work_time_days '
+                f'WHERE id = ? AND {scope_sql}',
+                (day_id, *scope_params),
             ).fetchone()
             return _row_to_day(row)
 
@@ -629,13 +720,15 @@ class WorkTimeService:
         connection: sqlite3.Connection | None = None,
     ) -> WorkTimeLunchBreakSettings:
         def _query(conn: sqlite3.Connection) -> WorkTimeLunchBreakSettings:
+            scope_sql, scope_params = self._scope_condition(
+                conn,
+                table='work_time_settings',
+                telegram_id=telegram_id,
+            )
             row = conn.execute(
-                """
-                SELECT telegram_id, lunch_break_configured, lunch_break_enabled, lunch_break_minutes
-                FROM work_time_settings
-                WHERE telegram_id = ?
-                """,
-                (telegram_id,),
+                'SELECT telegram_id, lunch_break_configured, lunch_break_enabled, '
+                f'lunch_break_minutes FROM work_time_settings WHERE {scope_sql}',
+                scope_params,
             ).fetchone()
             if row is None:
                 return WorkTimeLunchBreakSettings(telegram_id=telegram_id, configured=False, enabled=False, minutes=0)
@@ -662,19 +755,37 @@ class WorkTimeService:
         enabled_value = bool(enabled and safe_minutes > 0)
         stored_minutes = safe_minutes if enabled_value else 0
         with managed_connection(self.db_path) as connection:
-            connection.execute(
-                """
-                INSERT INTO work_time_settings
-                    (telegram_id, lunch_break_configured, lunch_break_enabled, lunch_break_minutes, updated_at)
-                VALUES (?, 1, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(telegram_id) DO UPDATE SET
-                    lunch_break_configured = 1,
-                    lunch_break_enabled = excluded.lunch_break_enabled,
-                    lunch_break_minutes = excluded.lunch_break_minutes,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (telegram_id, 1 if enabled_value else 0, stored_minutes),
+            has_workspace = self._has_workspace_column(connection, 'work_time_settings')
+            if not has_workspace and self.workspace_id is not None:
+                raise RuntimeError('work_time_workspace_migration_required')
+            scope_sql, scope_params = self._scope_condition(
+                connection,
+                table='work_time_settings',
+                telegram_id=telegram_id,
             )
+            updated = connection.execute(
+                'UPDATE work_time_settings SET lunch_break_configured = 1, '
+                'lunch_break_enabled = ?, lunch_break_minutes = ?, '
+                f'updated_at = CURRENT_TIMESTAMP WHERE {scope_sql}',
+                (1 if enabled_value else 0, stored_minutes, *scope_params),
+            ).rowcount
+            if not updated:
+                if has_workspace:
+                    connection.execute(
+                        'INSERT INTO work_time_settings '
+                        '(workspace_id, telegram_id, lunch_break_configured, '
+                        'lunch_break_enabled, lunch_break_minutes, updated_at) '
+                        'VALUES (?, ?, 1, ?, ?, CURRENT_TIMESTAMP)',
+                        (self.workspace_id, telegram_id, 1 if enabled_value else 0, stored_minutes),
+                    )
+                else:
+                    connection.execute(
+                        'INSERT INTO work_time_settings '
+                        '(telegram_id, lunch_break_configured, lunch_break_enabled, '
+                        'lunch_break_minutes, updated_at) '
+                        'VALUES (?, 1, ?, ?, CURRENT_TIMESTAMP)',
+                        (telegram_id, 1 if enabled_value else 0, stored_minutes),
+                    )
             connection.commit()
             return self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection)
 
@@ -705,14 +816,18 @@ class WorkTimeService:
     ) -> list[WorkTimeDay]:
         start = date(year, month, 1).isoformat()
         end = date(year, month, monthrange(year, month)[1]).isoformat()
+        scope_sql, scope_params = self._scope_condition(
+            connection,
+            table='work_time_days',
+            telegram_id=telegram_id,
+        )
         rows = connection.execute(
-            """
-            SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, status, source, note, gross_minutes, lunch_break_minutes_snapshot, net_work_minutes_override, close_input_mode
-            FROM work_time_days
-            WHERE telegram_id = ? AND work_date BETWEEN ? AND ?
-            ORDER BY work_date ASC, id ASC
-            """,
-            (telegram_id, start, end),
+            'SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, '
+            'status, source, note, gross_minutes, lunch_break_minutes_snapshot, '
+            'net_work_minutes_override, close_input_mode FROM work_time_days '
+            f'WHERE {scope_sql} AND work_date BETWEEN ? AND ? '
+            'ORDER BY work_date ASC, id ASC',
+            (*scope_params, start, end),
         ).fetchall()
         days = []
         for row in rows:
@@ -732,20 +847,27 @@ class WorkTimeService:
         source_message_id: int | None,
         telegram_id: int | None = None,
     ) -> None:
+        columns = [
+            'work_time_day_id', 'telegram_id', 'event_type', 'old_value',
+            'new_value', 'source_message_id',
+        ]
+        values: list[object] = [
+            day_id,
+            telegram_id,
+            event_type,
+            json.dumps(old_value, ensure_ascii=False) if old_value is not None else None,
+            json.dumps(new_value, ensure_ascii=False) if new_value is not None else None,
+            source_message_id,
+        ]
+        if self._has_workspace_column(connection, 'work_time_events'):
+            columns.insert(1, 'workspace_id')
+            values.insert(1, self._workspace_insert_value(connection, table='work_time_events'))
+        elif self.workspace_id is not None:
+            raise RuntimeError('work_time_workspace_migration_required')
         connection.execute(
-            """
-            INSERT INTO work_time_events
-                (work_time_day_id, telegram_id, event_type, old_value, new_value, source_message_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                day_id,
-                telegram_id,
-                event_type,
-                json.dumps(old_value, ensure_ascii=False) if old_value is not None else None,
-                json.dumps(new_value, ensure_ascii=False) if new_value is not None else None,
-                source_message_id,
-            ),
+            f"INSERT INTO work_time_events ({', '.join(columns)}) "
+            f"VALUES ({', '.join('?' for _ in values)})",
+            values,
         )
 
 

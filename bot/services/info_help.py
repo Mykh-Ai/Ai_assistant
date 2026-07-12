@@ -25,6 +25,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'show_recent_accounting_documents',
     'contacts',
     'service_aliases',
+    'business_profiles',
     'voice_invoice_intake',
     'customization_requests',
     'admin_customization_review',
@@ -176,7 +177,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'limitation': 'Čakajúca žiadosť ešte nie je aktívny účet, profil dodávateľa ani oprávnenie vytvárať dáta.',
         'safe_next': 'Požiadajte o prístup a počkajte na schválenie správcom.',
     },
-    'contacts': {
+    'business_profiles': {
+        'title': 'Viac firemných profilov',
+        'summary': 'Jeden autorizovaný používateľ môže čiastočne používať viac izolovaných business profilov a explicitne medzi nimi prepínať.',
+        'limitation': 'Prepnutie je iba explicitné cez /profily alebo switch intent. Cross-workspace analytika, jednorazové override, vymazanie jedného profilu a multi-member administrácia nie sú v MVP. Existujúca serverová DB vyžaduje schválenú migráciu pred deployom.',
+        'safe_next': 'V idle stave použite /profily a vyberte iba profil, ku ktorému máte membership.',
+    },    'contacts': {
         'title': 'Kontakty',
         'summary': 'Kontakty sú podporované čiastočne cez manuálny alebo kontrolovaný AI-assisted tok s potvrdením.',
         'limitation': 'Bot nevytvára kontakty automaticky z bločkov, prijatých faktúr, fotiek ani ľubovoľných príloh.',
@@ -259,6 +265,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'add_receipt_or_incoming_invoice': 'pridanie bločku alebo prijatej faktúry',
     'show_recent_accounting_documents': 'prehľad nedávnych účtovných dokladov',
     'contacts': 'kontakty',
+    'business_profiles': 'viac firemných profilov',
     'service_aliases': 'služby a položky',
     'voice_invoice_intake': 'hlasové zadanie faktúry',
     'customization_requests': 'požiadavky na úpravu a ľudskú kontrolu',
@@ -765,6 +772,8 @@ def classify_info_help_capability(
         return 'code_agent_handoff'
     if _mentions_voice_limit(normalized, tokens):
         return 'voice_invoice_intake'
+    if _mentions_business_profiles(normalized, tokens):
+        return 'business_profiles'
     if _mentions_delete_database_safety(normalized, tokens):
         return 'delete_user_database'
     if _mentions_invoice_period_summary_capability(normalized, tokens) or _mentions_invoice_analytics_capability(normalized, tokens):
@@ -1055,6 +1064,11 @@ def _mentions_voice_limit(normalized: str, tokens: set[str]) -> bool:
         return True
     return bool(tokens.intersection({'mozem', 'da', 'ako', 'vies', 'viete'}))
 
+
+def _mentions_business_profiles(normalized: str, tokens: set[str]) -> bool:
+    profile_terms = {'profil', 'profily', 'profile', 'profiles', 'workspace', 'workspaces', 'профіль', 'профілі', 'профиль', 'профили'}
+    multi_terms = {'viac', 'dva', 'multiple', 'switch', 'prepnut', 'prepni', 'перемкнути', 'переключить', 'кілька', 'несколько'}
+    return bool(tokens.intersection(profile_terms) and tokens.intersection(multi_terms)) or '/profily' in normalized
 
 def _mentions_delete_database_safety(normalized: str, tokens: set[str]) -> bool:
     if not tokens.intersection({'databazu', 'database', 'udaje', 'ucet'}):

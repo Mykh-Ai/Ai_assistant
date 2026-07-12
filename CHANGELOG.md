@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Completed the local target-schema multi-workspace runtime across profiles, contacts/service aliases, invoices/numbering/PDF/follow-up/analytics, accounting document intake/categories/storage/archive/analytics, work-time/settings/reports, and account-level deletion. Added `/profily`, canonical `switch_business_profile`, additional-profile onboarding, active-FSM switch blocking, voice confirmation, active-profile `/start`/`menu` context, Product Truth/InfoHelp, and isolation tests. Existing/server data migration and deployment remain disabled until backup, apply, rollback, post-apply audit, and server-smoke approval.
 - Added bounded LLM period slots for OfficeFlow work-time report generation so phrases such as `покажи табель рабочего времени за May` can route to the selected month while Python only validates/defaults missing year or month using the Bratislava business date.
 - Moved OfficeFlow work-time report timesheet wording from Python fast-path variants into bounded LLM `positive_examples` for `generate_work_time_report`, keeping examples contextual rather than a whitelist.
 - Fixed OfficeFlow work-time report routing so Ukrainian timesheet wording such as `Покажи мені табель працівного часу.` resolves to `generate_work_time_report` instead of `unknown`.

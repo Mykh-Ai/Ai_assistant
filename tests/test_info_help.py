@@ -943,15 +943,15 @@ def test_llm_info_help_triage_builds_structured_admin_review_draft(monkeypatch) 
             'confidence': 0.86,
             'needs_clarification': False,
             'admin_review_draft': {
-                'business_need': 'User wants separate business profiles for SZCO and company in one bot.',
+                'business_need': 'Používateľ chce samostatné firemné profily pre SZČO a firmu v jednom bote.',
                 'detected_domain': 'workspace_setup',
-                'expected_outcome': 'Keep invoices, contacts, settings, and numbering separated by active profile.',
+                'expected_outcome': 'Faktúry, kontakty, nastavenia a číslovanie majú byť oddelené podľa aktívneho profilu.',
                 'clarification_questions': [
-                    'Should each profile have separate invoice numbering?',
-                    'Should contacts and documents be isolated per profile?',
+                    'Má mať každý profil samostatné číslovanie faktúr?',
+                    'Majú byť kontakty a dokumenty oddelené podľa profilu?',
                 ],
-                'proposed_title': 'Multiple business profiles in one bot',
-                'proposed_description': 'Review multi-workspace profile switching for SZCO and company use.',
+                'proposed_title': 'Viac firemných profilov v jednom bote',
+                'proposed_description': 'Skontrolovať prepínanie pracovných profilov pre SZČO a firmu.',
                 'risk_level': 'critical',
             },
         }
@@ -970,10 +970,10 @@ def test_llm_info_help_triage_builds_structured_admin_review_draft(monkeypatch) 
     assert result.triage_class == TRIAGE_ADMIN_REVIEW_CANDIDATE
     assert result.detected_domain == 'workspace_setup'
     assert result.risk_level == 'critical'
-    assert 'separate business profiles' in result.business_need
+    assert 'samostatné firemné profily' in result.business_need
     assert result.clarification_questions == (
-        'Should each profile have separate invoice numbering?',
-        'Should contacts and documents be isolated per profile?',
+        'Má mať každý profil samostatné číslovanie faktúr?',
+        'Majú byť kontakty a dokumenty oddelené podľa profilu?',
     )
     assert _InfoHelpOpenAIFake.last_payload is not None
     assert 'workspace_setup' in _InfoHelpOpenAIFake.last_payload['allowed_admin_review_domains']

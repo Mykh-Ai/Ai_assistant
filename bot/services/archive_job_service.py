@@ -82,6 +82,7 @@ class ArchiveJobService:
         metadata_path: str | Path | None = None,
         provider: str = ARCHIVE_PROVIDER_GOOGLE_DRIVE,
         target_folder_path: str | None = None,
+        invoice_storage_key: str | None = None,
         max_attempts: int = 5,
         now: datetime | None = None,
     ) -> ArchiveJobRecord:
@@ -94,7 +95,16 @@ class ArchiveJobService:
         if document_type == 'invoice_pdf':
             _validate_invoice_pdf_path(
                 local_file_path_text,
-                telegram_id=telegram_id,
+                owner_segment=(
+                    _required_text(invoice_storage_key, 'invoice_storage_key')
+                    if invoice_storage_key is not None
+                    else str(telegram_id)
+                ),
+                owner_mismatch_code=(
+                    'invoice_storage_key_mismatch'
+                    if invoice_storage_key is not None
+                    else 'telegram_mismatch'
+                ),
                 field_name='local_file_path',
             )
             if metadata_path_text is not None:
@@ -496,7 +506,8 @@ def _ensure_transition(
 def _validate_invoice_pdf_path(
     path_text: str,
     *,
-    telegram_id: int,
+    owner_segment: str,
+    owner_mismatch_code: str,
     field_name: str,
 ) -> None:
     path = Path(path_text)
@@ -511,8 +522,8 @@ def _validate_invoice_pdf_path(
     relative = parts[index:]
     if len(relative) != 3:
         raise ArchiveJobServiceError(f'{field_name}_invalid_invoice_path')
-    if relative[1] != str(telegram_id):
-        raise ArchiveJobServiceError(f'{field_name}_telegram_mismatch')
+    if relative[1] != owner_segment:
+        raise ArchiveJobServiceError(f'{field_name}_{owner_mismatch_code}')
     if Path(relative[2]).suffix.lower() != '.pdf':
         raise ArchiveJobServiceError(f'{field_name}_invalid_invoice_path')
 

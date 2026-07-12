@@ -24,6 +24,7 @@ class ContactProfile:
     source_note: str | None
     contract_path: str | None
     id: int | None = None
+    workspace_id: str | None = None
 
 
 ContactLookupState = Literal[
@@ -59,6 +60,7 @@ class ContactService:
 
     def get_all_by_supplier(self, telegram_id: int) -> list[ContactProfile]:
         with managed_connection(self._db_path) as connection:
+            _assert_legacy_scope_unambiguous(connection, telegram_id)
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
                 (
@@ -75,6 +77,7 @@ class ContactService:
 
     def get_by_name(self, telegram_id: int, name: str) -> ContactProfile | None:
         with managed_connection(self._db_path) as connection:
+            _assert_legacy_scope_unambiguous(connection, telegram_id)
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
@@ -111,6 +114,7 @@ class ContactService:
 
     def get_by_id_for_supplier(self, *, telegram_id: int, contact_id: int) -> ContactProfile | None:
         with managed_connection(self._db_path) as connection:
+            _assert_legacy_scope_unambiguous(connection, telegram_id)
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
@@ -129,6 +133,7 @@ class ContactService:
 
     def get_by_name_case_insensitive(self, telegram_id: int, name: str) -> ContactProfile | None:
         with managed_connection(self._db_path) as connection:
+            _assert_legacy_scope_unambiguous(connection, telegram_id)
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
@@ -147,65 +152,129 @@ class ContactService:
 
     def create_contact(self, profile: ContactProfile) -> None:
         with managed_connection(self._db_path) as connection:
-            connection.execute(
-                (
-                    'INSERT INTO contact '
-                    '(supplier_telegram_id, name, ico, dic, ic_dph, address, email, contact_person, '
-                    'source_type, source_note, contract_path, created_at, updated_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
-                ),
-                (
+            has_workspace = _has_contact_workspace_column(connection)
+            workspace_id = _clean_workspace_id(profile.workspace_id)
+            if workspace_id is not None and not has_workspace:
+                raise RuntimeError('workspace_contact_schema_migration_required')
+            if workspace_id is None:
+                _assert_legacy_scope_unambiguous(
+                    connection,
                     profile.supplier_telegram_id,
-                    profile.name,
-                    profile.ico,
-                    profile.dic,
-                    profile.ic_dph,
-                    profile.address,
-                    profile.email,
-                    profile.contact_person,
-                    profile.source_type,
-                    profile.source_note,
-                    profile.contract_path,
-                ),
+                )
+            columns = (
+                'workspace_id, ' if has_workspace else ''
+            ) + (
+                'supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                'contact_person, source_type, source_note, contract_path, '
+                'created_at, updated_at'
+            )
+            placeholders = (
+                '?, ' if has_workspace else ''
+            ) + '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP'
+            values = _contact_values(profile, workspace_id, has_workspace)
+            connection.execute(
+                f'INSERT INTO contact ({columns}) VALUES ({placeholders})',
+                values,
             )
             connection.commit()
 
     def create_or_replace(self, profile: ContactProfile) -> None:
         with managed_connection(self._db_path) as connection:
-            connection.execute(
-                (
-                    'INSERT INTO contact '
-                    '(supplier_telegram_id, name, ico, dic, ic_dph, address, email, contact_person, '
-                    'source_type, source_note, contract_path, created_at, updated_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
-                    'ON CONFLICT(supplier_telegram_id, name) DO UPDATE SET '
-                    'ico=excluded.ico, '
-                    'dic=excluded.dic, '
-                    'ic_dph=excluded.ic_dph, '
-                    'address=excluded.address, '
-                    'email=excluded.email, '
-                    'contact_person=excluded.contact_person, '
-                    'source_type=excluded.source_type, '
-                    'source_note=excluded.source_note, '
-                    'contract_path=excluded.contract_path, '
-                    'updated_at=CURRENT_TIMESTAMP'
-                ),
-                (
-                    profile.supplier_telegram_id,
-                    profile.name,
-                    profile.ico,
-                    profile.dic,
-                    profile.ic_dph,
-                    profile.address,
-                    profile.email,
-                    profile.contact_person,
-                    profile.source_type,
-                    profile.source_note,
-                    profile.contract_path,
-                ),
-            )
-            connection.commit()
+            has_workspace = _has_contact_workspace_column(connection)
+            workspace_id = _clean_workspace_id(profile.workspace_id)
+            if workspace_id is not None:
+                if not has_workspace:
+                    raise RuntimeError('workspace_contact_schema_migration_required')
+                connection.execute(
+                    (
+                        'INSERT INTO contact '
+                        '(workspace_id, supplier_telegram_id, name, ico, dic, ic_dph, '
+                        'address, email, contact_person, source_type, source_note, '
+                        'contract_path, created_at, updated_at) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                        'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
+                        'ON CONFLICT(workspace_id, name) DO UPDATE SET '
+                        'supplier_telegram_id=excluded.supplier_telegram_id, '
+                        'ico=excluded.ico, dic=excluded.dic, ic_dph=excluded.ic_dph, '
+                        'address=excluded.address, email=excluded.email, '
+                        'contact_person=excluded.contact_person, '
+                        'source_type=excluded.source_type, '
+                        'source_note=excluded.source_note, '
+                        'contract_path=excluded.contract_path, '
+                        'updated_at=CURRENT_TIMESTAMP'
+                    ),
+                    _contact_values(profile, workspace_id, True),
+                )
+                connection.commit()
+                return
 
+            _assert_legacy_scope_unambiguous(
+                connection,
+                profile.supplier_telegram_id,
+            )
+            if not has_workspace:
+                connection.execute(
+                    (
+                        'INSERT INTO contact '
+                        '(supplier_telegram_id, name, ico, dic, ic_dph, address, '
+                        'email, contact_person, source_type, source_note, contract_path, '
+                        'created_at, updated_at) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                        'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
+                        'ON CONFLICT(supplier_telegram_id, name) DO UPDATE SET '
+                        'ico=excluded.ico, dic=excluded.dic, ic_dph=excluded.ic_dph, '
+                        'address=excluded.address, email=excluded.email, '
+                        'contact_person=excluded.contact_person, '
+                        'source_type=excluded.source_type, '
+                        'source_note=excluded.source_note, '
+                        'contract_path=excluded.contract_path, '
+                        'updated_at=CURRENT_TIMESTAMP'
+                    ),
+                    _contact_values(profile, None, False),
+                )
+                connection.commit()
+                return
+
+            row = connection.execute(
+                (
+                    'SELECT id FROM contact WHERE workspace_id IS NULL '
+                    'AND supplier_telegram_id = ? AND name = ?'
+                ),
+                (profile.supplier_telegram_id, profile.name),
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    (
+                        'INSERT INTO contact '
+                        '(workspace_id, supplier_telegram_id, name, ico, dic, ic_dph, '
+                        'address, email, contact_person, source_type, source_note, '
+                        'contract_path, created_at, updated_at) '
+                        'VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                        'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
+                    ),
+                    _contact_values(profile, None, False),
+                )
+            else:
+                connection.execute(
+                    (
+                        'UPDATE contact SET ico=?, dic=?, ic_dph=?, address=?, '
+                        'email=?, contact_person=?, source_type=?, source_note=?, '
+                        'contract_path=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
+                    ),
+                    (
+                        profile.ico,
+                        profile.dic,
+                        profile.ic_dph,
+                        profile.address,
+                        profile.email,
+                        profile.contact_person,
+                        profile.source_type,
+                        profile.source_note,
+                        profile.contract_path,
+                        int(row[0]),
+                    ),
+                )
+            connection.commit()
     @staticmethod
     def _normalize_lookup_tokens(value: str) -> list[str]:
         lowered = value.casefold().strip()
@@ -342,36 +411,96 @@ class ContactService:
         normalized, compressed = self.normalize_lookup_forms(alias_text)
         if not normalized or not compressed:
             return
-        if self.get_by_id_for_supplier(telegram_id=supplier_telegram_id, contact_id=contact_id) is None:
-            raise ValueError('Cannot create contact alias for a contact outside the supplier scope.')
+        if self.get_by_id_for_supplier(
+            telegram_id=supplier_telegram_id,
+            contact_id=contact_id,
+        ) is None:
+            raise ValueError(
+                'Cannot create contact alias for a contact outside the supplier scope.'
+            )
 
         with managed_connection(self._db_path) as connection:
-            connection.execute(
+            alias_has_workspace = _has_alias_workspace_column(connection)
+            if not alias_has_workspace:
+                connection.execute(
+                    (
+                        'INSERT INTO confirmed_semantic_alias '
+                        '(supplier_telegram_id, domain, alias_text, alias_normalized, '
+                        'alias_compressed, target_type, target_id, source, created_at, '
+                        'updated_at) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, '
+                        'CURRENT_TIMESTAMP) '
+                        'ON CONFLICT(supplier_telegram_id, domain, target_type, '
+                        'alias_normalized) DO UPDATE SET '
+                        'alias_text=excluded.alias_text, '
+                        'alias_compressed=excluded.alias_compressed, '
+                        'target_id=excluded.target_id, source=excluded.source, '
+                        'updated_at=CURRENT_TIMESTAMP'
+                    ),
+                    (
+                        supplier_telegram_id,
+                        self._CONTACT_ALIAS_DOMAIN,
+                        alias_text.strip(),
+                        normalized,
+                        compressed,
+                        self._CONTACT_ALIAS_TARGET_TYPE,
+                        contact_id,
+                        source,
+                    ),
+                )
+                connection.commit()
+                return
+
+            row = connection.execute(
                 (
-                    'INSERT INTO confirmed_semantic_alias '
-                    '(supplier_telegram_id, domain, alias_text, alias_normalized, alias_compressed, '
-                    'target_type, target_id, source, created_at, updated_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
-                    'ON CONFLICT(supplier_telegram_id, domain, target_type, alias_normalized) DO UPDATE SET '
-                    'alias_text=excluded.alias_text, '
-                    'alias_compressed=excluded.alias_compressed, '
-                    'target_id=excluded.target_id, '
-                    'source=excluded.source, '
-                    'updated_at=CURRENT_TIMESTAMP'
+                    'SELECT id FROM confirmed_semantic_alias '
+                    'WHERE workspace_id IS NULL AND supplier_telegram_id = ? '
+                    'AND domain = ? AND target_type = ? AND alias_normalized = ?'
                 ),
                 (
                     supplier_telegram_id,
                     self._CONTACT_ALIAS_DOMAIN,
-                    alias_text.strip(),
-                    normalized,
-                    compressed,
                     self._CONTACT_ALIAS_TARGET_TYPE,
-                    contact_id,
-                    source,
+                    normalized,
                 ),
-            )
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    (
+                        'INSERT INTO confirmed_semantic_alias '
+                        '(workspace_id, supplier_telegram_id, domain, alias_text, '
+                        'alias_normalized, alias_compressed, target_type, target_id, '
+                        'source, created_at, updated_at) '
+                        'VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, '
+                        'CURRENT_TIMESTAMP)'
+                    ),
+                    (
+                        supplier_telegram_id,
+                        self._CONTACT_ALIAS_DOMAIN,
+                        alias_text.strip(),
+                        normalized,
+                        compressed,
+                        self._CONTACT_ALIAS_TARGET_TYPE,
+                        contact_id,
+                        source,
+                    ),
+                )
+            else:
+                connection.execute(
+                    (
+                        'UPDATE confirmed_semantic_alias SET alias_text=?, '
+                        'alias_compressed=?, target_id=?, source=?, '
+                        'updated_at=CURRENT_TIMESTAMP WHERE id=?'
+                    ),
+                    (
+                        alias_text.strip(),
+                        compressed,
+                        contact_id,
+                        source,
+                        int(row[0]),
+                    ),
+                )
             connection.commit()
-
     def _find_contact_by_confirmed_alias(
         self,
         *,
@@ -537,4 +666,67 @@ class ContactService:
             source_note=row['source_note'],
             contract_path=row['contract_path'],
             id=row['id'],
+            workspace_id=(row['workspace_id'] if 'workspace_id' in row.keys() else None),
         )
+
+
+def _has_contact_workspace_column(connection: sqlite3.Connection) -> bool:
+    return any(
+        row[1] == 'workspace_id'
+        for row in connection.execute('PRAGMA table_info(contact)').fetchall()
+    )
+
+
+def _clean_workspace_id(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _assert_legacy_scope_unambiguous(
+    connection: sqlite3.Connection,
+    telegram_id: int,
+) -> None:
+    supplier_columns = {
+        row[1] for row in connection.execute('PRAGMA table_info(supplier)')
+    }
+    if 'workspace_id' not in supplier_columns:
+        return
+    count = int(
+        connection.execute(
+            'SELECT COUNT(*) FROM supplier WHERE telegram_id = ?',
+            (telegram_id,),
+        ).fetchone()[0]
+    )
+    if count > 1:
+        raise RuntimeError('ambiguous_contact_scope_requires_workspace')
+
+
+def _contact_values(
+    profile: ContactProfile,
+    workspace_id: str | None,
+    include_workspace: bool,
+) -> tuple[object, ...]:
+    values: tuple[object, ...] = (
+        profile.supplier_telegram_id,
+        profile.name,
+        profile.ico,
+        profile.dic,
+        profile.ic_dph,
+        profile.address,
+        profile.email,
+        profile.contact_person,
+        profile.source_type,
+        profile.source_note,
+        profile.contract_path,
+    )
+    return (workspace_id, *values) if include_workspace else values
+
+def _has_alias_workspace_column(connection: sqlite3.Connection) -> bool:
+    return any(
+        row[1] == 'workspace_id'
+        for row in connection.execute(
+            'PRAGMA table_info(confirmed_semantic_alias)'
+        ).fetchall()
+    )

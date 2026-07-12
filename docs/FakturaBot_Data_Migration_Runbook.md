@@ -191,3 +191,51 @@ Required before implementation:
 - `docs/TZ_FakturaBot.md` or runbook update when runtime behavior or architecture changes.
 
 Do not implement cross-tenant fallback reads as a substitute for migration.
+
+## Multi-Workspace Business Profiles V1 Tooling
+
+Current local implementation provides read-only audit and dry-run planning:
+
+python -m bot.multi_workspace_migration --mode audit --db-path <db-path> --storage-root <storage-root>
+python -m bot.multi_workspace_migration --mode dry-run --db-path <db-path> --storage-root <storage-root>
+
+The report:
+
+- opens SQLite with mode=ro;
+- redacts Telegram/workspace tenant values into stable report-local references;
+- inventories table columns, row counts, tenant groups, and indexes;
+- classifies persisted invoice PDF paths without printing paths;
+- counts accounting workspace directories, metadata, and originals without printing tenant-derived directory names;
+- lists required workspace-column backfills and uniqueness rebuilds;
+- preserves existing valid invoice.pdf_path values and plans no PDF moves.
+
+Apply mode is intentionally unavailable until the full domain table rebuild, backup requirement, rollback plan, orphan/ambiguity gate, and post-apply audit are implemented and fixture-tested. Public /profily and switch_business_profile must remain disabled while this gate is closed.
+### Transitional supplier schema
+
+Fresh local schemas now support nullable UNIQUE(workspace_id) supplier ownership while retaining telegram_id only as actor compatibility data. Legacy deployed supplier schemas remain accepted by init_db and are not automatically converted to workspace ownership. Workspace-aware supplier writes fail closed with workspace_supplier_schema_migration_required on a legacy schema.
+
+The explicit migration apply must backfill supplier.workspace_id and remove the legacy UNIQUE(telegram_id) constraint before additional profile creation can be enabled on persisted data.
+### Transitional contact schema
+
+Fresh local schemas support nullable contact.workspace_id and UNIQUE(workspace_id, name), allowing the same customer name in separate business profiles. Existing deployed contact schemas remain accepted and are not automatically rebuilt. Workspace contact writes require the target schema; legacy Telegram-scoped reads/writes fail closed once a Telegram actor owns multiple supplier profiles.
+
+Migration apply must backfill contact.workspace_id from validated supplier ownership and rebuild the old UNIQUE(supplier_telegram_id, name) constraint before public switching.
+### Transitional confirmed alias schema
+
+Fresh local schemas support nullable confirmed_semantic_alias.workspace_id and workspace-scoped alias uniqueness. Contact aliases can resolve independently in separate workspaces. Legacy deployed alias schemas remain accepted and are not automatically rebuilt; legacy single-profile contact/service alias writes use compatibility upserts only while scope is unambiguous.
+
+Migration apply must backfill alias workspace ownership from the validated target contact or supplier service mapping and rebuild the old Telegram-derived uniqueness constraint before public profile switching.
+### Transitional invoice and numbering schema
+
+Fresh local schemas support nullable invoice.workspace_id with UNIQUE(workspace_id, invoice_number) and nullable invoice_number_settings.workspace_id with UNIQUE(workspace_id, issue_year). Workspace services validate contact ownership and maintain independent numbering per business profile, including the same invoice number in separate workspaces.
+
+Legacy deployed invoice and numbering schemas remain accepted and are not automatically rebuilt. Legacy single-profile writes remain supported while scope is unambiguous, and duplicate invoice numbers are explicitly rejected in Python for workspace_id NULL compatibility rows.
+
+Migration apply must backfill invoice and numbering workspace ownership, validate every invoice contact belongs to the same workspace, preserve valid invoice.pdf_path values, and rebuild Telegram-derived uniqueness constraints before public switching.
+### Transitional invoice follow-up, analytics, and PDF ownership
+
+Fresh local schemas support nullable invoice_followup_state.workspace_id. Workspace follow-up writes validate the invoice workspace, callbacks resolve membership from the invoice workspace rather than the interactive active selection, and background scans iterate persisted workspace ids. Legacy follow-up and invoice analytics readers are restricted to workspace_id NULL invoice rows so they cannot merge additional profiles owned by the same Telegram actor.
+
+Migration apply must backfill invoice_followup_state.workspace_id from the owning invoice, reject orphan or mismatched follow-up rows, and create the workspace reminder index. Background delivery requires an active authorized supplier owner membership for each workspace and must not consult active_workspace_selection.
+
+New PDF targets use storage/invoices/<workspace.storage_key>/<invoice_number>.pdf. Existing non-empty invoice.pdf_path values are preserved and resolved as stored; migration does not move or rewrite those files automatically. Any later path move requires a separate backed-up dry run and rollback plan.

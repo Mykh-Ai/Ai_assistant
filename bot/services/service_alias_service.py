@@ -185,6 +185,7 @@ class ServiceAliasService:
         supplier_telegram_id: int,
         supplier_id: int,
         alias_text: str,
+        workspace_id: str | None = None,
     ) -> ServiceAliasMapping | None:
         normalized, compressed = self.normalize_lookup_forms(alias_text)
         if not normalized or not compressed:
@@ -192,33 +193,47 @@ class ServiceAliasService:
 
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
-            rows = connection.execute(
-                (
-                    'SELECT s.id, s.supplier_id, s.alias, s.canonical_title, s.is_active, s.created_at '
-                    'FROM confirmed_semantic_alias a '
-                    'JOIN supplier_service_alias s ON s.id = a.target_id '
-                    'WHERE a.supplier_telegram_id = ? '
-                    'AND a.domain = ? '
-                    'AND a.target_type = ? '
-                    'AND s.supplier_id = ? '
-                    'AND s.is_active = 1 '
-                    'AND (a.alias_normalized = ? OR a.alias_compressed = ?) '
-                    'LIMIT 2'
-                ),
-                (
-                    supplier_telegram_id,
+            has_workspace = _confirmed_alias_has_workspace(connection)
+            if workspace_id is not None and not has_workspace:
+                raise RuntimeError('workspace_alias_schema_migration_required')
+            workspace_clause = (
+                'AND a.workspace_id = ? '
+                if workspace_id is not None
+                else 'AND a.workspace_id IS NULL '
+                if has_workspace
+                else ''
+            )
+            params: list[object] = [supplier_telegram_id]
+            if workspace_id is not None:
+                params.append(workspace_id)
+            params.extend(
+                [
                     self._SERVICE_ALIAS_DOMAIN,
                     self._SERVICE_ALIAS_TARGET_TYPE,
                     supplier_id,
                     normalized,
                     compressed,
+                ]
+            )
+            rows = connection.execute(
+                (
+                    'SELECT s.id, s.supplier_id, s.alias, s.canonical_title, '
+                    's.is_active, s.created_at '
+                    'FROM confirmed_semantic_alias a '
+                    'JOIN supplier_service_alias s ON s.id = a.target_id '
+                    'WHERE a.supplier_telegram_id = ? '
+                    f'{workspace_clause}'
+                    'AND a.domain = ? AND a.target_type = ? '
+                    'AND s.supplier_id = ? AND s.is_active = 1 '
+                    'AND (a.alias_normalized = ? OR a.alias_compressed = ?) '
+                    'LIMIT 2'
                 ),
+                params,
             ).fetchall()
 
         if len(rows) != 1:
             return None
         return self._row_to_mapping(rows[0])
-
     def create_confirmed_service_alias(
         self,
         *,
@@ -227,44 +242,59 @@ class ServiceAliasService:
         alias_text: str,
         service_alias_id: int,
         source: str,
+        workspace_id: str | None = None,
     ) -> bool:
         normalized, compressed = self.normalize_lookup_forms(alias_text)
         if not normalized or not compressed:
             return False
-        if self.get_mapping_by_id(supplier_id=supplier_id, mapping_id=service_alias_id) is None:
-            raise ValueError('Cannot create service alias for a service mapping outside the supplier scope.')
+        if self.get_mapping_by_id(
+            supplier_id=supplier_id,
+            mapping_id=service_alias_id,
+        ) is None:
+            raise ValueError(
+                'Cannot create service alias for a service mapping outside the supplier scope.'
+            )
 
         with managed_connection(self._db_path) as connection:
+            has_workspace = _confirmed_alias_has_workspace(connection)
+            if workspace_id is not None and not has_workspace:
+                raise RuntimeError('workspace_alias_schema_migration_required')
+            workspace_clause = (
+                'AND workspace_id = ? '
+                if workspace_id is not None
+                else 'AND workspace_id IS NULL '
+                if has_workspace
+                else ''
+            )
+            scope_params: list[object] = [supplier_telegram_id]
+            if workspace_id is not None:
+                scope_params.append(workspace_id)
             existing = connection.execute(
                 (
-                    'SELECT target_id '
-                    'FROM confirmed_semantic_alias '
+                    'SELECT id, target_id FROM confirmed_semantic_alias '
                     'WHERE supplier_telegram_id = ? '
-                    'AND domain = ? '
-                    'AND target_type = ? '
-                    'AND alias_normalized = ?'
+                    f'{workspace_clause}'
+                    'AND domain = ? AND target_type = ? AND alias_normalized = ?'
                 ),
                 (
-                    supplier_telegram_id,
+                    *scope_params,
                     self._SERVICE_ALIAS_DOMAIN,
                     self._SERVICE_ALIAS_TARGET_TYPE,
                     normalized,
                 ),
             ).fetchone()
-            if existing is not None and int(existing[0]) != service_alias_id:
+            if existing is not None and int(existing[1]) != service_alias_id:
                 return False
             if existing is None:
                 count = connection.execute(
                     (
-                        'SELECT COUNT(*) '
-                        'FROM confirmed_semantic_alias '
+                        'SELECT COUNT(*) FROM confirmed_semantic_alias '
                         'WHERE supplier_telegram_id = ? '
-                        'AND domain = ? '
-                        'AND target_type = ? '
-                        'AND target_id = ?'
+                        f'{workspace_clause}'
+                        'AND domain = ? AND target_type = ? AND target_id = ?'
                     ),
                     (
-                        supplier_telegram_id,
+                        *scope_params,
                         self._SERVICE_ALIAS_DOMAIN,
                         self._SERVICE_ALIAS_TARGET_TYPE,
                         service_alias_id,
@@ -273,33 +303,65 @@ class ServiceAliasService:
                 if count >= self._MAX_CONFIRMED_ALIASES_PER_SERVICE:
                     return False
 
-            connection.execute(
-                (
-                    'INSERT INTO confirmed_semantic_alias '
-                    '(supplier_telegram_id, domain, alias_text, alias_normalized, alias_compressed, '
-                    'target_type, target_id, source, created_at, updated_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
-                    'ON CONFLICT(supplier_telegram_id, domain, target_type, alias_normalized) DO UPDATE SET '
-                    'alias_text=excluded.alias_text, '
-                    'alias_compressed=excluded.alias_compressed, '
-                    'target_id=excluded.target_id, '
-                    'source=excluded.source, '
-                    'updated_at=CURRENT_TIMESTAMP'
-                ),
-                (
-                    supplier_telegram_id,
-                    self._SERVICE_ALIAS_DOMAIN,
-                    alias_text.strip(),
-                    normalized,
-                    compressed,
-                    self._SERVICE_ALIAS_TARGET_TYPE,
-                    service_alias_id,
-                    source,
-                ),
-            )
+            if existing is not None:
+                connection.execute(
+                    (
+                        'UPDATE confirmed_semantic_alias SET alias_text=?, '
+                        'alias_compressed=?, target_id=?, source=?, '
+                        'updated_at=CURRENT_TIMESTAMP WHERE id=?'
+                    ),
+                    (
+                        alias_text.strip(),
+                        compressed,
+                        service_alias_id,
+                        source,
+                        int(existing[0]),
+                    ),
+                )
+            elif has_workspace:
+                connection.execute(
+                    (
+                        'INSERT INTO confirmed_semantic_alias '
+                        '(workspace_id, supplier_telegram_id, domain, alias_text, '
+                        'alias_normalized, alias_compressed, target_type, target_id, '
+                        'source, created_at, updated_at) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, '
+                        'CURRENT_TIMESTAMP)'
+                    ),
+                    (
+                        workspace_id,
+                        supplier_telegram_id,
+                        self._SERVICE_ALIAS_DOMAIN,
+                        alias_text.strip(),
+                        normalized,
+                        compressed,
+                        self._SERVICE_ALIAS_TARGET_TYPE,
+                        service_alias_id,
+                        source,
+                    ),
+                )
+            else:
+                connection.execute(
+                    (
+                        'INSERT INTO confirmed_semantic_alias '
+                        '(supplier_telegram_id, domain, alias_text, alias_normalized, '
+                        'alias_compressed, target_type, target_id, source, created_at, '
+                        'updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '
+                        'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
+                    ),
+                    (
+                        supplier_telegram_id,
+                        self._SERVICE_ALIAS_DOMAIN,
+                        alias_text.strip(),
+                        normalized,
+                        compressed,
+                        self._SERVICE_ALIAS_TARGET_TYPE,
+                        service_alias_id,
+                        source,
+                    ),
+                )
             connection.commit()
         return True
-
     def deactivate_mapping(self, mapping_id: int, supplier_id: int) -> bool:
         with managed_connection(self._db_path) as connection:
             cursor = connection.execute(
@@ -322,3 +384,12 @@ class ServiceAliasService:
             is_active=row['is_active'],
             created_at=row['created_at'],
         )
+
+
+def _confirmed_alias_has_workspace(connection: sqlite3.Connection) -> bool:
+    return any(
+        row[1] == 'workspace_id'
+        for row in connection.execute(
+            'PRAGMA table_info(confirmed_semantic_alias)'
+        ).fetchall()
+    )

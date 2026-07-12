@@ -62,6 +62,12 @@ from bot.services.decision_resolver import (
     resolve_yes_no,
 )
 from bot.services.temp_intake_session import build_intake_session_metadata, ensure_intake_session_active
+from bot.services.supplier_service import SupplierService
+from bot.services.workspace_context import (
+    WorkspaceContext,
+    WorkspaceContextError,
+    WorkspaceContextService,
+)
 
 
 router = Router()
@@ -81,6 +87,7 @@ _STATE_SELECTED_LINE_ITEM_INDEX_KEY = 'accounting_document_selected_line_item_in
 _STATE_CATEGORY_TARGET_KEY = 'accounting_document_category_target'
 _STATE_PENDING_CATEGORY_LABEL_KEY = 'accounting_document_pending_category_label'
 _STATE_SIMILAR_CATEGORY_ID_KEY = 'accounting_document_similar_category_id'
+_STATE_WORKSPACE_ID_KEY = 'accounting_document_workspace_id'
 _ACCOUNTING_INTAKE_RECOVERY_HINT = 'Ak chcete spracovanie dokumentu zrušiť, napíšte „zrušiť“.'
 _CATEGORY_BUTTON_LIMIT = 20
 
@@ -176,6 +183,67 @@ def _message_supplier_telegram_id(message: Message) -> int | None:
     return getattr(getattr(message, 'from_user', None), 'id', None)
 
 
+def _resolve_accounting_scope(config: Config, telegram_id: int) -> WorkspaceContext | None:
+    if not config.db_path.exists():
+        return None
+    try:
+        return WorkspaceContextService(config.db_path).resolve_for_user(telegram_id)
+    except WorkspaceContextError as workspace_error:
+        try:
+            supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+        except RuntimeError:
+            raise workspace_error
+        if supplier is None or supplier.workspace_id is None:
+            return None
+        raise workspace_error
+
+
+async def _require_accounting_scope(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> WorkspaceContext | None:
+    telegram_id = _message_supplier_telegram_id(message)
+    if telegram_id is None:
+        return None
+    data = await state.get_data()
+    if _STATE_WORKSPACE_ID_KEY not in data:
+        context = _resolve_accounting_scope(config, telegram_id)
+        await state.update_data(
+            **{
+                _STATE_WORKSPACE_ID_KEY: (
+                    context.workspace_id if context is not None else ''
+                )
+            }
+        )
+        return context
+    workspace_id = str(data.get(_STATE_WORKSPACE_ID_KEY) or '').strip()
+    if not workspace_id:
+        return None
+    return WorkspaceContextService(config.db_path).require_membership(
+        telegram_id,
+        workspace_id,
+    )
+
+
+async def _accounting_scope_or_recover(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> tuple[bool, WorkspaceContext | None]:
+    try:
+        return True, await _require_accounting_scope(message=message, state=state, config=config)
+    except WorkspaceContextError:
+        await state.clear()
+        await message.answer(
+            'Aktívny business profil pre doklady nie je dostupný alebo nie je vybraný.',
+            reply_markup=_remove_keyboard(),
+        )
+        return False, None
+
+
 class AccountingDocumentIntakeStates(StatesGroup):
     waiting_upload = State()
     waiting_duplicate_decision = State()
@@ -222,9 +290,22 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
         return
 
     supplier_telegram_id = _message_supplier_telegram_id(message)
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        return
+    workspace_key = workspace.storage_key if workspace is not None else None
     file_unique_id = attachment['file_unique_id']
     staged_path = (
-        temp_staging_dir(config.storage_dir, file_unique_id, supplier_telegram_id)
+        temp_staging_dir(
+            config.storage_dir,
+            file_unique_id,
+            supplier_telegram_id,
+            workspace_key,
+        )
         / f'original{attachment["extension"]}'
     )
     staged_path.parent.mkdir(parents=True, exist_ok=True)
@@ -255,6 +336,7 @@ async def accounting_document_upload(message: Message, state: FSMContext, config
             allowed_categories=allowed_categories_payload(
                 storage_dir=config.storage_dir,
                 supplier_telegram_id=supplier_telegram_id,
+                workspace_key=workspace_key,
             ),
             api_key=config.openai_api_key,
             model=config.openai_llm_model,
@@ -306,12 +388,19 @@ async def process_staged_accounting_document(
         return
 
     supplier_telegram_id = _message_supplier_telegram_id(message)
-    file_unique_id = attachment_metadata.get('file_unique_id')
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        return
     accounting_staged_path = stage_original_file(
         storage_dir=config.storage_dir,
         source_path=staged_path,
-        file_unique_id=file_unique_id,
+        file_unique_id=attachment_metadata.get('file_unique_id'),
         supplier_telegram_id=supplier_telegram_id,
+        workspace_key=workspace.storage_key if workspace is not None else None,
     )
     await _process_accounting_document_from_staged_original(
         message=message,
@@ -571,7 +660,9 @@ async def handle_accounting_document_category_selection_text(
 ) -> None:
     if not await ensure_intake_session_active(message=message, state=state, storage_dir=config.storage_dir):
         return
-    allowed = _allowed_categories_for_message(message=message, config=config)
+    allowed = await _allowed_categories_for_flow(message=message, state=state, config=config)
+    if allowed is None:
+        return
     decision = await resolve_accounting_document_category_selection(
         context_name=_CATEGORY_SELECTION_CONTEXT,
         user_input_text=selection_text,
@@ -610,7 +701,9 @@ async def handle_accounting_document_line_item_selection_text(
         return
     await state.update_data(**{_STATE_SELECTED_LINE_ITEM_INDEX_KEY: index, _STATE_CATEGORY_TARGET_KEY: 'line_item'})
     await state.set_state(AccountingDocumentIntakeStates.waiting_line_item_category_selection)
-    allowed = _allowed_categories_for_message(message=message, config=config)
+    allowed = await _allowed_categories_for_flow(message=message, state=state, config=config)
+    if allowed is None:
+        return
     await message.answer(_format_category_selection_prompt(allowed), reply_markup=_category_selection_keyboard(allowed))
 
 
@@ -629,10 +722,18 @@ async def handle_accounting_document_new_category_label_text(
         await message.answer('Zadajte krátky názov kategórie textom, bez prázdneho alebo príliš dlhého názvu.')
         return
     supplier_telegram_id = _message_supplier_telegram_id(message)
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        return
     similar = find_similar_category(
         storage_dir=config.storage_dir,
         label=label,
         supplier_telegram_id=supplier_telegram_id,
+        workspace_key=workspace.storage_key if workspace is not None else None,
         include_inactive=True,
     )
     await state.update_data(**{_STATE_PENDING_CATEGORY_LABEL_KEY: label})
@@ -679,10 +780,18 @@ async def handle_accounting_document_new_category_confirm_text(
     if label is None:
         await _return_to_preview(message=message, state=state)
         return
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        return
     category = create_workspace_category(
         storage_dir=config.storage_dir,
         label=label,
         supplier_telegram_id=_message_supplier_telegram_id(message),
+        workspace_key=workspace.storage_key if workspace is not None else None,
     )
     await _apply_category_to_state(message=message, state=state, config=config, category_id=category.category_id, target=_category_target(data))
 
@@ -720,10 +829,18 @@ async def handle_accounting_document_similar_category_decision_text(
     if label is None:
         await _return_to_preview(message=message, state=state)
         return
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        return
     category = create_workspace_category(
         storage_dir=config.storage_dir,
         label=label,
         supplier_telegram_id=_message_supplier_telegram_id(message),
+        workspace_key=workspace.storage_key if workspace is not None else None,
         allow_similar=True,
     )
     await _apply_category_to_state(message=message, state=state, config=config, category_id=category.category_id, target=_category_target(data))
@@ -746,7 +863,9 @@ async def _send_category_entry_or_preview(
 async def _ask_document_category_selection(*, message: Message, state: FSMContext, config: Config) -> None:
     await state.update_data(**{_STATE_CATEGORY_TARGET_KEY: 'document'})
     await state.set_state(AccountingDocumentIntakeStates.waiting_document_category_selection)
-    allowed = _allowed_categories_for_message(message=message, config=config)
+    allowed = await _allowed_categories_for_flow(message=message, state=state, config=config)
+    if allowed is None:
+        return
     await message.answer(_format_category_selection_prompt(allowed), reply_markup=_category_selection_keyboard(allowed))
 
 
@@ -779,11 +898,19 @@ async def _apply_category_to_state(
     target: str,
 ) -> None:
     data = await state.get_data()
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        return
     candidate = _candidate_from_state_payload(data.get(_STATE_CANDIDATE_KEY, {}))
     category = get_category_by_id(
         storage_dir=config.storage_dir,
         category_id=category_id,
         supplier_telegram_id=_message_supplier_telegram_id(message),
+        workspace_key=workspace.storage_key if workspace is not None else None,
         include_inactive=True,
     )
     if category is None:
@@ -842,9 +969,22 @@ async def _save_accounting_document_from_state(
         return
 
     supplier_telegram_id = _message_supplier_telegram_id(message)
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        return
+    workspace_key = workspace.storage_key if workspace is not None else None
     candidate = _candidate_from_state_payload(candidate_payload)
     candidate = (
-        _confirm_candidate_categories(candidate, config=config, supplier_telegram_id=supplier_telegram_id)
+        _confirm_candidate_categories(
+            candidate,
+            config=config,
+            supplier_telegram_id=supplier_telegram_id,
+            workspace_key=workspace_key,
+        )
         if confirm_categories
         else _without_categories(candidate)
     )
@@ -856,6 +996,7 @@ async def _save_accounting_document_from_state(
             file_unique_id=file_unique_id,
             extension=extension if isinstance(extension, str) else None,
             supplier_telegram_id=supplier_telegram_id,
+            workspace_key=workspace_key,
         )
     except (AccountingDocumentStorageError, OSError, ValueError):
         await message.answer('Doklad sa nepodarilo uložiť. Skúste /doklad znova.', reply_markup=_remove_keyboard())
@@ -866,6 +1007,8 @@ async def _save_accounting_document_from_state(
         result=result,
         candidate=candidate,
         supplier_telegram_id=supplier_telegram_id,
+        workspace_id=workspace.workspace_id if workspace is not None else None,
+        workspace_key=workspace_key,
     )
     _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
     await state.clear()
@@ -925,6 +1068,15 @@ async def _process_accounting_document_from_staged_original(
     failure_state: State | None = None,
 ) -> None:
     file_unique_id = attachment_metadata['file_unique_id']
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        _cleanup_temp_quietly(config.storage_dir, staged_path)
+        return
+    workspace_key = workspace.storage_key if workspace is not None else None
     file_bytes = staged_path.read_bytes()
     document_input = AccountingDocumentLmmInput(
         input_type=attachment_metadata['input_type'],
@@ -957,6 +1109,7 @@ async def _process_accounting_document_from_staged_original(
             allowed_categories=allowed_categories_payload(
                 storage_dir=config.storage_dir,
                 supplier_telegram_id=_message_supplier_telegram_id(message),
+                workspace_key=workspace_key,
             ),
             api_key=config.openai_api_key,
             model=config.openai_llm_model,
@@ -1044,14 +1197,27 @@ async def _store_preview_or_duplicate_state(
         return
 
     supplier_telegram_id = _message_supplier_telegram_id(message)
-    if supplier_telegram_id is None:
-        duplicate = find_duplicate_accounting_document(storage_dir=config.storage_dir, candidate=candidate)
-    else:
-        duplicate = find_duplicate_accounting_document(
-            storage_dir=config.storage_dir,
-            candidate=candidate,
-            workspace_key=workspace_key_for_supplier(supplier_telegram_id),
-        )
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        _cleanup_temp_quietly(config.storage_dir, staged_path)
+        return
+    duplicate = find_duplicate_accounting_document(
+        storage_dir=config.storage_dir,
+        candidate=candidate,
+        workspace_key=(
+            workspace.storage_key
+            if workspace is not None
+            else (
+                workspace_key_for_supplier(supplier_telegram_id)
+                if supplier_telegram_id is not None
+                else WORKSPACE_KEY
+            )
+        ),
+    )
     if duplicate is not None:
         state_payload[_STATE_DUPLICATE_MATCH_KEY] = duplicate.to_dict()
         await state.update_data(**state_payload)
@@ -1099,15 +1265,17 @@ def _enqueue_archive_after_confirmed_save(
     result: AccountingDocumentSaveResult,
     candidate: AccountingDocumentCandidate,
     supplier_telegram_id: int | None,
+    workspace_id: str | None = None,
+    workspace_key: str | None = None,
 ) -> None:
-    workspace_id = (
+    resolved_workspace_id = workspace_id or workspace_key or (
         workspace_key_for_supplier(supplier_telegram_id)
         if supplier_telegram_id is not None
         else WORKSPACE_KEY
     )
     try:
         AccountingDocumentArchiveService(db_path).enqueue_confirmed_document(
-            workspace_id=workspace_id,
+            workspace_id=resolved_workspace_id,
             telegram_id=supplier_telegram_id or 0,
             document_id=result.metadata_path.stem,
             document_type=candidate.document_type,
@@ -1117,7 +1285,7 @@ def _enqueue_archive_after_confirmed_save(
     except Exception:
         logger.warning(
             'archive_enqueue_failed workspace_ref=%s document_ref=%s error_category=%s',
-            _safe_log_ref(workspace_id),
+            _safe_log_ref(resolved_workspace_id),
             _safe_log_ref(result.metadata_path.stem),
             'archive_enqueue_failed',
         )
@@ -1130,10 +1298,23 @@ def _safe_log_ref(value: object, *, length: int = 12) -> str:
     return hashlib.sha256(text.encode('utf-8')).hexdigest()[:length]
 
 
-def _allowed_categories_for_message(*, message: Message, config: Config) -> list[dict[str, Any]]:
+async def _allowed_categories_for_flow(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> list[dict[str, Any]] | None:
+    scope_ok, workspace = await _accounting_scope_or_recover(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ok:
+        return None
     return allowed_categories_payload(
         storage_dir=config.storage_dir,
         supplier_telegram_id=_message_supplier_telegram_id(message),
+        workspace_key=workspace.storage_key if workspace is not None else None,
     )
 
 
@@ -1249,6 +1430,7 @@ def _confirm_candidate_categories(
     *,
     config: Config,
     supplier_telegram_id: int | None,
+    workspace_key: str | None = None,
 ) -> AccountingDocumentCandidate:
     confirmed_document = candidate.category
     if confirmed_document is None and candidate.document_category_candidate and candidate.document_category_candidate.category_id:
@@ -1256,6 +1438,7 @@ def _confirm_candidate_categories(
             storage_dir=config.storage_dir,
             category_id=candidate.document_category_candidate.category_id,
             supplier_telegram_id=supplier_telegram_id,
+            workspace_key=workspace_key,
         )
         if category is not None:
             confirmed_document = _confirmed_category_from_category(category, candidate.document_category_candidate)
@@ -1268,6 +1451,7 @@ def _confirm_candidate_categories(
                 storage_dir=config.storage_dir,
                 category_id=item.category_candidate.category_id,
                 supplier_telegram_id=supplier_telegram_id,
+                workspace_key=workspace_key,
             )
             if category is not None:
                 confirmed = _confirmed_category_from_category(category, item.category_candidate)

@@ -399,7 +399,7 @@ This controlled shared-bot model is the current runtime model for safely onboard
 
 Ця future commercial / installation-as-a-service model не є поточним dry-run runtime і не є Phase 2 access-request automation. Її не можна трактувати як уже реалізовану або як вимогу для контрольованого другого користувача. Per-client Telegram bot tokens, per-client VPS/container, and per-client API keys are future/commercial options only.
 
-OfficeFlow framing додає майбутні поняття `workspace` і `supplier profile` як документаційну модель, але не реалізує multi-workspace або multi-supplier runtime у межах поточного FakturaBot MVP. Поточний робочий supplier profile для SZČO Mykhailo Alieksieienko залишається чинним.
+OfficeFlow framing now has a target-schema partial multi-workspace runtime: workspace context, isolated supplier/contact/invoice/accounting/work-time ownership, `/profily`, explicit `switch_business_profile`, and additional supplier-profile onboarding are implemented in code. Existing persisted/server databases remain migration-gated; this code state is not proof that the production DB has been migrated or that switching is deployed.
 
 ### 2.3 Стек технологій
 
@@ -1484,3 +1484,46 @@ Explicitly out of scope:
 - deletion of generated monthly Excel report files as canonical data; reports are generated on demand from DB rows;
 - legal lunch-break, payroll, or HR compliance calculations; the lunch setting is only a fixed net-hours deduction for MVP reports.
 - official payroll/legal HR document claims.
+
+## Multi-Workspace Business Profiles V1 - Internal Runtime Status (2026-07-12)
+
+Current status is partial internal foundation, not a public capability.
+
+Implemented locally:
+
+- additive workspace, workspace_membership, and active_workspace_selection tables;
+- authorization-first WorkspaceContext resolution and membership validation;
+- read-only redacted migration audit/dry-run tooling;
+- transitional supplier persistence with workspace-aware lookup;
+- atomic first/additional workspace profile persistence with full transaction rollback.
+- workspace-isolated contact CRUD with same-name support across workspaces and fail-closed legacy ambiguity handling.
+- workspace-scoped confirmed contact alias storage and resolver isolation.
+- workspace-scoped invoice persistence and numbering with independent same-number support across profiles and contact ownership validation.
+- workspace-scoped invoice follow-up/payment/reminder state, callback ownership checks, and background scheduling independent of active profile selection.
+- workspace-scoped outgoing-invoice analytics datasets with legacy readers restricted to workspace_id NULL rows.
+- PDF target paths owned by immutable workspace.storage_key, while existing persisted invoice.pdf_path values remain unchanged.
+
+Not yet implemented or exposed:
+
+- migration apply for persisted production data;
+- workspace-scoped Telegram contact and invoice creation/edit FSM binding, accounting documents, work-time, general archive jobs, remaining analytics domains, and deletion;
+- production deployment of `/profily` / `switch_business_profile` before backup, migration apply, post-apply audit, and server smoke approval;
+- Product Truth/InfoHelp status partial for end users.
+
+Legacy single-profile runtime remains supported. Public switching must stay disabled until every mandatory business domain, migration fixture, FSM binding, callback guard, Product Truth/InfoHelp surface, and Conversation Acceptance Proof passes.
+## Multi-workspace business profiles target runtime (2026-07-12)
+
+Implementation status: `partial / target-schema implemented / production migration required`.
+
+Implemented code surface:
+
+- `/profily` lists only active memberships, marks the active workspace, supports exact reply-keyboard selection, add-profile entry, and cancel;
+- canonical `switch_business_profile` is reachable from idle semantic text and voice; voice requires shared `yes_no` confirmation before mutation;
+- active foreign FSM state blocks profile switching without clearing or retargeting the flow;
+- `/moj_profil`, `/upravit_profil`, supplier onboarding, service aliases, contacts, invoices/numbering/PDF/follow-up/analytics, accounting document intake/categories/storage/analytics/archive, and work-time DB/report storage are workspace-bound on the target schema;
+- full `/vymazat_databazu` remains account-level and removes all owned local workspaces while preserving remote Drive files and shared provider credentials;
+- `/start` and `/menu` identify the active firemný profil when a valid workspace exists.
+
+Explicitly outside MVP: cross-workspace analytics, per-request temporary overrides, deleting one profile, billing, public signup, and broad multi-member workspace administration.
+
+Migration boundary: no existing local/server DB or storage was rewritten in this implementation session. Production enablement requires the runbook backup/apply/rollback gate, zero unresolved ownership ambiguities, post-apply audit, full regression, and server smoke proof.

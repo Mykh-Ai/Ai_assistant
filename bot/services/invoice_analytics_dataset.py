@@ -146,6 +146,7 @@ class InvoiceAnalyticsDatasetService:
                     'LEFT JOIN invoice_followup_state s '
                     'ON s.invoice_id = i.id AND s.supplier_telegram_id = i.supplier_telegram_id '
                     'WHERE i.supplier_telegram_id = ? '
+                    + _legacy_invoice_scope_sql(connection) +
                     'ORDER BY i.issue_date ASC, i.invoice_number ASC, i.id ASC'
                 ),
                 (supplier_telegram_id,),
@@ -183,6 +184,11 @@ class InvoiceAnalyticsDatasetService:
             dataframe['total_amount'] = pd.to_numeric(dataframe['total_amount'], errors='coerce').fillna(0.0)
             dataframe['has_pdf'] = dataframe['has_pdf'].astype(bool)
         return dataframe
+
+
+def _legacy_invoice_scope_sql(connection: sqlite3.Connection) -> str:
+    columns = {row[1] for row in connection.execute('PRAGMA table_info(invoice)')}
+    return 'AND i.workspace_id IS NULL ' if 'workspace_id' in columns else ''
 
 
 def _normalize_payment_status(

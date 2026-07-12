@@ -66,12 +66,12 @@ def build_info_help_triage_payload(
             'confidence': 'number from 0 to 1',
             'needs_clarification': 'boolean',
             'admin_review_draft': {
-                'business_need': 'what the user wants, empty unless request/review candidate',
+                'business_need': 'Slovak business wording of what the user wants, empty unless request/review candidate',
                 'detected_domain': 'one allowed_admin_review_domains value',
-                'expected_outcome': 'what the user expects or why it matters',
-                'clarification_questions': '0-4 short questions for admin/user review',
-                'proposed_title': 'short admin-review title',
-                'proposed_description': 'structured admin-review description',
+                'expected_outcome': 'Slovak business wording of what the user expects or why it matters',
+                'clarification_questions': '0-4 short Slovak questions for admin review',
+                'proposed_title': 'short Slovak admin-review title',
+                'proposed_description': 'structured Slovak admin-review description',
                 'risk_level': 'one allowed_risk_levels value',
             },
         },
@@ -115,6 +115,7 @@ async def resolve_info_help_triage_with_llm(
                             'Never return answer text, response modes, support status, canonical actions, '
                             'admin messages, side effects, or Product Truth facts. '
                             'For safe business-domain requests not covered by Product Truth, draft only structured admin-review metadata. '
+                            'All free-text fields inside admin_review_draft must be Slovak business wording, even when the user input is English, Ukrainian, Russian, mixed, or STT-noisy. '
                             'Prefer request/review triage classes over unknown for OfficeFlow business needs such as multiple profiles, '
                             'workspace switching, custom reports, delivery/storage/integration wishes, or account-specific workflows. '
                             'If no provided capability or triage class safely fits, return unknown. '

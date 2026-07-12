@@ -9,8 +9,11 @@ from aiogram.types import Message
 from bot.config import Config
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierService
+from bot.services.workspace_context import WorkspaceContextError, WorkspaceContextService
 
 router = Router(name='supplier_service_alias')
+
+_SERVICE_ALIAS_WORKSPACE_ID_KEY = 'service_alias_workspace_id'
 
 SERVICE_ALIAS_RECOVERY_HINT = 'Ak nechcete pridať službu, napíšte „zrušiť“.'
 
@@ -38,12 +41,43 @@ def _mappings_preview(mappings: list[tuple[str, str]]) -> str:
     return '\n'.join(lines)
 
 
+def _supplier_for_workspace_flow(
+    *,
+    config: Config,
+    telegram_id: int,
+    workspace_id: str | None = None,
+):
+    if workspace_id:
+        context = WorkspaceContextService(config.db_path).require_membership(
+            telegram_id,
+            workspace_id,
+        )
+        return SupplierService(config.db_path).get_by_workspace_id(context.workspace_id), context
+    try:
+        context = WorkspaceContextService(config.db_path).resolve_for_user(telegram_id)
+    except WorkspaceContextError as workspace_error:
+        try:
+            supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+        except RuntimeError:
+            raise workspace_error
+        if supplier is None or supplier.workspace_id is None:
+            return supplier, None
+        raise workspace_error
+    return SupplierService(config.db_path).get_by_workspace_id(context.workspace_id), context
+
 async def start_add_service_alias_intake(message: Message, state: FSMContext, config: Config) -> None:
     if message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    try:
+        supplier, context = _supplier_for_workspace_flow(
+            config=config,
+            telegram_id=message.from_user.id,
+        )
+    except WorkspaceContextError:
+        await message.answer('Vyberte aktívny business profil cez /profily.')
+        return
     if supplier is None or supplier.id is None:
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         return
@@ -52,6 +86,9 @@ async def start_add_service_alias_intake(message: Message, state: FSMContext, co
     mappings = alias_service.list_mappings(supplier.id)
 
     await state.clear()
+    await state.update_data(
+        **{_SERVICE_ALIAS_WORKSPACE_ID_KEY: context.workspace_id if context is not None else ''}
+    )
     await state.set_state(ServiceAliasStates.waiting_short_name)
     await message.answer(
         _mappings_preview([(entry.service_short_name, entry.service_display_name) for entry in mappings])
@@ -111,7 +148,17 @@ async def service_display_name_input(message: Message, state: FSMContext, config
         await state.clear()
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    workspace_id = str(data.get(_SERVICE_ALIAS_WORKSPACE_ID_KEY) or '').strip() or None
+    try:
+        supplier, _context = _supplier_for_workspace_flow(
+            config=config,
+            telegram_id=message.from_user.id,
+            workspace_id=workspace_id,
+        )
+    except WorkspaceContextError:
+        await message.answer('Business profil tejto služby už nie je dostupný.')
+        await state.clear()
+        return
     if supplier is None or supplier.id is None:
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         await state.clear()

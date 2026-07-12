@@ -9,7 +9,8 @@ from pathlib import Path
 SUPPLIER_SCHEMA = """
 CREATE TABLE IF NOT EXISTS supplier (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    telegram_id INTEGER NOT NULL UNIQUE,
+    workspace_id TEXT UNIQUE,
+    telegram_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     ico TEXT NOT NULL,
     dic TEXT NOT NULL,
@@ -27,9 +28,30 @@ CREATE TABLE IF NOT EXISTS supplier (
 );
 """
 
+LEGACY_SUPPLIER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS supplier (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    ico TEXT NOT NULL,
+    dic TEXT NOT NULL,
+    ic_dph TEXT,
+    address TEXT NOT NULL,
+    iban TEXT NOT NULL,
+    swift TEXT NOT NULL,
+    email TEXT NOT NULL,
+    smtp_host TEXT,
+    smtp_user TEXT,
+    smtp_pass TEXT,
+    days_due INTEGER NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+"""
 CONTACT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS contact (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT,
     supplier_telegram_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     ico TEXT NOT NULL,
@@ -43,11 +65,32 @@ CREATE TABLE IF NOT EXISTS contact (
     contract_path TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(supplier_telegram_id, name)
+    UNIQUE(workspace_id, name)
 );
 """
 
 INVOICE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS invoice (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT,
+    supplier_telegram_id INTEGER NOT NULL,
+    contact_id INTEGER NOT NULL,
+    invoice_number TEXT NOT NULL,
+    issue_date TEXT NOT NULL,
+    delivery_date TEXT NOT NULL,
+    due_date TEXT NOT NULL,
+    due_days INTEGER NOT NULL,
+    total_amount REAL NOT NULL,
+    currency TEXT NOT NULL,
+    status TEXT NOT NULL,
+    pdf_path TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(workspace_id, invoice_number)
+);
+"""
+
+LEGACY_INVOICE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS invoice (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     supplier_telegram_id INTEGER NOT NULL,
@@ -66,7 +109,6 @@ CREATE TABLE IF NOT EXISTS invoice (
     UNIQUE(supplier_telegram_id, invoice_number)
 );
 """
-
 INVOICE_ITEM_SCHEMA = """
 CREATE TABLE IF NOT EXISTS invoice_item (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +126,7 @@ CREATE TABLE IF NOT EXISTS invoice_item (
 INVOICE_FOLLOWUP_STATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS invoice_followup_state (
     invoice_id INTEGER PRIMARY KEY,
+    workspace_id TEXT,
     supplier_telegram_id INTEGER NOT NULL,
     payment_status TEXT NOT NULL DEFAULT 'unpaid',
     reminder_status TEXT NOT NULL DEFAULT 'active',
@@ -134,18 +177,20 @@ CREATE TABLE IF NOT EXISTS authorized_users (
 
 INVOICE_NUMBER_SETTINGS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS invoice_number_settings (
+    workspace_id TEXT,
     supplier_telegram_id INTEGER NOT NULL,
     issue_year INTEGER NOT NULL,
     first_invoice_number TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(supplier_telegram_id, issue_year)
+    UNIQUE(workspace_id, issue_year)
 );
 """
 
 CONFIRMED_SEMANTIC_ALIAS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS confirmed_semantic_alias (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT,
     supplier_telegram_id INTEGER NOT NULL,
     domain TEXT NOT NULL,
     alias_text TEXT NOT NULL,
@@ -156,7 +201,7 @@ CREATE TABLE IF NOT EXISTS confirmed_semantic_alias (
     source TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(supplier_telegram_id, domain, target_type, alias_normalized)
+    UNIQUE(workspace_id, domain, target_type, alias_normalized)
 );
 """
 
@@ -302,6 +347,7 @@ CREATE TABLE IF NOT EXISTS google_drive_oauth_states (
 WORK_TIME_DAY_SCHEMA = """
 CREATE TABLE IF NOT EXISTS work_time_days (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT,
     telegram_id INTEGER NOT NULL,
     work_date TEXT NOT NULL,
     start_time TEXT,
@@ -316,13 +362,14 @@ CREATE TABLE IF NOT EXISTS work_time_days (
     close_input_mode TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(telegram_id, work_date)
+    UNIQUE(workspace_id, work_date)
 );
 """
 
 WORK_TIME_SETTINGS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS work_time_settings (
-    telegram_id INTEGER PRIMARY KEY,
+    workspace_id TEXT UNIQUE,
+    telegram_id INTEGER NOT NULL,
     lunch_break_configured INTEGER NOT NULL DEFAULT 0,
     lunch_break_enabled INTEGER NOT NULL DEFAULT 0,
     lunch_break_minutes INTEGER NOT NULL DEFAULT 0,
@@ -334,6 +381,7 @@ WORK_TIME_EVENT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS work_time_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     work_time_day_id INTEGER,
+    workspace_id TEXT,
     telegram_id INTEGER,
     event_type TEXT NOT NULL,
     old_value TEXT,
@@ -342,9 +390,42 @@ CREATE TABLE IF NOT EXISTS work_time_events (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 """
+
+WORKSPACE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS workspace (
+    workspace_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    storage_key TEXT NOT NULL UNIQUE,
+    drive_folder_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+WORKSPACE_MEMBERSHIP_SCHEMA = """
+CREATE TABLE IF NOT EXISTS workspace_membership (
+    workspace_id TEXT NOT NULL,
+    telegram_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(workspace_id, telegram_id)
+);
+"""
+
+ACTIVE_WORKSPACE_SELECTION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS active_workspace_selection (
+    telegram_id INTEGER PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
-    'telegram_id': 'INTEGER NOT NULL UNIQUE',
+    'workspace_id': 'TEXT UNIQUE',
+    'telegram_id': 'INTEGER NOT NULL',
     'name': 'TEXT NOT NULL',
     'ico': 'TEXT NOT NULL',
     'dic': 'TEXT NOT NULL',
@@ -361,8 +442,11 @@ SUPPLIER_EXPECTED_COLUMNS = {
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
 
+SUPPLIER_LEGACY_EXPECTED_COLUMN_NAMES = set(SUPPLIER_EXPECTED_COLUMNS) - {'workspace_id'}
+
 CONTACT_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'workspace_id': 'TEXT',
     'supplier_telegram_id': 'INTEGER NOT NULL',
     'name': 'TEXT NOT NULL',
     'ico': 'TEXT NOT NULL',
@@ -378,8 +462,11 @@ CONTACT_EXPECTED_COLUMNS = {
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
 
+CONTACT_LEGACY_EXPECTED_COLUMN_NAMES = set(CONTACT_EXPECTED_COLUMNS) - {'workspace_id'}
+
 INVOICE_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'workspace_id': 'TEXT',
     'supplier_telegram_id': 'INTEGER NOT NULL',
     'contact_id': 'INTEGER NOT NULL',
     'invoice_number': 'TEXT NOT NULL',
@@ -395,6 +482,8 @@ INVOICE_EXPECTED_COLUMNS = {
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
 
+INVOICE_LEGACY_EXPECTED_COLUMN_NAMES = set(INVOICE_EXPECTED_COLUMNS) - {'workspace_id'}
+
 INVOICE_ITEM_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'invoice_id': 'INTEGER NOT NULL',
@@ -409,6 +498,7 @@ INVOICE_ITEM_EXPECTED_COLUMNS = {
 
 INVOICE_FOLLOWUP_STATE_EXPECTED_COLUMNS = {
     'invoice_id': 'INTEGER PRIMARY KEY',
+    'workspace_id': 'TEXT',
     'supplier_telegram_id': 'INTEGER NOT NULL',
     'payment_status': 'TEXT NOT NULL',
     'reminder_status': 'TEXT NOT NULL',
@@ -420,6 +510,10 @@ INVOICE_FOLLOWUP_STATE_EXPECTED_COLUMNS = {
     'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
+
+INVOICE_FOLLOWUP_STATE_LEGACY_EXPECTED_COLUMN_NAMES = (
+    set(INVOICE_FOLLOWUP_STATE_EXPECTED_COLUMNS) - {'workspace_id'}
+)
 
 SUPPLIER_SERVICE_ALIAS_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
@@ -450,6 +544,7 @@ AUTHORIZED_USER_EXPECTED_COLUMNS = {
 }
 
 INVOICE_NUMBER_SETTINGS_EXPECTED_COLUMNS = {
+    'workspace_id': 'TEXT',
     'supplier_telegram_id': 'INTEGER NOT NULL',
     'issue_year': 'INTEGER NOT NULL',
     'first_invoice_number': 'TEXT NOT NULL',
@@ -457,8 +552,11 @@ INVOICE_NUMBER_SETTINGS_EXPECTED_COLUMNS = {
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
 
+INVOICE_NUMBER_SETTINGS_LEGACY_EXPECTED_COLUMN_NAMES = set(INVOICE_NUMBER_SETTINGS_EXPECTED_COLUMNS) - {'workspace_id'}
+
 CONFIRMED_SEMANTIC_ALIAS_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
+    'workspace_id': 'TEXT',
     'supplier_telegram_id': 'INTEGER NOT NULL',
     'domain': 'TEXT NOT NULL',
     'alias_text': 'TEXT NOT NULL',
@@ -470,6 +568,8 @@ CONFIRMED_SEMANTIC_ALIAS_EXPECTED_COLUMNS = {
     'created_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
     'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
 }
+
+CONFIRMED_SEMANTIC_ALIAS_LEGACY_EXPECTED_COLUMN_NAMES = set(CONFIRMED_SEMANTIC_ALIAS_EXPECTED_COLUMNS) - {'workspace_id'}
 
 CUSTOMIZATION_REQUEST_EXPECTED_COLUMNS = {
     'request_id': 'TEXT PRIMARY KEY',
@@ -544,7 +644,11 @@ def _bootstrap_supplier_table(connection: sqlite3.Connection) -> None:
         connection.execute(SUPPLIER_SCHEMA)
         return
 
-    if set(existing_columns.keys()) == set(SUPPLIER_EXPECTED_COLUMNS.keys()):
+    existing_column_names = set(existing_columns.keys())
+    if (
+        existing_column_names == set(SUPPLIER_EXPECTED_COLUMNS.keys())
+        or existing_column_names == SUPPLIER_LEGACY_EXPECTED_COLUMN_NAMES
+    ):
         _ensure_supplier_smtp_nullable(connection)
         return
 
@@ -563,7 +667,11 @@ def _bootstrap_contact_table(connection: sqlite3.Connection) -> None:
         connection.execute(CONTACT_SCHEMA)
         return
 
-    if set(existing_columns.keys()) == set(CONTACT_EXPECTED_COLUMNS.keys()):
+    existing_column_names = set(existing_columns.keys())
+    if (
+        existing_column_names == set(CONTACT_EXPECTED_COLUMNS.keys())
+        or existing_column_names == CONTACT_LEGACY_EXPECTED_COLUMN_NAMES
+    ):
         return
 
     raise RuntimeError(
@@ -581,7 +689,11 @@ def _bootstrap_invoice_table(connection: sqlite3.Connection) -> None:
         connection.execute(INVOICE_SCHEMA)
         return
 
-    if set(existing_columns.keys()) == set(INVOICE_EXPECTED_COLUMNS.keys()):
+    existing_column_names = set(existing_columns.keys())
+    if existing_column_names == set(INVOICE_EXPECTED_COLUMNS.keys()):
+        _ensure_invoice_workspace_unique_index(connection)
+        return
+    if existing_column_names == INVOICE_LEGACY_EXPECTED_COLUMN_NAMES:
         _ensure_invoice_tenant_unique_index(connection)
         return
 
@@ -594,23 +706,47 @@ def _bootstrap_invoice_table(connection: sqlite3.Connection) -> None:
 def _ensure_supplier_smtp_nullable(connection: sqlite3.Connection) -> None:
     table_info = connection.execute('PRAGMA table_info(supplier)').fetchall()
     column_by_name = {row[1]: row for row in table_info}
-    if not any(column_by_name[column_name][3] for column_name in ('smtp_host', 'smtp_user', 'smtp_pass')):
+    if not any(
+        column_by_name[column_name][3]
+        for column_name in ('smtp_host', 'smtp_user', 'smtp_pass')
+    ):
         return
 
+    has_workspace_id = 'workspace_id' in column_by_name
     connection.execute('ALTER TABLE supplier RENAME TO supplier_legacy_smtp_notnull')
-    connection.execute(SUPPLIER_SCHEMA)
-    connection.execute(
-        (
-            'INSERT INTO supplier '
-            '(id, telegram_id, name, ico, dic, ic_dph, address, iban, swift, email, '
-            'smtp_host, smtp_user, smtp_pass, days_due, created_at, updated_at) '
-            'SELECT id, telegram_id, name, ico, dic, ic_dph, address, iban, swift, email, '
-            'smtp_host, smtp_user, smtp_pass, days_due, created_at, updated_at '
-            'FROM supplier_legacy_smtp_notnull'
+    connection.execute(SUPPLIER_SCHEMA if has_workspace_id else LEGACY_SUPPLIER_SCHEMA)
+    if has_workspace_id:
+        connection.execute(
+            (
+                'INSERT INTO supplier '
+                '(id, workspace_id, telegram_id, name, ico, dic, ic_dph, address, '
+                'iban, swift, email, smtp_host, smtp_user, smtp_pass, days_due, '
+                'created_at, updated_at) '
+                'SELECT id, workspace_id, telegram_id, name, ico, dic, ic_dph, '
+                'address, iban, swift, email, smtp_host, smtp_user, smtp_pass, '
+                'days_due, created_at, updated_at '
+                'FROM supplier_legacy_smtp_notnull'
+            )
         )
-    )
+    else:
+        connection.execute(
+            (
+                'INSERT INTO supplier '
+                '(id, telegram_id, name, ico, dic, ic_dph, address, iban, swift, '
+                'email, smtp_host, smtp_user, smtp_pass, days_due, created_at, '
+                'updated_at) '
+                'SELECT id, telegram_id, name, ico, dic, ic_dph, address, iban, '
+                'swift, email, smtp_host, smtp_user, smtp_pass, days_due, '
+                'created_at, updated_at FROM supplier_legacy_smtp_notnull'
+            )
+        )
     connection.execute('DROP TABLE supplier_legacy_smtp_notnull')
 
+def _ensure_invoice_workspace_unique_index(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_workspace_number '
+        'ON invoice (workspace_id, invoice_number)'
+    )
 
 def _ensure_invoice_tenant_unique_index(connection: sqlite3.Connection) -> None:
     index_rows = connection.execute('PRAGMA index_list(invoice)').fetchall()
@@ -643,7 +779,7 @@ def _ensure_invoice_tenant_unique_index(connection: sqlite3.Connection) -> None:
 
 def _migrate_invoice_global_unique_to_tenant_unique(connection: sqlite3.Connection) -> None:
     connection.execute('ALTER TABLE invoice RENAME TO invoice_legacy_global_unique')
-    connection.execute(INVOICE_SCHEMA)
+    connection.execute(LEGACY_INVOICE_SCHEMA)
     connection.execute(
         (
             'INSERT INTO invoice '
@@ -699,7 +835,11 @@ def _bootstrap_invoice_followup_state_table(connection: sqlite3.Connection) -> N
         _ensure_invoice_followup_state_indexes(connection)
         return
 
-    if set(existing_columns.keys()) == set(INVOICE_FOLLOWUP_STATE_EXPECTED_COLUMNS.keys()):
+    existing_column_names = set(existing_columns.keys())
+    if (
+        existing_column_names == set(INVOICE_FOLLOWUP_STATE_EXPECTED_COLUMNS.keys())
+        or existing_column_names == INVOICE_FOLLOWUP_STATE_LEGACY_EXPECTED_COLUMN_NAMES
+    ):
         _ensure_invoice_followup_state_indexes(connection)
         return
 
@@ -718,6 +858,15 @@ def _ensure_invoice_followup_state_indexes(connection: sqlite3.Connection) -> No
         'CREATE INDEX IF NOT EXISTS idx_invoice_followup_supplier_reminder '
         'ON invoice_followup_state (supplier_telegram_id, payment_status, reminder_status, remind_after)'
     )
+    columns = {
+        row[1] for row in connection.execute('PRAGMA table_info(invoice_followup_state)')
+    }
+    if 'workspace_id' in columns:
+        connection.execute(
+            'CREATE INDEX IF NOT EXISTS idx_invoice_followup_workspace_reminder '
+            'ON invoice_followup_state '
+            '(workspace_id, payment_status, reminder_status, remind_after)'
+        )
 
 
 def _bootstrap_supplier_service_alias_table(connection: sqlite3.Connection) -> None:
@@ -783,7 +932,11 @@ def _bootstrap_invoice_number_settings_table(connection: sqlite3.Connection) -> 
         connection.execute(INVOICE_NUMBER_SETTINGS_SCHEMA)
         return
 
-    if set(existing_columns.keys()) == set(INVOICE_NUMBER_SETTINGS_EXPECTED_COLUMNS.keys()):
+    existing_column_names = set(existing_columns.keys())
+    if (
+        existing_column_names == set(INVOICE_NUMBER_SETTINGS_EXPECTED_COLUMNS.keys())
+        or existing_column_names == INVOICE_NUMBER_SETTINGS_LEGACY_EXPECTED_COLUMN_NAMES
+    ):
         return
 
     raise RuntimeError(
@@ -801,7 +954,11 @@ def _bootstrap_confirmed_semantic_alias_table(connection: sqlite3.Connection) ->
         connection.execute(CONFIRMED_SEMANTIC_ALIAS_SCHEMA)
         return
 
-    if set(existing_columns.keys()) == set(CONFIRMED_SEMANTIC_ALIAS_EXPECTED_COLUMNS.keys()):
+    existing_column_names = set(existing_columns.keys())
+    if (
+        existing_column_names == set(CONFIRMED_SEMANTIC_ALIAS_EXPECTED_COLUMNS.keys())
+        or existing_column_names == CONFIRMED_SEMANTIC_ALIAS_LEGACY_EXPECTED_COLUMN_NAMES
+    ):
         return
 
     raise RuntimeError(
@@ -893,6 +1050,19 @@ def ensure_work_time_schema(connection: sqlite3.Connection) -> None:
     )
 
 
+def ensure_workspace_foundation_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(WORKSPACE_SCHEMA)
+    connection.execute(WORKSPACE_MEMBERSHIP_SCHEMA)
+    connection.execute(ACTIVE_WORKSPACE_SELECTION_SCHEMA)
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_workspace_membership_user_status '
+        'ON workspace_membership (telegram_id, status, workspace_id)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_workspace_status '
+        'ON workspace (status, created_at)'
+    )
+
 def _ensure_work_time_day_additive_columns(connection: sqlite3.Connection) -> None:
     existing_columns = {
         row[1] for row in connection.execute('PRAGMA table_info(work_time_days)').fetchall()
@@ -977,6 +1147,7 @@ def init_db(db_path: Path) -> None:
         _bootstrap_invoice_number_settings_table(connection)
         _bootstrap_confirmed_semantic_alias_table(connection)
         _bootstrap_customization_request_table(connection)
+        ensure_workspace_foundation_schema(connection)
         ensure_archive_schema(connection)
         ensure_google_drive_connection_schema(connection)
         ensure_work_time_schema(connection)

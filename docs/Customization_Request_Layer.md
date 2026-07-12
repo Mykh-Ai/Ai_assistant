@@ -22,6 +22,12 @@ As of Admin Response to User MVP:
   `CustomizationRequestService`;
 - eligible idle InfoHelp/Triage candidates can show a user-facing preview and
   save one confirmed pending-review request only after explicit approval;
+- the user-facing preview is compact, Slovak-only, and addressed to the user in
+  second person; it shows the request title, short summary, optional expected
+  outcome, and confirmation consequences;
+- admin-only detail keeps operational metadata such as domain, risk,
+  clarification questions, requester `telegram_id`, workspace, and delivery
+  status;
 - draft previews live only in FSM/temp state before approval;
 - draft previews are owner-bound and carry a deterministic `request_id` so
   duplicate approval attempts do not create duplicate rows;
@@ -184,6 +190,13 @@ Current implemented flow:
 7. Show the draft to the user.
 8. Ask explicit confirmation.
 9. Save a pending request only after confirmation.
+
+The user preview is not the admin analysis card. It must not expose domain,
+risk level, internal clarification questions, raw Product Truth/debug wording, or
+third-person admin phrasing such as "Používateľ chce...". Those fields may be
+stored and shown in admin detail after approval. The preview must explain that
+confirmation saves the request for later administrator review and does not enable
+the feature, implement anything, or mutate Product Truth.
 
 No side effect may happen at step 5 or 6. Drafting is not saving.
 Current runtime covers the user preview/edit/approve/cancel path, read-only

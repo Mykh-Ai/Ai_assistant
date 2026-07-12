@@ -10,6 +10,7 @@ from bot.handlers.invoice import (
     CustomizationRequestStates,
     InvoiceStates,
     _build_customization_request_draft,
+    _format_customization_request_preview,
     _normalize_items_input,
     customization_request_edit_text,
     customization_request_preview_decision,
@@ -139,26 +140,60 @@ def test_customization_request_draft_uses_structured_admin_review_fields() -> No
         capability_id='unknown',
         topic_id='admin_review',
         confidence=0.86,
-        business_need='Separate profiles for SZCO and company in one bot.',
+        business_need='Používateľ chce samostatné profily pre SZČO a firmu v jednom bote.',
         detected_domain='workspace_setup',
-        expected_outcome='Keep invoices, contacts, settings, and numbering isolated by profile.',
+        expected_outcome='Faktúry, kontakty, nastavenia a číslovanie majú byť oddelené podľa aktívneho profilu.',
         clarification_questions=(
-            'Should invoice numbering be separate?',
-            'Should contacts and documents be isolated?',
+            'Má mať každý profil samostatné číslovanie faktúr?',
+            'Majú byť kontakty a dokumenty oddelené podľa profilu?',
         ),
-        proposed_title='Multiple business profiles in one bot',
-        proposed_description='Review multi-workspace profile switching.',
+        proposed_title='Viac firemných profilov v jednom bote',
+        proposed_description='Skontrolovať prepínanie firemných profilov a pracovných priestorov.',
         risk_level='critical',
     )
 
-    assert draft['normalized_title'].endswith('Multiple business profiles in one bot')
+    assert draft['normalized_title'].endswith('Viac firemných profilov v jednom bote')
     assert draft['detected_domain'] == 'workspace_setup'
     assert draft['risk_level'] == 'critical'
-    assert 'Co pouzivatel chce: Separate profiles for SZCO and company in one bot.' in draft['normalized_summary']
-    assert 'Domena: workspace_setup' in draft['normalized_summary']
-    assert 'Should invoice numbering be separate?' in draft['normalized_summary']
+    assert 'Čo používateľ chce: Používateľ chce samostatné profily pre SZČO a firmu v jednom bote.' in draft['normalized_summary']
+    assert 'Doména: workspace_setup' in draft['normalized_summary']
+    assert 'Má mať každý profil samostatné číslovanie faktúr?' in draft['normalized_summary']
     assert draft['source_capability_id'] is None
 
+
+def test_customization_request_preview_is_compact_user_facing_slovak() -> None:
+    draft = _build_customization_request_draft(
+        requester_telegram_id=111,
+        user_input_text='Download bank statements from Gmail and save them on Google Drive.',
+        source_channel='voice',
+        triage_class='admin_review_candidate',
+        capability_id='unknown',
+        topic_id='admin_review',
+        confidence=0.86,
+        business_need='Používateľ chce automaticky získavať bankové výpisy z e-mailu a ukladať ich na Google Drive.',
+        detected_domain='google_drive',
+        expected_outcome='Bankové výpisy majú byť dostupné v cloudovom úložisku a usporiadané na ďalšiu prácu.',
+        clarification_questions=(
+            'V akom formáte sú bankové výpisy?',
+            'Do ktorého priečinka sa majú ukladať?',
+        ),
+        proposed_title='Automatické získavanie bankových výpisov',
+        proposed_description='Skontrolovať požiadavku na automatické získavanie bankových výpisov z Gmailu a ukladanie na Google Drive.',
+        risk_level='medium',
+    )
+
+    preview = _format_customization_request_preview(draft)
+
+    assert 'Názov: Automatické získavanie bankových výpisov' in preview
+    assert 'Chcete automaticky získavať bankové výpisy z e-mailu a ukladať ich na Google Drive.' in preview
+    assert 'Očakávaný výsledok: Bankové výpisy majú byť dostupné v cloudovom úložisku' in preview
+    assert 'Po potvrdení požiadavku uložím na neskoršiu kontrolu správcom.' in preview
+    assert 'Funkciu tým nezapínam ani nič nemením v systéme.' in preview
+    assert 'Otázky na upresnenie' not in preview
+    assert 'Riziko' not in preview
+    assert 'Doména' not in preview
+    assert 'What format' not in preview
+    assert 'Používateľ chce' not in preview
 
 def test_top_level_semantic_resolver_actions() -> None:
     assert asyncio.run(

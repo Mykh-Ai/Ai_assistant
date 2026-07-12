@@ -7,6 +7,8 @@ from bot.config import Config
 from bot.services.contact_service import ContactService
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierService
+from bot.services.workspace_contact_service import WorkspaceContactService
+from bot.services.workspace_context import WorkspaceContextError, WorkspaceContextService
 
 router = Router(name='start')
 
@@ -68,19 +70,46 @@ MENU_MESSAGE = (
 )
 
 
+def _active_workspace(config: Config, telegram_id: int):
+    if not config.db_path.exists():
+        return None
+    try:
+        return WorkspaceContextService(config.db_path).resolve_for_user(telegram_id)
+    except WorkspaceContextError:
+        return None
+
+
+def _with_active_workspace(message: str, context) -> str:
+    if context is None:
+        return message
+    return f'Aktívny firemný profil: {context.workspace_display_name}\n\n{message}'
+
+
 def build_start_status_message(config: Config, telegram_id: int) -> str:
-    supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+    context = _active_workspace(config, telegram_id)
+    try:
+        supplier = (
+            SupplierService(config.db_path).get_by_workspace_id(context.workspace_id)
+            if context is not None
+            else SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+        )
+    except RuntimeError:
+        return 'Vyberte aktívny business profil cez /profily.'
     if supplier is None:
-        return APPROVED_WITHOUT_SUPPLIER_MESSAGE
+        return _with_active_workspace(APPROVED_WITHOUT_SUPPLIER_MESSAGE, context)
 
     if supplier.id is None or not ServiceAliasService(config.db_path).list_mappings(supplier.id):
-        return READY_WITH_SUPPLIER_MESSAGE
+        return _with_active_workspace(READY_WITH_SUPPLIER_MESSAGE, context)
 
-    if not ContactService(config.db_path).get_all_by_supplier(telegram_id):
-        return READY_WITH_SERVICE_MESSAGE
+    contacts_exist = (
+        bool(WorkspaceContactService(config.db_path).list_contacts(context))
+        if context is not None
+        else bool(ContactService(config.db_path).get_all_by_supplier(telegram_id))
+    )
+    if not contacts_exist:
+        return _with_active_workspace(READY_WITH_SERVICE_MESSAGE, context)
 
-    return ADVANCED_START_MESSAGE
-
+    return _with_active_workspace(ADVANCED_START_MESSAGE, context)
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, config: Config, state: FSMContext | None = None) -> None:
@@ -95,10 +124,17 @@ async def cmd_start(message: Message, config: Config, state: FSMContext | None =
 
 @router.message(lambda message: _command_token(message.text or '') == '/menu')
 async def cmd_menu(message: Message, config: Config, state: FSMContext | None = None) -> None:
-    _ = config
     if state is not None:
         await state.clear()
-    await message.answer(MENU_MESSAGE)
+    telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    context = _active_workspace(config, telegram_id) if telegram_id is not None else None
+    menu = MENU_MESSAGE
+    if context is not None:
+        menu = _with_active_workspace(
+            f'{MENU_MESSAGE}\n\n• /profily — vybrať alebo pridať firemný profil',
+            context,
+        )
+    await message.answer(menu)
 
 
 @router.message(lambda message: _is_case_variant_command(message.text or '', '/start'))

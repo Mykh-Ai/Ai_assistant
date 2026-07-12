@@ -98,8 +98,11 @@ def temp_staging_dir(
     storage_dir: Path,
     file_unique_id: str | None = None,
     supplier_telegram_id: int | None = None,
+    workspace_key: str | None = None,
 ) -> Path:
     safe_id = _safe_file_unique_id(file_unique_id or str(uuid4()))
+    if workspace_key is not None:
+        return storage_dir / 'uploads' / 'accounting_intake' / _safe_workspace_key(workspace_key) / safe_id
     if supplier_telegram_id is None:
         return storage_dir / 'uploads' / 'accounting_intake' / safe_id
     return storage_dir / 'uploads' / 'accounting_intake' / str(supplier_telegram_id) / safe_id
@@ -111,8 +114,14 @@ def stage_original_file(
     source_path: Path,
     file_unique_id: str | None = None,
     supplier_telegram_id: int | None = None,
+    workspace_key: str | None = None,
 ) -> Path:
-    target_dir = temp_staging_dir(storage_dir, file_unique_id, supplier_telegram_id)
+    target_dir = temp_staging_dir(
+        storage_dir,
+        file_unique_id,
+        supplier_telegram_id,
+        workspace_key,
+    )
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f'original{normalize_extension(source_path.name)}'
     shutil.copy2(source_path, target_path)
@@ -217,6 +226,13 @@ def _document_type_folder(document_type: str) -> str:
     if document_type == DOCUMENT_TYPE_INCOMING_INVOICE:
         return 'incoming_invoices'
     raise AccountingDocumentStorageError('document_type_invalid_for_storage')
+
+
+def _safe_workspace_key(value: str) -> str:
+    normalized = str(value).strip()
+    if not normalized or normalized in {'.', '..'} or '/' in normalized or '\\' in normalized:
+        raise AccountingDocumentStorageError('workspace_key_invalid')
+    return normalized
 
 
 def _safe_file_unique_id(value: str) -> str:

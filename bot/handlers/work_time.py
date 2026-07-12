@@ -23,6 +23,8 @@ from bot.services.decision_resolver import (
     resolve_work_time_missing_days_choice,
     resolve_work_time_open_conflict_choice,
 )
+from bot.services.supplier_service import SupplierService
+from bot.services.workspace_context import WorkspaceContextError, WorkspaceContextService
 from bot.services.work_time import (
     WorkTimeCandidate,
     WorkTimeDay,
@@ -43,6 +45,75 @@ from bot.services.work_time import (
 
 
 router = Router(name='work_time')
+
+_WORK_TIME_WORKSPACE_ID_KEY = 'work_time_workspace_id'
+
+
+def _resolve_work_time_workspace_id(config: Config, telegram_id: int) -> str | None:
+    if not config.db_path.exists():
+        return None
+    try:
+        return WorkspaceContextService(config.db_path).resolve_for_user(telegram_id).workspace_id
+    except WorkspaceContextError as workspace_error:
+        try:
+            supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+        except RuntimeError:
+            raise workspace_error
+        if supplier is None or supplier.workspace_id is None:
+            return None
+        raise workspace_error
+
+
+async def _require_work_time_service(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> WorkTimeService:
+    telegram_id = _telegram_id(message)
+    if telegram_id is None:
+        return WorkTimeService(config.db_path)
+    data = await state.get_data()
+    if _WORK_TIME_WORKSPACE_ID_KEY not in data:
+        try:
+            workspace_id = _resolve_work_time_workspace_id(config, telegram_id)
+        except WorkspaceContextError:
+            await state.clear()
+            await message.answer(
+                'Aktívny business profil pre evidenciu času nie je dostupný alebo nie je vybraný.'
+            )
+            raise RuntimeError('work_time_workspace_context_required')
+        await state.update_data(**{_WORK_TIME_WORKSPACE_ID_KEY: workspace_id or ''})
+    else:
+        workspace_id = str(data.get(_WORK_TIME_WORKSPACE_ID_KEY) or '').strip() or None
+        if workspace_id is not None:
+            try:
+                WorkspaceContextService(config.db_path).require_membership(
+                    telegram_id,
+                    workspace_id,
+                )
+            except WorkspaceContextError as exc:
+                await state.clear()
+                await message.answer(
+                    'Business profil tejto evidencie času už nie je dostupný.'
+                )
+                raise RuntimeError('work_time_workspace_membership_required') from exc
+    return WorkTimeService(config.db_path, workspace_id=workspace_id)
+
+
+async def _work_time_report_storage_key(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> str:
+    telegram_id = _telegram_id(message)
+    data = await state.get_data()
+    workspace_id = str(data.get(_WORK_TIME_WORKSPACE_ID_KEY) or '').strip()
+    if telegram_id is not None and workspace_id:
+        return WorkspaceContextService(config.db_path).require_membership(
+            telegram_id,
+            workspace_id,
+        ).storage_key
+    return str(telegram_id or 'legacy')
 
 
 class WorkTimeStates(StatesGroup):
@@ -83,7 +154,7 @@ async def start_open_work_day(message: Message, state: FSMContext, config: Confi
     if telegram_id is None:
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         return
-    result = WorkTimeService(config.db_path).open_day(
+    result = (await _require_work_time_service(message, state, config)).open_day(
         telegram_id=telegram_id,
         source_message_id=getattr(message, 'message_id', None),
     )
@@ -115,7 +186,7 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
     if telegram_id is None:
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         return
-    service = WorkTimeService(config.db_path)
+    service = (await _require_work_time_service(message, state, config))
     open_day = service.get_open_day(telegram_id=telegram_id)
     if open_day is None:
         manual_candidate = await _resolve_manual_entry_candidate(text, config)
@@ -148,7 +219,7 @@ async def start_close_work_day(message: Message, state: FSMContext, config: Conf
     await answer_with_decision_keyboard(
         message,
         'Skontrolujte uzavretie pracovneho dna:\n'
-        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, telegram_id))}\n\n'
+        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=await _effective_lunch_break_minutes_for_user(message, state, config, telegram_id))}\n\n'
         'Schvalit, upravit alebo zrusit?',
         approve_edit_cancel_keyboard(),
     )
@@ -184,7 +255,7 @@ async def start_generate_work_time_report(
             await message.answer('Mesiac vykazu sa nepodarilo overit. Napiste napriklad: vykaz za maj 2026 alebo vykaz za tento mesiac.')
             return
         year, month = selected_period
-    service = WorkTimeService(config.db_path)
+    service = (await _require_work_time_service(message, state, config))
     settings = service.get_lunch_break_settings(telegram_id=telegram_id)
     if not settings.configured:
         await state.update_data(
@@ -275,7 +346,7 @@ async def work_time_delete_month_confirm(
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         return
 
-    summary = WorkTimeService(config.db_path).delete_month(
+    summary = (await _require_work_time_service(message, state, config)).delete_month(
         telegram_id=telegram_id,
         year=year,
         month=month,
@@ -311,7 +382,7 @@ async def work_time_lunch_break_initial_choice(
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         return
     if decision == 'no':
-        WorkTimeService(config.db_path).save_lunch_break_settings(telegram_id=telegram_id, enabled=False, minutes=0)
+        (await _require_work_time_service(message, state, config)).save_lunch_break_settings(telegram_id=telegram_id, enabled=False, minutes=0)
         await _continue_pending_work_time_report(message, state, config, telegram_id=telegram_id)
         return
     if decision == 'yes':
@@ -336,7 +407,7 @@ async def work_time_lunch_break_value(message: Message, state: FSMContext, confi
     if minutes is None:
         await message.answer('Trvanie sa nepodarilo rozpoznat. Zadajte 0 az 180 minut, napriklad: 30, 45 minut alebo 1 hodina.')
         return
-    WorkTimeService(config.db_path).save_lunch_break_settings(telegram_id=telegram_id, enabled=minutes > 0, minutes=minutes)
+    (await _require_work_time_service(message, state, config)).save_lunch_break_settings(telegram_id=telegram_id, enabled=minutes > 0, minutes=minutes)
     await _continue_pending_work_time_report(message, state, config, telegram_id=telegram_id)
 
 
@@ -389,7 +460,7 @@ async def work_time_lunch_break_update_confirm(
         await state.clear()
         await message.answer('Nahlad zmeny uz nie je dostupny. Skuste poziadavku zadat znova.')
         return
-    settings = WorkTimeService(config.db_path).save_lunch_break_settings(
+    settings = (await _require_work_time_service(message, state, config)).save_lunch_break_settings(
         telegram_id=telegram_id,
         enabled=enabled,
         minutes=minutes,
@@ -418,7 +489,7 @@ async def work_time_close_input(message: Message, state: FSMContext, config: Con
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         await state.clear()
         return
-    open_day = WorkTimeService(config.db_path).get_open_day(telegram_id=telegram_id)
+    open_day = (await _require_work_time_service(message, state, config)).get_open_day(telegram_id=telegram_id)
     if open_day is None:
         await state.clear()
         await message.answer('Otvoreny pracovny den uz nie je dostupny.')
@@ -430,7 +501,7 @@ async def work_time_close_input(message: Message, state: FSMContext, config: Con
         await message.answer('Napiste cas odchodu alebo trvanie, napriklad: 17:00, o 17:00 alebo 10 hodin.')
         return
     if candidate.close_mode == 'close_now':
-        result = WorkTimeService(config.db_path).close_open_day(
+        result = (await _require_work_time_service(message, state, config)).close_open_day(
             telegram_id=telegram_id,
             source_message_id=getattr(message, 'message_id', None),
         )
@@ -442,7 +513,7 @@ async def work_time_close_input(message: Message, state: FSMContext, config: Con
     await answer_with_decision_keyboard(
         message,
         'Skontrolujte uzavretie pracovneho dna:\n'
-        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, telegram_id))}\n\n'
+        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=await _effective_lunch_break_minutes_for_user(message, state, config, telegram_id))}\n\n'
         'Schvalit, upravit alebo zrusit?',
         approve_edit_cancel_keyboard(),
     )
@@ -478,7 +549,7 @@ async def work_time_manual_range_confirm(
         await state.clear()
         await message.answer('Nahlad uz nie je dostupny. Skuste rozsah zadat znova.')
         return
-    service = WorkTimeService(config.db_path)
+    service = (await _require_work_time_service(message, state, config))
     if candidate.start_time is None and candidate.duration_minutes is not None:
         result = service.add_duration_entry(
             telegram_id=telegram_id,
@@ -529,7 +600,7 @@ async def work_time_close_preview_confirm(
     duration = candidate.duration_minutes
     if candidate.end_time is not None:
         end_dt = datetime.combine(candidate.work_date, candidate.end_time)
-    result = WorkTimeService(config.db_path).close_open_day(
+    result = (await _require_work_time_service(message, state, config)).close_open_day(
         telegram_id=telegram_id,
         end_datetime=end_dt,
         duration_minutes=duration,
@@ -562,7 +633,7 @@ async def work_time_open_day_conflict_choice(
             await state.clear()
             await message.answer('Nepodarilo sa identifikovat pouzivatela.')
             return
-        result = WorkTimeService(config.db_path).skip_open_day(
+        result = (await _require_work_time_service(message, state, config)).skip_open_day(
             telegram_id=telegram_id,
             source_message_id=getattr(message, 'message_id', None),
         )
@@ -672,11 +743,13 @@ async def _send_work_time_report(
     year: int,
     month: int,
 ) -> None:
-    result = WorkTimeService(config.db_path).generate_monthly_report(
+    service = await _require_work_time_service(message, state, config)
+    storage_key = await _work_time_report_storage_key(message, state, config)
+    result = service.generate_monthly_report(
         telegram_id=telegram_id,
         year=year,
         month=month,
-        output_dir=config.storage_dir / 'work_time_reports' / str(telegram_id),
+        output_dir=config.storage_dir / 'work_time_reports' / storage_key,
     )
     await state.clear()
     if not result.ok or result.report_path is None:
@@ -700,7 +773,7 @@ async def _preview_delete_month(
         await state.clear()
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         return
-    summary = WorkTimeService(config.db_path).summarize_month(telegram_id=telegram_id, year=year, month=month)
+    summary = (await _require_work_time_service(message, state, config)).summarize_month(telegram_id=telegram_id, year=year, month=month)
     if summary.row_count == 0:
         await state.clear()
         await message.answer(f'Za {summary.month:02d}/{summary.year} nie su ulozene ziadne zaznamy dochadzky. Nie je co vymazat.')
@@ -746,10 +819,15 @@ async def _resolve_close_candidate(text: str, config: Config, open_day) -> WorkT
     return parse_close_candidate(text, open_day=open_day)
 
 
-def _effective_lunch_break_minutes_for_user(config: Config, telegram_id: int | None) -> int:
+async def _effective_lunch_break_minutes_for_user(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    telegram_id: int | None,
+) -> int:
     if telegram_id is None:
         return 0
-    settings = WorkTimeService(config.db_path).get_lunch_break_settings(telegram_id=telegram_id)
+    settings = (await _require_work_time_service(message, state, config)).get_lunch_break_settings(telegram_id=telegram_id)
     if not settings.configured or not settings.enabled:
         return 0
     return settings.minutes
@@ -766,6 +844,7 @@ async def _preview_manual_candidate(message: Message, state: FSMContext, config:
     await state.set_state(WorkTimeStates.waiting_manual_range_confirm)
     await _send_manual_candidate_preview(
         message,
+        state,
         config,
         candidate,
         prefix='Skontrolujte doplnenie pracovneho casu:',
@@ -774,6 +853,7 @@ async def _preview_manual_candidate(message: Message, state: FSMContext, config:
 
 async def _send_manual_candidate_preview(
     message: Message,
+    state: FSMContext,
     config: Config,
     candidate: WorkTimeCandidate,
     *,
@@ -782,7 +862,7 @@ async def _send_manual_candidate_preview(
     await answer_with_decision_keyboard(
         message,
         f'{prefix}\n'
-        f'{format_candidate_preview(candidate, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, _telegram_id(message)))}\n\n'
+        f'{format_candidate_preview(candidate, lunch_break_minutes=await _effective_lunch_break_minutes_for_user(message, state, config, _telegram_id(message)))}\n\n'
         'Schvalit, upravit alebo zrusit?',
         approve_edit_cancel_keyboard(),
     )
@@ -796,6 +876,7 @@ async def _repeat_pending_manual_preview(message: Message, state: FSMContext, co
         return
     await _send_manual_candidate_preview(
         message,
+        state,
         config,
         candidate,
         prefix='Mate rozpracovany nahlad doplnenia pracovneho casu. Najprv ho schvalte, upravte alebo zruste.',
@@ -812,7 +893,7 @@ async def _repeat_pending_close_preview(message: Message, state: FSMContext, con
     except (TypeError, ValueError):
         open_day_id = None
     if telegram_id is not None and open_day_id is not None:
-        open_day = WorkTimeService(config.db_path).get_day_by_id(open_day_id)
+        open_day = (await _require_work_time_service(message, state, config)).get_day_by_id(open_day_id)
         if open_day is not None and open_day.telegram_id != telegram_id:
             open_day = None
     if candidate is None or open_day is None:
@@ -822,7 +903,7 @@ async def _repeat_pending_close_preview(message: Message, state: FSMContext, con
     await answer_with_decision_keyboard(
         message,
         'Mate rozpracovany nahlad doplnenia pracovneho casu. Najprv ho schvalte, upravte alebo zruste.\n'
-        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=_effective_lunch_break_minutes_for_user(config, telegram_id))}\n\n'
+        f'{format_candidate_preview(candidate, open_day=open_day, lunch_break_minutes=await _effective_lunch_break_minutes_for_user(message, state, config, telegram_id))}\n\n'
         'Schvalit, upravit alebo zrusit?',
         approve_edit_cancel_keyboard(),
     )

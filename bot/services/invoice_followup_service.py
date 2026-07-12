@@ -93,6 +93,7 @@ class InvoiceFollowupService:
                     'LEFT JOIN invoice_followup_state s ON s.invoice_id = i.id '
                     'LEFT JOIN contact c ON c.id = i.contact_id AND c.supplier_telegram_id = i.supplier_telegram_id '
                     'WHERE i.supplier_telegram_id = ? '
+                    + _legacy_invoice_scope_sql(connection, alias='i') +
                     'AND i.due_date < ? '
                     'AND COALESCE(s.payment_status, ?) != ? '
                     'AND COALESCE(s.reminder_status, ?) != ? '
@@ -129,6 +130,7 @@ class InvoiceFollowupService:
                     'FROM invoice i '
                     'LEFT JOIN invoice_followup_state s ON s.invoice_id = i.id '
                     'WHERE i.due_date < ? '
+                    + _legacy_invoice_scope_sql(connection, alias='i') +
                     'AND COALESCE(s.payment_status, ?) != ? '
                     'AND COALESCE(s.reminder_status, ?) != ? '
                     'AND (s.remind_after IS NULL OR s.remind_after <= ?) '
@@ -150,7 +152,8 @@ class InvoiceFollowupService:
             ensure_invoice_followup_state_schema(connection)
             connection.row_factory = sqlite3.Row
             row = connection.execute(
-                'SELECT * FROM invoice_followup_state WHERE invoice_id = ?',
+                'SELECT * FROM invoice_followup_state WHERE invoice_id = ? '
+                + _legacy_followup_scope_sql(connection),
                 (invoice_id,),
             ).fetchone()
         return _state_from_row(row) if row is not None else None
@@ -161,6 +164,13 @@ class InvoiceFollowupService:
         invoice_id: int,
         supplier_telegram_id: int,
     ) -> InvoiceFollowupState:
+        with managed_connection(self._db_path) as connection:
+            ensure_invoice_followup_state_schema(connection)
+            _assert_invoice_owner(
+                connection,
+                invoice_id=invoice_id,
+                supplier_telegram_id=supplier_telegram_id,
+            )
         existing = self.get_state(invoice_id=invoice_id)
         if existing is not None:
             return existing
@@ -411,12 +421,28 @@ def _assert_invoice_owner(
     supplier_telegram_id: int,
 ) -> None:
     row = connection.execute(
-        'SELECT id FROM invoice WHERE id = ? AND supplier_telegram_id = ?',
+        'SELECT id FROM invoice WHERE id = ? AND supplier_telegram_id = ? '
+        + _legacy_invoice_scope_sql(connection),
         (invoice_id, supplier_telegram_id),
     ).fetchone()
     if row is None:
         raise ValueError('invoice_not_found_for_supplier')
 
+
+def _legacy_invoice_scope_sql(
+    connection: sqlite3.Connection,
+    *,
+    alias: str = 'invoice',
+) -> str:
+    columns = {row[1] for row in connection.execute('PRAGMA table_info(invoice)')}
+    return f'AND {alias}.workspace_id IS NULL ' if 'workspace_id' in columns else ''
+
+
+def _legacy_followup_scope_sql(connection: sqlite3.Connection) -> str:
+    columns = {
+        row[1] for row in connection.execute('PRAGMA table_info(invoice_followup_state)')
+    }
+    return 'AND workspace_id IS NULL' if 'workspace_id' in columns else ''
 
 def _state_from_row(row: sqlite3.Row) -> InvoiceFollowupState:
     return InvoiceFollowupState(

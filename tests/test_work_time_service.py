@@ -856,3 +856,27 @@ def test_invalid_officeflow_timezone_falls_back_with_warning(monkeypatch, caplog
 
     assert work_time_local_date() == date(2026, 7, 4)
     assert 'Invalid OFFICEFLOW_TIMEZONE' in caplog.text
+
+def test_work_time_days_and_settings_are_isolated_by_workspace(tmp_path: Path) -> None:
+    db_path = tmp_path / 'bot.db'
+    init_db(db_path)
+    telegram_id = 80801
+    first = WorkTimeService(db_path, workspace_id='ws_first')
+    second = WorkTimeService(db_path, workspace_id='ws_second')
+    legacy = WorkTimeService(db_path)
+    now = datetime(2026, 7, 12, 8, 0, tzinfo=UTC)
+
+    first_day = first.open_day(telegram_id=telegram_id, now=now)
+    second_day = second.open_day(telegram_id=telegram_id, now=now)
+    first.save_lunch_break_settings(telegram_id=telegram_id, enabled=True, minutes=30)
+    second.save_lunch_break_settings(telegram_id=telegram_id, enabled=True, minutes=45)
+
+    assert first_day.ok and first_day.day is not None
+    assert second_day.ok and second_day.day is not None
+    assert first_day.day.id != second_day.day.id
+    assert first.get_open_day(telegram_id=telegram_id).id == first_day.day.id
+    assert second.get_open_day(telegram_id=telegram_id).id == second_day.day.id
+    assert legacy.get_open_day(telegram_id=telegram_id) is None
+    assert first.get_lunch_break_settings(telegram_id=telegram_id).minutes == 30
+    assert second.get_lunch_break_settings(telegram_id=telegram_id).minutes == 45
+    assert not legacy.get_lunch_break_settings(telegram_id=telegram_id).configured

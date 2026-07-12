@@ -1,4 +1,4 @@
-﻿# Canonical DecisionResolver Contract
+# Canonical DecisionResolver Contract
 
 **Document role:** project-level architecture contract for confirmation-like user decisions.
 
@@ -294,6 +294,8 @@ Migrated runtime paths:
 - work-time manual range preview uses the shared `approve_edit_cancel` family;
 - work-time close preview uses the shared `approve_edit_cancel` family;
 - work-time monthly delete confirmation uses the shared `yes_no` family with context `work_time_delete_month_confirm`;
+- voice business-profile switching uses shared yes_no context usiness_profile_switch_confirm;
+- additional-workspace onboarding activation uses shared yes_no context dditional_workspace_activation_confirm;
 - open-day conflict choices use `work_time_open_conflict_choice`;
 - missing-day choices use `work_time_missing_days_choice`.
 

@@ -1,3 +1,105 @@
+## 2026-07-12 - Multi-Workspace Target Runtime Completion And Public Route
+
+### Status
+- Implemented the target-schema multi-workspace runtime across contact/service/invoice/accounting/work-time/profile/deletion domains.
+- `/profily` and canonical `switch_business_profile` are now locally reachable and classified `partial / target-schema implemented`; production deployment remains blocked by the backup/migration/post-apply/server-smoke gate.
+- AI maturity: deterministic Python orchestration with bounded workspace-reference selection and shared DecisionResolver confirmations; no autonomous side effects or cross-workspace model access.
+
+### Implemented
+- Bound contact, invoice, accounting-document, supplier-profile, service-alias, and work-time FSMs to their starting workspace with membership revalidation before writes.
+- Added workspace-isolated invoice persistence/numbering/edit/delete/PDF/follow-up/analytics and accounting storage/categories/duplicates/archive/analytics.
+- Added workspace ownership to target work-time schema/service/settings/events and storage-key-based report paths; legacy schemas remain readable and workspace mode fails closed until migration.
+- Expanded account-level exact-confirmation deletion to remove every owned local workspace and related aliases/work-time/archive/customization/foundation rows and storage keys, while leaving remote Drive files/shared provider credentials untouched.
+- Added `/profily`, exact membership-scoped selection, add-profile onboarding, idle text routing, voice confirmation, active-FSM switch blocking, active profile display in `/start` and `/menu`, Product Truth, InfoHelp, and registry/TZ updates.
+
+### Verification
+- Focused contact/service alias: 44 passed and 16 passed.
+- Focused invoice/workspace/handler slices: 317 passed and 250 passed.
+- Accounting intake/storage/categories: 69 passed; accounting read/analytics routing: 250 passed.
+- Work-time routing/service/voice: 139 passed; workspace work-time proof slice: 75 passed.
+- Full-database deletion/tenant safety: 16 passed.
+- Profile onboarding/context/selector/router slices: 31 passed, 14 passed, 228 passed, and 4 passed.
+- Product Truth and InfoHelp: 126 passed.
+- Full-suite result is recorded after the final regression gate below.
+- No existing DB migration, storage rewrite, server write, deploy, commit, or push was performed.
+## 2026-07-12 - InfoHelp Customization Request Preview Copy
+
+### Status
+- Reworked the partial Level 3 customization request preview so user-facing confirmation text is compact Slovak copy addressed to the user, while admin metadata remains in the saved/admin detail path.
+- InfoHelp LLM triage prompt now requires Slovak business wording for `admin_review_draft` free-text fields.
+- No request storage schema, admin review commands, Product Truth status, server state, or deployment changed.
+- Fixed the multi-workspace migration dry-run test fixture so it explicitly simulates legacy `work_time_days` schema when expecting a workspace backfill plan.
+
+### Verification
+- `python -m py_compile bot\handlers\invoice.py bot\services\info_help_resolver.py`
+- `python -m pytest -q` - 2118 passed, 7 subtests passed.
+
+## 2026-07-12 - Multi-Workspace Invoice Follow-Up And Data Boundaries
+
+### Status
+- Continued the partial internal multi-workspace implementation; public /profily and switch_business_profile remain disabled.
+- AI maturity is unchanged: this is deterministic Python persistence/routing safety, not a new AI capability.
+
+### Implemented
+- Added nullable invoice_followup_state.workspace_id to fresh schemas while accepting legacy schemas without automatic backfill.
+- Added WorkspaceInvoiceFollowupService with workspace-isolated payment, snooze, mute, reminder-send, Drive-status, due-list, and background workspace scan operations.
+- Restricted legacy follow-up and invoice analytics readers to workspace_id NULL invoice rows on transitional schemas.
+- Added background WorkspaceContext resolution from persisted workspace/supplier/membership/authorization state without reading active_workspace_selection.
+- Updated the invoice follow-up scheduler to process legacy and workspace rows separately and label workspace notifications with the business profile name.
+- Updated follow-up callbacks to resolve the invoice workspace and require actor membership, so switching the active profile after notification cannot retarget the callback.
+- Added workspace-aware Drive archive request handling with real workspace_id job ownership instead of telegram-derived workspace keys.
+- Added workspace-scoped invoice analytics datasets and immutable storage_key-based PDF target paths; existing persisted invoice.pdf_path values remain unchanged.
+- Invoice creation/edit Telegram FSM, contact handlers, accounting documents, work-time, deletion, and remaining archive/storage domains are still not workspace-safe.
+
+### Verification
+- workspace follow-up, legacy follow-up, analytics, tenant PDF boundary slice -> 25 passed.
+- workspace analytics/PDF plus legacy tenant regression slice -> 20 passed.
+- workspace/legacy follow-up handler and analytics regression slice -> 41 passed.
+- legacy-schema scheduler compatibility slice -> 21 passed.
+- workspace Drive enqueue and archive compatibility slice -> 62 passed.
+- python -m pytest -q -> 2108 passed, 7 subtests passed.
+- No real DB migration, storage rewrite, server write, deploy, commit, or push was performed.
+
+## 2026-07-11 - Multi-Workspace Foundation Stage 1
+
+### Status
+- Corrected the Phase 0 verdict to design_matches_runtime: the Telegram-keyed runtime is the documented migration source shape, not a material contradiction with the approved target design.
+- Multi-workspace business profiles remain planned / partial internal foundation; no public /profily route or switch_business_profile action is exposed.
+
+### Implemented
+- Added additive workspace, workspace_membership, and active_workspace_selection foundation tables to local DB bootstrap without backfilling or rewriting persisted business data.
+- Added shared WorkspaceContextService with authorization-first resolution, active-membership validation, single-membership auto-selection, persisted multi-membership selection, and cross-workspace fail-closed behavior.
+- Added read-only multi-workspace audit/dry-run tooling with redacted tenant references, schema/index/row-group inventory, invoice PDF path classification, accounting storage counts, and an explicit unavailable apply gate.
+- Added transitional workspace-aware supplier persistence: new schemas use nullable UNIQUE(workspace_id) with non-unique telegram_id actor compatibility; legacy schemas remain readable and are not auto-migrated.
+- Added atomic WorkspaceProfileService creation for first/additional modes: workspace, supplier, owner membership, and optional active selection commit together or fully roll back.
+- Legacy get_by_telegram_id remains compatible for one profile and fails closed with ambiguous_supplier_profile_requires_workspace when multiple profiles exist.
+- Added workspace-isolated contact CRUD with UNIQUE(workspace_id, name), cross-workspace ID/name isolation, actor/workspace mismatch rejection, and a legacy Telegram-scoped facade that fails closed when multiple supplier profiles exist.
+- Added workspace-scoped confirmed contact aliases and contact resolution: the same alias may resolve to different contacts in separate workspaces, while foreign contact ids fail closed.
+- Preserved legacy confirmed service-alias learning on the transitional alias schema through bounded manual upsert; no alias may silently retarget another service.
+- Telegram contact handlers and FSM workspace binding remain Telegram-scoped and are not yet counted as workspace-safe.
+- Added workspace-scoped invoice persistence and numbering with UNIQUE(workspace_id, invoice_number), independent first-number settings/sequences, workspace contact ownership validation, and cross-workspace invoice lookup rejection.
+- Preserved legacy single-profile invoice creation/numbering, including explicit duplicate-number rejection when target rows still have workspace_id NULL.
+- Invoice follow-up/payment/reminders, analytics datasets, PDF path builders, and Telegram handlers remain outside this completed service slice.
+- Kept existing Telegram-scoped business services unchanged until migration tooling and every mandatory domain are workspace-safe.
+
+### Verification
+- python -m pytest -q tests/test_workspace_context.py -> 5 passed.
+- python -m pytest -q tests/test_multi_workspace_migration.py tests/test_workspace_context.py -> 8 passed.
+- python -m pytest -q tests/test_access_request_flow.py tests/test_archive_job_service.py tests/test_work_time_service.py -> 81 passed.
+- python -m pytest -q tests/test_access_request_flow.py tests/test_archive_job_service.py tests/test_work_time_service.py tests/test_product_truth.py -> 106 passed.
+- python -m pytest -q tests/test_workspace_profile_service.py tests/test_workspace_context.py tests/test_supplier_smtp_optional.py tests/test_onboarding_decisions.py -> 21 passed.
+- broader tenant/invoice/delete/migration regression slice -> 83 passed.
+- python -m pytest -q -> 2082 passed, 7 subtests passed.
+- workspace contact + contact normalization/intake/onboarding/tenant slice -> 53 passed.
+- python -m pytest -q after contact schema changes -> 2086 passed, 7 subtests passed.
+- workspace contact aliases + legacy contact/service alias regression slice -> 102 passed.
+- python -m pytest -q after confirmed alias schema changes -> 2088 passed, 7 subtests passed.
+- workspace invoice/numbering + tenant focused gate -> 17 passed.
+- broad invoice analytics/follow-up/edit/prerouter regression slice -> 396 passed.
+- python -m pytest -q after invoice/numbering schema changes -> 2096 passed, 7 subtests passed.
+- Product Truth and InfoHelp were not promoted because no public multi-profile capability is reachable; current user-facing status remains planned/unsupported until the readiness gate passes.
+- Local real-data audit was not run because storage/fakturabot.db is absent in this workspace.
+- No real DB migration, server write, deploy, commit, or push was performed.
 ## 2026-07-11 - Architecture And LLM Docs Reorganization
 
 Summary:

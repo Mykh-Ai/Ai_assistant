@@ -37,11 +37,21 @@ class UserDataDeletionService:
 
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
-            supplier_row = connection.execute(
-                'SELECT id FROM supplier WHERE telegram_id = ?',
-                (telegram_id,),
-            ).fetchone()
-            supplier_id = int(supplier_row['id']) if supplier_row is not None else None
+            supplier_columns = {
+                str(row[1])
+                for row in connection.execute('PRAGMA table_info(supplier)').fetchall()
+            }
+            supplier_select = 'SELECT id, workspace_id FROM supplier WHERE telegram_id = ?'
+            if 'workspace_id' not in supplier_columns:
+                supplier_select = 'SELECT id, NULL AS workspace_id FROM supplier WHERE telegram_id = ?'
+            supplier_rows = connection.execute(supplier_select, (telegram_id,)).fetchall()
+            supplier_ids = [int(row['id']) for row in supplier_rows]
+            workspace_ids = [
+                str(row['workspace_id'])
+                for row in supplier_rows
+                if row['workspace_id'] is not None
+            ]
+            storage_keys = _workspace_storage_keys(connection, workspace_ids)
             invoice_ids = [
                 int(row['id'])
                 for row in connection.execute(
@@ -71,13 +81,10 @@ class UserDataDeletionService:
                 'DELETE FROM contact WHERE supplier_telegram_id = ?',
                 (telegram_id,),
             ).rowcount
-            if supplier_id is None:
-                service_aliases_deleted = 0
-            else:
-                service_aliases_deleted = connection.execute(
-                    'DELETE FROM supplier_service_alias WHERE supplier_id = ?',
-                    (supplier_id,),
-                ).rowcount
+            service_aliases_deleted = _delete_supplier_service_aliases(
+                connection,
+                supplier_ids,
+            )
             invoice_number_settings_deleted = connection.execute(
                 'DELETE FROM invoice_number_settings WHERE supplier_telegram_id = ?',
                 (telegram_id,),
@@ -86,9 +93,11 @@ class UserDataDeletionService:
                 'DELETE FROM confirmed_semantic_alias WHERE supplier_telegram_id = ?',
                 (telegram_id,),
             ).rowcount
+            _delete_optional_user_rows(connection, telegram_id=telegram_id)
             supplier_deleted = (
                 connection.execute('DELETE FROM supplier WHERE telegram_id = ?', (telegram_id,)).rowcount > 0
             )
+            _delete_workspace_foundation_rows(connection, telegram_id=telegram_id, workspace_ids=workspace_ids)
 
             mark_deleted_database_in_connection(connection, telegram_id=telegram_id)
             connection.commit()
@@ -96,6 +105,7 @@ class UserDataDeletionService:
         deleted, skipped, errors = self._delete_scoped_filesystem_paths(
             telegram_id=telegram_id,
             contract_paths=contract_paths,
+            storage_keys=storage_keys,
         )
         return UserDataDeletionResult(
             telegram_id=telegram_id,
@@ -117,6 +127,7 @@ class UserDataDeletionService:
         *,
         telegram_id: int,
         contract_paths: list[str],
+        storage_keys: list[str],
     ) -> tuple[list[str], list[str], list[str]]:
         deleted: list[str] = []
         skipped: list[str] = []
@@ -126,7 +137,18 @@ class UserDataDeletionService:
             self._storage_dir / 'workspaces' / workspace_key_for_supplier(telegram_id),
             self._storage_dir / 'uploads' / 'accounting_intake' / str(telegram_id),
             self._storage_dir / 'uploads' / 'attachment_intake' / str(telegram_id),
+            self._storage_dir / 'work_time_reports' / str(telegram_id),
         ]
+        for storage_key in storage_keys:
+            scoped_dirs.extend(
+                [
+                    self._storage_dir / 'invoices' / storage_key,
+                    self._storage_dir / 'workspaces' / storage_key,
+                    self._storage_dir / 'uploads' / 'accounting_intake' / storage_key,
+                    self._storage_dir / 'uploads' / 'attachment_intake' / storage_key,
+                    self._storage_dir / 'work_time_reports' / storage_key,
+                ]
+            )
         for directory in scoped_dirs:
             self._delete_directory(directory, deleted=deleted, skipped=skipped, errors=errors)
 
@@ -191,6 +213,88 @@ class UserDataDeletionService:
         except OSError as exc:
             errors.append(f'{raw_path}: {exc}')
 
+
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    return connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table,),
+    ).fetchone() is not None
+
+
+def _workspace_storage_keys(
+    connection: sqlite3.Connection,
+    workspace_ids: list[str],
+) -> list[str]:
+    if not workspace_ids or not _table_exists(connection, 'workspace'):
+        return []
+    placeholders = ','.join('?' for _ in workspace_ids)
+    return [
+        str(row[0])
+        for row in connection.execute(
+            f'SELECT storage_key FROM workspace WHERE workspace_id IN ({placeholders})',
+            workspace_ids,
+        ).fetchall()
+    ]
+
+
+def _delete_supplier_service_aliases(
+    connection: sqlite3.Connection,
+    supplier_ids: list[int],
+) -> int:
+    if not supplier_ids:
+        return 0
+    placeholders = ','.join('?' for _ in supplier_ids)
+    return connection.execute(
+        f'DELETE FROM supplier_service_alias WHERE supplier_id IN ({placeholders})',
+        supplier_ids,
+    ).rowcount
+
+
+def _delete_optional_user_rows(
+    connection: sqlite3.Connection,
+    *,
+    telegram_id: int,
+) -> None:
+    for table in (
+        'work_time_events',
+        'work_time_days',
+        'work_time_settings',
+        'archive_jobs',
+        'accounting_document_archive_state',
+        'customization_requests',
+    ):
+        if _table_exists(connection, table):
+            connection.execute(f'DELETE FROM {table} WHERE telegram_id = ?', (telegram_id,))
+
+
+def _delete_workspace_foundation_rows(
+    connection: sqlite3.Connection,
+    *,
+    telegram_id: int,
+    workspace_ids: list[str],
+) -> None:
+    if _table_exists(connection, 'active_workspace_selection'):
+        connection.execute(
+            'DELETE FROM active_workspace_selection WHERE telegram_id = ?',
+            (telegram_id,),
+        )
+    if _table_exists(connection, 'workspace_membership'):
+        connection.execute(
+            'DELETE FROM workspace_membership WHERE telegram_id = ?',
+            (telegram_id,),
+        )
+        if workspace_ids:
+            placeholders = ','.join('?' for _ in workspace_ids)
+            connection.execute(
+                f'DELETE FROM workspace_membership WHERE workspace_id IN ({placeholders})',
+                workspace_ids,
+            )
+    if workspace_ids and _table_exists(connection, 'workspace'):
+        placeholders = ','.join('?' for _ in workspace_ids)
+        connection.execute(
+            f'DELETE FROM workspace WHERE workspace_id IN ({placeholders})',
+            workspace_ids,
+        )
 
 def _delete_invoice_items(connection: sqlite3.Connection, invoice_ids: list[int]) -> int:
     if not invoice_ids:

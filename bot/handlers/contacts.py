@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import re
 
@@ -16,6 +17,12 @@ from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.decision_resolver import resolve_yes_no
 from bot.services.semantic_action_resolver import resolve_semantic_action
 from bot.services.supplier_service import SupplierService
+from bot.services.workspace_contact_service import WorkspaceContactService
+from bot.services.workspace_context import (
+    WorkspaceContext,
+    WorkspaceContextError,
+    WorkspaceContextService,
+)
 from bot.services.validation import validate_contact_address, validate_dic, validate_email, validate_ic_dph, validate_ico
 
 router = Router(name='contacts')
@@ -30,6 +37,105 @@ CONTACT_RECOVERY_HINT = (
     'Alebo sa vráťte do hlavného menu: /menu'
 )
 _CONTACT_EXPIRES_AT_KEY = 'contact_intake_expires_at'
+
+_CONTACT_WORKSPACE_ID_KEY = 'contact_workspace_id'
+
+
+def _resolve_contact_scope(config: Config, telegram_id: int) -> WorkspaceContext | None:
+    try:
+        return WorkspaceContextService(config.db_path).resolve_for_user(telegram_id)
+    except WorkspaceContextError as workspace_error:
+        try:
+            legacy_supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+        except RuntimeError:
+            raise workspace_error
+        if legacy_supplier is not None and legacy_supplier.workspace_id is None:
+            return None
+        raise workspace_error
+
+
+async def _bind_contact_scope(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> tuple[bool, WorkspaceContext | None]:
+    if message.from_user is None:
+        await message.answer('Nepodarilo sa identifikovať používateľa.')
+        return False, None
+    try:
+        context = _resolve_contact_scope(config, message.from_user.id)
+    except WorkspaceContextError:
+        await message.answer('Aktívny business profil nie je dostupný alebo nie je vybraný.')
+        return False, None
+    if context is None:
+        supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    else:
+        supplier = SupplierService(config.db_path).get_by_workspace_id(context.workspace_id)
+    if supplier is None:
+        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
+        return False, None
+    await state.update_data(
+        **{_CONTACT_WORKSPACE_ID_KEY: context.workspace_id if context is not None else ''}
+    )
+    return True, context
+
+
+async def _contact_scope_from_state(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> WorkspaceContext | None:
+    if message.from_user is None:
+        raise WorkspaceContextError('contact_actor_required')
+    data = await state.get_data()
+    workspace_id = str(data.get(_CONTACT_WORKSPACE_ID_KEY) or '').strip()
+    if not workspace_id:
+        return None
+    return WorkspaceContextService(config.db_path).require_membership(
+        message.from_user.id,
+        workspace_id,
+    )
+
+
+async def _get_contact_by_name_for_scope(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    name: str,
+) -> ContactProfile | None:
+    context = await _contact_scope_from_state(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if context is None:
+        if message.from_user is None:
+            return None
+        return ContactService(config.db_path).get_by_name(message.from_user.id, name)
+    return WorkspaceContactService(config.db_path).get_by_name(context, name)
+
+async def _save_contact_for_scope(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    profile: ContactProfile,
+) -> None:
+    context = await _contact_scope_from_state(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if context is None:
+        ContactService(config.db_path).create_or_replace(profile)
+        return
+    WorkspaceContactService(config.db_path).create_or_replace(
+        context,
+        replace(profile, workspace_id=context.workspace_id),
+    )
 
 
 def _with_contact_recovery_hint(message: str) -> str:
@@ -174,12 +280,14 @@ async def start_add_contact_intake(
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
-    if supplier is None:
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
-        return
-
     await state.clear()
+    scope_ready, _context = await _bind_contact_scope(
+        message=message,
+        state=state,
+        config=config,
+    )
+    if not scope_ready:
+        return
     await state.update_data(**_contact_session_metadata())
     await state.set_state(ContactStates.name_hint)
     await message.answer(
@@ -197,6 +305,15 @@ async def _start_add_contact_from_source(
     contract_path: str | None = None,
     company_hint: str | None = None,
 ) -> None:
+    scope_data = await state.get_data()
+    if _CONTACT_WORKSPACE_ID_KEY not in scope_data:
+        scope_ready, _context = await _bind_contact_scope(
+            message=message,
+            state=state,
+            config=config,
+        )
+        if not scope_ready:
+            return
     extraction_source = '\n'.join(part for part in [source_text, document_text or ''] if part.strip())
     resolved_company_hint = company_hint or _extract_company_hint(source_text)
     parsed = await extract_contact_draft(
@@ -340,9 +457,12 @@ async def process_contact_intake_confirm(
 
     data = await state.get_data()
     draft = dict(data.get('contact_intake_draft') or {})
-    service = ContactService(config.db_path)
-    service.create_or_replace(
-        ContactProfile(
+    try:
+        await _save_contact_for_scope(
+            message=message,
+            state=state,
+            config=config,
+            profile=ContactProfile(
             supplier_telegram_id=message.from_user.id,
             name=draft['name'],
             ico=draft['ico'],
@@ -354,8 +474,12 @@ async def process_contact_intake_confirm(
             source_type='contract_intake',
             source_note='semantic_intake',
             contract_path=draft.get('contract_path') or None,
+            ),
         )
-    )
+    except WorkspaceContextError:
+        await state.clear()
+        await message.answer('Business profil kontaktu už nie je dostupný.')
+        return
     await state.clear()
     await message.answer('Kontakt bol uložený.')
 
@@ -364,11 +488,6 @@ async def process_contact_intake_confirm(
 async def cmd_contact(message: Message, state: FSMContext, config: Config) -> None:
     if message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať používateľa.')
-        return
-
-    supplier_service = SupplierService(config.db_path)
-    if supplier_service.get_by_telegram_id(message.from_user.id) is None:
-        await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil a potom pridajte kontakt.')
         return
 
     existing_state = await state.get_state()
@@ -445,8 +564,17 @@ async def contact_name_hint(message: Message, state: FSMContext, config: Config)
         await message.answer(_with_contact_recovery_hint('Zadajte názov firmy.'))
         return
 
-    service = ContactService(config.db_path)
-    existing = service.get_by_name(message.from_user.id, value)
+    try:
+        existing = await _get_contact_by_name_for_scope(
+            message=message,
+            state=state,
+            config=config,
+            name=value,
+        )
+    except WorkspaceContextError:
+        await state.clear()
+        await message.answer('Business profil kontaktu už nie je dostupný.')
+        return
     if existing is not None:
         await message.answer(
             'Kontakt s týmto presným názvom už existuje. '
@@ -599,9 +727,12 @@ async def contact_confirm(
         return
 
     data = await state.get_data()
-    service = ContactService(config.db_path)
-    service.create_or_replace(
-        ContactProfile(
+    try:
+        await _save_contact_for_scope(
+            message=message,
+            state=state,
+            config=config,
+            profile=ContactProfile(
             supplier_telegram_id=message.from_user.id,
             name=data['name'],
             ico=data['ico'],
@@ -613,8 +744,12 @@ async def contact_confirm(
             source_type='manual',
             source_note=None,
             contract_path=None,
+            ),
         )
-    )
+    except WorkspaceContextError:
+        await state.clear()
+        await message.answer('Business profil kontaktu už nie je dostupný.')
+        return
 
     await state.clear()
     await message.answer('Kontakt bol uložený.')

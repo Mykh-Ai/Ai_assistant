@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date
@@ -16,6 +16,13 @@ from bot.keyboards.decision import answer_with_decision_keyboard, save_cancel_ke
 from bot.handlers.start import build_start_status_message
 from bot.services.decision_resolver import resolve_yes_no
 from bot.services.invoice_service import InvoiceService
+from bot.services.workspace_invoice_service import WorkspaceInvoiceService
+from bot.services.workspace_context import WorkspaceContext, WorkspaceContextError, WorkspaceContextService
+from bot.services.workspace_profile_service import (
+    CREATE_ADDITIONAL_WORKSPACE_PROFILE,
+    CREATE_FIRST_WORKSPACE_PROFILE,
+    WorkspaceProfileService,
+)
 from bot.services.semantic_action_resolver import resolve_semantic_action
 from bot.services.supplier_service import SupplierProfile, SupplierService
 from bot.services.validation import (
@@ -57,6 +64,7 @@ class OnboardingStates(StatesGroup):
     first_invoice_number = State()
     days_due = State()
     confirm = State()
+    waiting_activation_confirm = State()
 
 
 class SupplierProfileEditStates(StatesGroup):
@@ -64,6 +72,10 @@ class SupplierProfileEditStates(StatesGroup):
     value = State()
     confirm = State()
 
+
+_ONBOARDING_MODE_KEY = 'supplier_onboarding_mode'
+_ONBOARDING_WORKSPACE_ID_KEY = 'supplier_onboarding_workspace_id'
+_SUPPLIER_EDIT_WORKSPACE_ID_KEY = 'supplier_edit_workspace_id'
 
 _SUPPLIER_EDIT_FIELD_LABELS = {
     'name': 'názov',
@@ -243,10 +255,49 @@ def _with_profile_value(profile: SupplierProfile, field: str, value: object) -> 
     return replace(profile, **{field: value})
 
 
-async def _start_supplier_onboarding(message: Message, state: FSMContext) -> None:
+def _active_workspace_context(config: Config, telegram_id: int) -> WorkspaceContext | None:
+    if not config.db_path.exists():
+        return None
+    try:
+        return WorkspaceContextService(config.db_path).resolve_for_user(telegram_id)
+    except WorkspaceContextError as workspace_error:
+        try:
+            supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
+        except RuntimeError:
+            raise workspace_error
+        if supplier is None or supplier.workspace_id is None:
+            return None
+        raise workspace_error
+
+
+async def _start_supplier_onboarding(
+    message: Message,
+    state: FSMContext,
+    *,
+    mode: str = 'legacy',
+    workspace_id: str | None = None,
+) -> None:
     await state.clear()
+    if hasattr(state, 'update_data'):
+        await state.update_data(
+            **{
+                _ONBOARDING_MODE_KEY: mode,
+                _ONBOARDING_WORKSPACE_ID_KEY: workspace_id or '',
+            }
+        )
     await state.set_state(OnboardingStates.name)
     await message.answer('1/10 Zadajte názov firmy / obchodné meno:')
+
+
+async def start_additional_supplier_profile_onboarding(
+    message: Message,
+    state: FSMContext,
+) -> None:
+    await _start_supplier_onboarding(
+        message,
+        state,
+        mode=CREATE_ADDITIONAL_WORKSPACE_PROFILE,
+    )
 
 
 @router.message(Command('moj_profil'))
@@ -255,10 +306,23 @@ async def cmd_moj_profil(message: Message, state: FSMContext, config: Config) ->
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    try:
+        context = _active_workspace_context(config, message.from_user.id)
+    except WorkspaceContextError:
+        await message.answer('Vyberte aktívny business profil cez /profily.')
+        return
+    supplier = (
+        SupplierService(config.db_path).get_by_workspace_id(context.workspace_id)
+        if context is not None
+        else SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    )
     if supplier is None:
         await message.answer('Profil dodávateľa ešte nie je nastavený. Spúšťam vytvorenie profilu.')
-        await _start_supplier_onboarding(message, state)
+        await _start_supplier_onboarding(
+            message,
+            state,
+            mode=CREATE_FIRST_WORKSPACE_PROFILE if context is None else 'legacy',
+        )
         return
 
     await state.clear()
@@ -276,12 +340,24 @@ async def cmd_upravit_profil(message: Message, state: FSMContext, config: Config
         await message.answer('Nepodarilo sa identifikovať používateľa.')
         return
 
-    supplier = SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    try:
+        context = _active_workspace_context(config, message.from_user.id)
+    except WorkspaceContextError:
+        await message.answer('Vyberte aktívny business profil cez /profily.')
+        return
+    supplier = (
+        SupplierService(config.db_path).get_by_workspace_id(context.workspace_id)
+        if context is not None
+        else SupplierService(config.db_path).get_by_telegram_id(message.from_user.id)
+    )
     if supplier is None:
         await message.answer('Profil dodávateľa ešte nie je nastavený. Najprv spustite /moj_profil.')
         return
 
     await state.clear()
+    await state.update_data(
+        **{_SUPPLIER_EDIT_WORKSPACE_ID_KEY: context.workspace_id if context is not None else ''}
+    )
     await state.set_state(SupplierProfileEditStates.field)
     await message.answer(_edit_field_options_text())
 
@@ -357,7 +433,20 @@ async def supplier_profile_edit_confirm(
     field = str(data.get('supplier_edit_field') or '')
     value = data.get('supplier_edit_value')
     service = SupplierService(config.db_path)
-    supplier = service.get_by_telegram_id(message.from_user.id)
+    workspace_id = str(data.get(_SUPPLIER_EDIT_WORKSPACE_ID_KEY) or '').strip()
+    if workspace_id:
+        try:
+            WorkspaceContextService(config.db_path).require_membership(
+                message.from_user.id,
+                workspace_id,
+            )
+        except WorkspaceContextError:
+            await state.clear()
+            await message.answer('Business profil tejto úpravy už nie je dostupný.')
+            return
+        supplier = service.get_by_workspace_id(workspace_id)
+    else:
+        supplier = service.get_by_telegram_id(message.from_user.id)
     if supplier is None or field not in _SUPPLIER_EDIT_FIELD_LABELS:
         await state.clear()
         await message.answer('Profil dodávateľa sa nepodarilo nájsť. Spustite /moj_profil.')
@@ -382,7 +471,16 @@ async def cmd_onboarding(message: Message, state: FSMContext, config: Config) ->
         return
 
     service = SupplierService(config.db_path)
-    existing = service.get_by_telegram_id(message.from_user.id)
+    try:
+        context = _active_workspace_context(config, message.from_user.id)
+    except WorkspaceContextError:
+        await message.answer('Vyberte aktívny business profil cez /profily.')
+        return
+    existing = (
+        service.get_by_workspace_id(context.workspace_id)
+        if context is not None
+        else service.get_by_telegram_id(message.from_user.id)
+    )
 
     if existing:
         await message.answer(
@@ -390,11 +488,17 @@ async def cmd_onboarding(message: Message, state: FSMContext, config: Config) ->
             f'Aktuálny profil: {existing.name} ({existing.ico}).\n'
             'Onboarding teraz prejdeme znova kvôli aktualizácii.'
         )
+        mode = 'update_workspace' if context is not None else 'legacy'
     else:
         await message.answer('Spúšťam onboarding dodávateľa.')
+        mode = CREATE_FIRST_WORKSPACE_PROFILE
 
-    await _start_supplier_onboarding(message, state)
-
+    await _start_supplier_onboarding(
+        message,
+        state,
+        mode=mode,
+        workspace_id=context.workspace_id if context is not None else None,
+    )
 
 @router.message(OnboardingStates.name)
 async def onboarding_name(message: Message, state: FSMContext) -> None:
@@ -560,30 +664,119 @@ async def onboarding_confirm(
         return
 
     data = await state.get_data()
-    service = SupplierService(config.db_path)
-    invoice_service = InvoiceService(config.db_path)
-    service.create_or_replace(
-        SupplierProfile(
-            telegram_id=message.from_user.id,
-            name=data['name'],
-            ico=data['ico'],
-            dic=data['dic'],
-            ic_dph=data['ic_dph'] or None,
-            address=data['address'],
-            iban=data['iban'],
-            swift=data['swift'],
-            email=data['email'],
-            smtp_host=None,
-            smtp_user=None,
-            smtp_pass=None,
-            days_due=int(data['days_due']),
+    mode = str(data.get(_ONBOARDING_MODE_KEY) or 'legacy')
+    profile = SupplierProfile(
+        telegram_id=message.from_user.id,
+        name=data['name'],
+        ico=data['ico'],
+        dic=data['dic'],
+        ic_dph=data['ic_dph'] or None,
+        address=data['address'],
+        iban=data['iban'],
+        swift=data['swift'],
+        email=data['email'],
+        smtp_host=None,
+        smtp_user=None,
+        smtp_pass=None,
+        days_due=int(data['days_due']),
+    )
+    issue_year = int(data['invoice_number_issue_year'])
+    first_invoice_number = str(data['first_invoice_number'])
+
+    if mode in {CREATE_FIRST_WORKSPACE_PROFILE, CREATE_ADDITIONAL_WORKSPACE_PROFILE}:
+        context = WorkspaceProfileService(config.db_path).create_profile(
+            actor_telegram_id=message.from_user.id,
+            profile=profile,
+            mode=mode,
+            make_active=mode == CREATE_FIRST_WORKSPACE_PROFILE,
         )
-    )
-    invoice_service.set_first_invoice_number(
-        supplier_telegram_id=message.from_user.id,
-        issue_year=int(data['invoice_number_issue_year']),
-        first_invoice_number=str(data['first_invoice_number']),
-    )
+        WorkspaceInvoiceService(config.db_path).set_first_invoice_number(
+            context,
+            issue_year=issue_year,
+            first_invoice_number=first_invoice_number,
+        )
+        if mode == CREATE_ADDITIONAL_WORKSPACE_PROFILE:
+            await state.update_data(
+                **{_ONBOARDING_WORKSPACE_ID_KEY: context.workspace_id}
+            )
+            await state.set_state(OnboardingStates.waiting_activation_confirm)
+            await message.answer(
+                f'Profil {context.workspace_display_name} bol uložený. '
+                'Nastaviť ho ako aktívny profil? Odpovedzte ano alebo nie.'
+            )
+            return
+    elif mode == 'update_workspace':
+        workspace_id = str(data.get(_ONBOARDING_WORKSPACE_ID_KEY) or '').strip()
+        try:
+            context = WorkspaceContextService(config.db_path).require_membership(
+                message.from_user.id,
+                workspace_id,
+            )
+        except WorkspaceContextError:
+            await state.clear()
+            await message.answer('Business profil tohto onboardingu už nie je dostupný.')
+            return
+        SupplierService(config.db_path).update_profile(
+            replace(profile, workspace_id=workspace_id)
+        )
+        WorkspaceInvoiceService(config.db_path).set_first_invoice_number(
+            context,
+            issue_year=issue_year,
+            first_invoice_number=first_invoice_number,
+        )
+    else:
+        SupplierService(config.db_path).create_or_replace(profile)
+        InvoiceService(config.db_path).set_first_invoice_number(
+            supplier_telegram_id=message.from_user.id,
+            issue_year=issue_year,
+            first_invoice_number=first_invoice_number,
+        )
 
     await state.clear()
     await message.answer(SUPPLIER_ONBOARDING_SAVED_NEXT_STEP_MESSAGE)
+
+@router.message(OnboardingStates.waiting_activation_confirm)
+async def onboarding_activation_confirm(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str | None = None,
+) -> None:
+    decision = canonical_decision or await resolve_yes_no(
+        context_name='additional_workspace_activation_confirm',
+        user_input_text=message.text or '',
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if decision == 'unknown':
+        await message.answer('Napíšte ano alebo nie.')
+        return
+    data = await state.get_data()
+    workspace_id = str(data.get(_ONBOARDING_WORKSPACE_ID_KEY) or '').strip()
+    if message.from_user is None or not workspace_id:
+        await state.clear()
+        await message.answer('Nový business profil už nie je dostupný.')
+        return
+    try:
+        context = WorkspaceContextService(config.db_path).require_membership(
+            message.from_user.id,
+            workspace_id,
+        )
+        if decision == 'yes':
+            WorkspaceContextService(config.db_path).set_active_workspace(
+                message.from_user.id,
+                workspace_id,
+            )
+    except WorkspaceContextError:
+        await state.clear()
+        await message.answer('Nový business profil už nie je dostupný.')
+        return
+    await state.clear()
+    if decision == 'yes':
+        await message.answer(
+            f'Aktívny firemný profil bol zmenený na {context.workspace_display_name}.'
+        )
+    else:
+        await message.answer(
+            f'Profil {context.workspace_display_name} bol uložený; aktívny profil sa nezmenil.'
+        )

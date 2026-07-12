@@ -22,6 +22,7 @@ class InvoiceRecord:
     currency: str
     status: str
     pdf_path: str | None
+    workspace_id: str | None = None
 
 
 @dataclass
@@ -152,19 +153,52 @@ class InvoiceService:
         if not validate_invoice_number_for_year(normalized, issue_year):
             raise ValueError('invalid_first_invoice_number')
         with managed_connection(self._db_path) as connection:
-            connection.execute(
-                (
-                    'INSERT INTO invoice_number_settings '
-                    '(supplier_telegram_id, issue_year, first_invoice_number, created_at, updated_at) '
-                    'VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
-                    'ON CONFLICT(supplier_telegram_id, issue_year) DO UPDATE SET '
-                    'first_invoice_number=excluded.first_invoice_number, '
-                    'updated_at=CURRENT_TIMESTAMP'
-                ),
-                (supplier_telegram_id, issue_year, normalized),
+            has_workspace = _table_has_workspace_id(
+                connection,
+                'invoice_number_settings',
             )
+            if not has_workspace:
+                connection.execute(
+                    (
+                        'INSERT INTO invoice_number_settings '
+                        '(supplier_telegram_id, issue_year, first_invoice_number, '
+                        'created_at, updated_at) '
+                        'VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
+                        'ON CONFLICT(supplier_telegram_id, issue_year) DO UPDATE SET '
+                        'first_invoice_number=excluded.first_invoice_number, '
+                        'updated_at=CURRENT_TIMESTAMP'
+                    ),
+                    (supplier_telegram_id, issue_year, normalized),
+                )
+            else:
+                row = connection.execute(
+                    (
+                        'SELECT rowid FROM invoice_number_settings '
+                        'WHERE workspace_id IS NULL AND supplier_telegram_id = ? '
+                        'AND issue_year = ?'
+                    ),
+                    (supplier_telegram_id, issue_year),
+                ).fetchone()
+                if row is None:
+                    connection.execute(
+                        (
+                            'INSERT INTO invoice_number_settings '
+                            '(workspace_id, supplier_telegram_id, issue_year, '
+                            'first_invoice_number, created_at, updated_at) '
+                            'VALUES (NULL, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
+                        ),
+                        (supplier_telegram_id, issue_year, normalized),
+                    )
+                else:
+                    connection.execute(
+                        (
+                            'UPDATE invoice_number_settings '
+                            'SET first_invoice_number=?, updated_at=CURRENT_TIMESTAMP '
+                            'WHERE rowid=?'
+                        ),
+                        (normalized, int(row[0])),
+                    )
             connection.commit()
-
     def get_first_invoice_number(self, *, supplier_telegram_id: int, issue_year: int) -> str | None:
         with managed_connection(self._db_path) as connection:
             row = connection.execute(
@@ -229,6 +263,17 @@ class InvoiceService:
                 issue_year,
                 supplier_telegram_id,
             )
+            existing_number = connection.execute(
+                (
+                    'SELECT id FROM invoice WHERE supplier_telegram_id = ? '
+                    'AND invoice_number = ? LIMIT 1'
+                ),
+                (supplier_telegram_id, invoice_number_to_save),
+            ).fetchone()
+            if existing_number is not None:
+                raise RuntimeError(
+                    'Invoice save failed: invoice number already exists for this supplier.'
+                )
             try:
                 cursor = connection.execute(
                     (
@@ -646,3 +691,13 @@ class InvoiceService:
             connection.execute('DELETE FROM invoice_followup_state WHERE invoice_id = ?', (invoice_id,))
             connection.execute('DELETE FROM invoice WHERE id = ?', (invoice_id,))
             connection.commit()
+
+
+def _table_has_workspace_id(
+    connection: sqlite3.Connection,
+    table: str,
+) -> bool:
+    return any(
+        row[1] == 'workspace_id'
+        for row in connection.execute(f'PRAGMA table_info({table})').fetchall()
+    )
