@@ -1,3 +1,16 @@
+## 2026-07-12 - Delivery Push And Server Migration Gate
+
+### Status
+- Committed and pushed the current multi-workspace runtime plus InfoHelp customization request preview package as `a806df3`.
+- Server `/bot/repo` was fast-forwarded to `a806df3` for read-only migration audit, but Docker rebuild/restart was not performed.
+- Server dry-run audit reported legacy persisted schemas with missing workspace columns for supplier, contact, service aliases, semantic aliases, invoice, invoice number settings, invoice follow-up, and work-time tables.
+- Migration plan reported `apply_available=false` / `public_profile_switch_ready=false`, so production deploy remains blocked by the backup/migration apply/post-apply audit/server-smoke gate.
+
+### Verification
+- Local full regression before commit: `python -m pytest -q` - 2118 passed, 7 subtests passed.
+- Local whitespace gate: `git diff --check` passed with CRLF warnings only.
+- Server audit: `python -m bot.multi_workspace_migration --mode dry-run --db-path /bot/repo/data/storage/fakturabot.db --storage-root /bot/repo/data/storage` completed read-only and redacted tenant values.
+
 ## 2026-07-12 - Multi-Workspace Target Runtime Completion And Public Route
 
 ### Status
