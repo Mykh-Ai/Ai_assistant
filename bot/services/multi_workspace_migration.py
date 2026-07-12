@@ -95,15 +95,7 @@ class MultiWorkspaceMigrationAuditor:
     def dry_run(self) -> dict[str, Any]:
         audit = self.audit()
         tables = audit['tables']
-        tenant_refs = sorted(
-            {
-                tenant_ref
-                for table in tables.values()
-                for groups in table['tenant_groups'].values()
-                for tenant_ref in groups
-                if tenant_ref != 'none'
-            }
-        )
+
         schema_changes: list[dict[str, Any]] = []
         for table in WORKSPACE_COLUMN_REQUIRED:
             table_report = tables.get(table)
@@ -131,13 +123,15 @@ class MultiWorkspaceMigrationAuditor:
             'writes_performed': False,
             'workspace_candidates': [
                 {
-                    'tenant_ref': tenant_ref,
-                    'workspace_id': f'planned_{tenant_ref}',
+                    'candidate_ref': f'workspace_candidate_{index}',
                     'storage_key': 'preserve_or_assign_after_path_audit',
                     'membership_role': 'owner',
                     'active_selection': True,
                 }
-                for tenant_ref in tenant_refs
+                for index in range(
+                    1,
+                    int(ownership_plan['workspace_candidate_count']) + 1,
+                )
             ],
             'schema_changes': schema_changes,
             'uniqueness_rebuilds': [

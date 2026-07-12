@@ -599,5 +599,8 @@ def test_cli_dry_run_is_redacted_and_read_only(
     assert report['plan']['writes_performed'] is False
     assert report['plan']['database_fingerprint']
     assert report['plan']['apply_available'] is True
+    assert len(report['plan']['workspace_candidates']) == (
+        report['plan']['workspace_candidate_count']
+    )
     assert str(USER_ID) not in json.dumps(report, sort_keys=True)
     assert db_path.read_bytes() == before
