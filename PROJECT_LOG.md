@@ -33,7 +33,7 @@
 - Full-database deletion/tenant safety: 16 passed.
 - Profile onboarding/context/selector/router slices: 31 passed, 14 passed, 228 passed, and 4 passed.
 - Product Truth and InfoHelp: 126 passed.
-- Full-suite result is recorded after the final regression gate below.
+- `python -m pytest -q` -> 2118 passed, 7 subtests passed in 304.85s.
 - No existing DB migration, storage rewrite, server write, deploy, commit, or push was performed.
 ## 2026-07-12 - InfoHelp Customization Request Preview Copy
 

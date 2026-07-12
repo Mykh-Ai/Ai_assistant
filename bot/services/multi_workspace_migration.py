@@ -81,7 +81,7 @@ class MultiWorkspaceMigrationAuditor:
             'migration_state': {
                 'missing_workspace_columns': missing_workspace_columns,
                 'public_profile_switch_ready': False,
-                'reason': 'mandatory_domains_not_yet_workspace_safe',
+                'reason': 'runtime_target_ready_but_persisted_data_apply_gate_closed',
             },
             'privacy': {
                 'tenant_ids_redacted': True,
@@ -140,7 +140,7 @@ class MultiWorkspaceMigrationAuditor:
             'move_existing_invoice_pdfs': False,
             'ambiguous_or_orphan_rows': 'must_be_zero_or_explicitly_resolved_before_apply',
             'apply_available': False,
-            'apply_block_reason': 'full_domain_rebuild_and_backup_gate_not_implemented',
+            'apply_block_reason': 'backup_rollback_and_full_domain_apply_not_approved_or_implemented',
         }
         return audit
 
