@@ -14,6 +14,9 @@ from bot.services.db import (
     LEGACY_SUPPLIER_SCHEMA,
     init_db,
 )
+from bot.services.multi_workspace_migration import (
+    MultiWorkspaceMigrationAuditor,
+)
 from bot.services.multi_workspace_migration_apply import (
     APPLY_CONFIRMATION,
     ROLLBACK_CONFIRMATION,
@@ -296,6 +299,33 @@ def test_apply_backup_post_audit_and_rollback_round_trip(tmp_path: Path) -> None
 
     assert result['post_apply_audit']['ready'] is True
     assert result['post_apply_audit']['public_profile_switch_ready'] is True
+    before_generic_dry_run = db_path.read_bytes()
+    generic_dry_run = MultiWorkspaceMigrationAuditor(
+        db_path=db_path,
+        storage_root=storage_root,
+    ).dry_run()
+    assert db_path.read_bytes() == before_generic_dry_run
+    assert generic_dry_run['migration_state'] == {
+        'public_profile_switch_ready': True,
+        'reason': 'ready',
+        'readiness_blockers': [],
+        'missing_required_tables': [],
+        'missing_workspace_columns': [],
+        'null_workspace_rows': {},
+        'blocker_count': 0,
+        'foundation_valid': True,
+        'foundation_counts': {
+            'active_workspace_selection': 1,
+            'workspace': 1,
+            'workspace_membership': 1,
+        },
+        'missing_foundation_tables': [],
+        'foundation_schema_errors': {},
+        'foundation_issues': {},
+    }
+    assert generic_dry_run['plan']['migration_required'] is False
+    assert generic_dry_run['plan']['apply_available'] is False
+    assert generic_dry_run['plan']['apply_block_reason'] == 'database_already_migrated'
     assert result['post_apply_audit']['workspace_count'] == 1
     assert result['rollback_available'] is True
     assert 'workspace_id' in _columns(db_path, 'supplier')
@@ -345,6 +375,44 @@ def test_apply_backup_post_audit_and_rollback_round_trip(tmp_path: Path) -> None
     assert rollback['integrity_check'] == 'ok'
     assert rollback['restored_fingerprint'] == pre_fingerprint
     assert 'workspace_id' not in _columns(db_path, 'supplier')
+
+
+def test_generic_dry_run_fails_closed_for_broken_workspace_foundation(
+    tmp_path: Path,
+) -> None:
+    db_path, storage_root = _legacy_fixture(tmp_path)
+    manager = MultiWorkspaceMigrationManager(
+        db_path=db_path,
+        storage_root=storage_root,
+    )
+    fingerprint = manager.dry_run()['plan']['database_fingerprint']
+    manager.apply(
+        expected_fingerprint=fingerprint,
+        backup_dir=tmp_path / 'backups',
+        confirmation=APPLY_CONFIRMATION,
+        service_stopped=True,
+    )
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute('DELETE FROM workspace_membership')
+        connection.commit()
+    finally:
+        connection.close()
+
+    report = MultiWorkspaceMigrationAuditor(
+        db_path=db_path,
+        storage_root=storage_root,
+    ).dry_run()
+
+    state = report['migration_state']
+    assert state['public_profile_switch_ready'] is False
+    assert state['foundation_valid'] is False
+    assert state['foundation_issues'] == {
+        'active_selection_membership_invalid': 1,
+        'active_authorized_workspace_unavailable': 1,
+        'supplier_membership_missing': 1,
+    }
+    assert state['readiness_blockers'] == ['workspace_foundation_invalid']
 
 
 def test_apply_refuses_drift_missing_confirmation_and_running_service(tmp_path: Path) -> None:

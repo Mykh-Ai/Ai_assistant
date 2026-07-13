@@ -9,7 +9,7 @@ Approved product decisions:
 3. `/vymazat_databazu` remains an account-level destructive action that removes every business workspace owned by the user and revokes bot access. Deleting only one workspace is outside MVP.
 
 Approval date: 2026-07-11
-Implementation checkpoint: 2026-07-12 target-schema runtime, public routes, and production-safe local migration apply/rollback tooling are implemented and fixture-tested; the real server DB, deployment, and Docker restart remain blocked until the read-only server dry-run is presented and explicitly approved.
+Implementation checkpoint: 2026-07-13 production migration and exact-SHA runtime deployment passed the frozen-baseline, verified-backup, post-apply audit, and bounded smoke gates. Public profile runtime is ready; same-user two-profile Telegram acceptance remains pending.
 
 ## 1. Task Identity And Product Need
 
@@ -32,7 +32,7 @@ User-visible outcome:
 - data from one workspace never appears in the other;
 - Google Drive authorization remains shared, while archive destinations remain workspace-separated.
 
-Current Product Truth status (2026-07-12 code state): `partial / target-schema implemented / production migration required`.
+Current Product Truth status (2026-07-13 production state): `partial / production migrated and deployed / same-user two-profile acceptance pending`.
 
 Target Product Truth status after migration and deployment acceptance proof remains `partial` for multi-business profiles, because profile deletion, cross-profile analytics, one-off per-request profile overrides, and multi-member workspace administration remain out of scope.
 
@@ -580,7 +580,7 @@ Implementation may create migration tooling and local fixture tests. It must not
 - rollback plan;
 - post-migration audit and server smoke.
 
-Local tooling satisfies the implementation part of this gate with fingerprint-pinned dry-run/apply, exclusive-lock refusal, verified DB and content-hashed storage backup, separately audited target construction, atomic replacement, manifest-bound rollback, and emergency restore on post-swap mismatch. The operational gate remains closed: no server DB write or Docker restart is authorized by local test success.
+Local tooling satisfies the implementation part of this gate with fingerprint-pinned dry-run/apply, exclusive-lock refusal, verified DB and content-hashed storage backup, separately audited target construction, atomic replacement, manifest-bound rollback, and emergency restore on post-swap mismatch. The production operational gate was completed on 2026-07-13 for exact SHA 7408399239eba8cb221ba7b6e7267ccf1d60a867; this does not waive the same gate for future migrations or make the still-pending same-user two-profile conversation acceptance complete.
 
 ## 17. Delete-Database Contract
 

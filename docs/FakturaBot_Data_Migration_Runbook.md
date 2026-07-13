@@ -208,8 +208,19 @@ The report:
 - counts accounting workspace directories, metadata, and originals without printing tenant-derived directory names;
 - lists required workspace-column backfills and uniqueness rebuilds;
 - preserves existing valid invoice.pdf_path values and plans no PDF moves.
+- derives public_profile_switch_ready from persisted state instead of a deployment-stage constant:
+  - every required business table and workspace_id column is present;
+  - every workspace-owned row is backfilled;
+  - the migration planner reports zero ownership/ambiguity blockers;
+  - workspace, membership, and active-selection foundation references are valid.
 
-Apply and rollback tooling is implemented and locally fixture-tested. This closes the code/tooling gate only. It does not prove that the server database is eligible, migrated, deployed, or safe to restart. Public /profily and switch_business_profile remain production-gated until a server read-only dry-run is presented, the user explicitly approves the exact server apply/restart scope, apply succeeds, post-apply audit passes, and server smoke proves isolation.
+For an already migrated healthy database, dry-run reports public_profile_switch_ready=true, migration_required=false, apply_available=false, and apply_block_reason=database_already_migrated. A broken foundation, null ownership, missing workspace columns, or planner blocker keeps readiness false.
+
+Apply and rollback tooling is implemented and fixture-tested. Production migration for exact SHA 7408399239eba8cb221ba7b6e7267ccf1d60a867 completed on 2026-07-13 after a frozen read-only baseline, verified host backup, fingerprint-pinned apply, post-apply audit, and bounded read-only smoke. The rollback backup remains retained at:
+
+    /var/backups/fakturabot/20260713T173948Z_7408399
+
+The migrated runtime is ready for public profile operations. Full conversation acceptance remains partial until one authorized Telegram actor creates a second profile through /profily and exercises text/voice switching and lightweight cross-profile object isolation without production-only synthetic fixtures.
 
 ### Production-safe server sequence
 

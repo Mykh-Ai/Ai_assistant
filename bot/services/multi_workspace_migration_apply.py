@@ -29,6 +29,169 @@ class MigrationApplyError(RuntimeError):
     pass
 
 
+def assess_public_profile_switch_readiness(
+    connection: sqlite3.Connection,
+    *,
+    blocker_count: int,
+) -> dict[str, Any]:
+    """Derive profile-switch readiness from persisted schema and ownership."""
+    tables = _table_names(connection)
+    missing_required_tables = sorted(_WORKSPACE_OWNED_TABLES - tables)
+    missing_workspace_columns = sorted(
+        table
+        for table in _WORKSPACE_OWNED_TABLES & tables
+        if 'workspace_id' not in _column_names(connection, table)
+    )
+    null_workspace_rows: dict[str, int] = {}
+    for table in sorted(_WORKSPACE_OWNED_TABLES & tables):
+        if table in missing_workspace_columns:
+            continue
+        count = int(
+            connection.execute(
+                f'SELECT COUNT(*) FROM "{table}" '
+                "WHERE workspace_id IS NULL OR trim(workspace_id) = ''"
+            ).fetchone()[0]
+        )
+        if count:
+            null_workspace_rows[table] = count
+
+    missing_foundation_tables = sorted(_FOUNDATION_TABLES - tables)
+    foundation_schema_errors: dict[str, list[str]] = {}
+    required_foundation_columns = {
+        'supplier': {'workspace_id', 'telegram_id'},
+        'workspace': {'workspace_id'},
+        'workspace_membership': {
+            'workspace_id',
+            'telegram_id',
+            'status',
+        },
+        'active_workspace_selection': {'workspace_id', 'telegram_id'},
+    }
+    for table, required_columns in required_foundation_columns.items():
+        if table not in tables:
+            foundation_schema_errors[table] = sorted(required_columns)
+            continue
+        missing = required_columns - set(_column_names(connection, table))
+        if missing:
+            foundation_schema_errors[table] = sorted(missing)
+
+    foundation_counts = {
+        table: (
+            int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
+            if table in tables
+            else 0
+        )
+        for table in sorted(_FOUNDATION_TABLES)
+    }
+    foundation_issues: dict[str, int] = {}
+    if not foundation_schema_errors:
+        checks = {
+            'supplier_workspace_missing': (
+                'SELECT COUNT(*) FROM supplier s '
+                'LEFT JOIN workspace w ON w.workspace_id = s.workspace_id '
+                "WHERE s.workspace_id IS NULL OR trim(s.workspace_id) = '' "
+                'OR w.workspace_id IS NULL'
+            ),
+            'supplier_membership_missing': (
+                'SELECT COUNT(*) FROM supplier s '
+                'LEFT JOIN workspace_membership m '
+                'ON m.workspace_id = s.workspace_id '
+                'AND m.telegram_id = s.telegram_id '
+                'WHERE m.workspace_id IS NULL'
+            ),
+            'membership_workspace_missing': (
+                'SELECT COUNT(*) FROM workspace_membership m '
+                'LEFT JOIN workspace w ON w.workspace_id = m.workspace_id '
+                'WHERE w.workspace_id IS NULL'
+            ),
+            'active_selection_membership_invalid': (
+                'SELECT COUNT(*) FROM active_workspace_selection s '
+                'LEFT JOIN workspace_membership m '
+                'ON m.workspace_id = s.workspace_id '
+                'AND m.telegram_id = s.telegram_id '
+                "AND m.status = 'active' "
+                'LEFT JOIN workspace w ON w.workspace_id = s.workspace_id '
+                "AND w.status = 'active' WHERE m.workspace_id IS NULL OR w.workspace_id IS NULL"
+            ),
+        }
+        for issue, query in checks.items():
+            count = int(connection.execute(query).fetchone()[0])
+            if count:
+                foundation_issues[issue] = count
+
+        if 'authorized_users' in tables:
+            unavailable_count = int(
+                connection.execute(
+                    'SELECT COUNT(*) FROM supplier s '
+                    'JOIN authorized_users a ON a.telegram_id = s.telegram_id '
+                    "AND a.status = 'active' "
+                    'LEFT JOIN workspace w ON w.workspace_id = s.workspace_id '
+                    "AND w.status = 'active' "
+                    'LEFT JOIN workspace_membership m '
+                    'ON m.workspace_id = s.workspace_id '
+                    'AND m.telegram_id = s.telegram_id '
+                    "AND m.status = 'active' "
+                    'WHERE w.workspace_id IS NULL OR m.workspace_id IS NULL'
+                ).fetchone()[0]
+            )
+            if unavailable_count:
+                foundation_issues['active_authorized_workspace_unavailable'] = (
+                    unavailable_count
+                )
+            missing_selection_count = int(
+                connection.execute(
+                    'SELECT COUNT(*) FROM ('
+                    'SELECT DISTINCT m.telegram_id FROM workspace_membership m '
+                    'JOIN authorized_users a ON a.telegram_id = m.telegram_id '
+                    "WHERE m.status = 'active' AND a.status = 'active' "
+                    'EXCEPT '
+                    'SELECT s.telegram_id FROM active_workspace_selection s '
+                    'JOIN workspace_membership selected '
+                    'ON selected.workspace_id = s.workspace_id '
+                    'AND selected.telegram_id = s.telegram_id '
+                    "WHERE selected.status = 'active'"
+                    ')'
+                ).fetchone()[0]
+            )
+            if missing_selection_count:
+                foundation_issues['active_authorized_selection_missing'] = (
+                    missing_selection_count
+                )
+
+    foundation_valid = not (
+        missing_foundation_tables
+        or foundation_schema_errors
+        or foundation_issues
+    )
+    readiness_blockers: list[str] = []
+    if missing_required_tables:
+        readiness_blockers.append('required_business_tables_missing')
+    if missing_workspace_columns:
+        readiness_blockers.append('required_workspace_columns_missing')
+    if null_workspace_rows:
+        readiness_blockers.append('workspace_ownership_not_backfilled')
+    if blocker_count:
+        readiness_blockers.append('migration_blockers_present')
+    if not foundation_valid:
+        readiness_blockers.append('workspace_foundation_invalid')
+
+    ready = not readiness_blockers
+    return {
+        'public_profile_switch_ready': ready,
+        'reason': 'ready' if ready else 'workspace_readiness_checks_failed',
+        'readiness_blockers': readiness_blockers,
+        'missing_required_tables': missing_required_tables,
+        'missing_workspace_columns': missing_workspace_columns,
+        'null_workspace_rows': null_workspace_rows,
+        'blocker_count': blocker_count,
+        'foundation_valid': foundation_valid,
+        'foundation_counts': foundation_counts,
+        'missing_foundation_tables': missing_foundation_tables,
+        'foundation_schema_errors': foundation_schema_errors,
+        'foundation_issues': foundation_issues,
+    }
+
+
 @dataclass(frozen=True)
 class _WorkspaceCandidate:
     workspace_id: str
@@ -753,40 +916,33 @@ class MultiWorkspaceMigrationManager:
                 for table, before in plan.table_row_counts.items()
                 if table not in _FOUNDATION_TABLES and counts.get(table, 0) != before
             }
-            null_rows: dict[str, int] = {}
-            tables = _table_names(connection)
-            for table in _WORKSPACE_OWNED_TABLES:
-                if table in tables and 'workspace_id' in _column_names(connection, table):
-                    count = int(connection.execute(
-                        f'SELECT COUNT(*) FROM "{table}" '
-                        "WHERE workspace_id IS NULL OR trim(workspace_id) = ''"
-                    ).fetchone()[0])
-                    if count:
-                        null_rows[table] = count
             post_plan = LegacyMultiWorkspaceMigrationPlanner(
                 db_path=target_path,
                 storage_root=self._storage_root,
             ).plan()
+            readiness = assess_public_profile_switch_readiness(
+                connection,
+                blocker_count=len(post_plan.blockers),
+            )
             ready = (
                 integrity == 'ok'
                 and not mismatches
-                and not null_rows
-                and not post_plan.blockers
+                and readiness['public_profile_switch_ready']
             )
             return {
+                **readiness,
                 'ready': ready,
+                'public_profile_switch_ready': ready,
+                'reason': 'ready' if ready else 'post_apply_audit_failed',
                 'integrity_check': integrity,
                 'database_fingerprint': _logical_fingerprint(connection),
                 'count_mismatches': mismatches,
-                'null_workspace_rows': null_rows,
-                'blocker_count': len(post_plan.blockers),
                 'workspace_count': int(connection.execute(
                     'SELECT COUNT(*) FROM workspace'
                 ).fetchone()[0]),
                 'membership_count': int(connection.execute(
                     'SELECT COUNT(*) FROM workspace_membership'
                 ).fetchone()[0]),
-                'public_profile_switch_ready': ready,
             }
         finally:
             connection.close()

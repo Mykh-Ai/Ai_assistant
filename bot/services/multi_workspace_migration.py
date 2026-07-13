@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import closing
 from pathlib import Path, PureWindowsPath
 import re
 import sqlite3
@@ -44,7 +45,12 @@ class MultiWorkspaceMigrationAuditor:
         self._storage_root = storage_root.resolve()
 
     def audit(self) -> dict[str, Any]:
-        with self._read_only_connection() as connection:
+        from bot.services.multi_workspace_migration_apply import (
+            LegacyMultiWorkspaceMigrationPlanner,
+            assess_public_profile_switch_readiness,
+        )
+
+        with closing(self._read_only_connection()) as connection:
             tables = self._table_names(connection)
             tenant_refs = self._tenant_refs(connection, tables)
             table_reports = {
@@ -57,13 +63,14 @@ class MultiWorkspaceMigrationAuditor:
                 if table in BUSINESS_TABLES or table in FOUNDATION_TABLES
             }
             invoice_paths = self._invoice_path_report(connection, tables)
-
-        missing_workspace_columns = [
-            table
-            for table in WORKSPACE_COLUMN_REQUIRED
-            if table in table_reports
-            and 'workspace_id' not in table_reports[table]['columns']
-        ]
+            ownership_plan = LegacyMultiWorkspaceMigrationPlanner(
+                db_path=self._db_path,
+                storage_root=self._storage_root,
+            ).plan_connection(connection).public_report()
+            migration_state = assess_public_profile_switch_readiness(
+                connection,
+                blocker_count=int(ownership_plan['blocker_count']),
+            )
         foundation_counts = {
             table: table_reports.get(table, {}).get('row_count', 0)
             for table in FOUNDATION_TABLES
@@ -80,11 +87,7 @@ class MultiWorkspaceMigrationAuditor:
             'invoice_pdf_paths': invoice_paths,
             'accounting_storage': self._accounting_storage_report(),
             'foundation_counts': foundation_counts,
-            'migration_state': {
-                'missing_workspace_columns': missing_workspace_columns,
-                'public_profile_switch_ready': False,
-                'reason': 'runtime_target_ready_but_persisted_data_apply_gate_closed',
-            },
+            'migration_state': migration_state,
             'privacy': {
                 'tenant_ids_redacted': True,
                 'paths_listed': False,
@@ -147,7 +150,11 @@ class MultiWorkspaceMigrationAuditor:
             'apply_block_reason': (
                 None
                 if ownership_plan['apply_available']
-                else 'ownership_or_ambiguity_blockers_present'
+                else (
+                    'database_already_migrated'
+                    if not ownership_plan['migration_required']
+                    else 'ownership_or_ambiguity_blockers_present'
+                )
             ),
         }
         return audit

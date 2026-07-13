@@ -399,7 +399,7 @@ This controlled shared-bot model is the current runtime model for safely onboard
 
 Ця future commercial / installation-as-a-service model не є поточним dry-run runtime і не є Phase 2 access-request automation. Її не можна трактувати як уже реалізовану або як вимогу для контрольованого другого користувача. Per-client Telegram bot tokens, per-client VPS/container, and per-client API keys are future/commercial options only.
 
-OfficeFlow framing now has a target-schema partial multi-workspace runtime: workspace context, isolated supplier/contact/invoice/accounting/work-time ownership, /profily, explicit switch_business_profile, and additional supplier-profile onboarding are implemented in code. Production-safe legacy migration tooling is also implemented locally with read-only dry-run, redacted ownership blockers, fingerprint pinning, verified DB/storage backup, separately built target DB, atomic apply, post-apply audit, rollback, and fixture coverage. Existing persisted/server databases remain migration-gated: the server dry-run must be presented before explicit apply/restart approval, and this code state is not proof that the production DB has been migrated or that switching is deployed.
+OfficeFlow has a deployed target-schema partial multi-workspace runtime: workspace context, isolated supplier/contact/invoice/accounting/work-time ownership, /profily, explicit switch_business_profile, and additional supplier-profile onboarding are implemented. The production legacy database was migrated on 2026-07-13 at exact SHA 7408399239eba8cb221ba7b6e7267ccf1d60a867 after a frozen dry-run, verified host backup, fingerprint-pinned apply, post-apply audit, and bounded smoke. Public profile runtime readiness is proven; full same-user two-profile conversation acceptance remains pending until a real second profile is created through the bot and text/voice switching plus lightweight object isolation are exercised.
 
 ### 2.3 Стек технологій
 
@@ -1511,9 +1511,9 @@ Not yet implemented or exposed:
 - Product Truth/InfoHelp status partial for end users.
 
 Legacy single-profile runtime remains supported. Public switching must stay disabled until every mandatory business domain, migration fixture, FSM binding, callback guard, Product Truth/InfoHelp surface, and Conversation Acceptance Proof passes.
-## Multi-workspace business profiles target runtime (2026-07-12)
+## Multi-workspace business profiles target runtime (2026-07-13)
 
-Implementation status: `partial / target-schema implemented / production migration required`.
+Implementation status: `partial / production migrated and deployed / same-user two-profile acceptance pending`.
 
 Implemented code surface:
 
@@ -1526,4 +1526,6 @@ Implemented code surface:
 
 Explicitly outside MVP: cross-workspace analytics, per-request temporary overrides, deleting one profile, billing, public signup, and broad multi-member workspace administration.
 
-Migration boundary: no existing local/server DB or storage was rewritten in this implementation session. Production enablement requires the runbook backup/apply/rollback gate, zero unresolved ownership ambiguities, post-apply audit, full regression, and server smoke proof.
+Production migration boundary: the 2026-07-13 apply preserved row counts, existing invoice/accounting paths, and storage fingerprints; no Google Drive mutation was performed. The verified rollback backup at `/var/backups/fakturabot/20260713T173948Z_7408399` must remain retained until real two-profile acceptance and a later explicit retention decision.
+
+Acceptance boundary: production currently has two workspaces and two memberships, but no authorized Telegram actor has two active memberships. Do not claim the interactive two-profile journey complete until `/profily` creates a second profile for one actor, text and voice switch are exercised, lightweight objects are proven isolated in both profiles, and temporary test objects are removed through normal product flows when no longer needed.

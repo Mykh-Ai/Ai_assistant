@@ -1,3 +1,26 @@
+## 2026-07-13 - Generic Multi-Workspace Dry-Run Readiness Fix
+
+### Status
+- Fixed the stale generic audit/dry-run readiness flag after the successful production migration.
+- Current implementation status: production migrated and deployed; public profile runtime ready; same-user two-profile Telegram acceptance still pending.
+- Scope is deterministic read-only DB/schema reporting and active migration documentation. AI maturity, LLM/STT/LMM routing, FSM behavior, business writes, storage paths, and runtime handlers are unchanged.
+
+### Changes
+- Replaced the hard-coded public_profile_switch_ready=false with a shared readiness assessment derived from required workspace tables/columns, non-null workspace ownership, planner blockers, and workspace/membership/active-selection foundation validity.
+- Reused the same assessment in authoritative post-apply validation so generic and apply reports cannot silently diverge.
+- Changed already-migrated dry-run output to apply_block_reason=database_already_migrated.
+- Closed the generic auditor SQLite read-only connection deterministically, preventing Windows file-handle retention from blocking an immediate tested rollback.
+- Added migrated-ready and broken-foundation fail-closed regression coverage.
+- Synchronized TZ, architecture proof, migration runbook, and changelog with the 2026-07-13 production migration/deploy evidence and retained backup.
+
+### Production and acceptance boundary
+- No server command, DB/storage write, Docker build/restart, Telegram message, or Google Drive call was performed in this fix session.
+- The verified backup remains at /var/backups/fakturabot/20260713T173948Z_7408399 and must not be removed before real two-profile acceptance and a later explicit retention decision.
+- Real acceptance still requires one authorized actor to create a second profile through /profily, exercise text and voice switching, verify lightweight object isolation, and remove temporary objects through normal product flows if no longer needed.
+
+### Verification
+- python -m pytest -q tests/test_multi_workspace_migration.py tests/test_multi_workspace_migration_apply.py - 16 passed.
+- python -m pytest -q - 2129 passed, 7 subtests passed in 305.94s (final rerun).
 ## 2026-07-12 - Production-Safe Multi-Workspace Legacy Migration Apply
 
 ### Status
