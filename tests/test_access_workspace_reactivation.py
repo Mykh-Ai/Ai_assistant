@@ -51,7 +51,11 @@ class _DummyBot:
         self.sent.append((telegram_id, text))
 
 
-def _config(tmp_path: Path) -> Config:
+def _config(
+    tmp_path: Path,
+    *,
+    admins: frozenset[int] = frozenset({ADMIN_ID}),
+) -> Config:
     return Config(
         bot_token='token',
         openai_api_key=None,
@@ -61,7 +65,7 @@ def _config(tmp_path: Path) -> Config:
         db_path=tmp_path / 'access.db',
         storage_dir=tmp_path,
         allowed_telegram_user_ids=frozenset({USER_ID}),
-        admin_telegram_user_ids=frozenset({ADMIN_ID}),
+        admin_telegram_user_ids=admins,
     )
 
 
@@ -330,3 +334,42 @@ def test_admin_approval_conflict_is_bounded_and_sends_no_notification(tmp_path: 
         'nie je jednoznačné. Žiadne údaje neboli zmenené.'
     ]
     assert service.get_authorized_user(USER_ID) is None
+
+
+def test_configured_admin_can_self_approve_without_exposing_telegram_id(tmp_path: Path) -> None:
+    config = _config(tmp_path, admins=frozenset({USER_ID}))
+    init_db(config.db_path)
+    workspace_id = _make_actor_migrated_inactive(config.db_path)
+    message = _DummyMessage('/approve', USER_ID)
+    bot = _DummyBot()
+
+    asyncio.run(cmd_approve(message, config, bot=bot))
+
+    with managed_connection(config.db_path) as connection:
+        membership = connection.execute(
+            'SELECT status FROM workspace_membership '
+            'WHERE telegram_id=? AND workspace_id=?',
+            (USER_ID, workspace_id),
+        ).fetchone()
+        selection = connection.execute(
+            'SELECT workspace_id FROM active_workspace_selection WHERE telegram_id=?',
+            (USER_ID,),
+        ).fetchone()
+    user = AccessControlService(config.db_path).get_authorized_user(USER_ID)
+
+    assert membership == ('active',)
+    assert selection == (workspace_id,)
+    assert user is not None and user.status == 'active'
+    assert bot.sent and bot.sent[0][0] == USER_ID
+    assert '/start' in message.answers[-1]
+
+
+def test_approve_with_invalid_explicit_target_keeps_usage_error(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage('/approve invalid', ADMIN_ID)
+
+    asyncio.run(cmd_approve(message, config, bot=_DummyBot()))
+
+    assert message.answers == ['Pouzitie: /approve <telegram_id>']
+    assert AccessControlService(config.db_path).get_authorized_user(ADMIN_ID) is None

@@ -60,7 +60,7 @@ Expected behavior:
 - pending access requests are separate from business tenant data;
 - pending requests must not trigger LLM, STT, or LMM calls;
 - admin can list pending requests;
-- admin can approve users;
+- admin can approve another user with `/approve <telegram_id>` or safely approve the current configured admin account with argument-free `/approve`;
 - admin can reject users;
 - admin can block users;
 - approved users become authorized without editing `.env` and without restarting the bot;

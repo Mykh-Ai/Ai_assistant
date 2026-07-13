@@ -457,13 +457,18 @@ async def cmd_approve(message: Message, config: Config, bot: Bot | None = None) 
         await message.answer(UNAUTHORIZED_MESSAGE)
         return
 
-    telegram_id = _parse_telegram_id_arg(message.text or '')
-    if telegram_id is None:
-        await message.answer('Pouzitie: /approve <telegram_id>')
-        return
-
     if message.from_user is None:
         await message.answer('Nepodarilo sa identifikovať administrátora.')
+        return
+
+    command_parts = (message.text or '').strip().split()
+    telegram_id = (
+        message.from_user.id
+        if len(command_parts) == 1
+        else _parse_telegram_id_arg(message.text or '')
+    )
+    if telegram_id is None:
+        await message.answer('Pouzitie: /approve <telegram_id>')
         return
 
     access_service = AccessControlService(config.db_path)

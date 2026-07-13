@@ -2,7 +2,7 @@
 
 ### Status
 - Fixed the integration gap between access approval and migration-created inactive workspace owner memberships.
-- Current implementation status: implemented and fixture-proven locally; production deploy and manual Telegram re-approval/acceptance remain pending in this session.
+- Current implementation status: implemented, fully regression-tested, and delivered through the production deployment chain in this session; manual Telegram self-approval and acceptance remain the user-driven gate.
 - Scope is deterministic Python access/workspace persistence. AI maturity, LLM/STT/LMM authority, business-domain ownership, storage, PDF, and Google Drive behavior are unchanged.
 
 ### Behavior
@@ -12,10 +12,12 @@
 - Multiple inactive memberships, unsupported membership status, unavailable workspace, supplier mismatch, multiple actor suppliers, or competing ownership fail closed and roll back every approval write.
 - Clean approval without existing memberships still creates no workspace, supplier, membership, or selection.
 - Public/admin workspace invitation, ownership transfer, claim, and actor merge remain unsupported.
+- Configured admins can invoke argument-free `/approve` to self-target through `message.from_user.id`; explicit `/approve <telegram_id>` remains supported for other users, and invalid explicit targets retain the usage error.
 
 ### Verification
 - `python -m pytest -q tests/test_access_workspace_reactivation.py tests/test_access_request_flow.py tests/test_workspace_context.py tests/test_workspace_profile_service.py` - 35 passed.
-- `python -m pytest -q` - 2135 passed, 7 subtests passed in 309.98s.
+- `python -m pytest -q tests/test_access_workspace_reactivation.py tests/test_access_request_flow.py` - 26 passed after adding argument-free admin self-approval.
+- `python -m pytest -q` - 2137 passed, 7 subtests passed in 314.87s.
 
 ## 2026-07-13 - Generic Multi-Workspace Dry-Run Readiness Fix
 
