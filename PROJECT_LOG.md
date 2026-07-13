@@ -1,3 +1,22 @@
+## 2026-07-13 - Access Approval Workspace Reactivation Repair
+
+### Status
+- Fixed the integration gap between access approval and migration-created inactive workspace owner memberships.
+- Current implementation status: implemented and fixture-proven locally; production deploy and manual Telegram re-approval/acceptance remain pending in this session.
+- Scope is deterministic Python access/workspace persistence. AI maturity, LLM/STT/LMM authority, business-domain ownership, storage, PDF, and Google Drive behavior are unchanged.
+
+### Behavior
+- `approve_user` now runs authorization, access-request decision, optional migrated-membership reactivation, and active-selection restore in one `BEGIN IMMEDIATE` transaction.
+- Automatic reactivation is allowed only for exactly one inactive owner membership with one active workspace, one supplier in that workspace, matching `supplier.telegram_id`, one supplier row for the actor, and no competing owner.
+- A single existing active membership may have its missing/stale active selection restored.
+- Multiple inactive memberships, unsupported membership status, unavailable workspace, supplier mismatch, multiple actor suppliers, or competing ownership fail closed and roll back every approval write.
+- Clean approval without existing memberships still creates no workspace, supplier, membership, or selection.
+- Public/admin workspace invitation, ownership transfer, claim, and actor merge remain unsupported.
+
+### Verification
+- `python -m pytest -q tests/test_access_workspace_reactivation.py tests/test_access_request_flow.py tests/test_workspace_context.py tests/test_workspace_profile_service.py` - 35 passed.
+- `python -m pytest -q` - 2135 passed, 7 subtests passed in 309.98s.
+
 ## 2026-07-13 - Generic Multi-Workspace Dry-Run Readiness Fix
 
 ### Status

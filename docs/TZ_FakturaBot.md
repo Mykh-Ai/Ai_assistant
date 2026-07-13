@@ -1402,6 +1402,8 @@ When Phase 2 is implemented, unknown Telegram users may request access through `
 - the user receives a neutral Slovak message that administrator approval is required;
 - configured admins may review pending requests with `/access_requests`;
 - configured admins may use `/approve <telegram_id>`, `/reject <telegram_id>`, `/block <telegram_id>`, and `/users`;
+- `/approve` transactionally restores one migration-created inactive owner membership and active selection only when supplier/workspace ownership is unique and matches the approved Telegram actor;
+- this approval repair creates no workspace or supplier and fails closed with a full rollback on multiple memberships or contradictory ownership;
 - non-admin users cannot run access-management commands.
 
 Authorization model:

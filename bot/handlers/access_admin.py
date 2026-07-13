@@ -16,7 +16,11 @@ from aiogram.types import Message
 from bot.config import Config
 from bot.keyboards.decision import answer_with_decision_keyboard, approve_edit_cancel_keyboard
 from bot.handlers.start import APPROVED_ACCESS_NEXT_STEP_MESSAGE
-from bot.services.access_control import ACCESS_STATUS_PENDING, AccessControlService
+from bot.services.access_control import (
+    ACCESS_STATUS_PENDING,
+    AccessApprovalWorkspaceConflict,
+    AccessControlService,
+)
 from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_admin_telegram_user
 from bot.services.customization_requests import (
     RESPONSE_DELIVERY_FAILED,
@@ -463,11 +467,30 @@ async def cmd_approve(message: Message, config: Config, bot: Bot | None = None) 
         return
 
     access_service = AccessControlService(config.db_path)
-    access_service.approve_user(
-        telegram_id=telegram_id,
-        approved_by=message.from_user.id,
+    try:
+        approval = access_service.approve_user(
+            telegram_id=telegram_id,
+            approved_by=message.from_user.id,
+        )
+    except AccessApprovalWorkspaceConflict as exc:
+        logger.warning(
+            'access_user_approval_workspace_conflict telegram_id=%s reason=%s',
+            _mask_telegram_id(telegram_id),
+            str(exc),
+        )
+        await message.answer(
+            'Schválenie sa nevykonalo: existujúce vlastníctvo business workspace '
+            'nie je jednoznačné. Žiadne údaje neboli zmenené.'
+        )
+        return
+    logger.info(
+        'access_user_approved telegram_id=%s approved_by=%s '
+        'workspace_membership_reactivated=%s active_selection_restored=%s',
+        _mask_telegram_id(telegram_id),
+        _mask_telegram_id(message.from_user.id),
+        approval.reactivated_workspace_membership,
+        approval.restored_active_selection,
     )
-    logger.info('access_user_approved telegram_id=%s approved_by=%s', _mask_telegram_id(telegram_id), _mask_telegram_id(message.from_user.id))
 
     notification_bot = bot or getattr(message, 'bot', None)
     notification_sent = await _notify_approved_user(bot=notification_bot, telegram_id=telegram_id)

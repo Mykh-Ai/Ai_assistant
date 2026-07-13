@@ -221,6 +221,9 @@ MVP membership behavior:
 - current authorized user may own multiple workspaces;
 - only an owner may create an additional business profile;
 - sharing one workspace with additional Telegram users is not exposed in MVP;
+- normal access approval may reactivate exactly one migration-created inactive owner membership when supplier actor ownership is unique and consistent;
+- that reactivation and active-selection restore are part of the approval transaction and create no workspace or supplier;
+- ambiguous memberships or ownership fail closed; approval does not attach a different actor or transfer workspace ownership;
 - authorization remains user-level through current access control;
 - workspace membership is the second, mandatory business-data gate.
 

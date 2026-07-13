@@ -64,6 +64,10 @@ Expected behavior:
 - admin can reject users;
 - admin can block users;
 - approved users become authorized without editing `.env` and without restarting the bot;
+- approval transactionally reactivates one migrated `inactive` owner membership only when exactly one active workspace and one supplier row prove `supplier.telegram_id` ownership for that actor;
+- successful single-membership reactivation creates or restores the actor's active workspace selection without creating a workspace or supplier;
+- multiple inactive memberships, multiple actor-owned supplier rows, another owner, missing/inactive workspace, or supplier-actor mismatch fail closed and roll back authorization, access-request, membership, and selection writes;
+- approval is not a workspace invitation, ownership-transfer, claim, or identity-merge mechanism;
 - approval is required before `/supplier`, invoice, contact, accounting-document, and other business flows.
 - after approval, the user-facing next step is `/start`, then `/moj_profil`; `/supplier` remains a legacy/technical onboarding alias;
 - after the supplier profile is saved, onboarding points only to the next staged step `/sluzbu` instead of showing contact and invoice commands at the same time;
