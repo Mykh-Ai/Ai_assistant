@@ -53,7 +53,7 @@ async def cmd_google_drive_connect(message: Message, config: Config) -> None:
     state_service = GoogleDriveOAuthStateService(config.db_path)
     try:
         created = state_service.create_oauth_state(
-            workspace_id=_workspace_id_for_telegram_id(telegram_id),
+            workspace_id=_owner_workspace_id(config),
             telegram_id=telegram_id,
             scopes=DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES,
             redirect_uri=config.google_oauth_redirect_uri,
@@ -86,7 +86,7 @@ async def cmd_google_drive_status(message: Message, config: Config) -> None:
         return
 
     record = _connection_service(config).get_connection_for_workspace(
-        workspace_id=_workspace_id_for_telegram_id(_telegram_id(message))
+        workspace_id=_owner_workspace_id(config)
     )
     if record is None:
         await message.answer(GOOGLE_DRIVE_NOT_CONNECTED_MESSAGE)
@@ -102,7 +102,7 @@ async def cmd_google_drive_disconnect(message: Message, config: Config) -> None:
         return
 
     service = _connection_service(config)
-    workspace_id = _workspace_id_for_telegram_id(_telegram_id(message))
+    workspace_id = _owner_workspace_id(config)
     try:
         service.mark_disconnected(workspace_id=workspace_id)
     except GoogleDriveConnectionServiceError as exc:
@@ -126,8 +126,8 @@ def _telegram_id(message: Message) -> int:
     return int(user.id)
 
 
-def _workspace_id_for_telegram_id(telegram_id: int) -> str:
-    return f'telegram-{telegram_id}'
+def _owner_workspace_id(config: Config) -> str:
+    return config.google_drive_owner_workspace_id
 
 
 def _connection_service(config: Config) -> GoogleDriveConnectionService:
@@ -147,7 +147,7 @@ def _format_google_drive_status(record: GoogleDriveConnectionRecord) -> str:
     if status == GOOGLE_DRIVE_STATUS_CONNECTED:
         lines.append('Pripojenie je ulozene v bote, ale tento prikaz nespusta nahravanie suborov.')
     elif status == GOOGLE_DRIVE_STATUS_NEEDS_REAUTH:
-        lines.append('Pripojenie vyzaduje opatovne prihlasenie cez /google_drive_connect.')
+        lines.append('Pripojenie vyzaduje opatovne prihlasenie spravcom.')
     elif status in {GOOGLE_DRIVE_STATUS_DISCONNECTED, GOOGLE_DRIVE_STATUS_REVOKED}:
         lines.append('Google Drive archiv zatial nie je aktivne pripojeny.')
     elif status == GOOGLE_DRIVE_STATUS_ERROR:

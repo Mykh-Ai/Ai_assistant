@@ -60,6 +60,13 @@ Telegram replies, or Git.
 7. Set `GOOGLE_DRIVE_ENABLED=1`, `GOOGLE_DRIVE_MODE=owner_oauth`, and restart the bot runtime.
 8. Run a manual smoke upload only with real owner credentials.
 
+`/google_drive_status` and `/google_drive_disconnect` resolve this shared owner
+connection through `GOOGLE_DRIVE_OWNER_WORKSPACE_ID`; they do not derive a
+separate connection key from the administrator's Telegram id. The interactive
+`/google_drive_connect` command requires a configured production callback
+redirect. Where that callback UX is not configured, use the manual owner
+bootstrap above.
+
 The bot creates/finds the year/type/month folders under the configured root
 folder. If OAuth credentials, encrypted token, folder id, dependency, quota, or
 access is missing, jobs stay retryable/failed boundedly; local files are not

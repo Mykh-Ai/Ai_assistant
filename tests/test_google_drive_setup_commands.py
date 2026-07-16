@@ -100,8 +100,8 @@ def _state_rows(db_path: Path) -> list[sqlite3.Row]:
         return list(connection.execute('SELECT * FROM google_drive_oauth_states'))
 
 
-def _workspace_id(telegram_id: int = ADMIN_ID) -> str:
-    return f'telegram-{telegram_id}'
+def _workspace_id() -> str:
+    return 'owner'
 
 
 def _extract_url(text: str) -> str:

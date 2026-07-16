@@ -1,3 +1,15 @@
+## 2026-07-16 - Owner Google Drive Reauthorization And Status Lookup Repair
+
+- Production owner OAuth reauthorization was completed after explicit user approval through the existing manual bootstrap. The first consent was rejected fail-closed as `drive_scope_missing`; a second consent with the required Drive permission completed successfully.
+- Authoritative read-only verification reports the configured owner connection as `connected` with a stored root folder. No document upload, archive-job mutation, remote file move, or Drive folder creation was performed during reauthorization.
+- Confirmed a Telegram integration defect: `/google_drive_status`, `/google_drive_disconnect`, and interactive state creation resolved a legacy `telegram-<id>` connection key while the active owner OAuth worker uses `GOOGLE_DRIVE_OWNER_WORKSPACE_ID`.
+- Updated the three admin setup commands to resolve the shared configured owner connection. Reauthorization status now requires administrator action without falsely claiming `/google_drive_connect` is always available when production callback UX is not configured.
+- Current capability status remains `partial`, owner-run only. No new canonical action, FSM, voice route, LLM/STT/LMM behavior, schema, workspace business ownership, archive path, retention behavior, or upload worker topology was added.
+- Updated the owner OAuth operations document and changelog. Product Truth and InfoHelp capability status did not change because the repair makes the existing shared-owner connection status truthful without expanding support.
+- Focused settings tests: `python -m pytest -q tests\\test_google_drive_setup_commands.py` -> `19 passed`.
+- Expanded Drive/OAuth tests: `python -m pytest -q tests\\test_google_drive_setup_commands.py tests\\test_google_drive_oauth_state_service.py tests\\test_google_drive_connection_service.py tests\\test_google_drive_oauth_callback_service.py tests\\test_google_drive_service_account_archive.py` -> `107 passed`.
+- Full suite: `python -m pytest -q` -> `2162 passed, 7 subtests passed`.
+
 ## 2026-07-16 - Accounting Document Drive Workspace Folder Isolation V1
 
 ### Preflight and scope
