@@ -21,8 +21,16 @@
 - Expanded worker/provider/workspace/Product Truth/InfoHelp suite: `292 passed`.
 - Updated focused path/provider/Product Truth/InfoHelp suite: `162 passed`.
 - Final full suite after retention assertions: `2162 passed, 7 subtests passed in 215.50s`.
-- Real configured two-profile Google Drive smoke was documented but not run; it remains an explicit deployment gate.
-- Commit, push, merge, deploy, server mutation, credential change, production audit, production backfill, and remote Drive move were not performed.
+- Real configured two-profile Google Drive smoke was documented but not run during local verification.
+
+### Delivery
+- Runtime commit `36090500e5a7ddeb05f405f5a8a287d3f5c4948f` was pushed to `origin/main`, fast-forwarded on `/bot/repo`, and built into the production container.
+- Live and stopped-state read-only Drive target audits both reported `active_accounting_jobs=0`, `blocker_count=0`, `deployment_ready=true`, `writes_performed=false`, and unchanged DB SHA-256 `faa50d6a97a9ca0b3efa3cf677535b8f6d79b024bd62bef20bb3e67dec6a0309`.
+- Verified backup `/var/backups/fakturabot/20260716T171216Z_3609050_drive_workspace` contains an exact raw DB copy plus storage archive; source and backup DB integrity both reported `ok` and raw DB SHA-256 values match.
+- Post-deploy container state is `Up`; startup/polling and owner OAuth scheduler logs are present with zero recent error lines. Host/container SHA-256 values for the new path and audit modules match.
+- Fifteen preservation tables have exact pre-deploy backup versus live row-count parity, including workspace, membership, supplier, contacts, invoices, accounting archive, and work-time rows; post-deploy DB integrity is `ok`.
+- Redacted runtime inventory now has three workspaces, three active memberships, two active selections, and a maximum of two memberships for one actor. Actual Telegram switching and cross-profile object acceptance were not exercised by the agent.
+- The single owner Google Drive connection is `needs_reauth`; real upload smoke remains externally blocked until the owner completes the existing reauthorization flow. No credentials, OAuth state, archive rows, local documents, or remote Drive files were changed by the agent.
 
 ## 2026-07-13 - Access Approval Workspace Reactivation Repair
 

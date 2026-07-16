@@ -1530,11 +1530,11 @@ Explicitly outside MVP: cross-workspace analytics, per-request temporary overrid
 
 Production migration boundary: the 2026-07-13 apply preserved row counts, existing invoice/accounting paths, and storage fingerprints; no Google Drive mutation was performed. The verified rollback backup at `/var/backups/fakturabot/20260713T173948Z_7408399` must remain retained until real two-profile acceptance and a later explicit retention decision.
 
-Acceptance boundary: production currently has two workspaces and two memberships, but no authorized Telegram actor has two active memberships. Do not claim the interactive two-profile journey complete until `/profily` creates a second profile for one actor, text and voice switch are exercised, lightweight objects are proven isolated in both profiles, and temporary test objects are removed through normal product flows when no longer needed.
+Acceptance boundary: redacted production inventory now has three workspaces, three active memberships, two active selections, and a maximum of two memberships for one actor. This proves a two-profile actor exists, but does not prove the interactive journey. Do not claim conversation acceptance complete until `/profily`, text and voice switching, and lightweight cross-profile object isolation are exercised through the normal product flow.
 
 ## Accounting-document Drive workspace isolation (2026-07-16)
 
-Implementation status: `implemented locally / tested / not deployed`.
+Implementation status: `implemented / fully tested / deployed at runtime commit 36090500e5a7ddeb05f405f5a8a287d3f5c4948f`.
 
 New confirmed receipt and incoming-invoice archive jobs persist an immutable
 relative target below the configured owner Drive root:
@@ -1552,3 +1552,14 @@ worker count, invoice-PDF path, or historical remote file. Existing Drive files
 are not moved. Before deployment, the read-only accounting Drive target audit
 must report zero blockers for active `pending`, `uploading`, and `retry_wait`
 receipt/incoming-invoice jobs.
+
+Production delivery passed live, stopped-state, and post-deploy read-only audits
+with zero active accounting jobs and zero blockers. Source/backup/live DB
+integrity and row-count preservation passed. The rollback backup is retained at
+`/var/backups/fakturabot/20260716T171216Z_3609050_drive_workspace`.
+
+The shared owner Drive connection currently reports `needs_reauth`. Therefore
+the code is deployed and fail-closed, but a real two-profile upload cannot be
+claimed until the owner completes the existing reauthorization flow and the
+documented manual smoke is performed. This deployment did not alter credentials,
+OAuth state, archive rows, local documents, or remote Drive files.

@@ -7,6 +7,13 @@ implementation defect remains. It is not permission to commit or deploy.
 Real configured two-profile Google Drive smoke was not performed and remains a
 separate deployment gate.
 
+Deployment update 2026-07-16: runtime commit
+`36090500e5a7ddeb05f405f5a8a287d3f5c4948f` was deployed after clean live and
+stopped-state audits, verified backup, post-deploy audit, integrity checks, and
+row-count preservation. The real upload boundary remains unproven because the
+shared owner Drive connection reports `needs_reauth`; no credential or remote
+Drive mutation was attempted.
+
 Test fixtures use synthetic workspace identities and company names. No
 production Telegram id, workspace id, folder name, document content, or Google
 credential is recorded here.
