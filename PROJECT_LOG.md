@@ -1,3 +1,14 @@
+## 2026-07-16 - Production Enqueue Repair For Two Preserved Receipts
+
+- After explicit user direction to archive the two existing receipts, a read-only storage/state audit found exactly two confirmed local receipt metadata files with preserved originals but no archive state/job; all 33 older accounting records remained tracked.
+- Fail-closed dry-run validated one active canonical workspace, one matching supplier, active membership ownership, zero existing jobs, one original plus metadata per receipt, and exact safe targets `<workspace.drive_folder_name>/2026/blocky/2026-07`.
+- Created verified rollback backup `/var/backups/fakturabot/20260716T181011Z_feba5a9_drive_enqueue_2_receipts`: SQLite integrity `ok`, two originals plus two metadata files retained, DB SHA-256 `15eb7ae14740f6012c3f11a952dcd89821b867b7cd20f9a84334b477bafc07d0`, archive SHA-256 `de99a6e0abcb5bcc3cc859d39924a60459d1a174175f547ff3b3eb2267e6612e`.
+- Enqueued only those two documents through `AccountingDocumentArchiveService`; both jobs started `pending` with immutable workspace-specific targets and no pre-existing job collision.
+- The existing scheduler processed exactly two jobs. Both completed `uploaded` with distinct Drive file ids and one shared correct target folder id; no retry or error code occurred.
+- Existing retention executed only after successful upload: both local originals were removed, both local metadata files remain, and the dedicated backup is retained.
+- Post-operation verification: DB integrity `ok`, one job per document, untracked metadata `0`, active accounting jobs `0`, blockers `0`, and read-only audit reported `database_unchanged=true`.
+- No historical remote file was moved, no old job was rewritten, no invoice PDF was touched, and no second OAuth connection, worker, scheduler, schema change, Docker restart, or code deployment was performed for this repair.
+
 ## 2026-07-16 - Owner Google Drive Reauthorization And Status Lookup Repair
 
 - Production owner OAuth reauthorization was completed after explicit user approval through the existing manual bootstrap. The first consent was rejected fail-closed as `drive_scope_missing`; a second consent with the required Drive permission completed successfully.
