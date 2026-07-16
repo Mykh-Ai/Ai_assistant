@@ -389,15 +389,15 @@ Every Product Truth answer should produce:
 4. safe next step;
 5. linked action or customization option when allowed.
 
-Example for unsupported integration:
+Example for a setup-gated partial integration:
 
 ```text
-Primary status: unsupported
-Flags/context: requires_external_credentials
-Answer: Google Drive storage is not available in the current runtime.
-Limit: invoices are stored in the bot system and can be viewed/downloaded via
-Telegram.
-Next step: offer a customization request if the request layer exists.
+Primary status: partial
+Flags/context: requires_setup, requires_admin, requires_external_credentials
+Answer: One configured owner OAuth connection can archive selected documents.
+Limit: upload is asynchronous. New receipts and incoming invoices use the
+owning workspace folder; local save does not prove Drive upload success.
+Next step: an admin configures the owner OAuth connection and worker.
 ```
 
 ## Forbidden Claims
@@ -678,9 +678,14 @@ The implemented slice is owner OAuth archive:
 - uploads consume the owner Google account quota;
 - uploads confirmed receipts, incoming invoice originals, and selected outgoing
   invoice PDFs through the archive worker;
+- persists immutable workspace-specific targets for newly confirmed receipts
+  and incoming invoices below each workspace `drive_folder_name`;
+- does not migrate or move existing remote Drive files automatically;
 - enqueues outgoing invoice PDFs only after a control event such as mark-paid;
 - keeps local invoice PDFs; no invoice PDF deletion is implemented;
 - keeps local accounting metadata JSON;
+- may delete only the accounting original after `uploaded` when configured;
+- keeps accounting originals for pending or failed uploads;
 - keeps local files on failed/not-configured upload;
 - service-account mode is unsupported for personal My Drive unless a future Google Workspace/Shared Drive setup is explicitly configured.
 

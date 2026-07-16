@@ -282,3 +282,31 @@ Fresh local schemas support nullable invoice_followup_state.workspace_id. Worksp
 Migration apply must backfill invoice_followup_state.workspace_id from the owning invoice, reject orphan or mismatched follow-up rows, and create the workspace reminder index. Background delivery requires an active authorized supplier owner membership for each workspace and must not consult active_workspace_selection.
 
 New PDF targets use storage/invoices/<workspace.storage_key>/<invoice_number>.pdf. Existing non-empty invoice.pdf_path values are preserved and resolved as stored; migration does not move or rewrite those files automatically. Any later path move requires a separate backed-up dry run and rollback plan.
+
+## Accounting-document Google Drive target deployment gate
+
+Before deploying workspace-specific accounting-document Drive targets, run:
+
+```text
+python -m bot.accounting_document_drive_audit --db-path <server-db-path>
+```
+
+The command opens SQLite with `mode=ro` and `PRAGMA query_only`, reports only
+aggregate counts, blocker categories, and before/after database SHA-256 values,
+and performs no repair or backfill. Exit code `0` means the audited active jobs
+are deployment-ready. Exit code `2` blocks deployment.
+
+The audit covers non-terminal receipt/incoming-invoice jobs in `pending`,
+`uploading`, and `retry_wait`. Blockers include:
+
+- missing workspace context;
+- missing `target_folder_path`;
+- unsafe or inconsistent local/metadata/target paths;
+- a persisted target that does not match the workspace folder, document type,
+  year, and month derived from canonical persisted state.
+
+Do not deploy while `blocker_count` is non-zero. Prepare and approve a separate
+dry-run repair plan; this command has no apply mode. Do not rewrite uploaded
+jobs, move remote files, or run a startup backfill. The normal deployment
+backup/rollback discipline remains mandatory, and rollback preserves DB rows,
+local originals, metadata, and remote files.

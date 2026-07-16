@@ -242,7 +242,7 @@ def test_worker_does_not_claim_retry_wait_before_due(tmp_path: Path) -> None:
 
 
 def test_transient_failure_sets_retry_wait_and_preserves_local_file(tmp_path: Path) -> None:
-    db_path, record, original_path, _metadata_path = _enqueue_document(tmp_path)
+    db_path, record, original_path, metadata_path = _enqueue_document(tmp_path)
 
     result = ArchiveWorker(db_path, FakeArchiveProvider("transient")).process_one(now=NOW)
 
@@ -254,6 +254,7 @@ def test_transient_failure_sets_retry_wait_and_preserves_local_file(tmp_path: Pa
     assert job[3] == original_path
     assert job[6] == ARCHIVE_ERROR_TRANSIENT
     assert Path(original_path).exists()
+    assert Path(metadata_path).exists()
     state = AccountingDocumentArchiveService(db_path).get_state(
         workspace_id=WORKSPACE_ID,
         document_id=record.job.document_id,
@@ -285,7 +286,7 @@ def test_missing_provider_sets_provider_unavailable_safely(tmp_path: Path) -> No
 
 
 def test_permanent_failure_sets_failed_and_preserves_local_file(tmp_path: Path) -> None:
-    db_path, record, original_path, _metadata_path = _enqueue_document(tmp_path)
+    db_path, record, original_path, metadata_path = _enqueue_document(tmp_path)
 
     result = ArchiveWorker(db_path, FakeArchiveProvider("permanent")).process_one(now=NOW)
 
@@ -296,6 +297,7 @@ def test_permanent_failure_sets_failed_and_preserves_local_file(tmp_path: Path) 
     assert job[3] == original_path
     assert job[6] == ARCHIVE_ERROR_PERMANENT
     assert Path(original_path).exists()
+    assert Path(metadata_path).exists()
     state = AccountingDocumentArchiveService(db_path).get_state(
         workspace_id=WORKSPACE_ID,
         document_id=record.job.document_id,

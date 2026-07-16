@@ -114,7 +114,7 @@ _SLOVAK_CAPABILITY_COPY = {
     'google_drive_invoice_storage': {
         'title': 'Ukladanie faktúr na Google Drive',
         'summary': 'Google Drive archivácia je podporovaná čiastočne v owner OAuth režime pre jedno nakonfigurované vlastnícke Google konto.',
-        'limitation': 'Nie je to per-client OAuth ani všeobecná SaaS synchronizácia. Vyžaduje OAuth client credentials, GOOGLE_TOKEN_CRYPTO_SECRET, jednorazový owner OAuth bootstrap, encrypted refresh token, root folder id v osobnom My Drive a zapnutý worker. Service-account režim nie je podporovaný pre personal My Drive bez Workspace/Shared Drive. PDF faktúr ostáva lokálne v bote.',
+        'limitation': 'Nie je to per-client OAuth ani všeobecná SaaS synchronizácia. Vyžaduje OAuth client credentials, GOOGLE_TOKEN_CRYPTO_SECRET, jednorazový owner OAuth bootstrap, encrypted refresh token, root folder id v osobnom My Drive a zapnutý worker. Service-account režim nie je podporovaný pre personal My Drive bez Workspace/Shared Drive. Potvrdené bločky a prijaté faktúry sa zaraďujú asynchrónne pod samostatný priečinok vlastníckeho business profilu; lokálne uloženie neznamená úspešný upload, metadata ostávajú lokálne a staré Drive súbory sa automaticky nepresúvajú. PDF faktúr ostáva lokálne v bote.',
         'safe_next': 'Správca musí nastaviť GOOGLE_DRIVE_ENABLED=1, owner OAuth credentials, GOOGLE_TOKEN_CRYPTO_SECRET, uložiť encrypted refresh token cez bootstrap a nastaviť GOOGLE_DRIVE_ROOT_FOLDER_ID. Potom worker nahráva potvrdené doklady a vybrané faktúry do Drive archívu.',
     },
     'google_drive_invoice_archive_after_due_date': {

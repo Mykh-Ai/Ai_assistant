@@ -693,12 +693,12 @@ Vie bot ukladat faktury na Google Disk?
 Expected target answer:
 
 ```text
-Momentane nie. Faktury sa teraz ukladaju v systeme bota a mozete si ich
-zobrazit alebo stiahnut cez Telegram.
-
-Ak potrebujete Google Disk alebo ine vlastne ukladanie faktur, mozem z toho
-pripravit poziadavku na upravu uctu. Spravca potom skontroluje, co presne treba
-nastavit.
+Ciastocne. Jedno nakonfigurovane owner OAuth konto moze cez worker archivovat
+potvrdene doklady. Nove blocky a prijate faktury pouziju samostatny priecinok
+vlastniaceho business profilu. Lokalne ulozenie este neznamena uspesny upload;
+metadata ostavaju lokalne a stare Drive subory sa automaticky nepresuvaju.
+Nastavenie vyzaduje spravcu, OAuth credentials, sifrovany refresh token,
+root folder id a zapnuty worker.
 ```
 
 ### SMS
@@ -866,6 +866,10 @@ Required wording boundaries:
 
 - say it requires admin setup, OAuth client credentials, `GOOGLE_TOKEN_CRYPTO_SECRET`, an encrypted owner refresh token, and a personal My Drive root folder id;
 - say it is single-owner only, not per-client OAuth and not full SaaS Drive sync;
+- say newly confirmed receipts and incoming invoices use the owning workspace's
+  persisted separate Drive folder and immutable queued target;
+- say local save may succeed while upload is pending/unavailable, metadata stays
+  local, and existing remote files are not migrated automatically;
 - say service-account mode is unsupported for personal My Drive unless Workspace/Shared Drive is explicitly configured later;
 - say invoice PDFs remain local in this MVP;
 - say upload success must not be claimed until the worker records `uploaded`;

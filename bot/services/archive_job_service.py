@@ -6,6 +6,12 @@ from pathlib import Path
 import sqlite3
 from uuid import uuid4
 
+from bot.services.accounting_document_archive_path import (
+    AccountingDocumentArchivePathError,
+    derive_accounting_document_drive_target_path,
+    normalize_relative_drive_target_path,
+    validate_confirmed_accounting_document_path,
+)
 from bot.services.db import ensure_archive_schema, managed_connection
 
 
@@ -29,7 +35,6 @@ TERMINAL_ARCHIVE_JOB_STATUSES = (
     ARCHIVE_JOB_ABANDONED,
 )
 ALLOWED_ARCHIVE_JOB_STATUSES = ACTIVE_ARCHIVE_JOB_STATUSES + TERMINAL_ARCHIVE_JOB_STATUSES
-ACCOUNTING_ORIGINAL_FOLDERS = {'receipts', 'incoming_invoices'}
 
 
 class ArchiveJobServiceError(ValueError):
@@ -83,6 +88,8 @@ class ArchiveJobService:
         provider: str = ARCHIVE_PROVIDER_GOOGLE_DRIVE,
         target_folder_path: str | None = None,
         invoice_storage_key: str | None = None,
+        accounting_storage_key: str | None = None,
+        accounting_drive_folder_name: str | None = None,
         max_attempts: int = 5,
         now: datetime | None = None,
     ) -> ArchiveJobRecord:
@@ -110,19 +117,40 @@ class ArchiveJobService:
             if metadata_path_text is not None:
                 raise ArchiveJobServiceError('metadata_path_invoice_pdf_rejected')
         else:
-            _validate_confirmed_accounting_path(
-                local_file_path_text,
-                workspace_id=workspace_id,
-                expected_leaf='originals',
-                field_name='local_file_path',
-            )
-            if metadata_path_text is not None:
-                _validate_confirmed_accounting_path(
-                    metadata_path_text,
-                    workspace_id=workspace_id,
-                    expected_leaf='metadata',
-                    field_name='metadata_path',
+            storage_key = accounting_storage_key or workspace_id
+            try:
+                validate_confirmed_accounting_document_path(
+                    local_file_path_text,
+                    workspace_storage_key=storage_key,
+                    document_type=document_type,
+                    expected_leaf='originals',
+                    field_name='local_file_path',
                 )
+                if metadata_path_text is not None:
+                    validate_confirmed_accounting_document_path(
+                        metadata_path_text,
+                        workspace_storage_key=storage_key,
+                        document_type=document_type,
+                        expected_leaf='metadata',
+                        field_name='metadata_path',
+                    )
+                if accounting_drive_folder_name is not None:
+                    expected_target = derive_accounting_document_drive_target_path(
+                        local_file_path=local_file_path_text,
+                        metadata_path=metadata_path_text,
+                        workspace_storage_key=storage_key,
+                        workspace_drive_folder_name=accounting_drive_folder_name,
+                        document_type=document_type,
+                    )
+                    if target_folder_path is None:
+                        raise AccountingDocumentArchivePathError('target_folder_path_required')
+                    if normalize_relative_drive_target_path(target_folder_path) != expected_target:
+                        raise AccountingDocumentArchivePathError('target_folder_path_mismatch')
+                    target_folder_path = expected_target
+                elif target_folder_path is not None:
+                    target_folder_path = normalize_relative_drive_target_path(target_folder_path)
+            except AccountingDocumentArchivePathError as exc:
+                raise ArchiveJobServiceError(str(exc)) from exc
         if telegram_id <= 0:
             raise ArchiveJobServiceError('telegram_id_required')
         if max_attempts <= 0:
@@ -526,50 +554,6 @@ def _validate_invoice_pdf_path(
         raise ArchiveJobServiceError(f'{field_name}_{owner_mismatch_code}')
     if Path(relative[2]).suffix.lower() != '.pdf':
         raise ArchiveJobServiceError(f'{field_name}_invalid_invoice_path')
-
-
-def _validate_confirmed_accounting_path(
-    path_text: str,
-    *,
-    workspace_id: str,
-    expected_leaf: str,
-    field_name: str,
-) -> None:
-    path = Path(path_text)
-    parts = path.parts
-    if not parts or any(part == '..' for part in parts):
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
-    if any(part.lower() == 'invoices' for part in parts):
-        raise ArchiveJobServiceError(f'{field_name}_invoice_path_rejected')
-
-    lower_parts = [part.lower() for part in parts]
-    try:
-        index = lower_parts.index('workspaces')
-    except ValueError as exc:
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path') from exc
-
-    relative = parts[index:]
-    if len(relative) != 9:
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
-    if relative[1] != workspace_id:
-        raise ArchiveJobServiceError(f'{field_name}_workspace_mismatch')
-    if (
-        relative[0].lower() != 'workspaces'
-        or relative[2].lower() != 'years'
-        or relative[4].lower() != 'expenses'
-        or relative[7].lower() != expected_leaf
-    ):
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
-    if not (relative[3].isdigit() and len(relative[3]) == 4):
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
-    if not (relative[5].isdigit() and len(relative[5]) == 2):
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
-    if relative[6] not in ACCOUNTING_ORIGINAL_FOLDERS:
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
-    if not relative[8]:
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
-    if expected_leaf == 'metadata' and Path(relative[8]).suffix.lower() != '.json':
-        raise ArchiveJobServiceError(f'{field_name}_invalid_accounting_path')
 
 
 def _required_text(value: object, field_name: str) -> str:

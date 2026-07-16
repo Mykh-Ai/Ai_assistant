@@ -100,6 +100,9 @@ def test_google_drive_question_renders_external_limitation() -> None:
     assert 'Ukladanie fakt' in answer
     assert '\u010diasto\u010dn\u00e9' in answer
     assert 'owner OAuth' in answer
+    assert 'samostatný priečinok vlastníckeho business profilu' in answer
+    assert 'lokálne uloženie neznamená úspešný upload' in answer
+    assert 'staré Drive súbory sa automaticky nepresúvajú' in answer
     assert 'extern' in answer
 
 def test_invoice_due_date_reminder_question_renders_partial_automatic_status() -> None:

@@ -1531,3 +1531,24 @@ Explicitly outside MVP: cross-workspace analytics, per-request temporary overrid
 Production migration boundary: the 2026-07-13 apply preserved row counts, existing invoice/accounting paths, and storage fingerprints; no Google Drive mutation was performed. The verified rollback backup at `/var/backups/fakturabot/20260713T173948Z_7408399` must remain retained until real two-profile acceptance and a later explicit retention decision.
 
 Acceptance boundary: production currently has two workspaces and two memberships, but no authorized Telegram actor has two active memberships. Do not claim the interactive two-profile journey complete until `/profily` creates a second profile for one actor, text and voice switch are exercised, lightweight objects are proven isolated in both profiles, and temporary test objects are removed through normal product flows when no longer needed.
+
+## Accounting-document Drive workspace isolation (2026-07-16)
+
+Implementation status: `implemented locally / tested / not deployed`.
+
+New confirmed receipt and incoming-invoice archive jobs persist an immutable
+relative target below the configured owner Drive root:
+
+`<workspace.drive_folder_name>/<YYYY>/<blocky|prijate_faktury>/<YYYY-MM>`
+
+The confirmed FSM-bound `WorkspaceContext` supplies canonical `workspace_id`,
+`storage_key`, and `drive_folder_name`. The local save remains authoritative;
+unsafe or missing Drive folder data creates no generic-root job and leaves the
+original and metadata intact. Retry and duplicate enqueue reuse the persisted
+job target and never consult a later active profile selection.
+
+This changes no schema, local accounting layout, OAuth connection, scheduler,
+worker count, invoice-PDF path, or historical remote file. Existing Drive files
+are not moved. Before deployment, the read-only accounting Drive target audit
+must report zero blockers for active `pending`, `uploading`, and `retry_wait`
+receipt/incoming-invoice jobs.

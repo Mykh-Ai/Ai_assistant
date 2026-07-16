@@ -1009,6 +1009,9 @@ async def _save_accounting_document_from_state(
         supplier_telegram_id=supplier_telegram_id,
         workspace_id=workspace.workspace_id if workspace is not None else None,
         workspace_key=workspace_key,
+        workspace_drive_folder_name=(
+            workspace.drive_folder_name if workspace is not None else None
+        ),
     )
     _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
     await state.clear()
@@ -1267,6 +1270,7 @@ def _enqueue_archive_after_confirmed_save(
     supplier_telegram_id: int | None,
     workspace_id: str | None = None,
     workspace_key: str | None = None,
+    workspace_drive_folder_name: str | None = None,
 ) -> None:
     resolved_workspace_id = workspace_id or workspace_key or (
         workspace_key_for_supplier(supplier_telegram_id)
@@ -1281,6 +1285,10 @@ def _enqueue_archive_after_confirmed_save(
             document_type=candidate.document_type,
             local_file_path=result.original_path,
             metadata_path=result.metadata_path,
+            workspace_storage_key=(
+                workspace_key if workspace_drive_folder_name is not None else None
+            ),
+            workspace_drive_folder_name=workspace_drive_folder_name,
         )
     except Exception:
         logger.warning(

@@ -6,6 +6,10 @@ from pathlib import Path
 import sqlite3
 from urllib.parse import quote
 
+from bot.services.accounting_document_archive_path import (
+    AccountingDocumentArchivePathError,
+    derive_accounting_document_drive_target_path,
+)
 from bot.services.archive_job_service import (
     ARCHIVE_JOB_ABANDONED,
     ARCHIVE_JOB_FAILED,
@@ -77,6 +81,8 @@ class AccountingDocumentArchiveService:
         local_file_path: str | Path,
         metadata_path: str | Path | None = None,
         target_folder_path: str | None = None,
+        workspace_storage_key: str | None = None,
+        workspace_drive_folder_name: str | None = None,
         now: datetime | None = None,
     ) -> AccountingDocumentArchiveEnqueueResult:
         workspace_id = _required_text(workspace_id, 'workspace_id')
@@ -87,6 +93,28 @@ class AccountingDocumentArchiveService:
         if telegram_id <= 0:
             raise AccountingDocumentArchiveServiceError('telegram_id_required')
 
+        has_workspace_target_context = (
+            workspace_storage_key is not None or workspace_drive_folder_name is not None
+        )
+        if has_workspace_target_context and (
+            workspace_storage_key is None or workspace_drive_folder_name is None
+        ):
+            raise AccountingDocumentArchiveServiceError('workspace_archive_context_incomplete')
+        if has_workspace_target_context:
+            try:
+                expected_target = derive_accounting_document_drive_target_path(
+                    local_file_path=local_file_path_text,
+                    metadata_path=metadata_path_text,
+                    workspace_storage_key=workspace_storage_key,
+                    workspace_drive_folder_name=workspace_drive_folder_name,
+                    document_type=document_type,
+                )
+            except AccountingDocumentArchivePathError as exc:
+                raise AccountingDocumentArchiveServiceError(str(exc)) from exc
+            if target_folder_path is not None and target_folder_path != expected_target:
+                raise AccountingDocumentArchiveServiceError('target_folder_path_mismatch')
+            target_folder_path = expected_target
+
         job = self._jobs.enqueue_job(
             workspace_id=workspace_id,
             telegram_id=telegram_id,
@@ -95,6 +123,8 @@ class AccountingDocumentArchiveService:
             local_file_path=local_file_path_text,
             metadata_path=metadata_path_text,
             target_folder_path=target_folder_path,
+            accounting_storage_key=workspace_storage_key,
+            accounting_drive_folder_name=workspace_drive_folder_name,
             now=now,
         )
         state = self._upsert_state_for_job(

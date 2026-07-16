@@ -187,8 +187,6 @@ def _drive_folder_parts(
 ) -> tuple[str, ...]:
     if target_folder_path and target_folder_path.strip():
         parts = tuple(part for part in target_folder_path.replace("\\", "/").split("/") if part)
-        if parts and parts[0] == root_folder_name:
-            return parts[1:]
         return parts
 
     expected_drive_folder = _DOCUMENT_TYPE_TO_DRIVE_FOLDER.get(document_type)

@@ -309,6 +309,41 @@ def test_worker_deletes_original_only_after_uploaded_state_and_keeps_metadata(tm
     assert metadata.exists()
 
 
+def test_worker_applies_incoming_invoice_retention_only_after_uploaded_state(tmp_path: Path) -> None:
+    db_path, record, original, metadata = _enqueue(
+        tmp_path,
+        document_id='incoming-001',
+        document_type='incoming_invoice',
+    )
+    json_path = tmp_path / 'service-account.json'
+    json_path.write_text('{}', encoding='utf-8')
+    provider = GoogleDriveServiceAccountArchiveProvider(
+        GoogleDriveServiceAccountClientConfig(
+            service_account_json_path=json_path,
+            root_folder_id='root-folder',
+        ),
+        drive_service=_FakeDriveService(),
+        media_file_upload_factory=lambda *_args, **_kwargs: object(),
+    )
+
+    result = ArchiveWorker(
+        db_path,
+        provider,
+        retention_policy=ArchiveLocalRetentionPolicy(
+            delete_incoming_invoice_original_after_upload=True,
+        ),
+    ).process_one(now=NOW)
+
+    assert result.status == ARCHIVE_JOB_UPLOADED
+    state = AccountingDocumentArchiveService(db_path).get_state(
+        workspace_id=WORKSPACE_ID,
+        document_id=record.job.document_id,
+    )
+    assert state is not None and state.archive_status == ARCHIVE_JOB_UPLOADED
+    assert not original.exists()
+    assert metadata.exists()
+
+
 def test_invoice_pdf_retention_policy_is_always_keep() -> None:
     policy = ArchiveLocalRetentionPolicy(
         delete_receipt_original_after_upload=True,

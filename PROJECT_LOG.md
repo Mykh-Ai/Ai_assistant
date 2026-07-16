@@ -1,3 +1,29 @@
+## 2026-07-16 - Accounting Document Drive Workspace Folder Isolation V1
+
+### Preflight and scope
+- Approved baseline verified at `a99528c2dcea4df98006b2a7e371ade84f524622` on `main`; initial unrelated dirty changes in this log and `tests/test_access_workspace_reactivation.py` were preserved.
+- Read the approved task, architecture proof contract, multi-workspace proof, implementation/handoff/evaluation contracts, Product Doctrine, AI standards, Product Truth, InfoHelp, TZ, migration runbook, OfficeFlow storage proposal, current intake/archive/workspace/provider/retention code, and relevant tests.
+- Read-only verdict: `design_matches_runtime`. The existing confirmed-save route, workspace-bound FSM, archive outbox, shared owner OAuth worker, retention, and idempotency matched the frozen architecture; the missing workspace-specific persisted target was the approved gap.
+- Scope is deterministic Python storage/archive path selection. No LLM/STT/LMM, public route, FSM state, OAuth/token, scheduler, worker topology, invoice PDF, schema, production DB, server, or remote Drive mutation is included.
+
+### Implementation
+- Added one shared accounting-document archive path owner for canonical local path validation, `receipt -> blocky`, `incoming_invoice -> prijate_faktury`, Unicode-safe single workspace folder validation, and bounded relative target normalization.
+- Confirmed workspace-bound intake now enqueues new receipt/incoming-invoice jobs with exact canonical `workspace_id`, local `storage_key`, persisted `drive_folder_name`, and immutable target `<drive_folder_name>/<YYYY>/<type>/<YYYY-MM>`.
+- Missing/unsafe workspace folder or cross-workspace path fails before job creation; the handler keeps the existing successful local-save UX and preserves original plus metadata.
+- Duplicate enqueue returns the existing job without overwriting its target; retry and worker execution use the persisted target and do not consult `active_workspace_selection`.
+- Explicit provider targets are always relative below the configured root; a legitimate first workspace segment equal to the configured root name is no longer stripped accidentally. Existing invoice-PDF targets remain `YYYY/faktury/YYYY-MM`.
+- Added `python -m bot.accounting_document_drive_audit --db-path <db>`: read-only aggregate audit with before/after DB SHA-256 and blocker exit code for active missing/unsafe/mismatched targets. No apply/backfill mode exists.
+
+### Safety and verification
+- No business schema or data migration; no local/remote file move; historical Drive files remain untouched.
+- Existing retention remains: failed/pending uploads preserve original and metadata; configured post-`uploaded` cleanup may remove only accounting originals; metadata remains; invoice PDFs remain governed separately.
+- Focused archive/intake suite: `114 passed`.
+- Expanded worker/provider/workspace/Product Truth/InfoHelp suite: `292 passed`.
+- Updated focused path/provider/Product Truth/InfoHelp suite: `162 passed`.
+- Final full suite after retention assertions: `2162 passed, 7 subtests passed in 215.50s`.
+- Real configured two-profile Google Drive smoke was documented but not run; it remains an explicit deployment gate.
+- Commit, push, merge, deploy, server mutation, credential change, production audit, production backfill, and remote Drive move were not performed.
+
 ## 2026-07-13 - Access Approval Workspace Reactivation Repair
 
 ### Status
