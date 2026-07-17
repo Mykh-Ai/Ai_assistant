@@ -216,6 +216,8 @@ The report:
 
 For an already migrated healthy database, dry-run reports public_profile_switch_ready=true, migration_required=false, apply_available=false, and apply_block_reason=database_already_migrated. A broken foundation, null ownership, missing workspace columns, or planner blocker keeps readiness false.
 
+For already migrated databases, ownership validation uses the persisted workspace_id together with the legacy actor field and canonical supplier/workspace mapping. Multiple supplier profiles for one actor are therefore valid when each row remains bound to one of that actor's workspaces. The audit still fails closed for null or unknown workspaces, actor/workspace mismatches, and cross-workspace invoice/contact, follow-up, confirmed-alias, work-time-event, or customization relations. Legacy pre-migration databases continue to require an unambiguous Telegram-to-workspace mapping.
+
 Apply and rollback tooling is implemented and fixture-tested. Production migration for exact SHA 7408399239eba8cb221ba7b6e7267ccf1d60a867 completed on 2026-07-13 after a frozen read-only baseline, verified host backup, fingerprint-pinned apply, post-apply audit, and bounded read-only smoke. The rollback backup remains retained at:
 
     /var/backups/fakturabot/20260713T173948Z_7408399

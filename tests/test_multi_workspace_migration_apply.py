@@ -278,6 +278,125 @@ def _columns(db_path: Path, table: str) -> set[str]:
         connection.close()
 
 
+def _add_second_workspace_profile_for_same_actor(db_path: Path) -> None:
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(
+            'INSERT INTO workspace '
+            '(workspace_id, display_name, storage_key, drive_folder_name, '
+            'status, created_at, updated_at) '
+            'VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+            ('ws_second', 'Second Company', 'second-company', 'Second Company', 'active'),
+        )
+        connection.execute(
+            'INSERT INTO workspace_membership '
+            '(workspace_id, telegram_id, role, status, created_at, updated_at) '
+            'VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+            ('ws_second', USER_ID, 'owner', 'active'),
+        )
+        connection.execute(
+            'INSERT INTO supplier '
+            '(workspace_id, telegram_id, name, ico, dic, address, iban, swift, '
+            'email, days_due) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (
+                'ws_second',
+                USER_ID,
+                'Second Company',
+                '22222222',
+                '2222222222',
+                'Second address',
+                'SK3112000000198742637541',
+                'GIBASKBX',
+                'second@example.test',
+                14,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _migrated_two_profile_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    db_path, storage_root = _legacy_fixture(tmp_path)
+    manager = MultiWorkspaceMigrationManager(
+        db_path=db_path,
+        storage_root=storage_root,
+    )
+    dry_run = manager.dry_run()['plan']
+    manager.apply(
+        expected_fingerprint=dry_run['database_fingerprint'],
+        backup_dir=tmp_path / 'migration-backups',
+        confirmation=APPLY_CONFIRMATION,
+        service_stopped=True,
+    )
+    _add_second_workspace_profile_for_same_actor(db_path)
+    return db_path, storage_root
+
+
+def test_already_migrated_two_profiles_use_workspace_owned_audit(
+    tmp_path: Path,
+) -> None:
+    db_path, storage_root = _migrated_two_profile_fixture(tmp_path)
+    before = db_path.read_bytes()
+
+    report = MultiWorkspaceMigrationAuditor(
+        db_path=db_path,
+        storage_root=storage_root,
+    ).dry_run()
+
+    assert db_path.read_bytes() == before
+    assert report['plan']['migration_required'] is False
+    assert report['plan']['apply_available'] is False
+    assert report['plan']['apply_block_reason'] == 'database_already_migrated'
+    assert report['plan']['blocker_count'] == 0
+    assert report['plan']['blockers'] == {}
+    assert report['migration_state']['public_profile_switch_ready'] is True
+    assert report['migration_state']['readiness_blockers'] == []
+    assert report['migration_state']['foundation_counts'] == {
+        'active_workspace_selection': 1,
+        'workspace': 2,
+        'workspace_membership': 2,
+    }
+
+
+def test_already_migrated_workspace_audit_still_blocks_cross_workspace_relations(
+    tmp_path: Path,
+) -> None:
+    db_path, storage_root = _migrated_two_profile_fixture(tmp_path)
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(
+            "UPDATE invoice SET workspace_id = 'ws_second' WHERE id = 1"
+        )
+        connection.execute(
+            "UPDATE invoice_followup_state SET workspace_id = 'ws_second' "
+            'WHERE invoice_id = 1'
+        )
+        connection.execute(
+            "UPDATE archive_jobs SET workspace_id = 'ws_unknown' "
+            "WHERE job_id = 'job-1'"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    before = db_path.read_bytes()
+
+    report = MultiWorkspaceMigrationAuditor(
+        db_path=db_path,
+        storage_root=storage_root,
+    ).dry_run()
+
+    assert db_path.read_bytes() == before
+    assert report['plan']['migration_required'] is False
+    assert report['plan']['blockers'] == {
+        'archive_jobs_owner_missing': 1,
+        'invoice_contact_owner_mismatch': 1,
+    }
+    assert report['migration_state']['public_profile_switch_ready'] is False
+    assert report['migration_state']['readiness_blockers'] == [
+        'migration_blockers_present'
+    ]
+
 def test_apply_backup_post_audit_and_rollback_round_trip(tmp_path: Path) -> None:
     db_path, storage_root = _legacy_fixture(tmp_path)
     manager = MultiWorkspaceMigrationManager(db_path=db_path, storage_root=storage_root)

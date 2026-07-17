@@ -137,7 +137,7 @@ This verdict means the applicable local automated journeys pass and no known imp
 - Production preflight found the server repo clean at the previous commit and the running container healthy. The accounting Drive audit reported deployment_ready=true, blocker_count=0, writes_performed=false, and an unchanged DB hash.
 - The canonical multi-workspace dry-run reported public_profile_switch_ready=false, blocker_count=131, apply_available=false, migration_required=false, and writes_performed=false. The contact table currently has four rows and no iban column; startup would therefore perform the approved additive ALTER TABLE.
 - Read-only code/data analysis identifies the blocker as a planner limitation for an actor who now owns two supplier profiles: the legacy by-telegram map deliberately excludes non-unique actors, so already workspace-bound rows are misclassified as owner_missing.
-- Deployment stopped before server checkout, backup creation, container rebuild/restart, or schema write. The audit must be repaired and revalidated separately; this proof does not authorize bypassing the canonical gate.
+- Deployment remains stopped before server checkout, backup creation, container rebuild/restart, or schema write. The canonical audit repair is locally implemented and preserves fail-closed cross-workspace checks; targeted tests passed 2/2, the migration/readiness suite passed 33/33, and the full suite passed 2206 tests plus 7 subtests. Commit/push and a fresh production dry-run are still required before backup or restart.
 
 ## Not run and deployment gates
 

@@ -281,6 +281,7 @@ class LegacyMultiWorkspaceMigrationPlanner:
         candidates: list[_WorkspaceCandidate] = []
         by_telegram: dict[int, _WorkspaceCandidate] = {}
         by_supplier: dict[int, _WorkspaceCandidate] = {}
+        by_workspace: dict[str, _WorkspaceCandidate] = {}
         for row in suppliers:
             telegram_id = int(row['telegram_id'])
             supplier_id = int(row['id'])
@@ -299,11 +300,17 @@ class LegacyMultiWorkspaceMigrationPlanner:
                 blockers.append({'code': 'workspace_identity_collision', 'count': 1})
             candidates.append(candidate)
             by_supplier[supplier_id] = candidate
+            by_workspace[workspace_id] = candidate
             if telegram_counts[telegram_id] == 1:
                 by_telegram[telegram_id] = candidate
         _add_duplicate_blocker(blockers, 'duplicate_target_storage_key', [row.storage_key for row in candidates])
         _add_duplicate_blocker(blockers, 'duplicate_target_workspace_id', [row.workspace_id for row in candidates])
 
+        migration_required = not _is_already_migrated(
+            connection,
+            suppliers=suppliers,
+            supplier_columns=supplier_columns,
+        )
         ownership_counts: dict[str, int] = {}
         for table, owner_column in (
             ('contact', 'supplier_telegram_id'), ('invoice', 'supplier_telegram_id'),
@@ -311,17 +318,24 @@ class LegacyMultiWorkspaceMigrationPlanner:
             ('work_time_settings', 'telegram_id'), ('archive_jobs', 'telegram_id'),
             ('accounting_document_archive_state', 'telegram_id'),
         ):
-            _validate_direct_owner(
-                connection, tables, table, owner_column, by_telegram, blockers, ownership_counts
+            if migration_required:
+                _validate_direct_owner(
+                    connection, tables, table, owner_column, by_telegram,
+                    blockers, ownership_counts,
+                )
+            else:
+                _validate_workspace_direct_owner(
+                    connection, tables, table, owner_column, by_workspace,
+                    blockers, ownership_counts,
+                )
+        if migration_required:
+            _validate_relations(
+                connection, tables, by_telegram, by_supplier, blockers, ownership_counts
             )
-        _validate_relations(
-            connection, tables, by_telegram, by_supplier, blockers, ownership_counts
-        )
-        migration_required = not _is_already_migrated(
-            connection,
-            suppliers=suppliers,
-            supplier_columns=supplier_columns,
-        )
+        else:
+            _validate_workspace_relations(
+                connection, tables, by_workspace, by_supplier, blockers, ownership_counts
+            )
         return _MigrationPlan(
             fingerprint=_logical_fingerprint(connection),
             candidates=tuple(candidates),
@@ -382,6 +396,50 @@ def _validate_direct_owner(
     if missing:
         blockers.append({'code': f'{table}_owner_missing', 'count': missing})
 
+
+def _workspace_candidate_matches_actor(
+    by_workspace: dict[str, _WorkspaceCandidate],
+    workspace_id: object,
+    actor_id: object,
+) -> bool:
+    if workspace_id is None or actor_id is None:
+        return False
+    normalized_workspace_id = str(workspace_id).strip()
+    if not normalized_workspace_id:
+        return False
+    candidate = by_workspace.get(normalized_workspace_id)
+    return candidate is not None and candidate.telegram_id == int(actor_id)
+
+
+def _validate_workspace_direct_owner(
+    connection: sqlite3.Connection,
+    tables: set[str],
+    table: str,
+    owner_column: str,
+    by_workspace: dict[str, _WorkspaceCandidate],
+    blockers: list[dict[str, Any]],
+    ownership_counts: dict[str, int],
+) -> None:
+    columns = _column_names(connection, table) if table in tables else []
+    if owner_column not in columns:
+        return
+    workspace_expr = (
+        'workspace_id' if 'workspace_id' in columns else 'NULL AS workspace_id'
+    )
+    rows = connection.execute(
+        f'SELECT {workspace_expr}, {owner_column} FROM {table}'
+    ).fetchall()
+    ownership_counts[table] = len(rows)
+    missing = sum(
+        1 for row in rows
+        if not _workspace_candidate_matches_actor(
+            by_workspace,
+            row['workspace_id'],
+            row[owner_column],
+        )
+    )
+    if missing:
+        blockers.append({'code': f'{table}_owner_missing', 'count': missing})
 
 def _validate_relations(
     connection: sqlite3.Connection,
@@ -471,6 +529,179 @@ def _validate_relations(
         if missing:
             blockers.append({'code': 'customization_request_owner_missing', 'count': missing})
 
+
+def _validate_workspace_relations(
+    connection: sqlite3.Connection,
+    tables: set[str],
+    by_workspace: dict[str, _WorkspaceCandidate],
+    by_supplier: dict[int, _WorkspaceCandidate],
+    blockers: list[dict[str, Any]],
+    ownership_counts: dict[str, int],
+) -> None:
+    if {'invoice', 'contact'} <= tables:
+        rows = connection.execute(
+            'SELECT i.workspace_id AS invoice_workspace_id, '
+            'i.supplier_telegram_id AS invoice_actor_id, '
+            'c.workspace_id AS contact_workspace_id, '
+            'c.supplier_telegram_id AS contact_actor_id '
+            'FROM invoice i LEFT JOIN contact c ON c.id = i.contact_id'
+        ).fetchall()
+        mismatched = sum(
+            1 for row in rows
+            if not _workspace_candidate_matches_actor(
+                by_workspace,
+                row['invoice_workspace_id'],
+                row['invoice_actor_id'],
+            )
+            or row['contact_workspace_id'] != row['invoice_workspace_id']
+            or row['contact_actor_id'] != row['invoice_actor_id']
+        )
+        if mismatched:
+            blockers.append({
+                'code': 'invoice_contact_owner_mismatch',
+                'count': mismatched,
+            })
+    if {'invoice_followup_state', 'invoice'} <= tables:
+        rows = connection.execute(
+            'SELECT f.workspace_id AS followup_workspace_id, '
+            'f.supplier_telegram_id AS followup_actor_id, '
+            'i.workspace_id AS invoice_workspace_id, '
+            'i.supplier_telegram_id AS invoice_actor_id '
+            'FROM invoice_followup_state f '
+            'LEFT JOIN invoice i ON i.id = f.invoice_id'
+        ).fetchall()
+        mismatched = sum(
+            1 for row in rows
+            if not _workspace_candidate_matches_actor(
+                by_workspace,
+                row['followup_workspace_id'],
+                row['followup_actor_id'],
+            )
+            or row['invoice_workspace_id'] != row['followup_workspace_id']
+            or row['invoice_actor_id'] != row['followup_actor_id']
+        )
+        if mismatched:
+            blockers.append({
+                'code': 'invoice_followup_owner_mismatch',
+                'count': mismatched,
+            })
+    if 'supplier_service_alias' in tables:
+        rows = connection.execute(
+            'SELECT supplier_id FROM supplier_service_alias'
+        ).fetchall()
+        ownership_counts['supplier_service_alias'] = len(rows)
+        missing = sum(
+            1 for row in rows if int(row['supplier_id']) not in by_supplier
+        )
+        if missing:
+            blockers.append({
+                'code': 'supplier_service_alias_owner_missing',
+                'count': missing,
+            })
+    if 'confirmed_semantic_alias' in tables:
+        columns = _column_names(connection, 'confirmed_semantic_alias')
+        workspace_expr = (
+            'workspace_id' if 'workspace_id' in columns
+            else 'NULL AS workspace_id'
+        )
+        rows = connection.execute(
+            f'SELECT {workspace_expr}, supplier_telegram_id, domain, '
+            'target_type, target_id FROM confirmed_semantic_alias'
+        ).fetchall()
+        ownership_counts['confirmed_semantic_alias'] = len(rows)
+        missing = 0
+        for row in rows:
+            if not _workspace_candidate_matches_actor(
+                by_workspace,
+                row['workspace_id'],
+                row['supplier_telegram_id'],
+            ):
+                missing += 1
+                continue
+            if str(row['domain']) == 'contact' or str(row['target_type']) == 'contact':
+                contact = connection.execute(
+                    'SELECT workspace_id, supplier_telegram_id '
+                    'FROM contact WHERE id = ?',
+                    (int(row['target_id']),),
+                ).fetchone()
+                if (
+                    contact is None
+                    or contact['workspace_id'] != row['workspace_id']
+                    or contact['supplier_telegram_id'] != row['supplier_telegram_id']
+                ):
+                    missing += 1
+        if missing:
+            blockers.append({
+                'code': 'confirmed_alias_target_mismatch',
+                'count': missing,
+            })
+    if 'work_time_events' in tables:
+        columns = _column_names(connection, 'work_time_events')
+        workspace_expr = (
+            'workspace_id' if 'workspace_id' in columns
+            else 'NULL AS workspace_id'
+        )
+        rows = connection.execute(
+            f'SELECT {workspace_expr}, work_time_day_id, telegram_id '
+            'FROM work_time_events'
+        ).fetchall()
+        ownership_counts['work_time_events'] = len(rows)
+        missing = 0
+        for row in rows:
+            if not _workspace_candidate_matches_actor(
+                by_workspace,
+                row['workspace_id'],
+                row['telegram_id'],
+            ):
+                missing += 1
+                continue
+            if row['work_time_day_id'] is not None and 'work_time_days' in tables:
+                day = connection.execute(
+                    'SELECT workspace_id, telegram_id '
+                    'FROM work_time_days WHERE id = ?',
+                    (int(row['work_time_day_id']),),
+                ).fetchone()
+                if (
+                    day is None
+                    or day['workspace_id'] != row['workspace_id']
+                    or day['telegram_id'] != row['telegram_id']
+                ):
+                    missing += 1
+        if missing:
+            blockers.append({
+                'code': 'work_time_event_owner_missing',
+                'count': missing,
+            })
+    if 'customization_requests' in tables:
+        columns = _column_names(connection, 'customization_requests')
+        workspace_expr = (
+            'workspace_id' if 'workspace_id' in columns
+            else 'NULL AS workspace_id'
+        )
+        supplier_expr = (
+            'supplier_telegram_id'
+            if 'supplier_telegram_id' in columns
+            else 'NULL AS supplier_telegram_id'
+        )
+        rows = connection.execute(
+            f'SELECT {workspace_expr}, telegram_id, {supplier_expr} '
+            'FROM customization_requests'
+        ).fetchall()
+        ownership_counts['customization_requests'] = len(rows)
+        missing = 0
+        for row in rows:
+            actor_id = row['supplier_telegram_id'] or row['telegram_id']
+            if not _workspace_candidate_matches_actor(
+                by_workspace,
+                row['workspace_id'],
+                actor_id,
+            ):
+                missing += 1
+        if missing:
+            blockers.append({
+                'code': 'customization_request_owner_missing',
+                'count': missing,
+            })
 
 class MultiWorkspaceMigrationManager:
     def __init__(self, *, db_path: Path, storage_root: Path) -> None:

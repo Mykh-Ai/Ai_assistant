@@ -1,3 +1,21 @@
+## 2026-07-17 - Multi-Profile Migration Audit Readiness Repair
+
+### Cause and scope
+- Production dry-run exposed a canonical audit defect after one authorized actor acquired two supplier profiles: the legacy by-telegram planner intentionally omitted non-unique actors and then misclassified already workspace-bound rows as owner_missing.
+- Scope is read-only migration/deployment tooling. No business row, workspace selection, storage path, Telegram FSM, Product Truth, LLM/STT/LMM, or runtime capability behavior changes locally.
+
+### Repair
+- Legacy pre-migration databases retain the existing unambiguous Telegram ownership path.
+- Already migrated databases validate direct ownership through persisted workspace_id plus actor and canonical supplier/workspace mapping.
+- Workspace-aware relation checks now reject unknown workspaces and cross-workspace invoice/contact, follow-up, confirmed alias, work-time event, and customization relations.
+- Added a real two-profile same-actor regression and a fail-closed cross-workspace/unknown-workspace regression.
+
+### Verification and delivery state
+- New targeted regressions: 2 passed.
+- Full migration/readiness suite: 33 passed.
+- Full project suite: 2206 passed, 7 subtests passed in 334.18s.
+- Production remains unchanged at the prior server checkout until this repair is committed, pushed, and the canonical read-only gate is rerun successfully.
+
 ## 2026-07-17 - FA_CONTACT_REGISTRY_LOOKUP_AND_OPTIONAL_CONTACT_FIELDS_V1
 
 ### Preflight and architecture
