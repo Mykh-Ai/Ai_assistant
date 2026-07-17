@@ -8,7 +8,7 @@ This verdict means the applicable local automated journeys pass and no known imp
 
 - Approved architecture: `docs/architecture/FA_CONTACT_REGISTRY_LOOKUP_AND_OPTIONAL_CONTACT_FIELDS_V1_ARCHITECTURE_DESIGN_PROOF.md`, verdict `ready_for_handoff`.
 - Audited baseline `main` HEAD before changes: `f4415cdf71bedf370aa5f141c7abee8efff80cb4`.
-- Working state: local dirty working tree; no task commit. `PROJECT_LOG.md` and `tests/test_access_workspace_reactivation.py` were already modified before this task and were preserved.
+- Delivery state: task commit `ba2d0dc` was pushed to `origin/main`. Pre-existing local edits in `PROJECT_LOG.md` and `tests/test_access_workspace_reactivation.py` remain unstaged and were not included.
 - Environment: Windows/PowerShell, local temporary SQLite fixtures, synthetic actors/workspaces/companies.
 - External boundary: automated tests use fakes and never call the internet. Read-only audit manually verified HTTP 200 and current JSON shape for official RPO search/detail on 2026-07-17. No Financial Administration API key was configured and that provider was not added.
 - No production Telegram user, workspace, contact, invoice, DB, storage, credential, or server state was read or changed by implementation tests.
@@ -132,7 +132,14 @@ This verdict means the applicable local automated journeys pass and no known imp
 - Final full regression: `python -m pytest -q` -> `2204 passed, 7 subtests passed in 326.14s`.
 - Runtime compile: `python -m compileall -q bot` -> pass.
 
+## Delivery attempt
+
+- Production preflight found the server repo clean at the previous commit and the running container healthy. The accounting Drive audit reported deployment_ready=true, blocker_count=0, writes_performed=false, and an unchanged DB hash.
+- The canonical multi-workspace dry-run reported public_profile_switch_ready=false, blocker_count=131, apply_available=false, migration_required=false, and writes_performed=false. The contact table currently has four rows and no iban column; startup would therefore perform the approved additive ALTER TABLE.
+- Read-only code/data analysis identifies the blocker as a planner limitation for an actor who now owns two supplier profiles: the legacy by-telegram map deliberately excludes non-unique actors, so already workspace-bound rows are misclassified as owner_missing.
+- Deployment stopped before server checkout, backup creation, container rebuild/restart, or schema write. The audit must be repaired and revalidated separately; this proof does not authorize bypassing the canonical gate.
+
 ## Not run and deployment gates
 
-- No real Telegram conversation, production DB migration, production environment configuration, server external-API smoke, backup/rollback exercise, restart, deployment, commit, or push occurred.
+- No real Telegram conversation, production DB migration, production environment configuration, server external-API smoke, backup/rollback exercise, restart, or deployment occurred. Commit `ba2d0dc` was pushed to `origin/main`.
 - Before deployment: run a read-only production schema/data audit; create and verify DB backup/restore path; review additive `contact.iban` migration; configure feature disabled first plus explicit pilot workspace ids/timeout/result limit; run a bounded server RPO smoke without logging raw bodies; apply/restart under separate approval; verify schema/row/invoice-reference preservation, authorization/workspace guards, fallback, logs, and one controlled pilot conversation.
