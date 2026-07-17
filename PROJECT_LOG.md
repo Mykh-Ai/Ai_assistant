@@ -14,7 +14,7 @@
 - New targeted regressions: 2 passed.
 - Full migration/readiness suite: 33 passed.
 - Full project suite: 2206 passed, 7 subtests passed in 334.18s.
-- Production remains unchanged at the prior server checkout until this repair is committed, pushed, and the canonical read-only gate is rerun successfully.
+- Repair commit 997d3e7 was pushed and deployed. Fresh pre/post-deploy canonical dry-runs report public_profile_switch_ready=true, blocker_count=0, migration_required=false, and writes_performed=false.
 
 ## 2026-07-17 - FA_CONTACT_REGISTRY_LOOKUP_AND_OPTIONAL_CONTACT_FIELDS_V1
 
@@ -47,7 +47,7 @@
 - Expanded focused registry/contact/workspace/migration/decision/state/voice/Product Truth regression: `139 passed in 36.37s`.
 - Final full suite: `2204 passed, 7 subtests passed in 326.14s`.
 - Conversation Acceptance Proof: `docs/evals/FA_CONTACT_REGISTRY_LOOKUP_AND_OPTIONAL_CONTACT_FIELDS_V1_conversation_acceptance_proof.md`, verdict `safe_to_commit` (code-quality evidence only, not deployment authorization).
-- Task commit `ba2d0dc` was pushed to `origin/main`. Production deploy stopped before server checkout, backup, restart, or schema write because the mandatory multi-workspace dry-run returned `public_profile_switch_ready=false` and `blocker_count=131`.
+- Feature commit ba2d0dc and audit repair 997d3e7 were pushed and deployed. The initial readiness blocker was repaired without bypassing the gate.
 
 ### Deployment gate result
 - Server repo remained clean at the prior commit and the FakturaBot container remained Up; no production checkout or runtime mutation occurred.
@@ -55,6 +55,14 @@
 - Canonical multi-workspace dry-run performed no writes but failed readiness with 131 owner/target blockers while also reporting database_already_migrated.
 - Root cause is a canonical planner limitation for the current two-profile actor: by_telegram excludes actors with more than one supplier, so already workspace-bound rows are reported as owner_missing.
 - Contact schema currently has four preserved rows and no iban column; additive startup migration remains pending behind the audit repair and a fresh verified backup/rollback gate.
+
+### Production delivery
+- Repaired pre-deploy dry-run: public_profile_switch_ready true, blocker_count zero, migration_required false, database_already_migrated, and writes_performed false. Drive audit also passed with zero blockers and unchanged DB hash.
+- Verified SQLite backup /var/backups/fakturabot/20260717T190725Z_997d3e7_contact_registry has source/backup integrity ok and SHA-256 587ccd95596bb5aad651d79f8df2d23435bb44be1274c08a532c2268625aeab4; pre-schema counts were four contacts and nine invoices.
+- Docker rebuilt/recreated FakturaBot at 997d3e7. Startup/polling logs are healthy, recent error scan is empty, and host/container hashes match for the changed runtime owners.
+- Post-deploy DB integrity is ok. Nullable contact.iban exists once; four existing contacts retain null IBAN; all table counts match backup; invoice count remains nine; orphan invoice-contact references are zero.
+- Post-deploy migration and Drive audits remain green. Bounded official-RPO smoke passed without logging company data or raw response.
+- Registry runtime remains disabled with no pilot workspaces configured. No real Telegram pilot conversation was performed; enabling requires explicit pilot workspace selection.
 
 ## 2026-07-16 - Production Enqueue Repair For Two Preserved Receipts
 

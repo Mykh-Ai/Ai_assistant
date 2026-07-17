@@ -132,14 +132,15 @@ This verdict means the applicable local automated journeys pass and no known imp
 - Final full regression: `python -m pytest -q` -> `2204 passed, 7 subtests passed in 326.14s`.
 - Runtime compile: `python -m compileall -q bot` -> pass.
 
-## Delivery attempt
+## Delivery and production verification
 
-- Production preflight found the server repo clean at the previous commit and the running container healthy. The accounting Drive audit reported deployment_ready=true, blocker_count=0, writes_performed=false, and an unchanged DB hash.
-- The canonical multi-workspace dry-run reported public_profile_switch_ready=false, blocker_count=131, apply_available=false, migration_required=false, and writes_performed=false. The contact table currently has four rows and no iban column; startup would therefore perform the approved additive ALTER TABLE.
-- Read-only code/data analysis identifies the blocker as a planner limitation for an actor who now owns two supplier profiles: the legacy by-telegram map deliberately excludes non-unique actors, so already workspace-bound rows are misclassified as owner_missing.
-- Deployment remains stopped before server checkout, backup creation, container rebuild/restart, or schema write. The canonical audit repair is locally implemented and preserves fail-closed cross-workspace checks; targeted tests passed 2/2, the migration/readiness suite passed 33/33, and the full suite passed 2206 tests plus 7 subtests. Commit/push and a fresh production dry-run are still required before backup or restart.
+- Runtime/audit commit 997d3e7 was pushed and fast-forwarded on the clean server checkout. Before restart, the repaired canonical dry-run reported public_profile_switch_ready=true, blocker_count=0, migration_required=false, apply_block_reason=database_already_migrated, and writes_performed=false. The Drive audit reported deployment_ready=true, blocker_count=0, and an unchanged DB hash.
+- Verified pre-schema rollback backup: /var/backups/fakturabot/20260717T190725Z_997d3e7_contact_registry. Source and backup integrity are ok; backup SHA-256 is 587ccd95596bb5aad651d79f8df2d23435bb44be1274c08a532c2268625aeab4. The snapshot contains four contacts, nine invoices, and no contact.iban column.
+- Docker rebuilt and recreated the FakturaBot container at 997d3e7. Startup logs show FakturaBot starting, Start polling, and Run polling; no recent ERROR, traceback, exception, or Telegram conflict was found. Host/container hashes match for the contact handler, registry provider, registry save owner, and migration audit repair.
+- Post-deploy DB verification: integrity ok; contact.iban exists exactly once and is nullable; all four existing rows retain null IBAN; all table counts match the backup; nine invoices remain; orphan invoice contact references are zero.
+- Post-deploy canonical dry-run remains ready with zero blockers and no writes. Drive audit remains ready with zero blockers and unchanged hash. A bounded live official-RPO smoke returned one exact-IČO candidate, bounded count, usable detail fields, and provider source metadata without printing company data or raw bodies.
+- Runtime configuration remains fail-closed: contact registry lookup is disabled, pilot workspace count is zero, timeout is five seconds, and maximum results is five.
 
-## Not run and deployment gates
+## Remaining acceptance gate
 
-- No real Telegram conversation, production DB migration, production environment configuration, server external-API smoke, backup/rollback exercise, restart, or deployment occurred. Commit `ba2d0dc` was pushed to `origin/main`.
-- Before deployment: run a read-only production schema/data audit; create and verify DB backup/restore path; review additive `contact.iban` migration; configure feature disabled first plus explicit pilot workspace ids/timeout/result limit; run a bounded server RPO smoke without logging raw bodies; apply/restart under separate approval; verify schema/row/invoice-reference preservation, authorization/workspace guards, fallback, logs, and one controlled pilot conversation.
+- No real Telegram pilot conversation was performed. Enabling the feature requires an explicit approved pilot workspace list and a controlled user journey; production code and additive schema are otherwise deployed and verified.

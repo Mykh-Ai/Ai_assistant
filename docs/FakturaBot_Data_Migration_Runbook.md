@@ -221,6 +221,11 @@ For already migrated databases, ownership validation uses the persisted workspac
 Apply and rollback tooling is implemented and fixture-tested. Production migration for exact SHA 7408399239eba8cb221ba7b6e7267ccf1d60a867 completed on 2026-07-13 after a frozen read-only baseline, verified host backup, fingerprint-pinned apply, post-apply audit, and bounded read-only smoke. The rollback backup remains retained at:
 
     /var/backups/fakturabot/20260713T173948Z_7408399
+The multi-profile audit repair and contact.iban additive deployment completed on 2026-07-17 at runtime commit 997d3e7. Pre- and post-deploy canonical dry-runs reported public_profile_switch_ready=true, blocker_count=0, migration_required=false, and writes_performed=false. The verified pre-schema SQLite rollback snapshot is retained at:
+
+    /var/backups/fakturabot/20260717T190725Z_997d3e7_contact_registry
+
+Its manifest records source/backup integrity ok, SHA-256 587ccd95596bb5aad651d79f8df2d23435bb44be1274c08a532c2268625aeab4, four contact rows, nine invoice rows, and absence of contact.iban before startup. Post-deploy verification found the nullable column exactly once, all pre-existing contact IBAN values null, full table-count parity, no orphan invoice contacts, and database integrity ok.
 
 The migrated runtime is ready for public profile operations. Full conversation acceptance remains partial until one authorized Telegram actor creates a second profile through /profily and exercises text/voice switching and lightweight cross-profile object isolation without production-only synthetic fixtures.
 
