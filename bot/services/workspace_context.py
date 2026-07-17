@@ -87,6 +87,18 @@ class WorkspaceContextService:
                 return context
         raise WorkspaceSelectionRequired('active_workspace_selection_required')
 
+    def resolve_for_user_readonly(self, telegram_id: int) -> WorkspaceContext:
+        contexts = self.list_accessible_workspaces(telegram_id)
+        if not contexts:
+            raise WorkspaceMembershipRequired('active_workspace_membership_required')
+        if len(contexts) == 1:
+            return contexts[0]
+        selected_workspace_id = self._get_active_selection(telegram_id)
+        for context in contexts:
+            if context.workspace_id == selected_workspace_id:
+                return context
+        raise WorkspaceSelectionRequired('active_workspace_selection_required')
+
     def resolve_for_background_workspace(self, workspace_id: str) -> WorkspaceContext:
         normalized_workspace_id = str(workspace_id).strip()
         with managed_connection(self._db_path) as connection:

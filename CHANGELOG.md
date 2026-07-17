@@ -43,6 +43,8 @@
 
 ## [Unreleased]
 
+- Added a disabled-by-default, workspace-pilot-gated official Slovak RPO lookup strategy inside the existing `add_contact` flow, including bounded candidate callbacks, typed missing DIČ and optional contact email/IBAN/person, additive nullable `contact.iban` migration, conflict-safe transactional merge, manual/PDF fallback, Product Truth/InfoHelp guidance, and fake-only acceptance coverage; no production migration or deployment was performed.
+
 ### Added
 - `mark_existing_invoice_paid` top-level text/voice action for manually marking one saved outgoing invoice as paid/uhradena after supplier-scoped lookup and confirmation buttons, storing only bot-local payment state.
 - `accounting_document_analytics` top-level read-only runtime pilot for natural

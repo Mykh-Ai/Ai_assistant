@@ -21,7 +21,12 @@ from bot.handlers.access_admin import (
     CustomizationRequestAdminResponseStates,
     customization_request_response_preview_decision,
 )
-from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm
+from bot.handlers.contacts import (
+    ContactStates,
+    contact_confirm,
+    contact_registry_final_confirm,
+    process_contact_intake_confirm,
+)
 from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
 from bot.handlers.invoice import (
     CustomizationRequestStates,
@@ -99,6 +104,18 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
     current_state = await state.get_state()
     if current_state == DeleteUserDatabaseStates.waiting_exact_confirmation.state:
         await message.answer(VOICE_EXACT_CONFIRMATION_MESSAGE)
+        return
+
+    if current_state in {
+        ContactStates.registry_candidates.state,
+        ContactStates.registry_detail_preview.state,
+        ContactStates.registry_fallback.state,
+        ContactStates.registry_required_dic.state,
+        ContactStates.registry_optional_email.state,
+        ContactStates.registry_optional_iban.state,
+        ContactStates.registry_optional_contact_person.state,
+    }:
+        await message.answer('V tomto kroku použite tlačidlo alebo zadajte presnú hodnotu textom.')
         return
 
     if not config.openai_api_key:
@@ -292,6 +309,12 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
             )
         elif current_state == ContactStates.confirm.state:
             await contact_confirm(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == ContactStates.registry_final_confirm.state:
+            await contact_registry_final_confirm(
                 message=text_message,
                 state=state,
                 config=config,

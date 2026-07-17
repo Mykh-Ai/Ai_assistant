@@ -36,6 +36,7 @@ officeflow_attachment_router_module = importlib.import_module('bot.handlers.offi
 YES_NO_CONTEXTS = (
     'contact_confirm',
     'contact_intake_confirm',
+    'contact_registry_confirm',
     'onboarding_confirm',
     'delete_existing_invoice_confirm',
     'mark_existing_invoice_paid_confirm',

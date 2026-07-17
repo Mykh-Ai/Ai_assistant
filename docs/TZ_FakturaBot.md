@@ -1563,3 +1563,13 @@ the code is deployed and fail-closed, but a real two-profile upload cannot be
 claimed until the owner completes the existing reauthorization flow and the
 documented manual smoke is performed. This deployment did not alter credentials,
 OAuth state, archive rows, local documents, or remote Drive files.
+
+## 2026-07-17 Addendum: optional contact IBAN and pilot official-registry lookup
+
+The existing `add_contact` action owns `/contact`, `/contact_add`, and `/add_kontakt`; registry lookup is an internal deterministic strategy, not a new canonical action. The first prompt accepts a company name or exact eight-digit IČO. Registry lookup is disabled by default and may be restricted to configured active workspace ids. Manual and PDF/document-assisted contact creation remain available when lookup is disabled, unavailable, empty, unusable, or declined.
+
+The provider boundary `bot/services/slovak_company_registry.py` uses the official Statistical Office RPO REST API (`https://api.statistics.sk/rpo/v1/`) for deterministic name/IČO search and entity detail. It uses bounded timeout/result/response-size handling, explicit HTTP/JSON failure handling, and no LLM, scraping, retry loop, raw-response persistence, or raw-response logging. RPO official name, IČO, address, municipality, and lifecycle data may be used as returned. RPO does not supply DIČ or IČ DPH in this implementation; these remain unknown, IČ DPH is never formed as `SK` plus DIČ, and missing required DIČ is typed before final save.
+
+Contact `iban` is nullable. New databases create `contact.iban TEXT`; supported pre-IBAN legacy and workspace schemas receive one additive `ALTER TABLE` column, repeated bootstrap is a no-op, and unknown table shapes still fail closed. Contact IBAN is optional, text-only, normalized to uppercase without spaces, and validated by the contact-specific MOD-97 path without changing supplier onboarding validation.
+
+Registry candidates and drafts stay in the active contact FSM. Callback data contains only `contact_registry_pick:<nonce>:<index>` or `contact_registry_action:<nonce>:<action>`. Actor, state, active workspace/profile, nonce, index, feature eligibility, and expiry are revalidated. No contact write occurs before shared yes/no final confirmation. The dedicated transactional save owner re-checks workspace+IČO and workspace+exact-name conflicts; same-IČO updates preserve contact id, invoice references, contract path, and unsupplied local optional fields, while name/IČO split or collision fails closed.

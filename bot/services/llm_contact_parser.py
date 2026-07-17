@@ -7,7 +7,7 @@ from typing import Any
 from openai import AsyncOpenAI
 
 
-_FIELDS = ['company_name', 'ico', 'dic', 'ic_dph', 'address', 'email', 'contact_person']
+_FIELDS = ['company_name', 'ico', 'dic', 'ic_dph', 'address', 'email', 'iban', 'contact_person']
 
 
 def _regex_extract(source: str, pattern: str, *, group_index: int = 1) -> str | None:
@@ -20,6 +20,9 @@ def _regex_extract(source: str, pattern: str, *, group_index: int = 1) -> str | 
 
 def _deterministic_contact_parse(source_text: str, company_hint: str | None) -> dict[str, str | None]:
     email = _regex_extract(source_text, r'([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})')
+    iban = _regex_extract(source_text, r'\bIBAN[:\s]*([A-Z]{2}\s*\d{2}(?:\s*[0-9A-Z]){11,30})\b')
+    if iban:
+        iban = re.sub(r'\s+', '', iban).upper()
     ico = _regex_extract(source_text, r'\bI[ČC]O[:\s]*([0-9]{8})\b')
     dic = _regex_extract(source_text, r'\bDI[ČC][:\s]*([0-9]{10})\b')
     ic_dph = _regex_extract(
@@ -40,6 +43,7 @@ def _deterministic_contact_parse(source_text: str, company_hint: str | None) -> 
         'ic_dph': ic_dph,
         'address': address,
         'email': email,
+        'iban': iban,
         'contact_person': contact_person,
     }
 
@@ -64,7 +68,7 @@ async def extract_contact_draft(
                         'content': (
                             'Extract contact fields from supplied text. '
                             'Return strict JSON with keys: '
-                            'company_name, ico, dic, ic_dph, address, email, contact_person, role_ambiguity. '
+                            'company_name, ico, dic, ic_dph, address, email, iban, contact_person, role_ambiguity. '
                             'Use null for unknown. role_ambiguity must be true/false.'
                         ),
                     },

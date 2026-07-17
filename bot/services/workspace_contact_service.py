@@ -77,14 +77,14 @@ class WorkspaceContactService:
                 (
                     'INSERT INTO contact '
                     '(workspace_id, supplier_telegram_id, name, ico, dic, ic_dph, '
-                    'address, email, contact_person, source_type, source_note, '
+                    'address, email, iban, contact_person, source_type, source_note, '
                     'contract_path, created_at, updated_at) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
                     'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
                     'ON CONFLICT(workspace_id, name) DO UPDATE SET '
                     'supplier_telegram_id=excluded.supplier_telegram_id, '
                     'ico=excluded.ico, dic=excluded.dic, ic_dph=excluded.ic_dph, '
-                    'address=excluded.address, email=excluded.email, '
+                    'address=excluded.address, email=excluded.email, iban=excluded.iban, '
                     'contact_person=excluded.contact_person, '
                     'source_type=excluded.source_type, source_note=excluded.source_note, '
                     'contract_path=excluded.contract_path, updated_at=CURRENT_TIMESTAMP'
@@ -98,6 +98,7 @@ class WorkspaceContactService:
                     profile.ic_dph,
                     profile.address,
                     profile.email,
+                    profile.iban,
                     profile.contact_person,
                     profile.source_type,
                     profile.source_note,
@@ -280,13 +281,13 @@ class WorkspaceContactService:
 
 _CONTACT_SELECT = (
     'SELECT id, workspace_id, supplier_telegram_id, name, ico, dic, ic_dph, '
-    'address, email, contact_person, source_type, source_note, contract_path '
+    'address, email, iban, contact_person, source_type, source_note, contract_path '
     'FROM contact'
 )
 
 _CONTACT_JOIN_SELECT = (
     'SELECT c.id, c.workspace_id, c.supplier_telegram_id, c.name, c.ico, c.dic, '
-    'c.ic_dph, c.address, c.email, c.contact_person, c.source_type, '
+    'c.ic_dph, c.address, c.email, c.iban, c.contact_person, c.source_type, '
     'c.source_note, c.contract_path FROM contact AS c'
 )
 
@@ -315,6 +316,7 @@ def _row_to_profile(row: sqlite3.Row) -> ContactProfile:
         address=row['address'],
         email=row['email'],
         contact_person=row['contact_person'],
+        iban=row['iban'],
         source_type=row['source_type'],
         source_note=row['source_note'],
         contract_path=row['contract_path'],

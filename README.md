@@ -116,20 +116,23 @@ Voice support:
 ```text
 /contact
 /contact_add
-  manual contact flow
-    company name
-    ICO
-    DIC
-    IC DPH
-    address
-    email
-    contact person
+/add_kontakt
+  one shared add_contact owner
+  registry strategy (disabled by default; optional workspace pilot)
+    company name or exact IČO
+    up to configured bounded candidates
+    official RPO detail preview
+    typed missing DIČ and optional email/IBAN/contact person
+    conflict-safe final confirmation
+  manual fallback
+    company name, IČO, DIČ, optional IČ DPH
+    address, optional email/IBAN/contact person
     save/cancel
 
-AI-assisted contact intake
+AI-assisted/document contact intake
   text or document/contact-source input
-  AI drafts candidate
-  Python validates
+  AI drafts candidate only within the contact flow
+  Python validates, including optional contact IBAN
   missing fields
   save/cancel
 ```
@@ -137,10 +140,9 @@ AI-assisted contact intake
 Voice support:
 - top-level add-contact intent: yes;
 - contact save/cancel decisions: yes;
-- missing business-data values: text-only.
+- registry identifiers, missing business-data values, email, and IBAN: text-only.
 
-No automatic contact creation from receipts, incoming invoices, idle photos, or arbitrary attachments.
-
+No automatic contact creation from receipts, incoming invoices, idle photos, or arbitrary attachments. Official-registry lookup is not a separate top-level action and does not auto-save or background-sync contacts.
 ### Invoices
 
 ```text

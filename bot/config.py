@@ -45,6 +45,10 @@ class Config:
     invoice_followup_scheduler_enabled: bool = True
     invoice_followup_check_interval_seconds: int = 86400
     invoice_followup_notification_cooldown_hours: int = 24
+    contact_registry_lookup_enabled: bool = False
+    contact_registry_pilot_workspace_ids: frozenset[str] = frozenset()
+    contact_registry_timeout_seconds: int = 5
+    contact_registry_max_results: int = 5
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -129,6 +133,25 @@ def load_config() -> Config:
         os.getenv('INVOICE_FOLLOWUP_NOTIFICATION_COOLDOWN_HOURS', '24'),
         env_name='INVOICE_FOLLOWUP_NOTIFICATION_COOLDOWN_HOURS',
     )
+    contact_registry_lookup_enabled = _parse_bool(
+        os.getenv('CONTACT_REGISTRY_LOOKUP_ENABLED', '')
+    )
+    contact_registry_pilot_workspace_ids = frozenset(
+        value.strip()
+        for value in os.getenv('CONTACT_REGISTRY_PILOT_WORKSPACE_IDS', '').split(',')
+        if value.strip()
+    )
+    contact_registry_timeout_seconds = _parse_bounded_positive_int(
+        os.getenv('CONTACT_REGISTRY_TIMEOUT_SECONDS', '5'),
+        env_name='CONTACT_REGISTRY_TIMEOUT_SECONDS',
+        maximum=30,
+    )
+    contact_registry_max_results = _parse_bounded_positive_int(
+        os.getenv('CONTACT_REGISTRY_MAX_RESULTS', '5'),
+        env_name='CONTACT_REGISTRY_MAX_RESULTS',
+        maximum=10,
+    )
+
     ensure_storage_dirs(storage_dir)
 
     return Config(
@@ -162,6 +185,10 @@ def load_config() -> Config:
         invoice_followup_scheduler_enabled=invoice_followup_scheduler_enabled,
         invoice_followup_check_interval_seconds=invoice_followup_check_interval_seconds,
         invoice_followup_notification_cooldown_hours=invoice_followup_notification_cooldown_hours,
+        contact_registry_lookup_enabled=contact_registry_lookup_enabled,
+        contact_registry_pilot_workspace_ids=contact_registry_pilot_workspace_ids,
+        contact_registry_timeout_seconds=contact_registry_timeout_seconds,
+        contact_registry_max_results=contact_registry_max_results,
     )
 
 
@@ -192,6 +219,13 @@ def _parse_positive_int(raw_value: str, *, env_name: str) -> int:
         raise RuntimeError(f'{env_name} must be a positive integer') from exc
     if parsed <= 0:
         raise RuntimeError(f'{env_name} must be a positive integer')
+    return parsed
+
+
+def _parse_bounded_positive_int(raw_value: str, *, env_name: str, maximum: int) -> int:
+    parsed = _parse_positive_int(raw_value, env_name=env_name)
+    if parsed > maximum:
+        raise RuntimeError(f'{env_name} must be at most {maximum}')
     return parsed
 
 

@@ -1,3 +1,36 @@
+## 2026-07-17 - FA_CONTACT_REGISTRY_LOOKUP_AND_OPTIONAL_CONTACT_FIELDS_V1
+
+### Preflight and architecture
+- Audited baseline `main` HEAD `f4415cdf71bedf370aa5f141c7abee8efff80cb4`; preserved pre-existing local edits in `PROJECT_LOG.md` and `tests/test_access_workspace_reactivation.py`.
+- Read the top-level/subflow proof, action design, handoff, implementation, evaluation, migration, DecisionResolver, Product Truth, InfoHelp, TZ, contact/workspace/DB/callback/voice code and focused tests before implementation.
+- Created `docs/architecture/FA_CONTACT_REGISTRY_LOOKUP_AND_OPTIONAL_CONTACT_FIELDS_V1_ARCHITECTURE_DESIGN_PROOF.md`; verdict `ready_for_handoff`.
+- Classification: extension of existing `add_contact`; AI maturity remains Level 2 capability-aware guidance. Registry field mapping/ranking and every write are deterministic Python. No self-learning hook is appropriate for official identifiers.
+
+### Implementation
+- Added nullable contact `iban` across schema contracts, additive/idempotent legacy+workspace bootstrap, models/services/parser/manual/document previews, and a narrow MOD-97 contact validator without changing supplier IBAN behavior.
+- Added official Slovak RPO async provider boundary with name/exact-IČO search, deterministic normalization/ranking, bounded results/timeout/response size, safe HTTP/JSON handling, and no LLM/scraping/retry/raw-response persistence.
+- Extended the existing contact FSM with workspace/pilot-gated candidate/detail/fallback/typed DIČ/optional email-IBAN-person/final-confirm states. `/contact`, `/contact_add`, and `/add_kontakt` share one owner. Exact values remain text-only; final yes/no reuses DecisionResolver.
+- Added nonce/index-only callbacks with actor/state/workspace/profile/feature/expiry/index/replay checks. No contact write occurs before final confirmation.
+- Added transactional registry merge owner: same IČO updates one stable row while preserving unsupplied optional fields, contract path, and invoice references; name/IČO collisions and split/duplicate rows fail closed.
+- Synchronized Product Truth (`partial`), InfoHelp, TZ, in-action response registry, README navigation, environment examples, changelog, and the Conversation Acceptance Proof.
+
+### Official-source and variance boundary
+- Official RPO docs and read-only live search/detail shape were verified on 2026-07-17. RPO supplies official name, IČO, address/municipality, and lifecycle data; it does not supply DIČ/IČ DPH for this implementation.
+- Financial Administration information-list API requires separate credentials/setup and was not added. DIČ is typed; IČ DPH is never inferred. Cache remains deferred, so no no-op cache TTL setting is exposed.
+
+### Post-review repairs
+- Replaced mutating workspace resolution in registry callback validation with a read-only resolver; wrong-workspace stale callbacks no longer recreate active selection state.
+- Synchronized registry-session expiry with the shared five-minute contact inactivity clock for accepted typed activity and fully validated buttons; malformed/stale callbacks do not refresh.
+- Normalized valid AI/document-extracted contact IBAN before partial or complete draft persistence; invalid extracted IBAN remains behind the typed correction gate.
+- Added regression evidence for no selection write, typed/button timeout refresh, and LLM-returned spaced lowercase IBAN.
+
+### Verification and delivery state
+- Post-review targeted regression: `33 passed in 19.01s`.
+- Expanded focused registry/contact/workspace/migration/decision/state/voice/Product Truth regression: `139 passed in 36.37s`.
+- Final full suite: `2204 passed, 7 subtests passed in 326.14s`.
+- Conversation Acceptance Proof: `docs/evals/FA_CONTACT_REGISTRY_LOOKUP_AND_OPTIONAL_CONTACT_FIELDS_V1_conversation_acceptance_proof.md`, verdict `safe_to_commit` (code-quality evidence only, not deployment authorization).
+- Post-review implementation verdict: `safe_to_commit` (code-quality evidence only). No commit, push, server write, production migration, restart, or deployment occurred.
+
 ## 2026-07-16 - Production Enqueue Repair For Two Preserved Receipts
 
 - After explicit user direction to archive the two existing receipts, a read-only storage/state audit found exactly two confirmed local receipt metadata files with preserved originals but no archive state/job; all 33 older accounting records remained tracked.

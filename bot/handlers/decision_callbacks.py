@@ -9,7 +9,12 @@ from bot.handlers.access_admin import (
     CustomizationRequestAdminResponseStates,
     customization_request_response_preview_decision,
 )
-from bot.handlers.contacts import ContactStates, contact_confirm, process_contact_intake_confirm
+from bot.handlers.contacts import (
+    ContactStates,
+    contact_confirm,
+    contact_registry_final_confirm,
+    process_contact_intake_confirm,
+)
 from bot.handlers.invoice import (
     CustomizationRequestStates,
     InvoiceStates,
@@ -325,6 +330,15 @@ async def _dispatch_decision_token(
 
     if current_state == ContactStates.confirm.state and token in {DECISION_YES, DECISION_NO}:
         await contact_confirm(message=message, state=state, config=config, canonical_decision=token)
+        return True
+
+    if current_state == ContactStates.registry_final_confirm.state and token in {DECISION_YES, DECISION_NO}:
+        await contact_registry_final_confirm(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision=token,
+        )
         return True
 
     if current_state == OnboardingStates.confirm.state and token in {DECISION_YES, DECISION_NO}:

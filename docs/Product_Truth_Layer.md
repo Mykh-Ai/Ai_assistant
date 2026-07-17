@@ -725,3 +725,11 @@ Forbidden claims include:
 - deleting a work-time month deletes payroll/legal HR records;
 - deleting a month removes generated Excel reports as canonical records;
 - the generated Excel report is an official payroll/legal HR document.
+
+### Contacts: official Slovak registry pilot and optional IBAN - 2026-07-17
+
+`contacts` remains `partial`: manual and document-assisted intake are available, while official-registry lookup is disabled by default and optionally pilot-scoped per active workspace.
+
+Supported when enabled: search an official Slovak company by name or IČO; show at most the configured bounded candidates; require user selection when multiple candidates exist; prefill only official name/IČO/address/status fields actually returned; type missing required DIČ; optionally add or skip email, contact IBAN, and contact person; fall back to manual/PDF intake; and insert/update only after explicit final confirmation.
+
+Limitations and forbidden claims: official source availability and freshness are external; source fields may be absent; email, IBAN, and contact person are normally manual; IČ DPH is not inferred; no commercial-registry scraping, automatic contact creation from idle attachments, email/IBAN/person discovery, background synchronization, foreign registry, or automatic invoice creation is supported. A shown registry preview is not a saved contact. Registry import never silently overwrites a same-name/different-IČO row.

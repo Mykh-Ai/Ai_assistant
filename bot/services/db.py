@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS contact (
     ic_dph TEXT,
     address TEXT NOT NULL,
     email TEXT NOT NULL,
+    iban TEXT,
     contact_person TEXT,
     source_type TEXT NOT NULL,
     source_note TEXT,
@@ -454,6 +455,7 @@ CONTACT_EXPECTED_COLUMNS = {
     'ic_dph': 'TEXT',
     'address': 'TEXT NOT NULL',
     'email': 'TEXT NOT NULL',
+    'iban': 'TEXT',
     'contact_person': 'TEXT',
     'source_type': 'TEXT NOT NULL',
     'source_note': 'TEXT',
@@ -463,6 +465,10 @@ CONTACT_EXPECTED_COLUMNS = {
 }
 
 CONTACT_LEGACY_EXPECTED_COLUMN_NAMES = set(CONTACT_EXPECTED_COLUMNS) - {'workspace_id'}
+CONTACT_PRE_IBAN_EXPECTED_COLUMN_NAMES = set(CONTACT_EXPECTED_COLUMNS) - {'iban'}
+CONTACT_LEGACY_PRE_IBAN_EXPECTED_COLUMN_NAMES = (
+    CONTACT_LEGACY_EXPECTED_COLUMN_NAMES - {'iban'}
+)
 
 INVOICE_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
@@ -668,6 +674,13 @@ def _bootstrap_contact_table(connection: sqlite3.Connection) -> None:
         return
 
     existing_column_names = set(existing_columns.keys())
+    if (
+        existing_column_names == CONTACT_PRE_IBAN_EXPECTED_COLUMN_NAMES
+        or existing_column_names == CONTACT_LEGACY_PRE_IBAN_EXPECTED_COLUMN_NAMES
+    ):
+        connection.execute('ALTER TABLE contact ADD COLUMN iban TEXT')
+        return
+
     if (
         existing_column_names == set(CONTACT_EXPECTED_COLUMNS.keys())
         or existing_column_names == CONTACT_LEGACY_EXPECTED_COLUMN_NAMES

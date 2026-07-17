@@ -25,6 +25,7 @@ class ContactProfile:
     contract_path: str | None
     id: int | None = None
     workspace_id: str | None = None
+    iban: str | None = None
 
 
 ContactLookupState = Literal[
@@ -64,7 +65,7 @@ class ContactService:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(
                 (
-                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, iban, '
                     'contact_person, source_type, source_note, contract_path '
                     'FROM contact '
                     'WHERE supplier_telegram_id = ? '
@@ -81,7 +82,7 @@ class ContactService:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
-                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, iban, '
                     'contact_person, source_type, source_note, contract_path '
                     'FROM contact '
                     'WHERE supplier_telegram_id = ? AND name = ?'
@@ -99,7 +100,7 @@ class ContactService:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
-                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, iban, '
                     'contact_person, source_type, source_note, contract_path '
                     'FROM contact '
                     'WHERE id = ?'
@@ -118,7 +119,7 @@ class ContactService:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
-                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, iban, '
                     'contact_person, source_type, source_note, contract_path '
                     'FROM contact '
                     'WHERE id = ? AND supplier_telegram_id = ?'
@@ -137,7 +138,7 @@ class ContactService:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 (
-                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                    'SELECT id, supplier_telegram_id, name, ico, dic, ic_dph, address, email, iban, '
                     'contact_person, source_type, source_note, contract_path '
                     'FROM contact '
                     'WHERE supplier_telegram_id = ? AND lower(name) = lower(?)'
@@ -164,14 +165,12 @@ class ContactService:
             columns = (
                 'workspace_id, ' if has_workspace else ''
             ) + (
-                'supplier_telegram_id, name, ico, dic, ic_dph, address, email, '
+                'supplier_telegram_id, name, ico, dic, ic_dph, address, email, iban, '
                 'contact_person, source_type, source_note, contract_path, '
                 'created_at, updated_at'
             )
-            placeholders = (
-                '?, ' if has_workspace else ''
-            ) + '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP'
             values = _contact_values(profile, workspace_id, has_workspace)
+            placeholders = ', '.join('?' for _ in values) + ', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP'
             connection.execute(
                 f'INSERT INTO contact ({columns}) VALUES ({placeholders})',
                 values,
@@ -189,14 +188,14 @@ class ContactService:
                     (
                         'INSERT INTO contact '
                         '(workspace_id, supplier_telegram_id, name, ico, dic, ic_dph, '
-                        'address, email, contact_person, source_type, source_note, '
+                        'address, email, iban, contact_person, source_type, source_note, '
                         'contract_path, created_at, updated_at) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
                         'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
                         'ON CONFLICT(workspace_id, name) DO UPDATE SET '
                         'supplier_telegram_id=excluded.supplier_telegram_id, '
                         'ico=excluded.ico, dic=excluded.dic, ic_dph=excluded.ic_dph, '
-                        'address=excluded.address, email=excluded.email, '
+                        'address=excluded.address, email=excluded.email, iban=excluded.iban, '
                         'contact_person=excluded.contact_person, '
                         'source_type=excluded.source_type, '
                         'source_note=excluded.source_note, '
@@ -217,13 +216,13 @@ class ContactService:
                     (
                         'INSERT INTO contact '
                         '(supplier_telegram_id, name, ico, dic, ic_dph, address, '
-                        'email, contact_person, source_type, source_note, contract_path, '
+                        'email, iban, contact_person, source_type, source_note, contract_path, '
                         'created_at, updated_at) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
                         'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) '
                         'ON CONFLICT(supplier_telegram_id, name) DO UPDATE SET '
                         'ico=excluded.ico, dic=excluded.dic, ic_dph=excluded.ic_dph, '
-                        'address=excluded.address, email=excluded.email, '
+                        'address=excluded.address, email=excluded.email, iban=excluded.iban, '
                         'contact_person=excluded.contact_person, '
                         'source_type=excluded.source_type, '
                         'source_note=excluded.source_note, '
@@ -247,9 +246,9 @@ class ContactService:
                     (
                         'INSERT INTO contact '
                         '(workspace_id, supplier_telegram_id, name, ico, dic, ic_dph, '
-                        'address, email, contact_person, source_type, source_note, '
+                        'address, email, iban, contact_person, source_type, source_note, '
                         'contract_path, created_at, updated_at) '
-                        'VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+                        'VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
                         'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
                     ),
                     _contact_values(profile, None, False),
@@ -258,7 +257,7 @@ class ContactService:
                 connection.execute(
                     (
                         'UPDATE contact SET ico=?, dic=?, ic_dph=?, address=?, '
-                        'email=?, contact_person=?, source_type=?, source_note=?, '
+                        'email=?, iban=?, contact_person=?, source_type=?, source_note=?, '
                         'contract_path=?, updated_at=CURRENT_TIMESTAMP WHERE id=?'
                     ),
                     (
@@ -267,6 +266,7 @@ class ContactService:
                         profile.ic_dph,
                         profile.address,
                         profile.email,
+                        profile.iban,
                         profile.contact_person,
                         profile.source_type,
                         profile.source_note,
@@ -513,7 +513,7 @@ class ContactService:
             row = connection.execute(
                 (
                     'SELECT c.id, c.supplier_telegram_id, c.name, c.ico, c.dic, c.ic_dph, '
-                    'c.address, c.email, c.contact_person, c.source_type, c.source_note, c.contract_path '
+                    'c.address, c.email, c.iban, c.contact_person, c.source_type, c.source_note, c.contract_path '
                     'FROM confirmed_semantic_alias a '
                     'JOIN contact c ON c.id = a.target_id AND c.supplier_telegram_id = a.supplier_telegram_id '
                     'WHERE a.supplier_telegram_id = ? '
@@ -662,6 +662,7 @@ class ContactService:
             address=row['address'],
             email=row['email'],
             contact_person=row['contact_person'],
+            iban=row['iban'],
             source_type=row['source_type'],
             source_note=row['source_note'],
             contract_path=row['contract_path'],
@@ -716,6 +717,7 @@ def _contact_values(
         profile.ic_dph,
         profile.address,
         profile.email,
+        profile.iban,
         profile.contact_person,
         profile.source_type,
         profile.source_note,

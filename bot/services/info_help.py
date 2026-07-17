@@ -182,11 +182,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'summary': 'Jeden autorizovaný používateľ môže čiastočne používať viac izolovaných business profilov a explicitne medzi nimi prepínať.',
         'limitation': 'Prepnutie je iba explicitné cez /profily alebo switch intent. Cross-workspace analytika, jednorazové override, vymazanie jedného profilu a multi-member administrácia nie sú v MVP. Existujúca serverová DB vyžaduje schválenú migráciu pred deployom.',
         'safe_next': 'V idle stave použite /profily a vyberte iba profil, ku ktorému máte membership.',
-    },    'contacts': {
+    },
+    'contacts': {
         'title': 'Kontakty',
-        'summary': 'Kontakty sú podporované čiastočne cez manuálny alebo kontrolovaný AI-assisted tok s potvrdením.',
-        'limitation': 'Bot nevytvára kontakty automaticky z bločkov, prijatých faktúr, fotiek ani ľubovoľných príloh.',
-        'safe_next': 'Na pridanie kontaktu použite existujúci kontaktový tok a potvrďte náhľad pred uložením.',
+        'summary': 'Kontakt môžete pridať manuálne alebo z dokumentu; pri zapnutom pilote môžete slovenskú firmu vyhľadať podľa názvu alebo IČO, vybrať z viacerých výsledkov a predvyplniť oficiálne dostupné údaje.',
+        'limitation': 'Register je predvolene vypnutý a závisí od dostupnosti a aktuálnosti oficiálneho zdroja. Chýbajúce DIČ sa dopĺňa textom; email, IBAN a kontaktná osoba sú bežne manuálne. IČ DPH sa neodvodzuje, komerčné weby sa nescrapujú a uložené kontakty sa na pozadí nesynchronizujú.',
+        'safe_next': 'Použite /contact, /contact_add alebo /add_kontakt, skontrolujte náhľad a kontakt uložte až explicitným potvrdením.',
     },
     'service_aliases': {
         'title': 'Služby a položky',
@@ -1304,10 +1305,17 @@ def _mentions_recent_accounting_how_to(normalized: str, tokens: set[str]) -> boo
 
 
 def _mentions_contact_how_to(normalized: str, tokens: set[str]) -> bool:
-    return bool(tokens.intersection({'kontakt', 'contact', 'odberatela', 'zakaznika'})) and bool(
-        tokens.intersection({'ako', 'pridam', 'vytvorim', 'ulozim'})
+    mentions_contact = bool(
+        tokens.intersection(
+            {'kontakt', 'contact', 'odberatela', 'zakaznika', 'firmu', 'firmy', 'spolocnost'}
+        )
     )
-
+    mentions_action = bool(
+        tokens.intersection(
+            {'ako', 'pridam', 'vytvorim', 'ulozim', 'vyhladam', 'vyhladat', 'najdem', 'hladat', 'ico', 'register', 'registri'}
+        )
+    )
+    return mentions_contact and mentions_action
 
 def _mentions_service_alias_how_to(normalized: str, tokens: set[str]) -> bool:
     return bool(tokens.intersection({'sluzbu', 'sluzba', 'polozku', 'polozka', 'alias'})) and bool(

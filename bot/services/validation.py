@@ -31,6 +31,19 @@ def validate_iban(value: str) -> bool:
     return bool(re.fullmatch(r'[A-Z]{2}[0-9A-Z]{13,32}', normalized))
 
 
+def normalize_contact_iban(value: str) -> str:
+    return re.sub(r'\s+', '', value).upper()
+
+
+def validate_contact_iban(value: str) -> bool:
+    normalized = normalize_contact_iban(value)
+    if not re.fullmatch(r'[A-Z]{2}\d{2}[0-9A-Z]{11,30}', normalized):
+        return False
+    rearranged = normalized[4:] + normalized[:4]
+    numeric = ''.join(str(ord(char) - 55) if char.isalpha() else char for char in rearranged)
+    return int(numeric) % 97 == 1
+
+
 def validate_days_due(value: str) -> bool:
     if not value.strip().isdigit():
         return False

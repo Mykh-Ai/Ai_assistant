@@ -207,9 +207,9 @@ def test_manual_contact_email_can_be_skipped(tmp_path: Path) -> None:
 
     asyncio.run(contact_email(message, state))
 
-    assert state.current_state == ContactStates.contact_person
+    assert state.current_state == ContactStates.iban
     assert state.data['email'] == ''
-    assert 'kontaktnú osobu' in message.answers[-1]
+    assert 'IBAN' in message.answers[-1]
 
 
 def test_contact_saved_after_confirmation(tmp_path: Path) -> None:
@@ -424,6 +424,40 @@ def test_deterministic_ic_dph_extraction_uses_value_not_label() -> None:
     assert parsed['ic_dph'] == 'SK1234567890'
 
 
+def test_llm_extracted_iban_is_normalized_before_draft(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup_supplier(config.db_path)
+    state = _DummyState()
+    message = _DummyMessage()
+
+    async def _extractor(**_kwargs):
+        return {
+            'company_name': 'ZS s.r.o.',
+            'ico': '12345678',
+            'dic': '1234567890',
+            'ic_dph': None,
+            'address': 'Hlavná 1, Košice',
+            'email': 'kontakt@zs.sk',
+            'iban': 'sk31 1200 0000 1987 4263 7541',
+            'contact_person': None,
+            'role_ambiguity': '0',
+        }
+
+    monkeypatch.setattr('bot.handlers.contacts.extract_contact_draft', _extractor)
+    asyncio.run(
+        _start_add_contact_from_source(
+            message=message,
+            state=state,
+            config=config,
+            source_text='pridaj kontakt',
+            document_text='AI extracted document text',
+        )
+    )
+
+    assert state.current_state == ContactStates.intake_confirm
+    assert state.data['contact_intake_draft']['iban'] == 'SK3112000000198742637541'
+    assert 'IBAN: SK3112000000198742637541' in message.answers[-1]
+
 def test_role_ambiguity_keeps_partial_draft(monkeypatch, tmp_path: Path) -> None:
     config = _config(tmp_path)
     _setup_supplier(config.db_path)
@@ -470,7 +504,7 @@ def test_semantic_add_contact_enters_manual_wizard_step_one(tmp_path: Path) -> N
     asyncio.run(start_add_contact_intake(message=message, state=state, config=config))
 
     assert state.current_state == ContactStates.name_hint
-    assert message.answers[-1].startswith('V poriadku, vytvoríme nový kontakt. Najprv napíšte názov firmy.')
+    assert message.answers[-1].startswith('Zadajte názov firmy alebo IČO.')
     assert '/menu' in message.answers[-1]
 
 
@@ -540,7 +574,7 @@ def test_source_after_name_manual_ico_valid_and_invalid(tmp_path: Path) -> None:
     message.text = '12345678'
     asyncio.run(_process_source_after_name_step(message, state, config))
     assert state.current_state == ContactStates.dic
-    assert message.answers[-1] == '3/7 Zadajte DIC (10 číslic):'
+    assert message.answers[-1] == '3/8 Zadajte DIC (10 číslic):'
 
 
 def test_contact_missing_field_invalid_keeps_state_and_includes_cancel_hint(tmp_path: Path) -> None:

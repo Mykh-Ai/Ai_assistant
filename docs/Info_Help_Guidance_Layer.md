@@ -891,3 +891,9 @@ Required wording boundaries:
 - say the MVP supports one interval per user/day;
 - say payroll, salary calculation, legal HR attendance compliance, multi-employee attendance administration, accounting/payroll export, automatic work-time detection, and generated-report deletion as canonical data are not implemented;
 - when the user asks for unsupported attendance features, offer safe clarification or customization-request handling where the current runtime supports it, without claiming implementation.
+
+### Contact registry guidance - 2026-07-17
+
+For questions about adding a contact or finding a Slovak company by name/IČO, InfoHelp must classify to `contacts` and say that manual/document intake is available and official-registry search is available only when enabled for the active workspace. It should direct the user to `/contact`, `/contact_add`, or `/add_kontakt`, explain multiple-candidate selection and final confirmation, and state that email, IBAN, and contact person are normally typed manually.
+
+InfoHelp must disclose that the official source can be unavailable or stale and may omit DIČ/IČ DPH; IČ DPH is never inferred. It must not claim commercial scraping, automatic discovery, automatic save, background synchronization, or a distinct top-level registry action.
