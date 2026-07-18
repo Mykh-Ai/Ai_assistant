@@ -896,4 +896,10 @@ Required wording boundaries:
 
 For questions about adding a contact or finding a Slovak company by name/IČO, InfoHelp must classify to `contacts` and say that manual/document intake is available and official-registry search is available only when enabled for the active workspace. It should direct the user to `/contact`, `/contact_add`, or `/add_kontakt`, explain multiple-candidate selection and final confirmation, and state that email, IBAN, and contact person are normally typed manually.
 
+### Contact search quality and tax-enrichment setup - 2026-07-18
+
+InfoHelp must explain that exact normalized company names suppress unrelated weak results, while close spacing/typing suggestions remain manual selections. It must not call `ZE VS` an exact `Zevs` identity or treat `zevs` inside a longer surname as exact evidence.
+
+RPO supplies identity/address data. Financial Administration DIČ/IČ DPH enrichment uses an audited official exact-IČO mapping but remains optional, disabled by default, and dependent on an API key plus parent RPO/pilot gates. Any unavailable, invalid, ambiguous, or missing DIČ result falls back to typed DIČ without losing the RPO draft. IČ DPH is accepted only when officially returned for the exact selected IČO and is never constructed from DIČ. No commercial scraping is used.
+
 InfoHelp must disclose that the official source can be unavailable or stale and may omit DIČ/IČ DPH; IČ DPH is never inferred. It must not claim commercial scraping, automatic discovery, automatic save, background synchronization, or a distinct top-level registry action.

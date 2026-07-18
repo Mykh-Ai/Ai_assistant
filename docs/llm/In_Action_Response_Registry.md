@@ -107,3 +107,9 @@ This is expected and should be documented as a manual command flow, not as a mis
 - Unclear item boundaries, quantity semantics, service resolution ambiguity, total mismatch, or render-safety overflow must trigger bounded clarification/fallback, not silent acceptance.
 - For explicit persisted invoice delete commands (SK/EN/UK/RU), canonical top-level action is `delete_existing_invoice`; runtime delete remains Python-guarded with explicit confirmation.
 
+## Contact registry search/tax clarification - 2026-07-18
+
+`registry_candidates` now distinguishes exact identities from bounded suggestions. One exact identity may continue to detail; a single suggestion still requires its candidate button. Multiple exact names remain selectable. This navigation remains deterministic and is not a DecisionResolver family.
+
+The detail preview may show source `slovak_rpo + financna_sprava` only when validated tax data was merged for the exact selected IČO. Disabled, unconfigured, unavailable, malformed, conflicting, or empty tax lookup retains `slovak_rpo`, keeps IČ DPH empty, and preserves the existing typed-DIČ continuation. Final save remains `contact_registry_confirm` through shared `yes_no`.
+

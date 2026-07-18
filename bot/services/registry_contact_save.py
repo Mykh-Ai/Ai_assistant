@@ -65,7 +65,7 @@ class RegistryContactSaveService:
             if inspection.mode in {'name_conflict', 'split_conflict', 'ico_conflict'}:
                 raise RegistryContactConflict(inspection.mode)
 
-            source_note = ','.join(sorted(set(draft.provider_sources)))[:200]
+            source_note = '+'.join(dict.fromkeys(draft.provider_sources))[:200]
             if inspection.mode == 'insert':
                 cursor = connection.execute(
                     (

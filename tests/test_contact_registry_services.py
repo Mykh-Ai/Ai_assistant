@@ -129,7 +129,7 @@ def test_name_search_normalizes_query_and_ranks_exact_name_first() -> None:
 
     result = asyncio.run(registry.search('Béta s.r.o.'))
 
-    assert [item.subject_id for item in result] == ['1', '2']
+    assert [item.subject_id for item in result] == ['1']
     assert registry.calls[0][1] == {'fullName': 'beta', 'onlyActive': 'true'}
 
 
@@ -144,6 +144,99 @@ def test_inactive_provider_rows_are_ranked_after_active_rows_without_shape_error
     assert [item.subject_id for item in result] == ['2', '1']
     assert result[0].is_active is True
     assert result[1].is_active is False
+
+
+@pytest.mark.parametrize('query', ['Zevs s.r.o.', 'Zevs s. r. o.', 'zevs sro'])
+def test_exact_zevs_variants_suppress_weak_provider_substrings(query: str) -> None:
+    registry = _StubRegistry({'search': {'results': [
+        _candidate(2, 'Ivona Klimaszevsk?', '11111111', city='Ko?ice'),
+        _candidate(3, 'JUDr. Tom?? ?i?evsk?, not?r', '22222222', city='Nitra'),
+        _candidate(4, 'Michal Kucharzewski OBCHODN? KANCEL?RIA', '33333333', city='?ilina'),
+        _candidate(5, 'Toni Bla?evski', '44444444', city='Pre?ov'),
+        _candidate(1, 'Zevs s. r. o.', '56055552', city='Bratislava - mestsk? ?as? Ra?a'),
+    ]}})
+
+    result = asyncio.run(registry.search(query))
+
+    assert [(item.name, item.ico, item.city) for item in result] == [(
+        'Zevs s. r. o.',
+        '56055552',
+        'Bratislava - mestsk? ?as? Ra?a',
+    )]
+    assert result[0].match_kind == 'exact_name'
+
+
+def test_substring_inside_surname_is_not_a_relevant_match() -> None:
+    registry = _StubRegistry({'search': {'results': [
+        _candidate(1, 'Ivona Klimaszevsk?', '11111111'),
+    ]}})
+
+    assert asyncio.run(registry.search('Zevs')) == []
+
+
+def test_two_exact_name_companies_remain_selectable_active_first() -> None:
+    inactive = _candidate(1, 'Zevs, s.r.o.', '11111111', city='Nitra')
+    inactive['termination'] = {'validFrom': '2025-01-01'}
+    registry = _StubRegistry({'search': {'results': [
+        inactive,
+        _candidate(2, 'Zevs s. r. o.', '22222222', city='Bratislava'),
+        _candidate(3, 'Zevs Plus s.r.o.', '33333333', city='Ko?ice'),
+    ]}})
+
+    result = asyncio.run(registry.search('zevs sro'))
+
+    assert [item.ico for item in result] == ['22222222', '11111111']
+    assert all(item.match_kind == 'exact_name' for item in result)
+
+
+def test_soft_compact_and_one_typo_matches_are_suggestions_not_exact() -> None:
+    registry = _StubRegistry({'search': {'results': [
+        _candidate(1, 'Empebau s.r.o.', '11111111'),
+        _candidate(2, 'Empe bau s.r.o.', '22222222'),
+    ]}})
+
+    typo_result = asyncio.run(registry.search('Empbau'))
+    spaced_result = asyncio.run(registry.search('Empe bau'))
+    zevs_spaced = _StubRegistry({'search': {'results': [
+        _candidate(3, 'Zevs s.r.o.', '33333333'),
+    ]}})
+    compact_result = asyncio.run(zevs_spaced.search('ZE VS'))
+
+    assert {item.ico for item in typo_result} == {'11111111', '22222222'}
+    assert all(item.match_kind == 'suggested' for item in typo_result)
+    assert [item.ico for item in spaced_result] == ['22222222']
+    assert compact_result[0].match_kind == 'suggested'
+
+
+def test_broad_bau_search_is_relevant_and_bounded() -> None:
+    registry = _StubRegistry({'search': {'results': [
+        _candidate(1, 'BAU ONE s.r.o.', '11111111'),
+        _candidate(2, 'Empebau s.r.o.', '22222222'),
+        _candidate(3, 'BAU TWO s.r.o.', '33333333'),
+        _candidate(4, 'Klimabaursk?', '44444444'),
+    ]}}, max_results=2)
+
+    result = asyncio.run(registry.search('bau'))
+
+    assert len(result) == 2
+    assert {item.ico for item in result}.issubset({'11111111', '22222222', '33333333'})
+
+
+def test_all_weak_results_use_no_result_path() -> None:
+    registry = _StubRegistry({'search': {'results': [
+        _candidate(1, 'Ivona Klimaszevsk?', '11111111'),
+        _candidate(2, 'Toni Bla?evski', '22222222'),
+    ]}})
+
+    assert asyncio.run(registry.search('zevs')) == []
+
+
+def test_exact_match_below_provider_noise_is_promoted_and_collapsed() -> None:
+    registry = _StubRegistry({'search': {'results': [
+        _candidate(1, 'Zevs Consulting s.r.o.', '11111111'),
+        _candidate(2, 'Zevs s.r.o.', '56055552'),
+    ]}})
+
 
 def test_registry_malformed_search_shape_fails_closed() -> None:
     registry = _StubRegistry({'search': {'results': 'not-a-list'}})

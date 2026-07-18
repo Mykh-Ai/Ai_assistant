@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import os
 
@@ -49,6 +49,9 @@ class Config:
     contact_registry_pilot_workspace_ids: frozenset[str] = frozenset()
     contact_registry_timeout_seconds: int = 5
     contact_registry_max_results: int = 5
+    contact_tax_lookup_enabled: bool = False
+    financna_sprava_api_key: str | None = field(default=None, repr=False)
+    financna_sprava_timeout_seconds: int = 5
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -152,6 +155,14 @@ def load_config() -> Config:
         maximum=10,
     )
 
+    contact_tax_lookup_enabled = _parse_bool(
+        os.getenv('CONTACT_TAX_LOOKUP_ENABLED', '')
+    )
+    financna_sprava_api_key = os.getenv('FINANCNA_SPRAVA_API_KEY', '').strip() or None
+    financna_sprava_timeout_seconds = _parse_bounded_positive_int(
+        os.getenv('FINANCNA_SPRAVA_TIMEOUT_SECONDS', '5'),
+        env_name='FINANCNA_SPRAVA_TIMEOUT_SECONDS', maximum=30,
+    )
     ensure_storage_dirs(storage_dir)
 
     return Config(
@@ -189,6 +200,9 @@ def load_config() -> Config:
         contact_registry_pilot_workspace_ids=contact_registry_pilot_workspace_ids,
         contact_registry_timeout_seconds=contact_registry_timeout_seconds,
         contact_registry_max_results=contact_registry_max_results,
+        contact_tax_lookup_enabled=contact_tax_lookup_enabled,
+        financna_sprava_api_key=financna_sprava_api_key,
+        financna_sprava_timeout_seconds=financna_sprava_timeout_seconds,
     )
 
 

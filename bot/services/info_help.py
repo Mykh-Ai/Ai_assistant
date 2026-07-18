@@ -185,8 +185,8 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'contacts': {
         'title': 'Kontakty',
-        'summary': 'Kontakt môžete pridať manuálne alebo z dokumentu; pri zapnutom pilote môžete slovenskú firmu vyhľadať podľa názvu alebo IČO, vybrať z viacerých výsledkov a predvyplniť oficiálne dostupné údaje.',
-        'limitation': 'Register je predvolene vypnutý a závisí od dostupnosti a aktuálnosti oficiálneho zdroja. Chýbajúce DIČ sa dopĺňa textom; email, IBAN a kontaktná osoba sú bežne manuálne. IČ DPH sa neodvodzuje, komerčné weby sa nescrapujú a uložené kontakty sa na pozadí nesynchronizujú.',
+        'summary': 'Kontakt môžete pridať manuálne alebo z dokumentu; pri zapnutom pilote môžete slovenskú firmu vyhľadať podľa názvu alebo IČO. Presná zhoda potlačí slabý šum, podobné návrhy vždy vyberáte ručne a oficiálne dostupné údaje sa zobrazia v náhľade.',
+        'limitation': 'Vyhľadávanie RPO je predvolene vypnuté a môže byť obmedzené na pilotný profil. RPO poskytuje identitu a adresu. Voliteľné doplnenie DIČ/IČ DPH z Finančnej správy používa overenú oficiálnu API mapu, ale stále vyžaduje samostatné zapnutie a API kľúč; pri vypnutí, chybe, neplatnom, nejednoznačnom alebo chýbajúcom DIČ sa hodnota dopĺňa textom. IČ DPH sa nikdy nevytvára z DIČ, komerčné weby sa nescrapujú a kontakty sa na pozadí nesynchronizujú.',
         'safe_next': 'Použite /contact, /contact_add alebo /add_kontakt, skontrolujte náhľad a kontakt uložte až explicitným potvrdením.',
     },
     'service_aliases': {

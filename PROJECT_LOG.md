@@ -1,3 +1,34 @@
+## 2026-07-18 - FA_CONTACT_REGISTRY_SEARCH_QUALITY_AND_TAX_ENRICHMENT_V1 staged implementation
+
+### Changes
+- Added deterministic RPO full/core/legal-suffix normalization, exact-result collapse, active-first duplicate exact results, bounded whole-token/compact/one-edit suggestions, and weak internal-substring rejection.
+- Suggestions such as `ZE VS` and `Empbau` require explicit selection; only exact name/IČO results may auto-open detail.
+- Added disabled-by-default Financial Administration config and a separate async provider/aggregator with exact-IČO validation, bounded status/error handling, response limits, no retries/raw logging, conflict refusal, no `SK + DIČ` inference, and existing source metadata reuse.
+- Integrated enrichment only in the selected-company detail owner. Valid DIČ skips typed DIČ; all tax failures retain RPO and use manual DIČ. No DB write occurs before final confirmation.
+- Added fake-only provider/search/FSM/Product Truth tests and synchronized environment examples and canonical docs.
+
+
+### Verification
+- Final post-audit focused registry/contact/provider completion suite: 108 passed in 36.44s.
+- Broad contact/workspace/invoice/callback/voice/state/migration/Product Truth regression: 803 passed.
+- A later expanded 34-file broad rerun reached 858 passed plus one transient Windows `os.replace` access-denied failure in the existing migration rollback test; its immediate isolated rerun passed (1 passed), consistent with a temporary filesystem lock rather than a product regression.
+- Final post-audit full regression: 2244 passed, 7 subtests passed in 338.16s.
+- `python -m compileall -q bot` passed.
+- All automated provider tests use fakes. A separate bounded authenticated FS metadata/schema smoke completed without logging the key or raw taxpayer values.
+### Evidence boundary
+- Authenticated evidence binds `ds_dsrdp` (`ico` -> `dic`) and `ds_dphs` (`ico` -> `ic_dph`) with lowercase row fields, documented pagination envelope, and 404 no-result semantics. `verified_financna_sprava_schema()` now returns only those audited mappings.
+- Architecture verdict is `ready_for_handoff`; the implementation verdict is `safe_to_review`, not `safe_to_deploy` or a claim that production tax enrichment is active.
+
+### Safety
+- No commit, push, DB/storage migration, restart, code deployment, or feature activation occurred. A later user-authorized server write installed only the FS key in the existing env file. Pre-existing edits in this file and `tests/test_access_workspace_reactivation.py` were preserved.
+
+
+### 2026-07-18 server key installation follow-up
+- At the user's explicit request, installed the clipboard-provided Financial Administration key into the production compose env file `/bot/repo/.env` without printing or logging its value. An initial one-character corruption caused by Windows-to-SSH CR normalization was detected from 401 responses, corrected by exact-byte transfer, and verified without exposing the secret.
+- Final verification reports the full 250-character value, exactly one non-empty key line, file mode `600`, owner `root:root`, and zero local/remote temp files. `CONTACT_TAX_LOOKUP_ENABLED` remains absent/off.
+- Authenticated `/api/lists` and list-detail calls confirmed `ds_dsrdp` searchable by `ico` and `ds_dphs` searchable by `ic_dph,ico`; exact searches confirmed lowercase `dic`/`ico` and `ic_dph`/`ico` row mappings, page envelope behavior, direct official IČ DPH, and HTTP 404 for no exact result.
+- A bounded DPH page audit observed 315 pages, 314204 items, 1000 distinct IČOs in the first 1000 rows, and no duplicate-IČO group in that sample. Conflicting/historical rows and documented failure statuses remain fake-tested/fail-closed.
+- Bound the exact audited mapping in local code and added a regression assertion; the immediate focused provider/FSM/Product Truth suite passed (`58 passed in 12.63s`). No service restart, container rebuild, deployment, DB/storage write, or feature activation occurred.
 ## 2026-07-17 - Multi-Profile Migration Audit Readiness Repair
 
 ### Cause and scope

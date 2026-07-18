@@ -28,6 +28,12 @@ from bot.services.slovak_company_registry import (
     RegistryLookupError,
     SlovakCompanyRegistry,
 )
+from bot.services.slovak_tax_registry import (
+    SlovakCompanyDetailsAggregator,
+    SlovakTaxRegistry,
+    TaxDetailsProvider,
+    verified_financna_sprava_schema,
+)
 from bot.services.supplier_service import SupplierService
 from bot.services.workspace_contact_service import WorkspaceContactService
 from bot.services.workspace_context import (
@@ -330,6 +336,29 @@ def _registry_client(config: Config) -> SlovakCompanyRegistry:
     )
 
 
+def _tax_registry_client(config: Config) -> TaxDetailsProvider | None:
+    schema = verified_financna_sprava_schema()
+    if (
+        not config.contact_tax_lookup_enabled
+        or not config.financna_sprava_api_key
+        or schema is None
+    ):
+        return None
+    return SlovakTaxRegistry(
+        enabled=True,
+        api_key=config.financna_sprava_api_key,
+        schema=schema,
+        timeout_seconds=config.financna_sprava_timeout_seconds,
+    )
+
+
+def _registry_details_aggregator(config: Config) -> SlovakCompanyDetailsAggregator:
+    return SlovakCompanyDetailsAggregator(
+        registry=_registry_client(config),
+        tax_registry=_tax_registry_client(config),
+    )
+
+
 def _candidate_data(candidate: RegistryCompanyCandidate) -> dict[str, object]:
     return {
         'subject_id': candidate.subject_id,
@@ -339,6 +368,7 @@ def _candidate_data(candidate: RegistryCompanyCandidate) -> dict[str, object]:
         'short_address': candidate.short_address,
         'is_active': candidate.is_active,
         'provider': candidate.provider,
+        'match_kind': candidate.match_kind,
     }
 
 
@@ -445,7 +475,7 @@ def _registry_details_data(details: RegistryCompanyDetails) -> dict[str, object]
 
 def _registry_preview_text(draft: dict[str, object]) -> str:
     status = 'aktívna' if draft.get('is_active') is True else ('neaktívna' if draft.get('is_active') is False else '-')
-    sources = ', '.join(str(value) for value in draft.get('provider_sources') or []) or 'slovak_rpo'
+    sources = ' + '.join(str(value) for value in draft.get('provider_sources') or []) or 'slovak_rpo'
     return (
         'Údaje z oficiálneho registra\n\n'
         f'Názov: {draft.get("name") or "-"}\n'
@@ -492,7 +522,8 @@ async def _load_registry_details(
     subject_id: str,
 ) -> None:
     try:
-        details = await _registry_client(config).get_details(subject_id)
+        aggregated = await _registry_details_aggregator(config).get_details(subject_id)
+        details = aggregated.details
     except RegistryLookupError:
         await _show_registry_fallback(
             message=message,
@@ -564,7 +595,9 @@ async def _start_registry_search(
         return
     session['candidates'] = [_candidate_data(candidate) for candidate in candidates]
     await state.update_data(**{_REGISTRY_SESSION_KEY: session})
-    if len(candidates) == 1:
+    if len(candidates) == 1 and candidates[0].match_kind in {
+        'exact_ico', 'exact_name',
+    }:
         await _load_registry_details(
             message=message,
             state=state,

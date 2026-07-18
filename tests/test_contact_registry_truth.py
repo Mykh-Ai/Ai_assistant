@@ -11,6 +11,9 @@ def test_contact_registry_config_defaults_are_disabled_and_bounded() -> None:
     fields = Config.__dataclass_fields__
     assert fields['contact_registry_lookup_enabled'].default is False
     assert fields['contact_registry_pilot_workspace_ids'].default == frozenset()
+    assert fields['contact_tax_lookup_enabled'].default is False
+    assert fields['financna_sprava_api_key'].default is None
+    assert fields['financna_sprava_timeout_seconds'].default == 5
     assert fields['contact_registry_timeout_seconds'].default == 5
     assert fields['contact_registry_max_results'].default == 5
     assert _parse_bounded_positive_int('1', env_name='RESULTS', maximum=10) == 1
@@ -33,7 +36,8 @@ def test_contacts_product_truth_matches_gated_registry_behavior() -> None:
     assert 'official Slovak company search by name or IČO' in entry.summary_for_user
     limitations = ' '.join(entry.current_limitations)
     assert 'disabled by default' in limitations
-    assert 'IČ DPH is never inferred' in limitations
+    assert 'IČ DPH is accepted only from validated official data and is never inferred from DIČ' in limitations
+    assert 'Financial Administration enrichment uses an audited official mapping' in limitations
     assert 'commercial-registry scraping' in limitations
     assert 'background synchronization' in limitations
 
@@ -45,7 +49,8 @@ def test_info_help_explains_registry_contact_support_and_limits() -> None:
     assert answer is not None
     assert 'Kontakty' in answer
     assert 'názvu alebo IČO' in answer
-    assert 'predvolene vypnutý' in answer
-    assert 'IČ DPH sa neodvodzuje' in answer
+    assert 'predvolene vypnuté' in answer
+    assert 'API kľúč' in answer
+    assert 'IČ DPH sa nikdy nevytvára z DIČ' in answer
     assert '/add_kontakt' in answer
     assert 'explicitným potvrdením' in answer

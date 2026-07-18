@@ -28,6 +28,11 @@ from bot.services.slovak_company_registry import (
     RegistryCompanyCandidate,
     RegistryCompanyDetails,
     RegistryLookupError,
+    SlovakCompanyRegistry,
+)
+from bot.services.slovak_tax_registry import (
+    TaxRegistryDetails,
+    TaxRegistryLookupError,
 )
 from bot.services.supplier_service import SupplierProfile
 from bot.services.workspace_profile_service import (
@@ -115,6 +120,41 @@ class _FakeRegistry:
         return self.details[subject_id]
 
 
+
+
+class _PayloadRegistry(SlovakCompanyRegistry):
+    def __init__(self, payloads: dict[str, object]) -> None:
+        super().__init__()
+        self.payloads = payloads
+        self.calls: list[tuple[str, dict[str, str] | None]] = []
+
+    async def _request_json(self, path: str, *, params=None):
+        self.calls.append((path, params))
+        return self.payloads[path]
+
+
+class _FakeTaxRegistry:
+    def __init__(self, result=None, error=None) -> None:
+        self.result = result
+        self.error = error
+        self.calls: list[str] = []
+
+    async def lookup_by_ico(self, ico: str):
+        self.calls.append(ico)
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def _provider_row(subject_id: int, name: str, ico: str, city: str) -> dict:
+    return {
+        'id': subject_id,
+        'fullNames': [{'value': name, 'validFrom': '2020-01-01'}],
+        'identifiers': [{'value': ico, 'validFrom': '2020-01-01'}],
+        'addresses': [{'street': 'Hlavn?', 'buildingNumber': 1, 'postalCodes': ['83106'],
+                       'municipality': {'value': city}, 'validFrom': '2020-01-01'}],
+        'termination': None,
+    }
 def _config(tmp_path: Path, *, enabled: bool = False, pilots=frozenset()) -> Config:
     return Config(
         bot_token='token',
@@ -467,3 +507,169 @@ def test_exact_registry_result_requires_typed_dic_optionals_and_final_confirmati
         'Eva Nováková',
         'registry',
     )
+
+def test_exact_zevs_search_suppresses_noise_and_opens_detail_without_write(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    config = _config(tmp_path, enabled=True)
+    _setup(config)
+    exact = _provider_row(1, 'Zevs s. r. o.', '56055552', 'Bratislava - mestsk\u00e1 \u010das\u0165 Ra\u010da')
+    registry = _PayloadRegistry({
+        'search': {'results': [
+            _provider_row(2, 'Ivona Klimaszevsk\u00e1', '11111111', 'Ko\u0161ice'),
+            _provider_row(3, 'JUDr. Tom\u00e1\u0161 \u010c\u00ed\u017eevsk\u00fd, not\u00e1r', '22222222', 'Nitra'),
+            _provider_row(4, 'Michal Kucharzewski OBCHODN\u00c1 KANCEL\u00c1RIA', '33333333', '\u017dilina'),
+            _provider_row(5, 'Toni Bla\u017eevski', '44444444', 'Pre\u0161ov'),
+            exact,
+        ]},
+        'entity/1': exact,
+    })
+    monkeypatch.setattr(contacts, '_registry_client', lambda _config: registry)
+    state = _State()
+    message = _Message()
+
+    asyncio.run(start_add_contact_intake(message=message, state=state, config=config))
+    message.text = 'Zevs s.r.o.'
+    asyncio.run(contact_name_hint(message, state, config))
+
+    assert state.current_state == ContactStates.registry_detail_preview
+    assert 'Zevs s. r. o.' in message.answers[-1]
+    assert 'I\u010cO: 56055552' in message.answers[-1]
+    assert 'Bratislava - mestsk\u00e1 \u010das\u0165 Ra\u010da' in message.answers[-1]
+    assert 'Klimaszevsk\u00e1' not in '\n'.join(message.answers)
+    assert registry.calls == [
+        ('search', {'fullName': 'zevs', 'onlyActive': 'true'}),
+        ('entity/1', None),
+    ]
+    assert _contact_count(config.db_path) == 0
+
+
+def test_soft_single_result_requires_selection_but_two_exact_names_remain_listed(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    config = _config(tmp_path, enabled=True)
+    _setup(config)
+    registry = _PayloadRegistry({
+        'search': {'results': [_provider_row(1, 'Zevs s.r.o.', '56055552', 'Bratislava')]},
+        'entity/1': _provider_row(1, 'Zevs s.r.o.', '56055552', 'Bratislava'),
+    })
+    monkeypatch.setattr(contacts, '_registry_client', lambda _config: registry)
+    state = _State()
+    message = _Message()
+    asyncio.run(start_add_contact_intake(message=message, state=state, config=config))
+    message.text = 'ZE VS'
+    asyncio.run(contact_name_hint(message, state, config))
+
+    assert state.current_state == ContactStates.registry_candidates
+    assert registry.calls == [('search', {'fullName': 'ze vs', 'onlyActive': 'true'})]
+    assert 'Zevs s.r.o.' in message.answers[-1]
+    assert _contact_count(config.db_path) == 0
+
+    second_config = _config(tmp_path / 'exact-two', enabled=True)
+    _setup(second_config)
+    exact_registry = _PayloadRegistry({'search': {'results': [
+        _provider_row(1, 'Same Name s.r.o.', '11111111', 'Bratislava'),
+        _provider_row(2, 'Same Name, s. r. o.', '22222222', 'Nitra'),
+    ]}})
+    monkeypatch.setattr(contacts, '_registry_client', lambda _config: exact_registry)
+    exact_state = _State()
+    exact_message = _Message()
+    asyncio.run(start_add_contact_intake(
+        message=exact_message, state=exact_state, config=second_config,
+    ))
+    exact_message.text = 'Same Name sro'
+    asyncio.run(contact_name_hint(exact_message, exact_state, second_config))
+
+    assert exact_state.current_state == ContactStates.registry_candidates
+    assert 'I\u010cO: 11111111' in exact_message.answers[-1]
+    assert 'I\u010cO: 22222222' in exact_message.answers[-1]
+    assert 'Bratislava' in exact_message.answers[-1]
+    assert 'Nitra' in exact_message.answers[-1]
+
+
+def test_tax_enrichment_skips_typed_dic_and_does_not_repeat_on_save(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    config = replace(
+        _config(tmp_path, enabled=True),
+        contact_tax_lookup_enabled=True,
+        financna_sprava_api_key='secret',
+    )
+    _setup(config)
+    candidate = _candidate('10', 'Zevs s. r. o.', '56055552', 'Bratislava')
+    registry = _FakeRegistry(
+        candidates=[candidate],
+        details={'10': _details('10', candidate.name, candidate.ico)},
+    )
+    tax = _FakeTaxRegistry(TaxRegistryDetails(
+        ico='56055552', dic='2122222222', ic_dph=None,
+        is_vat_registered=None, source_ids=('financna_sprava_income_tax',),
+    ))
+    monkeypatch.setattr(contacts, '_registry_client', lambda _config: registry)
+    monkeypatch.setattr(contacts, '_tax_registry_client', lambda _config: tax)
+    state = _State()
+    message = _Message()
+    asyncio.run(start_add_contact_intake(message=message, state=state, config=config))
+    message.text = '56055552'
+    asyncio.run(contact_name_hint(message, state, config))
+
+    assert state.current_state == ContactStates.registry_detail_preview
+    assert 'DI\u010c: 2122222222' in message.answers[-1]
+    assert 'I\u010c DPH: -' in message.answers[-1]
+    assert 'slovak_rpo + financna_sprava' in message.answers[-1]
+    assert tax.calls == ['56055552']
+    assert _contact_count(config.db_path) == 0
+
+    nonce = state.data['contact_registry_session']['nonce']
+    supplement = _Callback(f'contact_registry_action:{nonce}:supplement', message)
+    asyncio.run(contact_registry_action_callback(supplement, state, config))
+    assert state.current_state == ContactStates.registry_optional_email
+
+    state.current_state = ContactStates.registry_detail_preview
+    save = _Callback(f'contact_registry_action:{nonce}:save', message)
+    asyncio.run(contact_registry_action_callback(save, state, config))
+    assert state.current_state == ContactStates.registry_final_confirm
+    message.text = '\u00e1no'
+    asyncio.run(contact_registry_final_confirm(
+        message, state, config, canonical_decision='yes',
+    ))
+    assert _contact_count(config.db_path) == 1
+    with sqlite3.connect(config.db_path) as connection:
+        source_note = connection.execute(
+            'SELECT source_note FROM contact WHERE ico=?', ('56055552',),
+        ).fetchone()[0]
+    assert source_note == 'slovak_rpo+financna_sprava'
+    assert tax.calls == ['56055552']
+
+
+def test_tax_failure_retains_rpo_and_enters_typed_dic(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    config = replace(
+        _config(tmp_path, enabled=True),
+        contact_tax_lookup_enabled=True,
+        financna_sprava_api_key='secret',
+    )
+    _setup(config)
+    candidate = _candidate('10', 'Zevs s. r. o.', '56055552', 'Bratislava')
+    registry = _FakeRegistry(
+        candidates=[candidate], details={'10': _details('10', candidate.name, candidate.ico)},
+    )
+    tax = _FakeTaxRegistry(error=TaxRegistryLookupError('tax_registry_unavailable'))
+    monkeypatch.setattr(contacts, '_registry_client', lambda _config: registry)
+    monkeypatch.setattr(contacts, '_tax_registry_client', lambda _config: tax)
+    state = _State()
+    message = _Message()
+    asyncio.run(start_add_contact_intake(message=message, state=state, config=config))
+    message.text = '56055552'
+    asyncio.run(contact_name_hint(message, state, config))
+
+    assert state.current_state == ContactStates.registry_detail_preview
+    assert 'Zevs s. r. o.' in message.answers[-1]
+    assert 'DI\u010c: -' in message.answers[-1]
+    nonce = state.data['contact_registry_session']['nonce']
+    supplement = _Callback(f'contact_registry_action:{nonce}:supplement', message)
+    asyncio.run(contact_registry_action_callback(supplement, state, config))
+    assert state.current_state == ContactStates.registry_required_dic
+    assert tax.calls == ['56055552']
+    assert _contact_count(config.db_path) == 0
