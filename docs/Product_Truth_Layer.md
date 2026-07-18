@@ -736,7 +736,7 @@ Supported when enabled: search an official Slovak company by name or IČO; show 
 
 `contacts` remains `partial`. When the existing RPO workspace gate is enabled, exact normalized names collapse weak provider noise; multiple exact legal entities remain selectable; bounded spacing/one-edit suggestions such as `ZE VS` or `Empbau` always require explicit selection. A substring inside a longer surname is not exact identity evidence.
 
-RPO supplies official identity/address/lifecycle fields. A separate Financial Administration provider boundary uses key-authenticated mappings verified on 2026-07-18: income list `ds_dsrdp` (`ico` -> `dic`) and DPH list `ds_dphs` (`ico` -> directly returned `ic_dph`). Configuration remains disabled by default and requires external credentials plus the parent RPO/pilot gates. When disabled, unavailable, invalid, ambiguous, or missing an exact DIČ row, typed DIČ remains mandatory.
+RPO supplies official identity/address/lifecycle fields. A separate Financial Administration provider boundary uses key-authenticated mappings verified on 2026-07-18: income list `ds_dsrdp` (`ico` -> `dic`) and DPH list `ds_dphs` (`ico` -> directly returned `ic_dph`). Configuration is disabled by default in code and requires external credentials plus the parent RPO/pilot gates; the controlled server pilot was enabled on 2026-07-18 only behind that existing workspace gate. When disabled, unavailable, invalid, ambiguous, or missing an exact DIČ row, typed DIČ remains mandatory.
 
 Forbidden claims:
 

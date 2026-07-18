@@ -1,3 +1,20 @@
+## 2026-07-18 - Contact registry search/tax enrichment controlled deployment
+
+### Release and rollback
+- Created scoped commit `e63127b` (`feat: improve registry search and add tax enrichment`) from 21 task files and pushed `main`; pre-existing local work in `PROJECT_LOG.md` and `tests/test_access_workspace_reactivation.py` remained excluded.
+- Server repo was clean at `692eebb` and fast-forwarded to exact SHA `e63127b6b080068f3012a26e51728d885d535f58`.
+- Created rollback point `/var/backups/fakturabot/20260718T171457Z_contact_registry_tax_enrichment`: SQLite integrity `ok`, DB SHA-256 `9f0bd0df2be034f4f419b2200280048a19ca4e26483818206f99f8018ff1c1ef`, protected env copy, 71-file storage snapshot, and Docker tag `fakturabot-rollback:20260718t171457z`.
+
+### Activation and bounded smoke
+- Atomically set `CONTACT_TAX_LOOKUP_ENABLED=1` and `FINANCNA_SPRAVA_TIMEOUT_SECONDS=5` while preserving the exact key and `.env` mode `600`/owner `root:root`; the existing RPO pilot-workspace gate remains the parent boundary.
+- Rebuilt/recreated the production container with image SHA `24807583f7a24c49f02175c34737ac8e279237d8c11ebafb31b9ac655af1c00a`; startup and aiogram polling were healthy.
+- Container config reported tax enabled, key present, timeout 5, income mapping `ds_dsrdp:ico:dic`, and VAT mapping `ds_dphs:ico:ic_dph` without printing the secret.
+- Live tax-provider smoke for IČO `56055552` returned an exact validated DIČ, no IČ DPH, unknown VAT status, and source `financna_sprava_income_tax`; no tax value was logged.
+- The first 5-second RPO smoke timed out externally as `registry_unavailable`; one bounded 10-second retry/final check returned exactly one exact-name Zevs candidate, matching IČO/city, and valid RPO detail/address/source.
+- Post-deploy audit: server tree clean at `e63127b`, container up, zero recent ERROR/Traceback/CRITICAL log matches, SQLite integrity `ok`, and unchanged counts of 3 contacts, 9 invoices, and 3 workspaces. No DB/storage migration or contact/invoice write occurred.
+
+### Residual gate
+- Controlled Telegram conversation acceptance is still pending; this deployment is not a general `safe_to_deploy` claim and does not broaden the configured pilot workspace scope.
 ## 2026-07-18 - FA_CONTACT_REGISTRY_SEARCH_QUALITY_AND_TAX_ENRICHMENT_V1 staged implementation
 
 ### Changes

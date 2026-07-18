@@ -1,7 +1,7 @@
 # Changelog
 
 - Fixed owner OAuth Google Drive setup commands to read and disconnect the shared configured owner connection instead of a legacy Telegram-derived connection key; re-auth status no longer claims the interactive connect command is always available.
-- Improved official RPO contact search with deterministic exact-name collapse, bounded typo/spacing suggestions that always require selection, and weak internal-substring rejection. Added disabled-by-default Financial Administration tax-enrichment configuration, a fail-closed async provider/aggregation boundary, no-network fake coverage, and exact key-authenticated production mappings for `ds_dsrdp`/`ds_dphs`; deployment and feature activation remain separately gated.
+- Improved and deployed official RPO contact search with deterministic exact-name collapse, bounded typo/spacing suggestions that always require selection, and weak internal-substring rejection. Added the fail-closed Financial Administration enrichment boundary and audited `ds_dsrdp`/`ds_dphs` mappings; the controlled server pilot is enabled under the existing parent RPO workspace gate, while general availability and Telegram acceptance remain separately gated.
 
 ## Unreleased
 - Added and deployed immutable workspace-specific Google Drive targets for newly confirmed receipts and incoming invoices, shared deterministic path validation, fail-closed enqueue behavior, and a redacted read-only deployment blocker audit for active legacy jobs; existing owner OAuth, worker, invoice-PDF behavior, retention, and historical remote files remain unchanged. Production audit and row-count preservation passed; the owner connection has since been reauthorized, while real two-profile upload smoke remains pending.

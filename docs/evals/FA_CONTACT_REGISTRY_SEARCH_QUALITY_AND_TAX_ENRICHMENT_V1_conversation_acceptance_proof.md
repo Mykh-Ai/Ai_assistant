@@ -11,7 +11,7 @@ This is the final local evidence record for the user-authorized implementation s
 - Runtime changes: deterministic RPO ranking/filtering; exact-vs-suggested candidate metadata; strict suggestion selection; disabled tax config; async tax provider/aggregation owner; detail enrichment/fallback; bounded source metadata.
 - Automated tests use synthetic RPO/tax payloads and local temporary SQLite only. They do not call the internet.
 - An authorized key was installed securely in `/bot/repo/.env`. After correcting a one-character local transfer corruption, authenticated `/api/lists`, list-detail, exact-IČO, current DPH-page, and no-result calls completed without printing the key or raw taxpayer values. `verified_financna_sprava_schema()` now binds the audited mappings.
-- No production Telegram, DB/storage, migration, restart, code deployment, feature activation, commit, or push action occurred. The only server write was the explicitly requested secret-line update; the existing container remained up throughout.
+- During implementation proof no production Telegram, DB/storage, migration, restart, code deployment, feature activation, commit, or push action occurred. A later explicitly approved post-handoff deployment is recorded below.
 
 ## Scenario 1: exact Zevs search
 
@@ -95,4 +95,4 @@ The task run executed the existing registry/contact completion suite, broad cont
 - `python -m compileall -q bot` -> pass.
 - Automated tests remain fake/local. The separate bounded live read-only audit returned 200 for authenticated metadata and observed exact matches, 404 for no-result searches in both approved lists, and confirmed direct official IČ DPH representation without logging raw values.
 
-The local implementation and production schema mapping are `safe_to_review`. Production code is not deployed and `CONTACT_TAX_LOOKUP_ENABLED` remains absent/off on the server. Deployment remains separately gated by production schema/data audit, backup/rollback, explicit pilot flags, bounded server runtime smoke, controlled Telegram acceptance, and separate approval.
+Post-handoff deployment completed at commit `e63127b`: clean fast-forward, verified DB/env/storage/image rollback point, `CONTACT_TAX_LOOKUP_ENABLED=1`, timeout 5, container rebuild/restart, healthy polling, exact runtime config/mapping checks, live tax lookup with validated DIČ/no inferred IČ DPH, live exact RPO search/detail, zero log errors, SQLite integrity `ok`, and unchanged counts (3 contacts, 9 invoices, 3 workspaces). The controlled parent workspace gate remains active. Telegram conversation acceptance is still pending, so this remains `safe_to_review` evidence rather than a general `safe_to_deploy` claim.

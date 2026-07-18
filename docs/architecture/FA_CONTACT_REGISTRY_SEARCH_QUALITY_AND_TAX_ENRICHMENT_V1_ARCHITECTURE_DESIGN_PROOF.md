@@ -226,7 +226,7 @@ No live tax API assertions belong in automated tests. The bounded read-only key-
 - Existing same-IČO merge, optional local-field preservation, same-name/different-IČO conflict, split conflict, and invoice-reference rules remain unchanged.
 - Manual contact creation, PDF/document intake, voice precision exclusions, active-FSM ownership, shared DecisionResolver, tenant isolation, and unauthorized-user external-call prohibition remain unchanged.
 - No commercial scraping, background sync, automatic contact creation, production write, migration, restart, deployment, commit, or push belongs to this task.
-- Deployment remains separately gated by production schema/data audit, backup/rollback, flags/pilot configuration, bounded server runtime smoke, controlled Telegram acceptance, and explicit deployment approval.
+- An explicitly approved post-handoff deployment completed the production schema/data audit, backup/rollback point, pilot flag configuration, and bounded server RPO/FS runtime smoke. Controlled Telegram acceptance remains pending and the capability is not generally enabled outside the existing parent workspace gate.
 
 ## 12. Evidence resolution and residual limits
 
@@ -244,6 +244,6 @@ Residual limitations:
 - 403, 429, timeout, 5xx, malformed JSON, oversized body, and unexpected schema behavior remain fake-tested from the documented contract rather than intentionally triggered live;
 - official lists can update or be temporarily unavailable, so manual DIČ fallback remains mandatory.
 
-These residual limits do not require guessed mappings and do not block implementation handoff. They continue to block any claim of `safe_to_deploy` without the separate deployment gates.
+These residual limits do not require guessed mappings and do not block implementation handoff. The controlled deployment occurred with explicit approval and rollback evidence, but controlled Telegram acceptance still blocks any general `safe_to_deploy` claim.
 
 ready_for_handoff
