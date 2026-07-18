@@ -1,3 +1,14 @@
+## 2026-07-18 - Registry tax preview wording production repair
+
+### Cause and repair
+- Real Telegram acceptance proved that official income-tax ID enrichment worked, but the preview still appended a generic sentence saying tax IDs were not created or inferred. The sentence was misleading when the income-tax ID was already present.
+- Replaced the unconditional note with deterministic, source-aware wording. An officially enriched income-tax ID is now acknowledged; a missing VAT ID is stated only as not found for the selected company ID and is never inferred. Manual-entry guidance remains only when the required income-tax ID is actually absent.
+- Added focused FSM assertions for the enriched and unavailable-tax branches. Fake-only focused registry/tax/Product Truth tests passed: 58 passed in 11.76s; compileall and diff-check passed.
+
+### Controlled deployment evidence
+- Committed and pushed `92bcaa7` (`fix: make registry tax preview source aware`), created Docker rollback tag `fakturabot-rollback:pre-92bcaa7`, fast-forwarded the clean server tree, and rebuilt/recreated the existing production container.
+- Production is running at exact SHA `92bcaa7e0ce4cd9ce42d2522ceaa7561ffdffe70`; startup and aiogram polling are healthy. A deterministic in-container smoke returned the expected source-aware wording for an official income-tax ID with no VAT ID.
+- Tax enrichment remains enabled behind the existing parent registry/pilot gate; the API key is present without being printed and timeout remains 5 seconds. SQLite integrity is `ok`; counts remain 3 contacts, 9 invoices, and 3 workspaces. No schema migration or contact/invoice/storage write occurred.
 ## 2026-07-18 - Contact registry search/tax enrichment controlled deployment
 
 ### Release and rollback
