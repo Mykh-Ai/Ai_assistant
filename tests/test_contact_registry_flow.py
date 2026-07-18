@@ -617,6 +617,9 @@ def test_tax_enrichment_skips_typed_dic_and_does_not_repeat_on_save(
     assert 'DI\u010c: 2122222222' in message.answers[-1]
     assert 'I\u010c DPH: -' in message.answers[-1]
     assert 'slovak_rpo + financna_sprava' in message.answers[-1]
+    assert 'DIČ bolo získané a overené z oficiálneho zdroja.' in message.answers[-1]
+    assert 'IČ DPH sa pre vybrané IČO v oficiálnom zozname nenašlo' in message.answers[-1]
+    assert 'Chýbajúce povinné údaje' not in message.answers[-1]
     assert tax.calls == ['56055552']
     assert _contact_count(config.db_path) == 0
 
@@ -667,6 +670,7 @@ def test_tax_failure_retains_rpo_and_enters_typed_dic(
     assert state.current_state == ContactStates.registry_detail_preview
     assert 'Zevs s. r. o.' in message.answers[-1]
     assert 'DI\u010c: -' in message.answers[-1]
+    assert 'DIČ sa nepodarilo získať a treba ho doplniť textom.' in message.answers[-1]
     nonce = state.data['contact_registry_session']['nonce']
     supplement = _Callback(f'contact_registry_action:{nonce}:supplement', message)
     asyncio.run(contact_registry_action_callback(supplement, state, config))

@@ -113,3 +113,5 @@ This is expected and should be documented as a manual command flow, not as a mis
 
 The detail preview may show source `slovak_rpo + financna_sprava` only when validated tax data was merged for the exact selected IČO. Disabled, unconfigured, unavailable, malformed, conflicting, or empty tax lookup retains `slovak_rpo`, keeps IČ DPH empty, and preserves the existing typed-DIČ continuation. Final save remains `contact_registry_confirm` through shared `yes_no`.
 
+The tax note under the detail preview is field- and source-aware. A validated Financial Administration DIČ is described as obtained from an official source; a missing IČ DPH is described only as not found for the selected exact IČO and is never presented as inferred non-VAT status. Manual DIČ guidance appears only when DIČ is actually absent. The preview must not show a generic “missing required data” warning when all required registry fields, including DIČ, are already valid.
+

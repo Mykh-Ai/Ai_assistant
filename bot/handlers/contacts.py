@@ -473,6 +473,27 @@ def _registry_details_data(details: RegistryCompanyDetails) -> dict[str, object]
     }
 
 
+def _registry_tax_preview_note(draft: dict[str, object]) -> str:
+    sources = {str(value) for value in draft.get('provider_sources') or []}
+    tax_enriched = 'financna_sprava' in sources
+    dic_valid = validate_dic(str(draft.get('dic') or ''))
+    ic_dph_valid = validate_ic_dph(str(draft.get('ic_dph') or ''))
+
+    if tax_enriched and dic_valid and ic_dph_valid:
+        return 'DIČ a IČ DPH boli získané a overené z oficiálnych zdrojov. Žiadna hodnota sa neodvodzuje ani nevytvára.'
+    if tax_enriched and dic_valid:
+        return 'DIČ bolo získané a overené z oficiálneho zdroja. IČ DPH sa pre vybrané IČO v oficiálnom zozname nenašlo; z DIČ sa nevytvára ani neodvodzuje.'
+    if tax_enriched and ic_dph_valid:
+        return 'IČ DPH bolo získané a overené z oficiálneho zdroja. DIČ sa nepodarilo získať a treba ho doplniť textom.'
+    if dic_valid and ic_dph_valid:
+        return 'DIČ a IČ DPH sú vyplnené a formátovo overené. IČ DPH sa z DIČ neodvodzuje.'
+    if dic_valid:
+        return 'DIČ je vyplnené a formátovo overené. IČ DPH nie je vyplnené a z DIČ sa nevytvára ani neodvodzuje.'
+    if ic_dph_valid:
+        return 'IČ DPH je vyplnené a formátovo overené. Chýbajúce DIČ treba doplniť textom.'
+    return 'DIČ sa nepodarilo získať a treba ho doplniť textom. IČ DPH sa z DIČ nevytvára ani neodvodzuje.'
+
+
 def _registry_preview_text(draft: dict[str, object]) -> str:
     status = 'aktívna' if draft.get('is_active') is True else ('neaktívna' if draft.get('is_active') is False else '-')
     sources = ' + '.join(str(value) for value in draft.get('provider_sources') or []) or 'slovak_rpo'
@@ -488,7 +509,7 @@ def _registry_preview_text(draft: dict[str, object]) -> str:
         f'Kontaktná osoba: {draft.get("contact_person") or "-"}\n'
         f'Stav: {status}\n'
         f'Zdroj: {sources}\n\n'
-        'DIČ a IČ DPH sa nevytvárajú ani neodvodzujú. Chýbajúce povinné údaje treba doplniť textom.'
+        f'{_registry_tax_preview_note(draft)}'
     )
 
 

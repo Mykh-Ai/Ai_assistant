@@ -1,5 +1,6 @@
 # Changelog
 
+- Fixed the registry detail tax note so validated official DIČ is acknowledged, missing IČ DPH is described without a non-VAT claim, and manual DIČ guidance appears only when DIČ is actually absent.
 - Fixed owner OAuth Google Drive setup commands to read and disconnect the shared configured owner connection instead of a legacy Telegram-derived connection key; re-auth status no longer claims the interactive connect command is always available.
 - Improved and deployed official RPO contact search with deterministic exact-name collapse, bounded typo/spacing suggestions that always require selection, and weak internal-substring rejection. Added the fail-closed Financial Administration enrichment boundary and audited `ds_dsrdp`/`ds_dphs` mappings; the controlled server pilot is enabled under the existing parent RPO workspace gate, while general availability and Telegram acceptance remain separately gated.
 
