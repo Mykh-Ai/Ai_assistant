@@ -31,10 +31,12 @@ Stage 1 is the first implementable top-level feature. It defines:
 - additive SQLite persistence in dedicated runtime-issue tables;
 - idempotent Telegram-delivery handling;
 - truthful Slovak acknowledgement; and
-- the bounded claim/export interface later maintenance will require.
+- only a bounded read-only issue retrieval/export boundary if later
+  maintenance requires it.
 
 Stage 1 performs no code repair, Git operation, deployment, business-data
-mutation, or callback replay.
+mutation, callback replay, issue claim/lease, claimed-manifest generation,
+maintenance run, diagnosis/result write, or notification-outbox work.
 
 ### Stage 2 — `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
@@ -119,9 +121,11 @@ For this package the current repository order is:
 6. `CHANGELOG.md` for release history.
 7. This package for the approved target design only.
 
-SQLite is the proposed canonical issue store. A generated claimed-issue JSON
-manifest is a bounded read-only transport artifact, never a competing writable
-source of truth.
+SQLite is the proposed canonical issue store. Stage 1 may expose a bounded
+read-only issue retrieval/export boundary without changing issue status.
+Stage 2 alone may atomically claim an issue and generate a claimed-issue JSON
+manifest. That manifest is a bounded read-only transport artifact, never a
+competing writable source of truth.
 
 ## Document index
 
@@ -134,16 +138,20 @@ source of truth.
 - [03_DAILY_MAINTENANCE_RUNBOOK.md](03_DAILY_MAINTENANCE_RUNBOOK.md) — Stage 2
   modes, proposed daily process, interruption recovery, and activation inputs.
 - [04_DATA_STATUS_AND_AGENT_INTERFACE_CONTRACT.md](04_DATA_STATUS_AND_AGENT_INTERFACE_CONTRACT.md)
-  — Stage 1 intake records and later Stage 2 run/result/outbox records.
+  — exact Stage 1 intake/read boundary and later Stage 2
+  claim/run/result/outbox ownership.
 - [05_ACCEPTANCE_SCENARIOS.md](05_ACCEPTANCE_SCENARIOS.md) — separate Stage 1
-  acceptance and Stage 2 policy scenarios.
+  mandatory acceptance and downstream Stage 2 policy scenarios that are not
+  required for Stage 1 implementation or handoff.
 
 ## Approval and implementation gates
 
 Stage 1 is ready for a later implementation handoff, but this PR does not
 create that handoff. Before implementation, a separate approved task must
 translate the Stage 1 proof without allowing the implementation agent to
-redesign the action.
+redesign the action. That handoff must not include Stage 2 claim/lease,
+claimed-manifest, maintenance-run, diagnosis/result, outbox, repair, merge,
+deployment, or rollback work.
 
 Stage 2 activation separately requires:
 

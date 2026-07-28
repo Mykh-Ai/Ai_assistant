@@ -4,11 +4,14 @@ Stage 1 task ID: `RUNTIME_ISSUE_INTAKE_V1`
 
 Stage 2 task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
-Status: target acceptance contract only. Future implementation must prove the
-public journeys under the real “Conversation Acceptance Proof” section of
+Status: target acceptance contract only. A future Stage 1 implementation must
+prove section A only under the real “Conversation Acceptance Proof” section of
 `docs/Evaluation_and_Smoke_Test_Standards.md`, plus focused and adjacent
-deterministic tests. No test in this repository currently implements these
-scenarios.
+deterministic tests. Sections B–D are downstream Stage 2 policy scenarios.
+They are retained for Stage 2 design continuity but are not required for
+`RUNTIME_ISSUE_INTAKE_V1` implementation, handoff, or Conversation Acceptance
+Proof. A Stage 1 implementation agent must not materialize them. No test in
+this repository currently implements these scenarios.
 
 User-facing feature copy is Slovak. Every issue-intake
 scenario applies the slot, privacy, idempotency, and workspace contracts in
@@ -256,16 +259,38 @@ boundary.
   after approved sanitizer treatment; intake does not classify cause.
 - **State sequence:** Pre-state → redaction/validation → capture or safe reject
   → pre-state.
-- **Side effect/no-side-effect:** Secret value never enters canonical
-  description, title, manifest, logs, notification, Git, or public project log.
-  If safe redaction cannot be guaranteed, no issue row.
+- **Side effect/no-side-effect:** Secret value never enters the canonical
+  description, title, Stage 1 structured logs, read-only retrieval/export, or
+  acknowledgement. If safe redaction cannot be guaranteed, no issue row.
 - **Expected final state:** Unchanged.
 - **User-visible outcome:** Stored acknowledgement with no echo of the secret,
   or truthful resubmission request with no stored claim.
-- **Evidence/future test owner:** New sanitizer property/unit tests and manifest,
-  result, and outbox serialization tests.
+- **Evidence/future test owner:** New Stage 1 sanitizer, persistence, response,
+  and optional read-only retrieval/export tests.
 
-## B. Stage 2 diagnosis policy scenarios
+### 15. Existing business callback invariants
+
+- **Precondition:** A current invoice/contact/follow-up callback is valid,
+  stale, wrong-state, duplicate, legacy, or unauthorized.
+- **Input/event:** Existing callback delivery, with or without a prior issue
+  report describing a callback problem.
+- **Expected canonical action/classification:** Existing callback owner; never
+  `report_runtime_issue` from callback data.
+- **State sequence:** Existing callback state/context/expiry contract.
+- **Side effect/no-side-effect:** Exactly the current acknowledgement and
+  bounded business effect; stale/wrong/unauthorized fail closed. An issue report
+  never executes or replays the callback.
+- **Expected final state:** Current callback contract’s state/keyboard.
+- **User-visible outcome:** Current callback response; no issue acknowledgement
+  unless a separate explicit issue message was sent.
+- **Evidence/future test owner:** `tests/test_decision_callbacks.py` and
+  `tests/test_invoice_followup_handler.py` full adjacent regression.
+
+## B. Downstream Stage 2 diagnosis policy scenarios
+
+All scenarios in sections B–D are downstream
+`RUNTIME_ISSUE_AUTOREPAIR_V1` design. They are not normative or required for
+Stage 1 implementation, handoff, or Conversation Acceptance Proof.
 
 ### B1. Claim lease and interrupted run
 
@@ -374,7 +399,7 @@ not continue merely because the per-issue claim is still live.
   proven missing structured event can be evaluated later under the low-risk
   allowlist with its own regression test.
 
-## C. Stage 2 activation-gated repair and deployment policy scenarios
+## C. Downstream Stage 2 activation-gated repair and deployment policy scenarios
 
 The following scenarios describe the approved product target. Automatic
 commit/merge/deploy is unavailable until the narrow canonical-contract
@@ -475,27 +500,9 @@ retryable outbox, and private operational proof are implemented and approved.
   explicit “code and production were not changed.”
 - **Evidence/future test owner:** Result template and outbox transition tests.
 
-## D. Cross-stage business invariants and motivating examples
+## D. Downstream Stage 2 motivating examples
 
-### D1. Existing business callback invariants
-
-- **Precondition:** A current invoice/contact/follow-up callback is valid,
-  stale, wrong-state, duplicate, legacy, or unauthorized.
-- **Input/event:** Existing callback delivery, with or without a prior issue
-  report describing a callback problem.
-- **Expected canonical action/classification:** Existing callback owner; never
-  `report_runtime_issue` from callback data.
-- **State sequence:** Existing callback state/context/expiry contract.
-- **Side effect/no-side-effect:** Exactly the current acknowledgement and
-  bounded business effect; stale/wrong/unauthorized fail closed. An issue report
-  never executes or replays the callback.
-- **Expected final state:** Current callback contract’s state/keyboard.
-- **User-visible outcome:** Current callback response; no issue acknowledgement
-  unless a separate explicit issue message was sent.
-- **Evidence/future test owner:** `tests/test_decision_callbacks.py` and
-  `tests/test_invoice_followup_handler.py` full adjacent regression.
-
-### D2. Paid-invoice callback motivating example
+### D1. Paid-invoice callback motivating example
 
 - **Precondition:** Administrator reports that after `Uhradená`, the spinner
   continued and terminal message was absent; exact event correlates to a
@@ -525,7 +532,7 @@ If evidence instead implicates bank settlement truth, data repair, callback
 architecture, or ambiguous Product Truth, classify
 `complex_or_high_risk_defect` and stop without a patch.
 
-### D3. Contact resolver / analytics motivating example
+### D2. Contact resolver / analytics motivating example
 
 - **Precondition:** Analytics for invoices issued to “Тех Компані” misses
   stored contact “Tech Company s. r. o.”; current voice/contact creation already
@@ -556,6 +563,20 @@ architecture, or ambiguous Product Truth, classify
 If resolver reuse requires changing its ambiguity semantics, workspace
 identity, action architecture, or Product Truth, classify
 `complex_or_high_risk_defect` and stop with no branch/commit/deploy.
+
+## Stage 1 proof boundary
+
+Only scenarios A1–A15 form the mandatory Stage 1 proof set. They cover intake,
+routing, dedicated persistence, deduplication, trusted context, truthful
+acknowledgement, negative space, additive compatibility, secret handling, and
+unchanged business journeys. If Stage 1 implements the optional bounded
+read-only retrieval/export boundary, its focused tests must prove that the read
+does not claim, lease, change status, create a run, or generate a claimed
+manifest.
+
+Sections B–D remain downstream Stage 2 policy material only. They must not be
+copied into a `RUNTIME_ISSUE_INTAKE_V1` implementation prompt, handoff,
+mandatory test plan, or Conversation Acceptance Proof.
 
 ## Cross-scenario proof rules
 

@@ -10,15 +10,16 @@ table, service, CLI, manifest, or outbox.
 ## Staged ownership model
 
 ```text
-bot -> RuntimeIssueService -> SQLite
+Stage 1 bot -> RuntimeIssueService -> SQLite
 
-maintenance runner -> validated maintenance CLI/service
+Stage 2 maintenance runner -> validated maintenance CLI/service
   -> atomically claim eligible issue in SQLite
   -> emit read-only claimed_issues_<run_id>.json
   -> accept schema-validated result for the live claim
   -> update SQLite and enqueue bot-owned notification
 
-bot notification worker -> claim outbox item -> Telegram -> record delivery
+Stage 2 bot notification worker
+  -> claim outbox item -> Telegram -> record delivery
 ```
 
 SQLite is the only canonical writable store. Work/Codex never writes SQLite
@@ -26,11 +27,16 @@ directly and never changes status by editing a manifest. Proposed names describe
 future ownership; no such symbols currently exist.
 
 Stage 1 owns the minimal canonical issue record, Telegram-delivery
-idempotency, and a bounded claim/export service interface. Stage 2 later owns
-maintenance runs, claim/lease activity, evidence, diagnosis/results, deployment
-truth, and notification outbox records. Stage 2 tables and behavior are
-planned and activation-blocked; their absence does not block the Stage 1
-record.
+idempotency, trusted context capture, truthful acknowledgement, and only a
+bounded read-only issue retrieval/export service boundary if required. That
+Stage 1 boundary cannot claim an issue, create or renew a lease, change
+processing status, create a maintenance run, or generate a claimed manifest.
+
+Stage 2 alone owns atomic issue claim/lease, claimed-manifest generation,
+maintenance runs, bounded evidence, diagnosis/results, deployment truth,
+notification outbox records, repair, merge, deployment, and rollback. Stage 2
+tables and behavior are planned and activation-blocked; their absence does not
+block the Stage 1 record or its optional read-only boundary.
 
 The claim/lease design reuses the transaction semantics demonstrated by
 `bot/services/archive_job_service.py`, especially `BEGIN IMMEDIATE`,
@@ -111,6 +117,7 @@ Stage 2 may add separate dedicated records for:
 
 - issue processing/classification state;
 - issue claim and lease metadata;
+- claimed-manifest generation and digest/audit references;
 - maintenance runs and their global concurrency lease;
 - bounded evidence and diagnosis/result versions;
 - deploy/rollback verification; and
@@ -258,7 +265,11 @@ The service constructs a versioned key from trusted
   cannot suppress an authorized new observation in V1.
 - A retried acknowledgement does not create another issue.
 
-## Generated manifest schema
+## Stage 2 generated claimed-manifest schema
+
+Claimed-manifest generation occurs only after a successful Stage 2 atomic
+claim. It is not part of Stage 1 persistence, retrieval/export, implementation,
+handoff, or Conversation Acceptance Proof.
 
 Conceptual top-level JSON:
 
@@ -358,7 +369,7 @@ interfaces. An agent string saying “deployed” cannot set `fixed_deployed`.
 | `idempotency_key` | Unique `issue_id:result_version:recipient` digest |
 | `issue_id`, `result_version` | Canonical result |
 | `recipient_telegram_id`, `chat_id` | Trusted issue/admin context |
-| `category` | `issue_stored`, `diagnosis_completed`, `fixed_deployed`, `blocked_no_changes`, `insufficient_evidence`, `external_failure`, `rollback_completed`, `rollback_risk` |
+| `category` | `diagnosis_completed`, `fixed_deployed`, `blocked_no_changes`, `insufficient_evidence`, `external_failure`, `rollback_completed`, `rollback_risk` |
 | `payload_version`, `payload_json` | Template fields only; no raw agent-authored Telegram request |
 | `status` | `pending`, `sending`, `sent`, `retry_wait`, `failed` |
 | `attempt_count`, `next_attempt_at`, `lease_until`, `worker_id` | Retry/lease |
@@ -370,7 +381,8 @@ The bot-owned worker atomically claims `pending`/eligible `retry_wait` rows,
 renders approved truthful templates, sends with existing bot ownership, and
 records delivery. Retry is bounded with backoff. Duplicate worker execution
 does not rerun maintenance or change issue status. The maintenance runner never
-receives bot credentials.
+receives bot credentials. The immediate Stage 1 stored/failed acknowledgement
+is owned by the intake handler and does not use this Stage 2 result outbox.
 
 ## Stage 2 notification transitions
 

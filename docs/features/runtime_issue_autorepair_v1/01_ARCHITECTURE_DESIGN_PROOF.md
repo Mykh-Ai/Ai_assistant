@@ -20,7 +20,7 @@ this Stage 1 handoff.
 | Business need | An administrator needs to record a small runtime problem immediately after observing it, preserving trusted context for later diagnosis without interrupting the business journey. |
 | User-visible outcome | The bot stores one complete report, returns a truthful Slovak acknowledgement, and leaves the current business FSM state and business data unchanged. |
 | Current Product Truth | Unsupported. No action, command, route, store, maintenance process, or result outbox exists. |
-| Target Product Truth | Planned admin-only `report_runtime_issue` intake with a bounded claim/export boundary; no repair, Git operation, or deployment. |
+| Target Product Truth | Planned admin-only `report_runtime_issue` intake with only a bounded read-only issue retrieval/export boundary if required; no claim/lease, repair, Git operation, or deployment. |
 | Risk | Medium: top-level routing, active-FSM preservation, trusted context, and additive persisted diagnostic data. |
 | Date / architect | 2026-07-28 / documentation architecture audit |
 
@@ -232,16 +232,17 @@ does not derive repair permission from the issue text.
 | Send intake acknowledgement | Successful insert or recognized duplicate | Bot handler through existing bot send owner | Persisted issue ID known | No false “stored” claim; delivery failure does not duplicate issue | Response keyed to update/issue |
 | Read FSM snapshot | Before insert | Shared Python guard/sanitizer | Allowlist and size bound | Omit unsafe context or fail according to approved required-field policy | Read only |
 | STT call | Authorized voice | Existing voice owner | Outer general authorization | Existing safe voice error | Existing update handling |
-| Future issue claim | Eligible issue | Proposed maintenance service/CLI | Clean run identity; atomic status/lease check | Transaction rollback/lease expiry | Claim token and compare-and-set |
-| Future manifest generation | Successful claim | Proposed maintenance service/CLI | Claimed rows only; redaction; digest | Regenerate from SQLite | Run/claim/digest keyed |
-| Export claimed issue manifest | Valid claim under the bounded Stage 1 interface | Proposed `RuntimeIssueService`/CLI boundary | Atomic claim token, explicit schema, trusted scope, redaction | Reject invalid/stale claim; SQLite remains canonical | Claim/run/digest key |
+| Bounded read-only issue retrieval/export, if required | Authorized later consumer requests owned intake fields | Proposed `RuntimeIssueService` read boundary | Explicit named columns, trusted actor/workspace scope, redaction, size/version bounds | Reject unauthorized, invalid, or over-broad reads; SQLite remains canonical | Read only; no status, lease, run, result, or outbox mutation |
 
 Forbidden during intake: invoice mutation, callback execution/replay, file
 upload, email, business edit/delete, workspace switch, code repair, GitHub
 operation, deployment, or any business FSM/pending mutation.
 
-Stage 2 code, Git, test, merge, deploy, rollback, result, and notification
-operations are governed by the policy/runbook and are outside this handoff.
+Atomic issue claim/lease, claimed-manifest generation, maintenance runs,
+diagnosis/results, notification outbox, repair, Git, tests, merge, deployment,
+and rollback are owned exclusively by downstream Stage 2. They are not
+normative Stage 1 side effects and must not be implemented by the Stage 1
+handoff.
 
 ### Additive persistence decision
 
@@ -280,9 +281,11 @@ behavior.”
   enforcement. One active workspace stores its trusted ID. No active workspace
   stores null plus `no_active_workspace`; the valid global admin issue is not
   discarded. A report can never choose or override another tenant.
-- Every issue lookup, claim, result, and notification uses the stored trusted
-  workspace/actor scope plus service authorization; maintenance manifests never
-  broaden it.
+- Every Stage 1 issue retrieval/export uses the stored trusted workspace/actor
+  scope plus service authorization and is read only.
+- Every downstream Stage 2 claim, manifest, result, and notification uses the
+  same trusted scope plus its own Stage 2 authorization; a claimed manifest
+  never broadens it.
 - Voice cannot supply workspace, actor, update IDs, SHA, FSM state, exact money,
   repair authority, deploy authority, secrets, or credential values.
 - Intake has no destructive or sensitive business effect and no confirmation.
@@ -365,9 +368,9 @@ customization admin, archive job/worker, contacts, and analytics.
 
 ## 14. Acceptance Scenario Contract
 
-The exact detailed scenarios are in `05_ACCEPTANCE_SCENARIOS.md` and are
-normative for future implementation. Required public Conversation Acceptance
-Proof uses the real canonical section in
+The exact detailed scenarios are in `05_ACCEPTANCE_SCENARIOS.md`. Only section
+A of that document is normative for the future Stage 1 implementation and its
+required public Conversation Acceptance Proof under
 `docs/Evaluation_and_Smoke_Test_Standards.md`.
 
 Minimum proof set:
@@ -380,17 +383,22 @@ Minimum proof set:
 5. ambiguous business text and capability questions with no issue row;
 6. persistence failure and duplicate delivery;
 7. workspace isolation and secret redaction;
-8. unchanged callback/FSM/business journeys;
-9. claim lease, expiry, and interrupted-run recovery;
-10. every classification, allowed repair, forbidden stop, failed test gate,
-    failed smoke/rollback, and truthful notification category;
-11. the paid-invoice callback and contact-resolver/analytics motivating cases.
+8. additive dedicated-table and named-column compatibility;
+9. optional bounded read-only retrieval/export, if included in the Stage 1
+   implementation, with no status or Stage 2 mutation; and
+10. unchanged callback/FSM/business journeys.
 
 For the public action, expected slots are those in section 5; the state
 sequence is pre-state → ephemeral capture → identical pre-state; the only
 allowed effect is one idempotent issue row plus acknowledgement. There is no
 button convergence, clarification continuation, cancel/back, or issue pending
 state because these are intentionally excluded.
+
+Sections B–D of `05_ACCEPTANCE_SCENARIOS.md` retain downstream Stage 2
+claim/lease, classification, manifest, repair, deploy, rollback, notification,
+and motivating-case policy scenarios. They are not required for
+`RUNTIME_ISSUE_INTAKE_V1` implementation, handoff, or Conversation Acceptance
+Proof, and a Stage 1 implementation agent must not materialize them.
 
 ## 15. Out Of Scope And Known Architecture Gaps
 
