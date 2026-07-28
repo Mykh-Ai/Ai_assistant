@@ -41,6 +41,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'invoice_pdf_custom_template',
     'delete_user_database',
     'work_time_tracking',
+    'runtime_issue_intake',
 )
 
 _RESERVED_INTENT_CAPABILITIES = {
@@ -176,6 +177,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'summary': 'Neznámy používateľ môže požiadať o prístup a správca ho musí schváliť pred biznis tokmi.',
         'limitation': 'Čakajúca žiadosť ešte nie je aktívny účet, profil dodávateľa ani oprávnenie vytvárať dáta.',
         'safe_next': 'Požiadajte o prístup a počkajte na schválenie správcom.',
+    },
+    'runtime_issue_intake': {
+        'title': 'Nahlásenie prevádzkového problému',
+        'summary': 'Správca môže uložiť jeden konkrétny pozorovaný problém bota cez /issue, ohraničený text alebo hlas.',
+        'limitation': 'Uloženie nepotvrdzuje chybu, nespúšťa diagnostiku ani opravu a nesľubuje termín. Aktívna biznis akcia zostane nezmenená.',
+        'safe_next': 'Ak ste správca a chcete problém uložiť, pošlite /issue a úplný opis v tej istej správe.',
     },
     'business_profiles': {
         'title': 'Viac firemných profilov',
@@ -769,6 +776,8 @@ def classify_info_help_capability(
         return 'customization_requests'
     if _mentions_access_request_approval(normalized, tokens):
         return 'access_request_approval'
+    if _mentions_runtime_issue_intake(normalized, tokens):
+        return 'runtime_issue_intake'
     if _mentions_code_agent_handoff(normalized, tokens):
         return 'code_agent_handoff'
     if _mentions_voice_limit(normalized, tokens):
@@ -892,6 +901,13 @@ def _is_help_like(normalized: str, tokens: set[str]) -> bool:
     return '?' in normalized or bool(tokens.intersection(_HELP_CUES)) or any(
         phrase in normalized for phrase in _OVERVIEW_PHRASES
     )
+
+
+def _mentions_runtime_issue_intake(normalized: str, tokens: set[str]) -> bool:
+    issue_terms = {'problem', 'problemu', 'chybu', 'chyba'}
+    report_terms = {'nahlasit', 'nahlasim', 'nahlas', 'ulozit', 'ulozim'}
+    help_terms = {'ako', 'vies', 'mozno', 'mozem'}
+    return bool(tokens & issue_terms and tokens & report_terms and tokens & help_terms)
 
 
 def _mentions_email_invoice(normalized: str, tokens: set[str]) -> bool:

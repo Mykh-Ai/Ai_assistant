@@ -45,6 +45,8 @@ class ProductTruthCapability:
     forbidden_claims: tuple[str, ...]
     last_verified_at: str
     notes_for_agents: str
+    supported_channels: tuple[str, ...] = ()
+    unsupported_channels: tuple[str, ...] = ()
 
     def to_payload(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -122,6 +124,9 @@ def _capability(
     setup_state_keys: tuple[str, ...] = (),
     forbidden_claims: tuple[str, ...] = (),
     notes_for_agents: str = '',
+    supported_channels: tuple[str, ...] = (),
+    unsupported_channels: tuple[str, ...] = (),
+    last_verified_at: str = _LAST_VERIFIED_AT,
 ) -> ProductTruthCapability:
     return ProductTruthCapability(
         capability_id=capability_id,
@@ -144,8 +149,10 @@ def _capability(
         requires_external_credentials=requires_external_credentials,
         setup_state_keys=setup_state_keys,
         forbidden_claims=forbidden_claims,
-        last_verified_at=_LAST_VERIFIED_AT,
+        last_verified_at=last_verified_at,
         notes_for_agents=notes_for_agents,
+        supported_channels=supported_channels,
+        unsupported_channels=unsupported_channels,
     )
 
 
@@ -1110,6 +1117,59 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         requires_setup=True,
         setup_state_keys=('authorized_user', 'supplier_profile'),
         forbidden_claims=('I learned a new product capability.', 'Learned aliases can enable unsupported features.'),
+    ),
+    _capability(
+        capability_id='runtime_issue_intake',
+        title='Runtime issue intake',
+        domain='admin',
+        status=ProductTruthStatus.SUPPORTED,
+        summary_for_user=(
+            'Správca môže uložiť jeden opis pozorovaného problému cez /issue, '
+            'ohraničený text alebo hlas bez zrušenia aktuálnej business akcie.'
+        ),
+        current_limitations=(
+            'Iba pre správcu a iba jeden úplný opis v jednej správe; bez príloh, tlačidiel, potvrdenia alebo issue FSM.',
+            'Uloženie nepotvrdzuje chybu, nerobí diagnostiku ani opravu a nesľubuje termín.',
+            'Automatická údržba, autorepair, merge a deployment nie sú súčasťou tejto funkcie.',
+        ),
+        runtime_owner='bot/handlers/runtime_issue.py::handle_runtime_issue_capture',
+        commands=('/issue',),
+        canonical_actions=('report_runtime_issue',),
+        linked_handlers=(
+            'bot/handlers/runtime_issue.py',
+            'bot/handlers/invoice.py',
+            'bot/handlers/voice.py',
+            'bot/services/active_fsm_guard.py',
+            'bot/services/runtime_issue.py',
+        ),
+        truth_source_refs=(
+            'docs/features/runtime_issue_autorepair_v1/01_ARCHITECTURE_DESIGN_PROOF.md',
+            'docs/features/runtime_issue_autorepair_v1/06_IMPLEMENTATION_HANDOFF.md',
+            'docs/llm/Canonical_Action_Registry.md',
+        ),
+        test_refs=(
+            'tests/test_runtime_issue_service.py',
+            'tests/test_runtime_issue_routes.py',
+            'tests/test_runtime_issue_voice.py',
+        ),
+        safe_next_steps=(
+            'Správca pošle /issue a úplný opis v tej istej správe.',
+            'Po uložení pokračujte v pôvodnej business akcii; hlásenie ju nezruší.',
+        ),
+        requires_admin=True,
+        forbidden_claims=(
+            'Nahlásená chyba je potvrdená.',
+            'Problém bude opravený alebo nasadený v konkrétnom termíne.',
+            'Hlásenie autorizovalo opravu, merge alebo deployment.',
+            'Automatická údržba alebo autorepair sú aktívne.',
+        ),
+        notes_for_agents=(
+            'Stage 1 intake only. Preserve the active business FSM and never '
+            'materialize Stage 2 diagnosis, repair, maintenance, or deployment.'
+        ),
+        supported_channels=('command', 'text', 'voice'),
+        unsupported_channels=('button', 'file', 'attachment'),
+        last_verified_at='2026-07-28',
     ),
     _capability(
         capability_id='info_help',

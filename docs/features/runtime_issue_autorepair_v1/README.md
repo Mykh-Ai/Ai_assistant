@@ -12,9 +12,10 @@ Package status:
 - Stage 1 Architecture Design Proof: `ready_for_handoff`
 - Stage 1 implementation handoff: available
   (`06_IMPLEMENTATION_HANDOFF.md`)
-- Stage 1 implementation: not started
+- Stage 1 implementation: implemented and proven on
+  `feat/runtime-issue-intake-v1`; review pending
 - Stage 2: `planned`; activation blocked
-- Runtime behavior: not implemented
+- Runtime behavior: implemented in the review branch; not merged or deployed
 
 ## Handoff status
 
@@ -24,14 +25,16 @@ delegating architecture choices.
 
 - The Stage 1 Architecture Design Proof verdict remains
   `ready_for_handoff`.
-- Stage 1 implementation has not started.
+- Stage 1 implementation is now present on the dedicated review branch and is
+  proven by the Conversation Acceptance Proof.
 - The handoff is not merge, deployment, migration, server-write, or production
   approval.
 - The handoff is not an implementation prompt.
 - Stage 2 remains `planned / activation-blocked` and is excluded from the
   Stage 1 implementation.
 
-This documentation change does not modify runtime behavior.
+The implementation remains unmerged and undeployed. This status does not
+authorize a production migration.
 
 ## Purpose and staged model
 
@@ -79,10 +82,10 @@ Proof.
 
 ## Current and target truth
 
-Current Product Truth does not contain `report_runtime_issue`; `/issue` is not
-registered; no runtime-issue SQLite owner, maintenance CLI, generic bot-result
-outbox, or autorepair process exists. Both capabilities therefore remain
-planned at runtime.
+The implementation branch registers `report_runtime_issue` and `/issue`, adds a
+dedicated Stage 1 SQLite owner, and synchronizes Product Truth/InfoHelp. No
+maintenance CLI, generic bot-result outbox, or autorepair process exists.
+Stage 2 therefore remains planned and activation-blocked.
 
 The approved Stage 1 target truth is:
 
@@ -110,18 +113,15 @@ The approved Stage 1 target truth is:
   rollback, notification, and interruption-recovery policy.
 - Conceptual data/status/agent interfaces. This task creates no schema.
 
-## Explicit non-scope
+## Explicit Stage 2 and production non-scope
 
-- Python, tests, schema, migrations, configuration, dependencies, CI, Docker,
-  server state, credentials, infrastructure, production, or current bot
-  behavior.
-- Registration of `/issue`, aliases, buttons, handlers, FSMs, tables,
-  schedulers, CLIs, outboxes, repair branches, commits, deployments, or
-  rollbacks.
+- Configuration, dependencies, CI, Docker, server state, credentials,
+  infrastructure, deployment, or production migration.
+- Issue buttons, issue FSMs, schedulers, maintenance CLIs, outboxes, repair
+  branches, automatic merge, deployments, restarts, or rollbacks.
 - Modification of existing business tables.
 - A multilingual phrase whitelist, free-form agent authority, automatic
   feature approval, or a general code-change mechanism.
-- Modification of current canonical registries, Product Truth, or InfoHelp.
 - `docs/llm/Runtime_Autorepair_Agent_Contract.md`.
 
 ## Source-of-truth order
@@ -162,15 +162,19 @@ competing writable source of truth.
 - [06_IMPLEMENTATION_HANDOFF.md](06_IMPLEMENTATION_HANDOFF.md) — complete
   Stage 1 implementation handoff derived from the approved Architecture Design
   Proof; no Stage 2 implementation authority.
+- [07_IMPLEMENTATION_NOTES.md](07_IMPLEMENTATION_NOTES.md) — reviewed
+  dedicated-table shape, additive migration classification, temporary-database
+  proof requirements, and pre-production backup/rollback boundary.
+- [Conversation Acceptance Proof](../../evals/RUNTIME_ISSUE_INTAKE_V1_conversation_acceptance_proof.md)
+  — public-route and regression evidence for the implementation branch.
 
 ## Approval and implementation gates
 
 Stage 1 now has the approved implementation handoff in
-`06_IMPLEMENTATION_HANDOFF.md`. Stage 1 implementation has not started. The
-handoff transfers the approved proof without allowing the implementation
-agent to redesign the action, and it excludes Stage 2 claim/lease,
-claimed-manifest, maintenance-run, diagnosis/result, outbox, repair, merge,
-deployment, and rollback work.
+`06_IMPLEMENTATION_HANDOFF.md` and a proven implementation on the dedicated
+review branch. The implementation follows the approved proof and excludes
+Stage 2 claim/lease, claimed-manifest, maintenance-run, diagnosis/result,
+outbox, repair, merge, deployment, and rollback work.
 
 Stage 2 activation separately requires:
 

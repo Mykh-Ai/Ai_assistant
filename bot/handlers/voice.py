@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, Update
 
 from bot.config import Config
 from bot.handlers.accounting_document_intake import (
@@ -100,7 +100,13 @@ def _inject_recognized_text(message: Message, recognized_text: str):
 
 
 @router.message(F.voice)
-async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMContext) -> None:
+async def handle_voice(
+    message: Message,
+    bot: Bot,
+    config: Config,
+    state: FSMContext,
+    event_update: Update | None = None,
+) -> None:
     current_state = await state.get_state()
     if current_state == DeleteUserDatabaseStates.waiting_exact_confirmation.state:
         await message.answer(VOICE_EXACT_CONFIRMATION_MESSAGE)
@@ -169,6 +175,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 text=recognized_text,
                 input_channel='voice',
                 request_id=request_id,
+                telegram_update_id=getattr(event_update, 'update_id', None),
             )
             if handled_by_active_guard:
                 return
@@ -181,6 +188,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 invoice_text=recognized_text,
                 request_id=request_id,
                 input_channel='voice',
+                telegram_update_id=getattr(event_update, 'update_id', None),
             )
         elif current_state == InvoiceStates.waiting_confirm.state:
             if config.debug_invoice_transparency:
@@ -527,6 +535,7 @@ async def handle_voice(message: Message, bot: Bot, config: Config, state: FSMCon
                 invoice_text=recognized_text,
                 request_id=request_id,
                 input_channel='voice',
+                telegram_update_id=getattr(event_update, 'update_id', None),
             )
 
         await touch_active_fsm_activity(state)

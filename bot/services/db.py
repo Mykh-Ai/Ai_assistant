@@ -247,6 +247,37 @@ CREATE TABLE IF NOT EXISTS customization_requests (
 );
 """
 
+RUNTIME_ISSUE_SCHEMA_VERSION = 1
+RUNTIME_ISSUE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS runtime_issues (
+    issue_id TEXT PRIMARY KEY NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1 CHECK (schema_version = 1),
+    intake_status TEXT NOT NULL DEFAULT 'new' CHECK (intake_status = 'new'),
+    description TEXT NOT NULL CHECK (length(description) BETWEEN 10 AND 2000),
+    short_title TEXT NOT NULL CHECK (length(short_title) BETWEEN 1 AND 120),
+    reported_at TEXT NOT NULL,
+    actor_telegram_id INTEGER NOT NULL,
+    telegram_update_id INTEGER NOT NULL,
+    telegram_message_id INTEGER NOT NULL,
+    telegram_chat_id INTEGER NOT NULL,
+    workspace_id TEXT,
+    workspace_resolution_reason TEXT NOT NULL
+        CHECK (workspace_resolution_reason IN ('active_workspace', 'no_active_workspace')),
+    source_channel TEXT NOT NULL CHECK (source_channel IN ('text', 'voice')),
+    active_fsm_state TEXT,
+    active_fsm_context_summary_json TEXT NOT NULL,
+    reported_build_sha TEXT
+        CHECK (reported_build_sha IS NULL OR length(reported_build_sha) = 40),
+    build_sha_status TEXT NOT NULL
+        CHECK (build_sha_status IN ('known', 'unavailable', 'stale')),
+    privacy_metadata_json TEXT NOT NULL,
+    deduplication_key TEXT NOT NULL UNIQUE,
+    record_version INTEGER NOT NULL DEFAULT 1 CHECK (record_version = 1),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 ARCHIVE_JOB_SCHEMA = """
 CREATE TABLE IF NOT EXISTS archive_jobs (
     job_id TEXT PRIMARY KEY,
@@ -1145,6 +1176,143 @@ def managed_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
+_RUNTIME_ISSUE_REQUIRED_COLUMNS: dict[str, tuple[str, bool, bool]] = {
+    'issue_id': ('TEXT', True, True),
+    'schema_version': ('INTEGER', True, False),
+    'intake_status': ('TEXT', True, False),
+    'description': ('TEXT', True, False),
+    'short_title': ('TEXT', True, False),
+    'reported_at': ('TEXT', True, False),
+    'actor_telegram_id': ('INTEGER', True, False),
+    'telegram_update_id': ('INTEGER', True, False),
+    'telegram_message_id': ('INTEGER', True, False),
+    'telegram_chat_id': ('INTEGER', True, False),
+    'workspace_id': ('TEXT', False, False),
+    'workspace_resolution_reason': ('TEXT', True, False),
+    'source_channel': ('TEXT', True, False),
+    'active_fsm_state': ('TEXT', False, False),
+    'active_fsm_context_summary_json': ('TEXT', True, False),
+    'reported_build_sha': ('TEXT', False, False),
+    'build_sha_status': ('TEXT', True, False),
+    'privacy_metadata_json': ('TEXT', True, False),
+    'deduplication_key': ('TEXT', True, False),
+    'record_version': ('INTEGER', True, False),
+    'created_at': ('TEXT', True, False),
+    'updated_at': ('TEXT', True, False),
+}
+
+_RUNTIME_ISSUE_REQUIRED_DEFAULTS = {
+    'schema_version': '1',
+    'intake_status': "'new'",
+    'record_version': '1',
+}
+
+_RUNTIME_ISSUE_REQUIRED_SQL_FRAGMENTS = (
+    'check(schema_version=1)',
+    "check(intake_status='new')",
+    'check(length(description)between10and2000)',
+    'check(length(short_title)between1and120)',
+    "check(workspace_resolution_reasonin('active_workspace','no_active_workspace'))",
+    "check(source_channelin('text','voice'))",
+    'check(reported_build_shaisnullorlength(reported_build_sha)=40)',
+    "check(build_sha_statusin('known','unavailable','stale'))",
+    'check(record_version=1)',
+)
+
+
+def _runtime_issue_row_cursor(connection: sqlite3.Connection) -> sqlite3.Cursor:
+    cursor = connection.cursor()
+    cursor.row_factory = sqlite3.Row
+    return cursor
+
+
+def validate_runtime_issue_schema(connection: sqlite3.Connection) -> None:
+    cursor = _runtime_issue_row_cursor(connection)
+    rows = cursor.execute(
+        (
+            'SELECT name, type, "notnull" AS not_null, dflt_value, pk '
+            "FROM pragma_table_info('runtime_issues')"
+        )
+    ).fetchall()
+    columns = {str(row['name']): row for row in rows}
+    missing = sorted(set(_RUNTIME_ISSUE_REQUIRED_COLUMNS) - set(columns))
+    if missing:
+        raise RuntimeError(
+            f'Incompatible local schema for runtime_issues: missing required columns {missing}'
+        )
+
+    for name, (expected_type, expected_not_null, expected_primary_key) in (
+        _RUNTIME_ISSUE_REQUIRED_COLUMNS.items()
+    ):
+        row = columns[name]
+        actual_type = str(row['type'] or '').strip().upper()
+        actual_not_null = bool(row['not_null'])
+        actual_primary_key = bool(row['pk'])
+        if (
+            actual_type != expected_type
+            or actual_not_null != expected_not_null
+            or actual_primary_key != expected_primary_key
+        ):
+            raise RuntimeError(
+                f'Incompatible local schema for runtime_issues: column {name}'
+            )
+
+    for name, expected_default in _RUNTIME_ISSUE_REQUIRED_DEFAULTS.items():
+        actual_default = str(columns[name]['dflt_value'] or '').strip()
+        if actual_default != expected_default:
+            raise RuntimeError(
+                f'Incompatible local schema for runtime_issues: default {name}'
+            )
+
+    schema_row = cursor.execute(
+        (
+            'SELECT sql AS create_sql FROM sqlite_master '
+            "WHERE type = 'table' AND name = 'runtime_issues'"
+        )
+    ).fetchone()
+    if schema_row is None or not isinstance(schema_row['create_sql'], str):
+        raise RuntimeError('Incompatible local schema for runtime_issues: missing table SQL')
+    normalized_sql = ''.join(str(schema_row['create_sql']).casefold().split()).replace('"', '')
+    for fragment in _RUNTIME_ISSUE_REQUIRED_SQL_FRAGMENTS:
+        if fragment not in normalized_sql:
+            raise RuntimeError(
+                'Incompatible local schema for runtime_issues: required constraint'
+            )
+
+    unique_indexes = cursor.execute(
+        (
+            'SELECT name FROM pragma_index_list(\'runtime_issues\') '
+            'WHERE "unique" = 1'
+        )
+    ).fetchall()
+    has_deduplication_unique = False
+    for index_row in unique_indexes:
+        index_name = str(index_row['name'])
+        index_columns = cursor.execute(
+            (
+                'SELECT name FROM pragma_index_info(?) '
+                'ORDER BY seqno'
+            ),
+            (index_name,),
+        ).fetchall()
+        if [str(row['name']) for row in index_columns] == ['deduplication_key']:
+            has_deduplication_unique = True
+            break
+    if not has_deduplication_unique:
+        raise RuntimeError(
+            'Incompatible local schema for runtime_issues: deduplication constraint'
+        )
+
+
+def _bootstrap_runtime_issue_table(connection: sqlite3.Connection) -> None:
+    connection.execute(RUNTIME_ISSUE_SCHEMA)
+    validate_runtime_issue_schema(connection)
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_runtime_issues_actor_workspace_reported_at '
+        'ON runtime_issues (actor_telegram_id, workspace_id, reported_at)'
+    )
+
+
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1160,6 +1328,7 @@ def init_db(db_path: Path) -> None:
         _bootstrap_invoice_number_settings_table(connection)
         _bootstrap_confirmed_semantic_alias_table(connection)
         _bootstrap_customization_request_table(connection)
+        _bootstrap_runtime_issue_table(connection)
         ensure_workspace_foundation_schema(connection)
         ensure_archive_schema(connection)
         ensure_google_drive_connection_schema(connection)
