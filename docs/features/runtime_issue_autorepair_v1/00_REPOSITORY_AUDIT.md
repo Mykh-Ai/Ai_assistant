@@ -1,6 +1,8 @@
 # Repository Audit
 
-Task ID: `RUNTIME_ISSUE_INTAKE_AND_AUTOREPAIR_V1`
+Stage 1 task ID: `RUNTIME_ISSUE_INTAKE_V1`
+
+Stage 2 task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
 Audit date: 2026-07-28
 
@@ -82,9 +84,9 @@ controlling.
 | Active-FSM global controls | `bot/services/active_fsm_guard.py::ActiveFsmMessageMiddleware`, `handle_active_fsm_text_update`; `bot/handlers/state_control.py` | Only `/cancel`, `/menu`, and `/start` are deterministic active-state controls. Fresh unrelated top-level switching is not generally supported. |
 | Voice and STT | `bot/handlers/voice.py`; outer authorization in `bot/main.py` | Voice is authorized generally, transcribed, then passed through the active-FSM guard or idle top-level owner. |
 | Text/voice convergence | `bot/handlers/voice.py` calls state-specific owners or `bot/handlers/invoice.py::process_invoice_text` | A shared Python owner is feasible; no issue-specific convergence exists. |
-| FSM state inspection and preservation | aiogram `FSMContext` use in `bot/services/active_fsm_guard.py`; shared cleanup in `bot/handlers/state_control.py` | State/data snapshots are accessible. Exact preservation is not yet proven because downstream pass-through stamps FSM activity. |
+| FSM state inspection and preservation | aiogram `FSMContext` use in `bot/services/active_fsm_guard.py`; shared cleanup in `bot/handlers/state_control.py` | Protected business state/data snapshots are accessible. Normal pass-through may stamp ordinary technical activity metadata; Stage 1 must preserve business state/data without bypassing an authorized shared liveness invariant. |
 | Workspace scope | `bot/services/workspace_context.py::resolve_for_user_readonly`, `resolve_for_background_workspace`; membership checks in `bot/services/access_control.py` | Trusted, fail-closed workspace resolution exists and must own `workspace_id`. |
-| SQLite bootstrap/service style | `bot/services/db.py` and domain services | SQLite is current persisted-data infrastructure. No runtime-issue, maintenance-run, or notification-outbox schema exists. |
+| SQLite bootstrap/service style | `bot/services/db.py` and domain services | SQLite is current persisted-data infrastructure. No runtime-issue, maintenance-run, or notification-outbox schema exists. Dedicated new tables can be added without modifying existing business tables. |
 | Atomic claim/lease | `bot/services/archive_job_service.py::claim_next_runnable_job`; `bot/services/archive_worker.py` | `BEGIN IMMEDIATE`, worker lock, lease expiry, retry, and terminal-state patterns are reusable by design, not their domain table. |
 | Deferred file-delivery outbox | `bot/services/archive_job_service.py`; `bot/services/google_drive_archive_scheduler.py` | This outbox is specifically for archive uploads and must not become a generic bot-result outbox. |
 | Admin response persistence | `bot/services/customization_requests.py`; `bot/handlers/access_admin.py` | Response state and duplicate-send protection exist, but failed bot delivery is explicitly not automatically retried. |
@@ -95,6 +97,65 @@ controlling.
 | Structured event logging | partial JSON debug output in `bot/handlers/invoice.py` and `bot/handlers/voice.py` under `DEBUG_INVOICE_TRANSPARENCY` | No central sanitized structured-event owner exists. Existing traces may include raw user/STT text and are unsuitable as an unbounded maintenance feed. |
 | Trusted build SHA | deployment records in `PROJECT_LOG.md`; no owner in `bot/config.py` or a runtime service | Exact deployed SHA is sometimes proven manually, but the bot has no trusted runtime source for `reported_build_sha`. |
 | Generic bot notification outbox | no current owner | A new approved owner is required. Direct `Bot.send_message` paths are not an idempotent retryable generic outbox. |
+
+## Proposed Stage 1 owners
+
+These are target design owners, not current runtime symbols:
+
+| Concern | Proposed Stage 1 owner | Boundary |
+|---|---|---|
+| Public issue route | One admin-only route converging command, bounded text, and voice transcript | Resolves `report_runtime_issue` exactly once and never becomes a business-FSM owner. |
+| Intake orchestration | Proposed `handle_runtime_issue_capture` Python owner | Validates trusted context, snapshots protected FSM data, and calls persistence. |
+| Canonical persistence | Proposed `RuntimeIssueService` | Owns the dedicated runtime-issue tables, idempotency key, explicit named-column SQL, and bounded claim/export interface. |
+| Context sanitizer | Proposed versioned Python sanitizer | Creates the bounded FSM/context summary; never persists raw unbounded state or accepts trusted values from user text. |
+| Acknowledgement | Same bot-owned intake route | Uses Slovak copy and claims storage only after a committed insert or recognized duplicate. |
+
+The Stage 2 maintenance runner, sanitized log-evidence owner, result writer,
+global run lease, kill switch, and notification outbox are downstream owners
+and are not part of the Stage 1 implementation handoff.
+
+## Current SQLite compatibility behavior
+
+`bot/services/db.py` contains two relevant patterns:
+
+- several `_bootstrap_*` functions compare the exact set of columns against
+  an expected or explicitly recognized legacy set and raise
+  `RuntimeError("Incompatible local schema ...")` on any other set; and
+- some owned tables already accept additive compatibility changes through
+  `ALTER TABLE ... ADD COLUMN`, including contact IBAN, invoice-item detail,
+  customization-request response fields, archive-job lease fields, and
+  work-time-day fields.
+
+The strict exact-column-set checks are an implementation consideration for
+tables that use them. They are not a reason to rebuild an invoice, contact,
+supplier, receipt, accounting-document, or work-time table for Stage 1.
+
+Stage 1 can use dedicated additive runtime-issue table(s) created with
+`CREATE TABLE IF NOT EXISTS` and touch no existing business table or business
+row. The later reviewed implementation must:
+
+- name every owned column in `SELECT`, `INSERT`, and `UPDATE`;
+- avoid `SELECT *` and tuple-position coupling;
+- map results by column name or explicit alias;
+- validate required owned columns and an approved schema version rather than
+  fail merely because an unknown optional column increased the count;
+- allow older readers that select only their owned columns to tolerate future
+  optional columns;
+- fail safely or run an approved additive migration when a required column is
+  missing; and
+- never silently ignore an incompatible type, constraint, identifier, or
+  missing required column.
+
+For this design, an **additive migration** means a new table, a new
+nullable/defaulted column, or a new index. A **destructive/transforming
+migration** means a table rebuild, data copy, constraint replacement, column
+removal, identifier change, or business-data transformation. Only the additive
+category is intended for Stage 1. Automatic DROP/rebuild is forbidden for an
+additive runtime-issue-table change.
+
+The unattended Stage 2 policy may forbid agents from introducing any migration.
+That restriction does not prohibit a separately reviewed Stage 1
+implementation from adding its dedicated tables.
 
 ## Current tests inspected
 
@@ -249,13 +310,17 @@ the approved public architecture, policy, Product Truth, or code owners.
 
 ### Required before implementation
 
-- A trusted interface by which the future implementation can obtain or record
-  the deployed build SHA without accepting it from untrusted issue text.
-- The public service/CLI boundaries and authorization model for issue claims,
-  result recording, and notification enqueue.
-- Approved public retention, redaction, and workspace-scope rules.
-- Resolution of the public human-approval versus unattended merge/deploy
-  contradiction.
+- Stage 1 requires an approved additive schema/service design, bounded
+  sanitizer policy, and tests for routing, authorization, idempotency, trusted
+  workspace resolution, and protected business-FSM preservation.
+- A trusted deployed-SHA value is optional at Stage 1 intake and must be stored
+  as unavailable when no current owner exists. Its absence stops later
+  autorepair eligibility; it does not discard the issue.
+- Stage 2 requires the public service/CLI boundaries and authorization model
+  for issue claims, global run lease, kill switch, result recording, and
+  notification enqueue.
+- Stage 2 requires the narrow canonical-contract amendment for the approved
+  `bounded_autorepair` mode.
 
 If materialization of a trusted SHA interface depends on a private runtime
 mount or service, then: **Private operational evidence required before
@@ -309,19 +374,21 @@ owners.
 - `report_runtime_issue` in the canonical action registry or Product Truth.
 - `/issue` command registration or natural-language/voice issue routing.
 - A no-FSM issue persistence service and SQLite record.
-- A global issue interrupt proven to leave state, data, and activity metadata
-  byte-for-byte/semantically unchanged.
+- A global issue interrupt proven to leave protected business state and
+  business FSM data unchanged while permitting ordinary authorized technical
+  activity metadata updates.
 - A trusted runtime build-SHA source.
 - A central sanitized structured-event/log-evidence service.
 - Runtime-issue claim/status/manifest/result CLI or service.
 - A generic idempotent retryable bot notification outbox.
 - An external once-daily maintenance scheduler with approved server access.
-- An approved unattended commit/merge/deploy/rollback authority.
+- An activated bounded commit/merge/deploy/rollback authority under the
+  approved Stage 2 product target.
 - A global LLM/Work/Codex autorepair contract.
 
-## Design-to-runtime contradictions
+## Design-to-runtime considerations
 
-### Human approval versus unattended repair
+### Stage 2 human-review contract amendment
 
 The proposed target eventually allows a maintenance process to commit, merge,
 and deploy an eligible repair. Current policy does not:
@@ -337,11 +404,16 @@ and deploy an eligible repair. Current policy does not:
 - `AGENTS.md` keeps deterministic tests and human approval for agent-generated
   work.
 
-Impact: the daily process may claim, diagnose, classify, produce bounded
-evidence, and notify. Automatic repair merge/deploy cannot be an approved V1
-path until a product owner approves a narrowly scoped policy change and its
-authority/audit controls. This contradiction drives
-`needs_architecture_revision`.
+Product decision: the Stage 2 target is `bounded_autorepair`. Ordinary features
+and complex defects remain human-reviewed. Only policy-allowlisted, fully
+proven `[AUTOREPAIR]` changes may later use a bounded automatic path.
+
+Impact: the current contracts need a narrow public amendment before Stage 2
+activation. The amendment must add, rather than generalize, authority: every
+unavailable or failed gate stops before merge/deploy; production smoke failure
+uses the approved rollback; unresolved rollback risk freezes the run and
+escalates. This is an activation prerequisite, not an unresolved product
+decision and not a contradiction in the Stage 1 intake design.
 
 ### Active-FSM exact preservation
 
@@ -352,10 +424,11 @@ the established global controls. The middleware calls
 switching.
 
 Impact: a future issue interrupt must be a narrow shared-guard branch that
-returns as handled before state-specific dispatch and before the activity
-stamp. It must neither use the existing “clear and route idle” stale path nor
-the current downstream pass-through path. Tests must compare both FSM state and
-business data before/after, including activity metadata.
+returns as handled before state-specific business dispatch. It must neither use
+the existing “clear and route idle” stale path nor mutate protected business
+state/data. The normal authorized message lifecycle may update ordinary
+technical activity metadata such as `last_activity`; tests must compare
+protected state and business data separately from that permitted metadata.
 
 ### Administrator voice boundary
 
@@ -365,35 +438,28 @@ issue intent until after STT. Enforcing “admin before STT” for that semantic
 case would require either banning all non-admin voice or a new trusted
 pre-transcription signal.
 
-Impact: keep the proven general authorization-before-STT boundary, then perform
-the admin check immediately after transcription and before issue-intent LLM
-resolution, persistence, or diagnostic lookup. A reviewer must accept this
-precise boundary or require an explicit admin-only voice entry mode.
+Approved Stage 1 boundary: keep the proven general authorization-before-STT
+boundary, then perform the explicit admin check immediately after transcription
+and before issue-intent resolver execution, persistence, log access, or any
+maintenance activity. This is no longer an unresolved Stage 1 decision.
 
 ### User-facing language
 
-Current product text policy is Slovak-first/Slovak-only, while the proposed
-examples are Ukrainian. This package specifies Slovak target copy and treats
-Ukrainian examples as intent examples.
-
-Impact: a product owner must approve either the Slovak copy or an explicit
-administrator-language exception before Product Truth is changed.
+User-facing feature responses are Slovak. Ukrainian, Russian, Slovak, or
+mixed-language administrator input may resolve through the bounded semantic
+resolver. The implementation must not build a multilingual phrase whitelist.
+This is an approved Stage 1 decision.
 
 ## Missing evidence
 
-- Approved exception, if any, to human review before repair merge/deploy.
+- The exact narrow canonical-contract amendment and its approval for Stage 2.
 - Exact trusted production SHA source and its freshness/failure contract.
 - Available, sanitized, bounded server-log query owner.
 - Generic notification outbox and bot delivery worker semantics.
 - External scheduler/runner identity, credential boundary, and server access.
-- Proven database migration owner for the future records.
-- Retention periods, description/evidence size limits, and redaction rules.
-- Whether `workspace_id` may be null when the admin has no unambiguous active
-  workspace.
-- Whether `occurred_at` is useful enough for V1 without creating clarification
-  state.
-- Whether activity timestamps are part of “business FSM data” for exact
-  preservation; this package conservatively treats them as protected.
+- Stage 2 global concurrency lease and kill-switch owners.
+- Final implementation-level retention periods and evidence-size/redaction
+  constants within the approved bounded policy.
 
 Private production commands, paths, credentials, and environment-specific
 rollback details are intentionally not listed as missing public architecture
@@ -401,10 +467,13 @@ evidence. They are deferred production inputs.
 
 ## Readiness effect
 
-The repository supports an evidence-backed design for the intake action and for
-diagnostic-only daily processing. It does not currently support the full
-unattended autorepair authority. The absent private operations material does
-not block architecture approval. The unresolved public policy contradiction
-over unattended merge/deploy, plus the public product decisions identified in
-the proof, drive `needs_architecture_revision`; no implementation handoff is
-permitted.
+The repository supports dedicated additive Stage 1 tables and a complete
+evidence-backed design for the intake action without modifying any existing
+business table. No further material Stage 1 contradiction was found after the
+approved product decisions were applied. The Stage 1 Architecture Design Proof
+may therefore be `ready_for_handoff`.
+
+This PR still produces no implementation handoff or implementation prompt.
+Stage 2 remains `planned` and activation-blocked by its narrow public contract
+amendment, public runtime owners, and private operational proof. Those Stage 2
+prerequisites do not block Stage 1.

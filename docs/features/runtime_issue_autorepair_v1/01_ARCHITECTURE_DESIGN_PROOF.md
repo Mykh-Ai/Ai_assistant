@@ -1,22 +1,27 @@
-# Architecture Design Proof
+# Runtime Issue Intake V1 — Architecture Design Proof
 
-Verdict: `needs_architecture_revision`
+Verdict: `ready_for_handoff`
 
 This proof follows
 `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`. It defines
-target architecture only; none of the candidate owners or routes described as
-“proposed” exist at runtime.
+the Stage 1 target architecture only. Candidate owners or routes described as
+“proposed” do not yet exist at runtime.
+
+Stage 1 is ready for a later implementation handoff. This documentation task
+does not create that handoff and produces no implementation prompt.
+`RUNTIME_ISSUE_AUTOREPAIR_V1` is downstream, remains `planned`, and is outside
+this Stage 1 handoff.
 
 ## 1. Task Identity And Product Need
 
 | Field | Value |
 |---|---|
-| Task | `RUNTIME_ISSUE_INTAKE_AND_AUTOREPAIR_V1` |
+| Task | `RUNTIME_ISSUE_INTAKE_V1` |
 | Business need | An administrator needs to record a small runtime problem immediately after observing it, preserving trusted context for later diagnosis without interrupting the business journey. |
-| User-visible outcome | The bot stores one complete report, returns a truthful acknowledgement, and leaves the current FSM state and business data unchanged. A later daily process returns a truthful classification/result. |
+| User-visible outcome | The bot stores one complete report, returns a truthful Slovak acknowledgement, and leaves the current business FSM state and business data unchanged. |
 | Current Product Truth | Unsupported. No action, command, route, store, maintenance process, or result outbox exists. |
-| Target Product Truth | Planned admin-only `report_runtime_issue` intake plus a separately gated daily diagnostic process; safe autorepair remains disabled until the public policy contradiction is resolved. |
-| Risk | High for the complete feature because it crosses top-level routing, active FSM, persisted diagnostic data, code changes, and production operations. Intake alone is medium risk. |
+| Target Product Truth | Planned admin-only `report_runtime_issue` intake with a bounded claim/export boundary; no repair, Git operation, or deployment. |
+| Risk | Medium: top-level routing, active-FSM preservation, trusted context, and additive persisted diagnostic data. |
 | Date / architect | 2026-07-28 / documentation architecture audit |
 
 The problem is not “let the bot edit itself.” It is lossless, low-friction
@@ -39,8 +44,8 @@ them. It is not Product Truth/InfoHelp because it performs a bounded write.
 It is not merely reserved capability because the target is a public executable
 admin action after implementation.
 
-The daily diagnosis/autorepair process is not a second conversational top-level
-action. It is a proposed internal maintenance workflow over persisted issues.
+The downstream daily diagnosis/autorepair process is not a second
+conversational top-level action and is not part of this proof.
 
 Evidence: `docs/llm/Canonical_Action_Registry.md` has no equivalent action;
 `bot/handlers/invoice.py::process_invoice_text` owns idle business routing;
@@ -107,9 +112,9 @@ remainder; it must not accumulate a multilingual phrase dictionary.
 | `description` | Sanitized UTF-8 observation; proposed 10–2000 chars | Command remainder, original resolved text, or STT transcript | Yes | None | Usage/no write when missing; safe error/no write when invalid | Preserve original meaning; never let a summary replace it; redact secrets before persistence according to approved policy. |
 | `short_title` | String, maximum 120 chars | Deterministically derived from sanitized description | Yes | Python service | Fall back to bounded leading text; never reject a valid report solely for title derivation | No separate LLM title generation in V1. |
 | `reported_at` | UTC timestamp | Trusted runtime clock | Yes | Python service | Persistence fails closed | Never extracted from voice/text. |
-| `occurred_at` | Optional UTC timestamp plus precision marker | Bounded extractor only when explicitly stated | No | `null` / `unknown` | Invalid or ambiguous becomes null; no clarification FSM | Must not guess date, timezone, or exact time. |
 | `actor_telegram_id` | Integer | Trusted Telegram message/update context | Yes | None | Fail closed | Never user-overridable. |
-| `workspace_id` | Trusted workspace identifier or null-with-reason | `workspace_context.resolve_for_user_readonly` | Conditionally required when one active workspace is unambiguous | Null pending approved policy | Fail closed on cross-workspace value; do not select from text | Voice/text cannot specify it. |
+| `workspace_id` | Trusted workspace identifier or null | `workspace_context.resolve_for_user_readonly` | No | One active workspace → trusted ID; none → `null` | Never discard a valid admin issue merely because no workspace is active; reject text-supplied override | Voice/text cannot specify it. |
+| `workspace_resolution_reason` | `active_workspace` or bounded `no_active_workspace` | Trusted Python workspace resolver | Yes | Derived with `workspace_id` | Fail closed on unsupported/untrusted value | Never extracted from report content. |
 | `source_channel` | `text` or `voice` | Python route | Yes | None | Fail closed | STT output does not choose the enum. |
 | `active_fsm_state` | Bounded state name or null | Trusted `FSMContext` snapshot | Yes | `null` when idle | Safe bounded placeholder if unreadable; intake failure policy must be explicit | Never accepted from report content. |
 | `active_fsm_context_summary` | Versioned allowlist map, size-bounded | Trusted snapshot and Python sanitizer | Yes | Empty map | Omit disallowed fields; never persist raw FSM data | Exclude tokens, raw files, full messages, secrets, amounts unless explicitly approved diagnostic fields. |
@@ -120,16 +125,17 @@ remainder; it must not accumulate a multilingual phrase dictionary.
 | `privacy_metadata` | Version, redaction flags, detected-sensitive categories, truncation flags | Python sanitizer | Yes | Current policy version | Fail closed if required sanitization cannot complete | No raw secret values in metadata. |
 | `deduplication_key` | Stable hash/unique string | Python from trusted actor/chat/update/message/source fields | Yes | None | Fail closed | Description alone is not the key. |
 
-Bounded LLM responsibility is limited to the canonical issue-intent decision and
-optional explicit `occurred_at` extraction under a Python schema. Python owns
+Bounded LLM responsibility is limited to the canonical issue-intent decision.
+Stage 1 does not extract or guess event time from natural language;
+`reported_at` is the only canonical timestamp. Python owns
 authorization, command parsing, trusted context, derivation, validation,
 sanitization, idempotency, persistence, and response. Missing description
 never enters clarification state; bare `/issue` ends immediately with usage.
 There are no file-only fields or file intake in V1.
 
-Unresolved public design inputs: final length/retention limits; redaction
-version; null-workspace policy; whether `occurred_at` should be omitted from V1
-rather than remain optional.
+Implementation constants for length, retention, and redaction version must be
+bounded and approved in the later handoff; they do not change the route,
+ownership, or slot architecture proven here.
 
 ## 6. Public Route And Convergence Map
 
@@ -137,7 +143,7 @@ rather than remain optional.
 |---|---|---|---|---|---|
 | Command | `/issue <description>` | Outer user authorization; explicit admin check; active-FSM snapshot | Deterministic exact prefix and remainder | Proposed `handle_runtime_issue_capture` | Idempotent record + acknowledgement; no FSM mutation |
 | Text | Explicit bounded admin wording | Outer authorization; admin check before issue resolver; active-FSM guard | Existing semantic resolver pattern with Python-provided candidates | Same owner | Same record/response |
-| Voice | Admin voice observation | Outer general authorization before STT; after STT admin check before issue-intent resolver/persistence; active-FSM guard | STT then same bounded resolver | Same owner | Same slots/persistence/response |
+| Voice | Admin voice observation | Outer general authorization before STT; explicit admin guard immediately after STT and before issue resolver/persistence/log access; active-FSM guard | STT then same bounded resolver | Same owner | Same slots/persistence/Slovak response |
 | Button | None in V1 | N/A | N/A | N/A | No callback token or keyboard |
 
 Idle command routing may have a thin handler, but it must not own persistence.
@@ -146,11 +152,11 @@ During an active FSM, the shared guard must intercept only a proven issue
 intent and return as handled before state-specific dispatch. Capability
 questions continue to Product Truth/InfoHelp and never execute the action.
 
-Current limitation: for an authorized non-admin voice user, semantic admin
-intent is unknowable before STT. The current general authorization boundary
-still precedes STT; the admin action check must precede issue resolution,
-persistence, and log access after STT. A stricter policy requires an explicit
-admin-only voice entry signal and product approval.
+Approved limitation: for a generally authorized non-admin voice user, semantic
+issue intent is unknowable before STT. General unauthorized users are still
+rejected before STT. Immediately after STT, the explicit admin guard runs
+before issue-resolver execution, persistence, log access, or maintenance
+activity. No separate voice-only architecture or phrase whitelist is allowed.
 
 ## 7. FSM Graph And State Ownership
 
@@ -178,11 +184,11 @@ Required invariant:
 > before issue capture.
 
 The future route must not call `state.clear`, `state.set_state`,
-`state.update_data`, stale-state clear-and-idle routing, suspend/restore, replay,
-or the current post-handler activity stamp. It must capture a sanitized
-read-only snapshot and return handled before state-specific dispatch.
-Persistence failure, duplicate delivery, and acknowledgement failure also leave
-the FSM untouched.
+`state.update_data`, stale-state clear-and-idle routing, suspend/restore, or
+replay. It must capture a sanitized read-only snapshot and return handled
+before state-specific business dispatch. Persistence failure, duplicate
+delivery, and acknowledgement failure also leave protected business state and
+business data untouched.
 
 Bare `/issue` sends usage immediately and does not arm the next message.
 There is no clarification, cancel, back, keyboard, or pending context.
@@ -193,9 +199,10 @@ Evidence and gap:
 `bot/services/active_fsm_guard.py::ActiveFsmMessageMiddleware` and
 `handle_active_fsm_text_update` are the only safe shared location; current
 `test_active_text_pass_through_is_not_swallowed_and_stamps_after_handler`
-proves the existing activity stamp, so new preservation tests must prove the
-issue branch bypasses it. `PROJECT_LOG.md` 2026-07-09 records the broader
-switching gap.
+proves that ordinary technical activity metadata may be updated by the normal
+authorized message lifecycle. Stage 1 tests must distinguish that metadata
+from protected business state/data. `PROJECT_LOG.md` 2026-07-09 records the
+broader switching gap.
 
 ## 8. Decision And Callback Contract
 
@@ -227,16 +234,36 @@ does not derive repair permission from the issue text.
 | STT call | Authorized voice | Existing voice owner | Outer general authorization | Existing safe voice error | Existing update handling |
 | Future issue claim | Eligible issue | Proposed maintenance service/CLI | Clean run identity; atomic status/lease check | Transaction rollback/lease expiry | Claim token and compare-and-set |
 | Future manifest generation | Successful claim | Proposed maintenance service/CLI | Claimed rows only; redaction; digest | Regenerate from SQLite | Run/claim/digest keyed |
-| Future result record | Valid claimed issue | Proposed service/CLI | Claim token, schema, allowed transition, evidence digest | Reject invalid/stale writes | Result version |
-| Future notification enqueue | Terminal truthful result | Proposed bot-owned outbox service | Authorized recipient from trusted issue context | Retry without changing result truth | Issue/result/recipient key |
+| Export claimed issue manifest | Valid claim under the bounded Stage 1 interface | Proposed `RuntimeIssueService`/CLI boundary | Atomic claim token, explicit schema, trusted scope, redaction | Reject invalid/stale claim; SQLite remains canonical | Claim/run/digest key |
 
 Forbidden during intake: invoice mutation, callback execution/replay, file
 upload, email, business edit/delete, workspace switch, code repair, GitHub
-operation, deployment, or any FSM/pending/activity mutation.
+operation, deployment, or any business FSM/pending mutation.
 
-Future code, Git, test, merge, deploy, and rollback operations are governed by
-the policy/runbook, not by the issue action. Current human approval prohibits
-unattended merge/deploy.
+Stage 2 code, Git, test, merge, deploy, rollback, result, and notification
+operations are governed by the policy/runbook and are outside this handoff.
+
+### Additive persistence decision
+
+Stage 1 uses dedicated new runtime-issue table(s). It does not add fields to or
+rebuild invoice, contact, supplier, receipt, accounting-document, or work-time
+tables and does not change existing business rows, constraints, or identifiers.
+
+The later reviewed implementation must use `CREATE TABLE IF NOT EXISTS`, name
+owned columns explicitly in every `SELECT`, `INSERT`, and `UPDATE`, avoid
+`SELECT *` and tuple-position coupling, and map rows by column name or explicit
+alias. Compatibility is based on required owned columns plus an approved schema
+version, not strict column-count equality. Unknown optional columns alone must
+not break an older reader; missing required columns, incompatible types, or
+incompatible constraints must fail safely or use an approved additive
+migration. Automatic DROP/rebuild is forbidden.
+
+New tables, nullable/defaulted columns, and indexes are additive. Table rebuild,
+data copy, constraint replacement, column removal, identifier change, and
+business-data transformation are destructive/transforming and outside Stage 1.
+Evidence: `bot/services/db.py` exact-set bootstrap checks and existing additive
+column helpers; `00_REPOSITORY_AUDIT.md`, “Current SQLite compatibility
+behavior.”
 
 ## 10. Authorization, Tenant, And Precision Boundaries
 
@@ -250,7 +277,9 @@ unattended merge/deploy.
   SHA, authorization, repair permission, and deploy permission are trusted
   Python context only.
 - `workspace_id` comes only from read-only workspace resolution and membership
-  enforcement. A report can never choose or override another tenant.
+  enforcement. One active workspace stores its trusted ID. No active workspace
+  stores null plus `no_active_workspace`; the valid global admin issue is not
+  discarded. A report can never choose or override another tenant.
 - Every issue lookup, claim, result, and notification uses the stored trusted
   workspace/actor scope plus service authorization; maintenance manifests never
   broaden it.
@@ -267,8 +296,7 @@ Evidence: `bot/services/authorization.py`,
 
 ## 11. User-Facing Response And Exit Contract
 
-Final copy requires product approval and follows the current Slovak language
-policy.
+User-facing feature copy is Slovak.
 
 | Outcome | Response purpose/example | Keyboard | Next valid action | Resulting state/destination |
 |---|---|---|---|---|
@@ -279,11 +307,11 @@ policy.
 | Persistence failure | `Problém sa nepodarilo uložiť. Skúste to neskôr.` | Unchanged | Retry complete message | Exact pre-event FSM |
 | Unauthorized | Existing fail-closed authorization response/policy | None from issue action | Existing access path | No issue/FSM effect |
 | Ambiguous normal text | Existing current route or `unknown` response | Existing owner | Existing action/clarification | Existing owner’s state |
-| Later result | Truthful category, changed/not-changed statement, and exact SHA/smoke/rollback facts only when proven | No action keyboard in V1 | Review or file a separate approved task | No business FSM mutation |
+| No active workspace | Same stored acknowledgement; no claim that a workspace was resolved | Unchanged | Continue existing journey | Exact pre-event business FSM; stored null workspace plus trusted reason |
 
-The Ukrainian prompt samples are intent examples, not current repository
-language evidence. If multilingual administrator copy is desired, the product
-owner must approve an exception before Product Truth changes.
+Ukrainian, Russian, Slovak, or mixed-language administrator input may be
+recognized through the bounded resolver, but it does not change the Slovak
+output contract and does not justify a multilingual phrase whitelist.
 
 ## 12. Product Truth And InfoHelp Contract
 
@@ -293,16 +321,17 @@ owner must approve an exception before Product Truth changes.
 | Status after implementation | `implemented` only after public routes, service, tests, and copy are proven |
 | Supported behavior | Admin records one complete observation by `/issue`; supported bounded text/voice may converge; active business state remains unchanged. |
 | Limitations | Admin only; one message; no files/buttons/intake FSM; storage is not a repair promise; optional context can be unavailable/redacted. |
-| Setup | Approved SQLite migration/service and trusted runtime context; no user-provided workspace/SHA. |
+| Setup | Reviewed additive dedicated-table migration/service and trusted runtime context; no user-provided workspace/SHA. |
 | Forbidden claims | Guaranteed fix; confirmed bug at intake; automatic deployment; provider cause without evidence; exact SHA/deploy/smoke/rollback without proof. |
 | Safe next step | Send a complete `/issue ...`; await a later truthful result. |
 | “Can you do this?” | Current: no—this is planned, not implemented. Target: an admin can record an issue; repair is conditional and separately governed. |
 | “How do I use this?” | Target: send `/issue` and the complete observation in the same message. |
 
-A proposed secondary capability ID, `runtime_issue_autorepair`, remains
-`planned` and unavailable until policy authority and real operations are
-proven. Information questions never execute either capability. This package
-does not modify the registries, Product Truth, or InfoHelp.
+The downstream capability ID `runtime_issue_autorepair` remains `planned` and
+activation-blocked until its narrow contract amendment, public owners, and
+private operations proof exist. It is outside this Stage 1 handoff.
+Information questions never execute either capability. This package does not
+modify the registries, Product Truth, or InfoHelp.
 
 ## 13. Negative-Space And Regression Contract
 
@@ -344,7 +373,8 @@ Proof uses the real canonical section in
 Minimum proof set:
 
 1. idle command, natural text, and voice convergence;
-2. active-FSM text/voice capture with exact state/data/activity preservation;
+2. active-FSM text/voice capture with exact protected business state/data
+   preservation and only ordinary authorized technical activity updates;
 3. bare command with no pending state or next-message capture;
 4. unauthorized text and voice with no issue row;
 5. ambiguous business text and capability questions with no issue row;
@@ -375,24 +405,24 @@ state because these are intentionally excluded.
   forbidden scopes.
 - A global autorepair agent contract or implementation handoff.
 - Private operational details in the public repository.
+- Stage 2 diagnosis, evidence collection, patching, tests, Git operations,
+  merge, deployment, rollback, result persistence, and bot notification.
 
-Known public gaps/decisions:
+Known downstream Stage 2 activation gaps:
 
-1. Current contracts require human approval before merge/deploy, conflicting
-   with the proposed unattended repair outcome.
-2. Final Slovak versus multilingual administrator copy is unapproved.
-3. Null-workspace, retention, size, redaction, and optional `occurred_at`
-   policies are unresolved.
-4. Exact activity-metadata preservation needs an approved interpretation and
-   future proof.
-5. The authorized-non-admin voice-before-STT limitation needs acceptance or a
-   different explicit voice entry signal.
-6. Trusted build-SHA, structured evidence, result CLI, and generic
-   notification outbox owners are target designs, not current owners.
+1. The current human-review contracts need a narrow amendment that permits only
+   policy-allowlisted, fully proven `[AUTOREPAIR]` changes to use the bounded
+   automatic path. Ordinary development remains human-reviewed.
+2. Trusted build-SHA, sanitized structured evidence, result CLI, global run
+   lease, kill switch, and generic retryable notification-outbox owners do not
+   exist.
+3. Private deploy, health, smoke, rollback, and escalation evidence must be
+   mounted and approved before the production path is available.
 
 Private operations inputs are deliberately deferred and do not themselves
-block public architecture approval. **Private operational evidence required
-before implementation/deployment.**
+block Stage 1 architecture approval. They block only the Stage 2 operation that
+needs them. **Private operational evidence required before
+implementation/deployment.**
 
 ## 16. Evidence Index And Verdict
 
@@ -464,15 +494,23 @@ Tracked operations evidence is in `scripts/update_repo.sh`,
 runbooks named in the audit. Private server/runbook material is intentionally
 not required in the public tree and is not an architecture blocker.
 
-### Verdict
+### Stage 1 verdict
 
-`needs_architecture_revision`
+`ready_for_handoff`
 
-Reason: the public target of unattended repair merge/deploy is inconsistent
-with current public human-approval contracts, and the product decisions listed
-in section 15 are not approved. The repository has enough evidence to define
-the architecture; this is not `blocked_by_missing_evidence`. Absent private
-commands, server paths, and credentials do not cause the verdict and are
-required only before implementation/deployment as applicable.
+Reason: all applicable Stage 1 sections are complete and evidence-backed. The
+approved language, one-message, FSM/business-data preservation, nullable
+workspace, timestamp, title, voice-authorization, and additive-persistence
+decisions remove the former Stage 1 ambiguities. The repository audit found no
+remaining material Stage 1 contradiction.
 
-No implementation prompt or runtime handoff may be written from this verdict.
+Stage 1 is ready for a later implementation handoff. This PR itself does not
+create that handoff and produces no implementation prompt.
+
+### Stage 2 status
+
+`RUNTIME_ISSUE_AUTOREPAIR_V1` remains `planned` and activation-blocked. It is
+not declared ready for implementation by this proof. Its prerequisites are the
+narrow canonical-contract amendment, public Stage 2 owners and tests, trusted
+deployed-SHA and evidence interfaces, the global lease and kill switch, the
+retryable notification outbox, and mounted private operational proof.

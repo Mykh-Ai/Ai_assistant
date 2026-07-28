@@ -1,9 +1,10 @@
 # Proposed Daily Runtime Issue Maintenance Runbook
 
-Task ID: `RUNTIME_ISSUE_INTAKE_AND_AUTOREPAIR_V1`
+Task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
-Status: target design only. No scheduler, service, CLI, production access, or
-autorepair authority currently exists.
+Status: `planned`; `bounded_autorepair` is product-approved but not activated.
+No scheduler, service, CLI, production access, or executable autorepair
+authority currently exists.
 
 The process runs at most once daily from an external, isolated maintenance
 runner. It must not be embedded in the polling bot process or reuse
@@ -22,26 +23,30 @@ Start a run only when:
 - no prior run holds the global run lease;
 - repository and server state checks are available;
 - the current approval mode is explicit:
-  `diagnostic_only`, `human_reviewed_patch`, or a future separately approved
-  `bounded_autorepair`;
+  `diagnostic_only`, `human_reviewed_patch`, or `bounded_autorepair`;
+- the mandatory kill switch allows the selected mode;
+- the runner atomically holds the global maintenance concurrency lease;
 - redaction, retention, evidence-size, and workspace policies are loaded;
 - the private operational evidence required for any production stage is
   mounted and authorized.
 
-Current V1 documentation permits no live start because those owners are not
-implemented and unattended merge/deploy conflicts with public policy.
+Current documentation permits no live Stage 2 start because those owners,
+the narrow canonical-contract amendment, and the operational activation proof
+do not exist.
 
 ## 1. Establish run identity and truth
 
 1. Create a maintenance run record with `run_id`, runner version, start time,
    approval mode, and policy version.
-2. Resolve the exact production/deployed SHA through a trusted operational
+2. Acquire the global run lease and verify the kill switch before any claim.
+3. Resolve the exact production/deployed SHA through a trusted operational
    source. Never read it from issue text.
-3. Verify local repository `HEAD`, remote tracking state, and clean worktree.
-4. Verify the server worktree/runtime corresponds to the trusted production
+4. Verify local repository `HEAD`, remote tracking state, and clean worktree.
+5. Verify the server worktree/runtime corresponds to the trusted production
    SHA and is clean.
-5. Stop before claiming if SHA is unknown, states differ, or an unrelated diff
-   exists.
+6. Stop before claiming if SHA is unknown, states differ, an unrelated diff
+   exists, the lease is not held, or the kill switch does not authorize the
+   selected mode.
 
 Public evidence for the gate type:
 `scripts/update_repo.sh`, `scripts/deploy_owner_run.sh`,
@@ -146,8 +151,13 @@ For `complex_or_high_risk_defect` or any forbidden scope:
 
 ## 8. Safe repair candidate path
 
-This path is available only under an approved authority mode. Under current
-public policy it stops for human review before merge/deploy.
+This path is available only under the authority of the selected mode:
+
+- `diagnostic_only`: do not patch or create a repair branch;
+- `human_reviewed_patch`: a proven patch may be prepared, committed, and pushed
+  only to the approved human review boundary; and
+- `bounded_autorepair`: after activation, an allowlisted fully proven change
+  may follow the automatic merge/deploy gates.
 
 1. Prove every root-cause requirement.
 2. Confirm the candidate is allowlisted and no forbidden scope applies.
@@ -171,24 +181,30 @@ The process may not expand the diff to “fix” unrelated failing tests.
 
 ## 9. Review, merge, and deployment gate
 
-Current public contracts require human approval before merge and deployment.
-The process therefore presents evidence and stops at the applicable human gate.
-It must not infer approval from the issue report, green tests, a commit marker,
-or `safe_to_commit`.
+Current public contracts require human approval before merge and deployment,
+so `bounded_autorepair` is not activated. `diagnostic_only` and
+`human_reviewed_patch` stop at their applicable boundaries. The runner must
+never infer authority from issue text, green tests, a commit marker, or
+`safe_to_commit`.
 
-If a future approved architecture revision permits a narrowly bounded
-autorepair merge/deploy, every gate in `02_AUTOREPAIR_POLICY.md` still applies:
+After the narrow canonical-contract amendment activates
+`bounded_autorepair`, every gate in `02_AUTOREPAIR_POLICY.md` applies:
 
-1. branch/commit/PR markers and issue link are exact;
-2. required review/branch protection is satisfied;
-3. merge result SHA is known;
-4. a rollback reference is created;
-5. server/repository clean state is reverified;
-6. controlled deployment uses the approved private procedure;
-7. startup and polling health pass;
-8. issue-specific production smoke passes;
-9. post-deploy error scan passes;
-10. production exact SHA equals the intended SHA.
+1. global run lease remains held and the kill switch still permits the mode;
+2. branch/commit/PR markers and issue link are exact;
+3. the narrow policy authority and applicable branch protection are satisfied;
+4. merge result SHA is known;
+5. a rollback reference is created;
+6. server/repository clean state is reverified;
+7. controlled deployment uses the approved private procedure;
+8. startup and polling health pass;
+9. issue-specific production smoke passes;
+10. post-deploy error scan passes;
+11. production exact SHA equals the intended SHA.
+
+Any failed, stale, ambiguous, or unavailable gate stops before the next
+mutation. Production smoke failure triggers rollback. Unresolved rollback risk
+freezes the run and escalates to a human.
 
 No public document should contain the sensitive command or path.
 **Private operational evidence required before implementation/deployment.**
@@ -273,15 +289,19 @@ entry uses the `[AUTOREPAIR]` marker and bounded evidence.
   before any state transition.
 - `deployment_failed_rollback_risk` freezes the run and all new claims.
 
-## Unresolved inputs
+## Activation prerequisites
 
-Public decisions needed before implementation:
+The product mode is decided. The unresolved work is implementation and
+activation:
 
-- human-reviewed versus any future bounded unattended commit/merge/deploy mode;
+- narrow canonical-contract amendment preserving human review for ordinary
+  development and authorizing only fully proven allowlisted `[AUTOREPAIR]`
+  changes;
 - trusted build-SHA interface;
-- maintenance CLI/service and outbox ownership;
+- maintenance CLI/service, global lease, kill switch, sanitized evidence,
+  result writer, and outbox ownership;
 - retention/redaction/size/workspace policies;
-- lease duration, daily claim limit, and concurrency;
+- lease duration and daily claim limit;
 - approved runner identity and isolation model.
 
 Production-only inputs:

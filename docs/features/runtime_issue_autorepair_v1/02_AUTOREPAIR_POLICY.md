@@ -1,15 +1,27 @@
 # Runtime Issue Autorepair V1 Policy
 
-Task ID: `RUNTIME_ISSUE_INTAKE_AND_AUTOREPAIR_V1`
+Task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
-Status: feature-specific policy draft; not implemented and not an authorization
-to change code or production.
+Status: `planned`; product target mode `bounded_autorepair` is approved but not
+activated. This is not executable authority to change code or production.
 
 This policy governs a future daily process over issues created by
 `report_runtime_issue`. It is not the future global LLM/Work/Codex autorepair
-contract. Current repository policy still requires human approval before merge
-and deployment; therefore the repair/deploy path below is a target gate model,
-not currently executable authority.
+contract. The future operating modes are:
+
+- `diagnostic_only`;
+- `human_reviewed_patch`; and
+- `bounded_autorepair`.
+
+In future `bounded_autorepair`, an obvious local defect may automatically
+commit, push, merge, deploy, verify, and notify only when every
+machine-verifiable gate in this policy passes. Ordinary features and complex,
+high-risk, ambiguous, or non-allowlisted defects remain under human review.
+
+Current repository policy still requires human approval before merge and
+deployment. A narrow canonical-contract amendment plus the public and private
+activation prerequisites below are therefore required before this approved
+target mode becomes executable.
 
 ## Classification model
 
@@ -79,6 +91,11 @@ or deploy if the proposed change requires or materially affects:
 The process may preserve sanitized evidence and name the relevant owners/tests.
 It must not produce a speculative patch.
 
+Database/schema migrations remain forbidden for unattended Stage 2 repair.
+That rule governs a maintenance agent; it does not block the separately
+reviewed additive dedicated-table implementation for
+`RUNTIME_ISSUE_INTAKE_V1`.
+
 ## Root-cause proof requirements
 
 Before any code edit, the issue must be tied to:
@@ -126,6 +143,15 @@ Failure, absence, ambiguity, or staleness of any required item means there is no
 successful autorepair. A candidate may end as diagnostic-only, blocked,
 failed-no-deploy, rolled back, or rollback-risk, but never `fixed_deployed`.
 
+Before any issue claim or repository mutation, the runner must also prove:
+
+- the global Stage 2 concurrency lease is held; and
+- the mandatory kill switch is enabled for this run and remains checkable
+  before commit, merge, deploy, and each rollback-sensitive transition.
+
+Lease loss or kill-switch activation freezes the run before the next mutation
+and escalates according to the approved operational policy.
+
 ## Test requirements
 
 ### Focused
@@ -165,7 +191,7 @@ Target convention:
   deployed SHAs, tests, rollback reference, smoke, and final truth.
 
 The marker is an audit signal, not permission. Current human-review policy
-still applies unless an approved public contract explicitly changes it.
+still applies until the narrow Stage 2 amendment is approved and activated.
 
 ## Commit, merge, and deploy gates
 
@@ -184,9 +210,9 @@ canonical marker and issue ID. Failure means `repair_failed_no_deploy`.
 
 ### Merge/deploy
 
-Current public contracts require human approval before merge and deployment.
-Therefore unattended merge/deploy is disabled by this draft. Before it could
-ever be enabled, an approved architecture revision must define:
+The product owner has approved bounded automatic merge/deploy for fully proven,
+policy-allowlisted `[AUTOREPAIR]` changes. It remains disabled until a narrow
+canonical-contract amendment and activation proof define:
 
 - narrow authority and allowed repositories/branches;
 - required review and branch-protection behavior;
@@ -194,7 +220,18 @@ ever be enabled, an approved architecture revision must define:
 - exact production SHA and clean-state interfaces;
 - least-privilege deploy and rollback control;
 - notification and emergency escalation;
-- a kill switch and concurrency boundary.
+- a mandatory kill switch and global concurrency lease.
+
+The intended amendment must not weaken review for ordinary development. It
+must state that:
+
+- ordinary features and complex defects still require human review;
+- only allowlisted, fully proven `[AUTOREPAIR]` changes may use the automatic
+  path;
+- any failed, stale, ambiguous, or unavailable gate stops before merge/deploy;
+- production smoke failure triggers the approved private rollback procedure;
+  and
+- unresolved rollback risk freezes the run and escalates to a human.
 
 The abstract deploy gate remains: controlled deployment, health, issue-specific
 smoke, error scan, and exact production SHA. **Private operational evidence
@@ -233,6 +270,10 @@ Do not patch, create a speculative repair branch, commit, merge, or deploy when:
 - the diff grows beyond the proven root cause;
 - credentials, secrets, raw logs, or cross-workspace data would enter evidence;
 - current human approval or another required gate is absent.
+
+After activation, the final bullet means the narrow Stage 2 authority itself or
+any task-specific required human gate is absent; it does not reintroduce human
+approval into a fully proven allowlisted automatic path.
 
 Complex issues must identify the owner, evidence, tests, stop reason, and
 required separate Architecture Design Proof or product decision. They must
@@ -273,9 +314,19 @@ directly.
 
 ## Policy approval boundary
 
-This draft can support diagnosis and a human-reviewed candidate workflow after
-implementation. It cannot authorize unattended merge/deploy while
-`docs/Code_Agent_Handoff_Contract.md` and
-`docs/Evaluation_and_Smoke_Test_Standards.md` retain their current approval
-rules. Resolving that conflict requires public architecture revision and human
-approval, not a maintenance-agent inference.
+`bounded_autorepair` is the approved Stage 2 product target. Activation remains
+blocked until all of the following exist and are approved:
+
+- the narrow amendment to `docs/Code_Agent_Handoff_Contract.md` and any
+  directly affected canonical approval language in
+  `docs/Evaluation_and_Smoke_Test_Standards.md`;
+- issue claim/lease, global run lease, kill switch, sanitized evidence, result
+  writer, and idempotent retryable bot-outbox owners;
+- trusted deployed-SHA and clean-state interfaces;
+- machine-verifiable allowlist, diff, test, deploy, smoke, error-scan, and
+  rollback gates; and
+- separately mounted private operational evidence with least-privilege owners
+  and escalation.
+
+The current public contracts remain unchanged by this feature-specific draft.
+The maintenance agent may not infer the amendment or activate itself.

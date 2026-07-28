@@ -1,11 +1,13 @@
 # Data, Status, and Agent Interface Contract
 
-Task ID: `RUNTIME_ISSUE_INTAKE_AND_AUTOREPAIR_V1`
+Stage 1 task ID: `RUNTIME_ISSUE_INTAKE_V1`
+
+Stage 2 task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
 Status: conceptual design only. This document does not create a migration,
 table, service, CLI, manifest, or outbox.
 
-## Ownership model
+## Staged ownership model
 
 ```text
 bot -> RuntimeIssueService -> SQLite
@@ -23,12 +25,19 @@ SQLite is the only canonical writable store. Work/Codex never writes SQLite
 directly and never changes status by editing a manifest. Proposed names describe
 future ownership; no such symbols currently exist.
 
+Stage 1 owns the minimal canonical issue record, Telegram-delivery
+idempotency, and a bounded claim/export service interface. Stage 2 later owns
+maintenance runs, claim/lease activity, evidence, diagnosis/results, deployment
+truth, and notification outbox records. Stage 2 tables and behavior are
+planned and activation-blocked; their absence does not block the Stage 1
+record.
+
 The claim/lease design reuses the transaction semantics demonstrated by
 `bot/services/archive_job_service.py`, especially `BEGIN IMMEDIATE`,
 `claim_next_runnable_job`, worker identity, lease expiry, retries, and rejected
 terminal transitions. It does not reuse the archive-job table.
 
-## Runtime issue record
+## Stage 1 minimal runtime issue record
 
 Conceptual fields:
 
@@ -36,16 +45,13 @@ Conceptual fields:
 |---|---|---|
 | `issue_id` | Canonical `IR-YYYYMMDD-NNN` or opaque stable ID | Service-generated; never supplied by user |
 | `schema_version` | Small integer/string | Service |
-| `status` | Issue status enum below | Service transition machine |
-| `classification` | Nullable classification enum | Maintenance result only |
+| `intake_status` | `new` | Stage 1 service; later Stage 2 processing state is separate |
 | `description` | Sanitized 10–2000-char target bound | Original administrator observation; never replaced by title |
 | `short_title` | Up to 120 chars | Deterministic Python derivation |
 | `reported_at` | UTC timestamp | Runtime clock |
-| `occurred_at` | Nullable UTC timestamp | Only explicit bounded extraction |
-| `occurred_at_precision` | `exact`, `date`, `approximate`, `unknown` | Validator |
 | `actor_telegram_id` | Integer | Trusted update context |
-| `workspace_id` | Trusted ID or null | Read-only workspace resolver; never text |
-| `workspace_resolution` | `resolved`, `none`, `ambiguous` | Service audit field |
+| `workspace_id` | Trusted ID or null | One active trusted workspace stores its ID; no active workspace stores null; never text |
+| `workspace_resolution_reason` | `active_workspace`, `no_active_workspace` | Trusted resolver; never text |
 | `source_channel` | `text`, `voice` | Trusted route |
 | `active_fsm_state` | Bounded string/null | Trusted snapshot |
 | `active_fsm_context_summary_json` | Versioned allowlist object | Sanitized and size bounded; never raw state |
@@ -56,19 +62,66 @@ Conceptual fields:
 | `telegram_message_id` | Integer | Trusted update |
 | `privacy_metadata_json` | Versioned bounded object | Redaction version/flags, no secret values |
 | `deduplication_key` | Unique stable digest | Trusted Telegram identity and source, not description alone |
-| `record_version` | Monotonic integer | Compare-and-set |
-| `claim_run_id` | Nullable run ID | Claim transaction |
-| `claim_token_hash` | Nullable digest | Never expose raw token in logs |
-| `claimed_at` | Nullable UTC timestamp | Claim transaction |
-| `lease_until` | Nullable UTC timestamp | Claim transaction |
-| `claim_attempt_count` | Non-negative integer | Service |
+| `record_version` | Monotonic integer | Compare-and-set and bounded export |
 | `created_at`, `updated_at` | UTC timestamps | Service |
 
 Raw authorization values, repair/deploy permission, credentials, tokens,
 private paths, full environment, unbounded logs, and full FSM data are not
 fields.
 
-## Issue status and classification
+`reported_at` is the only Stage 1 event timestamp. Intake does not extract or
+guess occurrence time from natural language.
+
+## Additive dedicated-table contract
+
+Stage 1 persistence is an additive schema change in dedicated runtime-issue
+table(s). It must not add runtime-issue fields to or rebuild invoice, contact,
+supplier, receipt, accounting-document, or work-time tables. It changes no
+existing business rows, constraints, or identifiers.
+
+The later reviewed implementation must:
+
+- create dedicated tables with `CREATE TABLE IF NOT EXISTS`;
+- use explicit named columns in every `SELECT`, `INSERT`, and `UPDATE`;
+- never depend on `SELECT *` or tuple column positions;
+- map returned values by column name or explicit alias;
+- allow older readers selecting only owned columns to tolerate new optional
+  columns;
+- validate compatibility using required owned columns and approved schema
+  version, not strict column-count equality alone;
+- fail safely or run an approved additive migration for missing required
+  columns; and
+- never silently ignore a missing required column, incompatible type, or
+  incompatible constraint.
+
+Unknown additional columns alone must not cause failure. Automatic DROP/rebuild
+is forbidden. A new table, nullable/defaulted column, or index is additive; a
+table rebuild, data copy, constraint replacement, column removal, identifier
+change, or business-data transformation is destructive/transforming and
+outside Stage 1.
+
+`bot/services/db.py` currently contains both strict exact-column-set bootstrap
+checks and approved additive `ALTER TABLE ... ADD COLUMN` patterns. The new
+service must own its compatibility contract explicitly and must not rebuild
+existing business tables.
+
+## Stage 2 maintenance records
+
+Stage 2 may add separate dedicated records for:
+
+- issue processing/classification state;
+- issue claim and lease metadata;
+- maintenance runs and their global concurrency lease;
+- bounded evidence and diagnosis/result versions;
+- deploy/rollback verification; and
+- retryable bot notifications.
+
+These records do not belong in the minimal Stage 1 intake row except for stable
+foreign-key/reference fields defined by the later reviewed design. Stage 2
+automatic migrations remain forbidden to the unattended agent; that does not
+prohibit the separately reviewed additive Stage 1 schema.
+
+## Stage 2 issue status and classification
 
 Issue statuses:
 
@@ -121,8 +174,10 @@ gate fails. It must not be changed to “fixed.”
 | expired `claimed` | `new` | No irreversible/externally visible work; audited expiry recovery |
 | expired `claimed` | `claimed` | Atomic reclaim with new token and attempt count; no unsafe prior work |
 
-Current public policy does not permit unattended
-`repair_ready_to_deploy -> fixed_deployed`; a human approval record is required.
+The product target permits
+`repair_ready_to_deploy -> fixed_deployed` only after Stage 2 activation and
+only when every machine-verifiable bounded-autorepair gate passes. Before
+activation, the transition is unavailable and human review remains required.
 
 ## Forbidden transitions
 
@@ -141,18 +196,19 @@ Current public policy does not permit unattended
 Any approved manual correction is a new immutable audit event with actor and
 reason; it never silently overwrites history.
 
-## Maintenance run record
+## Stage 2 maintenance run record
 
 | Field | Contract |
 |---|---|
 | `run_id` | Service-generated stable ID |
 | `status` | `started`, `claiming`, `diagnosing`, `repairing`, `deploying`, `completed`, `completed_with_blocks`, `failed`, `rollback_risk` |
-| `approval_mode` | `diagnostic_only`, `human_reviewed_patch`, or separately approved future mode |
+| `approval_mode` | `diagnostic_only`, `human_reviewed_patch`, or `bounded_autorepair` |
 | `runner_id`, `runner_version` | Trusted maintenance identity/version |
 | `policy_version`, `schema_version` | Exact versions |
 | `baseline_repo_sha`, `production_sha` | Trusted SHAs or explicit unavailable status |
 | `started_at`, `heartbeat_at`, `finished_at` | UTC |
 | `global_lease_until` | Prevent overlapping run ownership |
+| `kill_switch_state` | Trusted enabled/disabled state checked before each mutation boundary |
 | `claimed_count`, result counts | Service-derived |
 | `summary_digest` | Digest of bounded canonical summary |
 | `failure_code` | Bounded enum; no raw secrets/errors |
@@ -170,7 +226,7 @@ rollback_risk -> human reconciliation only
 At most one run and one issue may be in deploy/rollback activity. The proposed
 default is one issue diagnosed at a time.
 
-## Claim and lease model
+## Stage 2 claim and lease model
 
 - Claims are acquired with `BEGIN IMMEDIATE` and committed before manifest
   generation.
@@ -222,10 +278,10 @@ Conceptual top-level JSON:
       "description": "sanitized observation",
       "short_title": "bounded title",
       "reported_at": "UTC timestamp",
-      "occurred_at": null,
       "source_channel": "text",
       "trusted_context": {
         "workspace_id": "trusted ID or null",
+        "workspace_resolution_reason": "active_workspace or no_active_workspace",
         "actor_telegram_id": 123,
         "active_fsm_state": "bounded state or null",
         "active_fsm_context_summary": {},
@@ -249,7 +305,7 @@ are excluded. The service signs or otherwise validates the manifest digest
 according to the approved implementation design. A changed manifest is
 rejected on result submission and never updates SQLite.
 
-## Bounded log evidence schema
+## Stage 2 bounded log evidence schema
 
 Each evidence item:
 
@@ -271,7 +327,7 @@ Maximum window, item count, bytes, and retention require public approval before
 implementation. Raw production logs never become the canonical issue record or
 public PR evidence.
 
-## Diagnosis and result schema
+## Stage 2 diagnosis and result schema
 
 | Field | Rule |
 |---|---|
@@ -294,7 +350,7 @@ public PR evidence.
 The service validates both schema and external facts available through trusted
 interfaces. An agent string saying “deployed” cannot set `fixed_deployed`.
 
-## Notification outbox schema
+## Stage 2 notification outbox schema
 
 | Field | Contract |
 |---|---|
@@ -316,7 +372,7 @@ records delivery. Retry is bounded with backoff. Duplicate worker execution
 does not rerun maintenance or change issue status. The maintenance runner never
 receives bot credentials.
 
-## Notification transitions
+## Stage 2 notification transitions
 
 ```text
 pending -> sending -> sent
@@ -347,15 +403,23 @@ same result cannot.
 - Private operational evidence stays in the separately mounted private input
   and is never copied into the repository.
 
-Retention durations, byte limits, and whether a redacted description may
-remain when secrets dominate the input are unresolved public decisions.
+Retention durations, byte limits, redaction version, and safe rejection when a
+description is dominated by secrets are bounded implementation constants for a
+later reviewed handoff. They do not alter the approved Stage 1 route, ownership,
+nullable-workspace, or persistence architecture and are not Stage 1 readiness
+blockers.
 
 ## Workspace boundaries
 
 - Intake resolves workspace only from the authorized actor’s current trusted
   context.
+- When exactly one active workspace is available, intake stores that trusted
+  ID and `active_workspace`.
+- When no active workspace can be resolved, intake stores `workspace_id=null`
+  and `no_active_workspace`; it does not discard the valid administrator
+  issue.
 - Cross-workspace IDs from text, voice, manifest edits, or result payloads are
-  ignored/rejected.
+  rejected and never used as identity.
 - Every issue/evidence/result query includes trusted workspace scope or an
   explicitly authorized global-admin maintenance scope with audited reason.
 - A maintenance manifest contains one issue and cannot enumerate unrelated

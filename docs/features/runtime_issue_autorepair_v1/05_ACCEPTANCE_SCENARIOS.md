@@ -1,6 +1,8 @@
 # Acceptance Scenarios
 
-Task ID: `RUNTIME_ISSUE_INTAKE_AND_AUTOREPAIR_V1`
+Stage 1 task ID: `RUNTIME_ISSUE_INTAKE_V1`
+
+Stage 2 task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
 Status: target acceptance contract only. Future implementation must prove the
 public journeys under the real “Conversation Acceptance Proof” section of
@@ -8,12 +10,12 @@ public journeys under the real “Conversation Acceptance Proof” section of
 deterministic tests. No test in this repository currently implements these
 scenarios.
 
-Target Slovak copy is illustrative until product approval. Every issue-intake
+User-facing feature copy is Slovak. Every issue-intake
 scenario applies the slot, privacy, idempotency, and workspace contracts in
 `01_ARCHITECTURE_DESIGN_PROOF.md` and
 `04_DATA_STATUS_AND_AGENT_INTERFACE_CONTRACT.md`.
 
-## A. Intake and routing
+## A. Stage 1 intake acceptance
 
 ### 1. Idle text `/issue`
 
@@ -56,16 +58,19 @@ scenario applies the slot, privacy, idempotency, and workspace contracts in
 ### 3. Active FSM preservation
 
 - **Precondition:** Authorized administrator is in an invoice/customer FSM with
-  state `S`, business data `D`, and activity metadata `A`.
+  protected state `S`, protected business data `D`, and ordinary technical
+  activity metadata `A`.
 - **Input/event:** `/issue Po výbere kontaktu sa nezobrazila ďalšia otázka.`
 - **Expected canonical action/classification:** `report_runtime_issue`.
 - **State sequence:** `(S,D,A)` → shared global issue branch → capture →
-  `(S,D,A)`.
+  `(S,D,A')`, where `S` and `D` are identical and `A'` may contain only the
+  normal authorized message-lifecycle update.
 - **Side effect/no-side-effect:** One issue record contains only allowlisted
-  snapshot fields; no `clear`, `set_state`, `update_data`, activity touch,
-  business write, or replay.
-- **Expected final state:** State, business FSM data, and protected activity
-  metadata equal their pre-event values.
+  snapshot fields; no `clear`, `set_state`, `update_data`, business write, or
+  replay. A shared `last_activity` update is allowed if it is the ordinary
+  middleware invariant.
+- **Expected final state:** Protected state and business FSM data equal their
+  pre-event values; technical activity metadata differs only as authorized.
 - **User-visible outcome:** Stored acknowledgement says current action was not
   cancelled; the existing business keyboard/message remains governed by its
   owner.
@@ -82,7 +87,8 @@ scenario applies the slot, privacy, idempotency, and workspace contracts in
   `report_runtime_issue` persistence and no classification.
 - **State sequence:** Exact pre-state → validation → exact pre-state.
 - **Side effect/no-side-effect:** No issue row, pending state, next-message
-  capture, business effect, or activity stamp; usage send only.
+  capture, or business effect; usage send only. Ordinary technical activity
+  metadata may follow the shared message lifecycle.
 - **Expected final state:** Exact pre-state/data.
 - **User-visible outcome:** `Opíšte problém v tej istej správe: /issue po
   stlačení ...` and `Aktuálnu akciu bota som nezrušil.`
@@ -118,10 +124,11 @@ scenario applies the slot, privacy, idempotency, and workspace contracts in
 - **Evidence/future test owner:** `tests/test_tenant_safety.py` unauthorized
   before LLM/business; new voice authorization test.
 
-For a generally authorized non-admin actor, current architecture may require
-STT before semantic admin intent is knowable. A separate test must prove the
-post-STT admin guard prevents issue resolver/persistence/log access. Product
-approval of this precise limitation is required.
+For a generally authorized non-admin actor, STT may be required before semantic
+issue intent is knowable. A separate test must prove the explicit post-STT
+admin guard runs immediately and prevents issue resolver execution,
+persistence, log access, and maintenance activity. This is the approved Stage 1
+boundary.
 
 ### 7. Ambiguous normal business text
 
@@ -161,7 +168,8 @@ approval of this precise limitation is required.
   identical pre-state.
 - **Side effect/no-side-effect:** No partial issue or false stored status; no
   business/FSM mutation. Error response send is allowed.
-- **Expected final state:** Exact pre-state/data/activity.
+- **Expected final state:** Exact protected pre-state/data; only ordinary
+  authorized technical activity metadata may update.
 - **User-visible outcome:** Truthful “problem could not be stored; retry later,”
   with no issue ID.
 - **Evidence/future test owner:** Proposed `RuntimeIssueService` transaction
@@ -202,7 +210,45 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** `tests/test_workspace_context.py`,
   `tests/test_tenant_safety.py`, and proposed issue-service scope tests.
 
-### 12. Secret redaction
+### 12. No active workspace
+
+- **Precondition:** Authorized administrator has no resolvable active workspace;
+  Telegram identifiers and actor identity are trusted.
+- **Input/event:** `/issue Po uložení sa nezobrazilo potvrdenie.`
+- **Expected canonical action/classification:** `report_runtime_issue`;
+  classification unset.
+- **State sequence:** Trusted read-only workspace resolution returns none →
+  capture → original business state.
+- **Side effect/no-side-effect:** One issue row with `workspace_id=null` and
+  `workspace_resolution_reason=no_active_workspace`; no workspace switch,
+  guessed workspace, or lost report.
+- **Expected final state:** Protected business state/data unchanged.
+- **User-visible outcome:** Truthful Slovak stored acknowledgement without a
+  claim that a workspace was resolved.
+- **Evidence/future test owner:** New issue-service tests adjacent to
+  `tests/test_workspace_context.py`.
+
+### 13. Additive schema compatibility
+
+- **Precondition:** Dedicated Stage 1 runtime-issue table exists with all
+  required owned columns and one unknown future optional column; existing
+  business tables contain unchanged data.
+- **Input/event:** Store and read a valid issue using the Stage 1 service.
+- **Expected canonical action/classification:** Normal Stage 1 intake/read;
+  classification unset.
+- **State sequence:** Required-column/schema-version validation → explicit
+  named-column insert/read → success.
+- **Side effect/no-side-effect:** Only the dedicated issue row changes. No
+  business-table write, rebuild, data copy, constraint replacement, or
+  identifier change. The extra optional column alone does not fail the reader.
+- **Expected final state:** Existing business rows and schema remain unchanged.
+- **User-visible outcome:** Truthful stored acknowledgement.
+- **Evidence/future test owner:** New schema/service tests against
+  `bot/services/db.py` conventions. Companion negative tests prove a missing
+  required column or incompatible type/constraint fails safely or requires an
+  approved additive migration; no automatic DROP/rebuild.
+
+### 14. Secret redaction
 
 - **Precondition:** Admin accidentally includes a token-like value.
 - **Input/event:** `/issue API zlyhalo, token=...`.
@@ -219,13 +265,15 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** New sanitizer property/unit tests and manifest,
   result, and outbox serialization tests.
 
-## B. Claim, diagnosis, and classification
+## B. Stage 2 diagnosis policy scenarios
 
-### 13. Claim lease and interrupted run
+### B1. Claim lease and interrupted run
 
-- **Precondition:** `IR-1` is `new`; run `R1` atomically claims it and then
-  stops before external work is recorded.
-- **Input/event:** Lease expires; run `R2` requests a claim.
+- **Precondition:** `IR-1` is `new`; run `R1` holds the global run lease,
+  passes the kill switch, atomically claims the issue, and then stops before
+  external work is recorded.
+- **Input/event:** Issue and global leases expire; run `R2` requests the global
+  lease and then an issue claim.
 - **Expected canonical action/classification:** Maintenance claim recovery; no
   diagnosis yet.
 - **State sequence:** `new -> claimed(R1) -> lease expired ->
@@ -240,7 +288,11 @@ approval of this precise limitation is required.
   `tests/test_archive_job_service.py` active lease/expiry/reclaim and
   `tests/test_archive_worker.py`.
 
-### 14. Insufficient evidence
+If the kill switch activates or the global lease is lost at any mutation
+boundary, the run stops before the next commit/merge/deploy operation. It may
+not continue merely because the per-issue claim is still live.
+
+### B2. Insufficient evidence
 
 - **Precondition:** Issue is claimed; build SHA or correlating event is missing
   and deterministic reproduction fails.
@@ -255,7 +307,7 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** Result transition/outbox tests and policy
   classification fixtures.
 
-### 15. External failure
+### B3. External failure
 
 - **Precondition:** Claimed issue correlates with bounded provider status/error
   evidence; current bot handled it according to current contract.
@@ -270,7 +322,7 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** Classification schema/outbox tests; future
   approved sanitized integration evidence owner.
 
-### 16. Feature request is not a confirmed bug
+### B4. Feature request is not a confirmed bug
 
 - **Precondition:** Report says `/issue pridajte automatické mesačné faktúry`;
   Product Truth does not support that capability.
@@ -286,7 +338,7 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** Product Truth comparison fixtures and result
   transition/notification tests.
 
-### 17. Complex/high-risk defect
+### B5. Complex/high-risk defect
 
 - **Precondition:** Evidence suggests an invoice-tax calculation or workspace
   authorization defect requiring architecture or data change.
@@ -303,7 +355,7 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** Forbidden-scope policy fixtures and transition
   tests.
 
-### 18. Diagnostic logging only
+### B6. Diagnostic logging only
 
 - **Precondition:** The symptom cannot be causally resolved, but a bounded
   structured diagnostic gap is identified; evidence is insufficient to prove
@@ -322,9 +374,14 @@ approval of this precise limitation is required.
   proven missing structured event can be evaluated later under the low-risk
   allowlist with its own regression test.
 
-## C. Repair, gates, deployment, and result truth
+## C. Stage 2 activation-gated repair and deployment policy scenarios
 
-### 19. Allowed low-risk repair
+The following scenarios describe the approved product target. Automatic
+commit/merge/deploy is unavailable until the narrow canonical-contract
+amendment, public Stage 2 owners, global lease, kill switch, trusted SHA,
+retryable outbox, and private operational proof are implemented and approved.
+
+### C1. Allowed low-risk repair
 
 - **Precondition:** Claimed issue proves a missing callback acknowledgement in
   an existing owner at an exact deployed SHA; current callback contract and a
@@ -333,19 +390,21 @@ approval of this precise limitation is required.
 - **Expected canonical action/classification:**
   `confirmed_low_risk_defect`.
 - **State sequence:** `new -> claimed -> repair_validating ->
-  repair_ready_to_deploy`; after separately approved controlled deployment and
-  every verification, `fixed_deployed`.
+  repair_ready_to_deploy`; after activated bounded authority, controlled
+  deployment, and every verification, `fixed_deployed`.
 - **Side effect/no-side-effect:** One minimal marked repair branch/commit and
-  tests; merge/deploy only with current required human approval or a future
-  approved authority revision.
-- **Expected final state:** `repair_ready_to_deploy` while awaiting approval, or
-  `fixed_deployed` only after exact production proof.
+  tests. Before activation, merge/deploy requires the current human approval.
+  After activation, only an allowlisted fully proven `[AUTOREPAIR]` change may
+  automatically merge/deploy.
+- **Expected final state:** Before activation, `repair_ready_to_deploy` while
+  awaiting human approval; after activation, `fixed_deployed` only after exact
+  production proof.
 - **User-visible outcome:** Before deploy, “candidate ready for review,” not
   fixed. After proof, exact commit/deployed SHA and smoke result.
 - **Evidence/future test owner:** `tests/test_decision_callbacks.py`, callback
   owner test, broader regression, service transition, and notification tests.
 
-### 20. Failed test gate
+### C2. Failed test gate
 
 - **Precondition:** Proven allowlisted candidate and minimal patch; an adjacent
   callback/FSM/workspace or broader test fails.
@@ -363,7 +422,7 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** Maintenance orchestration gate tests with
   simulated focused/adjacent/broad failure.
 
-### 21. Failed production smoke and rollback
+### C3. Failed production smoke and rollback
 
 - **Precondition:** Candidate passed all pre-deploy and approval gates; rollback
   reference exists; controlled deploy completes but issue-specific smoke fails.
@@ -383,7 +442,7 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** Maintenance deployment state-machine tests;
   private production proof required before deployment.
 
-### 22. Truthful fixed/deployed notification
+### C4. Truthful fixed/deployed notification
 
 - **Precondition:** `IR-1` has exact repair commit, approved merge, exact
   production SHA, health, issue-specific smoke, error scan, and final SHA
@@ -401,7 +460,7 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** Result validation, trusted-SHA verification,
   outbox idempotency/retry, and production acceptance proof.
 
-### 23. Truthful complex/blocked notification
+### C5. Truthful complex/blocked notification
 
 - **Precondition:** Issue is `blocked_high_risk`.
 - **Input/event:** Outbox worker sends terminal result.
@@ -416,9 +475,9 @@ approval of this precise limitation is required.
   explicit “code and production were not changed.”
 - **Evidence/future test owner:** Result template and outbox transition tests.
 
-## D. Existing-business invariants and motivating examples
+## D. Cross-stage business invariants and motivating examples
 
-### 24. Existing business callback invariants
+### D1. Existing business callback invariants
 
 - **Precondition:** A current invoice/contact/follow-up callback is valid,
   stale, wrong-state, duplicate, legacy, or unauthorized.
@@ -436,7 +495,7 @@ approval of this precise limitation is required.
 - **Evidence/future test owner:** `tests/test_decision_callbacks.py` and
   `tests/test_invoice_followup_handler.py` full adjacent regression.
 
-### 25. Paid-invoice callback motivating example
+### D2. Paid-invoice callback motivating example
 
 - **Precondition:** Administrator reports that after `Uhradená`, the spinner
   continued and terminal message was absent; exact event correlates to a
@@ -448,7 +507,7 @@ approval of this precise limitation is required.
   `confirmed_low_risk_defect` only after callback evidence proves the precise
   missing acknowledgement/message mechanism.
 - **State sequence:** `new -> claimed -> repair_validating`; then the same gate
-  outcomes as scenarios 19–21.
+  outcomes as scenarios C1–C3.
 - **Side effect/no-side-effect:** A candidate may alter only the existing
   acknowledgement/terminal UI owner and add regression coverage. It must not
   mark the invoice paid again, change settlement truth, replay the callback,
@@ -466,7 +525,7 @@ If evidence instead implicates bank settlement truth, data repair, callback
 architecture, or ambiguous Product Truth, classify
 `complex_or_high_risk_defect` and stop without a patch.
 
-### 26. Contact resolver / analytics motivating example
+### D3. Contact resolver / analytics motivating example
 
 - **Precondition:** Analytics for invoices issued to “Тех Компані” misses
   stored contact “Tech Company s. r. o.”; current voice/contact creation already
@@ -506,8 +565,9 @@ identity, action architecture, or Product Truth, classify
   duplicate.
 - A “fixed/deployed” notification requires exact production SHA plus all
   pre-deploy and post-deploy gates.
-- Every active-FSM scenario compares state, business data, and protected
-  activity metadata before and after.
+- Every active-FSM scenario proves protected state and business data are
+  unchanged and separately verifies that any technical activity-metadata
+  change is only the ordinary authorized lifecycle update.
 - Every non-code classification asserts no repair branch, commit, merge, or
   production change.
 - Every notification test proves retry does not repeat diagnosis, repair, or
