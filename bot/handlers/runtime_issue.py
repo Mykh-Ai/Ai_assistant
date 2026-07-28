@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from enum import Enum
 from typing import Any
 
 from aiogram import Router
@@ -41,14 +42,35 @@ router = Router(name='runtime_issue')
 logger = logging.getLogger(__name__)
 
 
+class RuntimeIssueAdminCheck(str, Enum):
+    ADMIN = 'admin'
+    NOT_ADMIN = 'not_admin'
+    FAILED = 'admin_check_failed'
+
+
+def check_runtime_issue_admin(
+    config: Config,
+    actor_telegram_id: int | None,
+) -> RuntimeIssueAdminCheck:
+    """Keep a technical read failure distinct from a truthful non-admin result."""
+    if actor_telegram_id is None:
+        return RuntimeIssueAdminCheck.NOT_ADMIN
+    try:
+        if not config.db_path.is_file():
+            return RuntimeIssueAdminCheck.FAILED
+        if is_admin_telegram_user(config, actor_telegram_id):
+            return RuntimeIssueAdminCheck.ADMIN
+    except (OSError, sqlite3.Error):
+        return RuntimeIssueAdminCheck.FAILED
+    return RuntimeIssueAdminCheck.NOT_ADMIN
+
+
 def is_runtime_issue_admin(config: Config, actor_telegram_id: int | None) -> bool:
     """Fail closed without creating a database during a read-only intent probe."""
-    if actor_telegram_id is None or not config.db_path.is_file():
-        return False
-    try:
-        return is_admin_telegram_user(config, actor_telegram_id)
-    except sqlite3.Error:
-        return False
+    return (
+        check_runtime_issue_admin(config, actor_telegram_id)
+        == RuntimeIssueAdminCheck.ADMIN
+    )
 
 
 def extract_runtime_issue_command(text: str) -> str | None:
@@ -113,7 +135,11 @@ async def handle_runtime_issue_capture(
     telegram_update_id: int | None,
 ) -> bool:
     actor_telegram_id = _trusted_actor_id(message)
-    if not is_runtime_issue_admin(config, actor_telegram_id):
+    admin_check = check_runtime_issue_admin(config, actor_telegram_id)
+    if admin_check == RuntimeIssueAdminCheck.FAILED:
+        await message.answer(RUNTIME_ISSUE_FAILURE)
+        return True
+    if admin_check != RuntimeIssueAdminCheck.ADMIN:
         return False
 
     telegram_message_id = _trusted_int(getattr(message, 'message_id', None))
@@ -127,13 +153,13 @@ async def handle_runtime_issue_capture(
         await message.answer(RUNTIME_ISSUE_FAILURE)
         return True
 
-    current_state = await state.get_state()
-    state_data = await state.get_data()
-    workspace_id, workspace_resolution_reason = _resolve_workspace(
-        config=config,
-        actor_telegram_id=actor_telegram_id,
-    )
     try:
+        current_state = await state.get_state()
+        state_data = await state.get_data()
+        workspace_id, workspace_resolution_reason = _resolve_workspace(
+            config=config,
+            actor_telegram_id=actor_telegram_id,
+        )
         result = RuntimeIssueService(config.db_path).capture(
             RuntimeIssueCaptureInput(
                 description=description,
@@ -181,7 +207,11 @@ async def cmd_runtime_issue(
     event_update: Update,
 ) -> None:
     actor_telegram_id = _trusted_actor_id(message)
-    if not is_runtime_issue_admin(config, actor_telegram_id):
+    admin_check = check_runtime_issue_admin(config, actor_telegram_id)
+    if admin_check == RuntimeIssueAdminCheck.FAILED:
+        await message.answer(RUNTIME_ISSUE_FAILURE)
+        return
+    if admin_check != RuntimeIssueAdminCheck.ADMIN:
         return
     description = extract_runtime_issue_command(message.text or '')
     if not description:

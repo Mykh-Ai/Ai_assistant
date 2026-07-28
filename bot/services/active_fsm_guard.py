@@ -142,17 +142,22 @@ async def handle_active_fsm_text_update(
     age = await get_active_fsm_age(state=state, current_state=current_state)
     command = _command_token(text)
     actor_id = getattr(getattr(message, 'from_user', None), 'id', None)
-    from bot.handlers.runtime_issue import is_runtime_issue_admin
+    from bot.handlers.runtime_issue import (
+        RUNTIME_ISSUE_FAILURE,
+        RuntimeIssueAdminCheck,
+        check_runtime_issue_admin,
+        extract_runtime_issue_command,
+        handle_runtime_issue_capture,
+    )
 
-    runtime_issue_admin = is_runtime_issue_admin(config, actor_id)
-    if runtime_issue_admin:
-        from bot.handlers.runtime_issue import (
-            extract_runtime_issue_command,
-            handle_runtime_issue_capture,
-        )
-
-        issue_command_description = extract_runtime_issue_command(text)
-        if issue_command_description is not None:
+    runtime_issue_admin_check = check_runtime_issue_admin(config, actor_id)
+    runtime_issue_admin = runtime_issue_admin_check == RuntimeIssueAdminCheck.ADMIN
+    issue_command_description = extract_runtime_issue_command(text)
+    if issue_command_description is not None:
+        if runtime_issue_admin_check == RuntimeIssueAdminCheck.FAILED:
+            await message.answer(RUNTIME_ISSUE_FAILURE)
+            return True
+        if runtime_issue_admin:
             if not issue_command_description:
                 from bot.handlers.runtime_issue import RUNTIME_ISSUE_USAGE
 

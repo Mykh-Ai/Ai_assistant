@@ -9,6 +9,7 @@ import pytest
 from bot.config import Config
 from bot.handlers import invoice
 from bot.handlers.runtime_issue import (
+    RUNTIME_ISSUE_FAILURE,
     RUNTIME_ISSUE_ACTION,
     cmd_runtime_issue,
     resolve_runtime_issue_intent,
@@ -142,6 +143,186 @@ def test_exact_command_and_bare_command_use_same_message_only(tmp_path: Path) ->
     )
     assert _count(config) == 1
     assert '/issue' in bare.answers[-1]
+    assert state.set_calls == state.clear_calls == state.update_calls == 0
+
+
+@pytest.mark.parametrize(
+    'technical_error',
+    [
+        sqlite3.OperationalError('admin database unavailable'),
+        OSError('admin database read failed'),
+    ],
+)
+def test_idle_exact_command_admin_check_failure_is_truthful_and_preserves_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    technical_error: Exception,
+) -> None:
+    config = _config(tmp_path)
+    state = _State()
+    message = _Message('/issue Po potvrdení sa správa nezobrazila.')
+
+    def _fail_admin_check(*args, **kwargs):
+        raise technical_error
+
+    monkeypatch.setattr(
+        'bot.handlers.runtime_issue.is_admin_telegram_user',
+        _fail_admin_check,
+    )
+    asyncio.run(
+        cmd_runtime_issue(
+            message,
+            state,
+            config,
+            type('Update', (), {'update_id': 551})(),
+        )
+    )
+
+    assert message.answers == [RUNTIME_ISSUE_FAILURE]
+    assert _count(config) == 0
+    assert state.current is None
+    assert state.data == {}
+    assert state.set_calls == state.clear_calls == state.update_calls == 0
+
+
+@pytest.mark.parametrize(
+    'technical_error',
+    [
+        sqlite3.OperationalError('admin database unavailable'),
+        OSError('admin database read failed'),
+    ],
+)
+def test_active_exact_command_admin_check_failure_is_handled_without_business_fallthrough(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    technical_error: Exception,
+) -> None:
+    config = _config(tmp_path)
+    protected = {'invoice_draft': {'customer': 'Alfa'}}
+    state = _State('InvoiceStates:waiting_input', protected)
+    message = _Message('/issue Po potvrdení sa správa nezobrazila.')
+
+    def _fail_admin_check(*args, **kwargs):
+        raise technical_error
+
+    async def _unexpected_business_route(**kwargs):
+        raise AssertionError('failed exact /issue must not reach business routing')
+
+    monkeypatch.setattr(
+        'bot.handlers.runtime_issue.is_admin_telegram_user',
+        _fail_admin_check,
+    )
+    monkeypatch.setattr(
+        active_fsm_guard,
+        '_resolve_navigation_for_update',
+        _unexpected_business_route,
+    )
+    handled = asyncio.run(
+        active_fsm_guard.handle_active_fsm_text_update(
+            message=message,
+            state=state,
+            config=config,
+            text=message.text,
+            input_channel='text',
+            telegram_update_id=552,
+        )
+    )
+
+    assert handled is True
+    assert message.answers == [RUNTIME_ISSUE_FAILURE]
+    assert _count(config) == 0
+    assert state.current == 'InvoiceStates:waiting_input'
+    assert state.data == protected
+    assert state.set_calls == state.clear_calls == state.update_calls == 0
+
+
+@pytest.mark.parametrize(
+    'technical_error',
+    [
+        sqlite3.OperationalError('workspace database unavailable'),
+        OSError('workspace database read failed'),
+    ],
+)
+def test_idle_workspace_read_failure_is_truthful_and_preserves_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    technical_error: Exception,
+) -> None:
+    config = _config(tmp_path)
+    state = _State()
+    message = _Message('/issue Po potvrdení sa správa nezobrazila.')
+
+    def _fail_workspace_read(*args, **kwargs):
+        raise technical_error
+
+    monkeypatch.setattr(
+        'bot.handlers.runtime_issue.WorkspaceContextService.resolve_for_user_readonly',
+        _fail_workspace_read,
+    )
+    asyncio.run(
+        cmd_runtime_issue(
+            message,
+            state,
+            config,
+            type('Update', (), {'update_id': 553})(),
+        )
+    )
+
+    assert message.answers == [RUNTIME_ISSUE_FAILURE]
+    assert _count(config) == 0
+    assert state.current is None
+    assert state.data == {}
+    assert state.set_calls == state.clear_calls == state.update_calls == 0
+
+
+@pytest.mark.parametrize(
+    'technical_error',
+    [
+        sqlite3.OperationalError('workspace database unavailable'),
+        OSError('workspace database read failed'),
+    ],
+)
+def test_active_workspace_read_failure_is_handled_without_business_fallthrough(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    technical_error: Exception,
+) -> None:
+    config = _config(tmp_path)
+    protected = {'invoice_draft': {'customer': 'Alfa'}}
+    state = _State('InvoiceStates:waiting_input', protected)
+    message = _Message('/issue Po potvrdení sa správa nezobrazила.')
+
+    def _fail_workspace_read(*args, **kwargs):
+        raise technical_error
+
+    async def _unexpected_business_route(**kwargs):
+        raise AssertionError('failed exact /issue must not reach business routing')
+
+    monkeypatch.setattr(
+        'bot.handlers.runtime_issue.WorkspaceContextService.resolve_for_user_readonly',
+        _fail_workspace_read,
+    )
+    monkeypatch.setattr(
+        active_fsm_guard,
+        '_resolve_navigation_for_update',
+        _unexpected_business_route,
+    )
+    handled = asyncio.run(
+        active_fsm_guard.handle_active_fsm_text_update(
+            message=message,
+            state=state,
+            config=config,
+            text=message.text,
+            input_channel='text',
+            telegram_update_id=554,
+        )
+    )
+
+    assert handled is True
+    assert message.answers == [RUNTIME_ISSUE_FAILURE]
+    assert _count(config) == 0
+    assert state.current == 'InvoiceStates:waiting_input'
+    assert state.data == protected
     assert state.set_calls == state.clear_calls == state.update_calls == 0
 
 

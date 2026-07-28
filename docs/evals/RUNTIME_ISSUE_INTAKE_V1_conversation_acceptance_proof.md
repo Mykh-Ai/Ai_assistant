@@ -8,10 +8,10 @@ Approved Architecture Design Proof:
 Authoritative implementation handoff:
 `docs/features/runtime_issue_autorepair_v1/06_IMPLEMENTATION_HANDOFF.md`
 
-Evidence state: `feat/runtime-issue-intake-v1` working tree based on
-`917dcf129f9842ff347075a0ea857f42543010e3`, before the final implementation
-commit. No production, server, deployment, or production-database boundary was
-used.
+Evidence state: PR #50 correction worktree on
+`feat/runtime-issue-intake-v1`, based on implementation commit
+`2f08f3faf5b0500e119aae434061a5c2413c23c0`. No production, server,
+deployment, or production-database boundary was used.
 
 ## Environment and evidence boundaries
 
@@ -56,14 +56,21 @@ run or implemented.
   idle or active business state.
 - Input: `/issue Po potvrdení sa správa vôbec nezobrazila.`
 - Route:
-  `runtime_issue.router` → `cmd_runtime_issue` → explicit admin guard →
-  `handle_runtime_issue_capture` → read-only workspace resolver →
-  `RuntimeIssueService.capture`.
+  `runtime_issue.router` → `cmd_runtime_issue` → tri-state explicit admin
+  guard → `handle_runtime_issue_capture` → protected read-only workspace
+  resolver → `RuntimeIssueService.capture`.
 - Result: one sanitized `new` row, stable `IR-…` ID, truthful Slovak response,
   no keyboard, no issue state, no business mutation.
+- Technical admin-check or workspace-read failure: no row, truthful Slovak
+  failure, handled command, and unchanged protected FSM state/data. The
+  technical result is not converted to `not_admin` or `no_active_workspace`.
 - Evidence:
   `test_exact_command_and_bare_command_use_same_message_only`,
-  `test_handler_uses_trusted_read_only_active_workspace`.
+  `test_handler_uses_trusted_read_only_active_workspace`,
+  `test_idle_exact_command_admin_check_failure_is_truthful_and_preserves_state`,
+  `test_active_exact_command_admin_check_failure_is_handled_without_business_fallthrough`,
+  `test_idle_workspace_read_failure_is_truthful_and_preserves_state`, and
+  `test_active_workspace_read_failure_is_handled_without_business_fallthrough`.
 
 ### Idle natural text
 
@@ -125,6 +132,7 @@ run or implemented.
 | 7. Ambiguous normal business text | pass | Parameterized business/ambiguous/keyword-only negative-space tests create no row |
 | 8. Capability question | pass | Exact capability/how-to questions render Product Truth/InfoHelp and create no row |
 | 9. Issue persistence failure | pass | Forced service failure returns truthful failure and preserves FSM; trigger test proves rollback |
+| 9a. Admin/workspace technical read failure | pass | Forced SQLite/OSError failures in idle and active exact-command paths return truthful failure, create no row, preserve state/data, and active paths do not fall through |
 | 10. Deduplicated Telegram delivery | pass | Same trusted delivery returns original ID and one row; distinct delivery with same description creates another ID |
 | 11. Workspace isolation | pass | Report text cannot select workspace; trusted resolver stores `trusted-workspace`; actor/workspace-scoped read negatives pass |
 | 12. No active workspace | pass | Public command and service store null workspace with `no_active_workspace` |
@@ -145,6 +153,10 @@ run or implemented.
 - Active-FSM ownership, navigation, stale recovery and old continuation input:
   pass in `test_active_fsm_guard.py`, `test_state_control.py`, and
   `test_voice_state_routing.py`.
+- Product-owner-approved exact-text/button voice restrictions remain unchanged
+  for `DeleteUserDatabaseStates.waiting_exact_confirmation` and the restricted
+  contact-registry states. Runtime issues can be reported after those FSMs are
+  no longer active.
 - Nearby actions, ambiguous input and `unknown`: pass with no issue write.
 - Unauthorized and tenant/workspace isolation: pass.
 - Persistence success, duplicate, rollback and acknowledgement failure: pass.
@@ -198,13 +210,13 @@ writing. Autorepair remains unavailable.
 ## Commands and results
 
 ```text
-/tmp/runtime-issue-v1-venv/bin/python -m pytest -q \
+/tmp/runtime-issue-review-venv/bin/python -m pytest -q \
   tests/test_runtime_issue_service.py tests/test_runtime_issue_routes.py \
   tests/test_runtime_issue_voice.py tests/test_info_help.py \
   tests/test_product_truth.py
-162 passed in 11.43s
+171 passed in 7.22s
 
-/tmp/runtime-issue-v1-venv/bin/python -m pytest -q \
+/tmp/runtime-issue-review-venv/bin/python -m pytest -q \
   tests/test_runtime_issue_service.py tests/test_runtime_issue_routes.py \
   tests/test_runtime_issue_voice.py tests/test_active_fsm_guard.py \
   tests/test_voice_state_routing.py tests/test_state_control.py \
@@ -212,10 +224,10 @@ writing. Autorepair remains unavailable.
   tests/test_invoice_followup_handler.py tests/test_access_request_flow.py \
   tests/test_tenant_safety.py tests/test_workspace_context.py \
   tests/test_product_truth.py tests/test_info_help.py
-524 passed in 19.29s
+535 passed in 21.13s
 
-/tmp/runtime-issue-v1-venv/bin/python -m pytest -q
-2279 passed, 7 subtests passed in 79.22s
+/tmp/runtime-issue-review-venv/bin/python -m pytest -q
+2287 passed, 7 subtests passed in 72.64s
 ```
 
 No required repository suite was omitted.
