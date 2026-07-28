@@ -2,331 +2,245 @@
 
 Task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
-Status: `planned`; product target mode `bounded_autorepair` is approved but not
-activated. This is not executable authority to change code or production.
+Status: `approved_design_pending_implementation`
 
-This policy governs a future daily process over issues created by
-`report_runtime_issue`. It is not the future global LLM/Work/Codex autorepair
-contract. The future operating modes are:
+This policy governs the scheduled ChatGPT Work/Briefing maintenance process after an administrator report has been captured by Stage 1. It implements the approved ownership split:
 
-- `diagnostic_only`;
-- `human_reviewed_patch`; and
-- `bounded_autorepair`.
+```text
+OfficeFlow owns production intake.
+GitHub owns diagnosis, findings, repair backlog, code changes, and review artifacts.
+```
 
-In future `bounded_autorepair`, an obvious local defect may automatically
-commit, push, merge, deploy, verify, and notify only when every
-machine-verifiable gate in this policy passes. Ordinary features and complex,
-high-risk, ambiguous, or non-allowlisted defects remain under human review.
+Stage 2 starts only through bounded server interfaces. The worker must not query or mutate production SQLite directly.
 
-Current repository policy still requires human approval before merge and
-deployment. A narrow canonical-contract amendment plus the public and private
-activation prerequisites below are therefore required before this approved
-target mode becomes executable.
+## 1. Operating mode
 
-## Classification model
+Initial executable mode:
 
-Intake records an observation, not a diagnosis. A maintenance result must use
-one of these classifications:
+```text
+human_reviewed_patch
+```
 
-| Classification | Meaning | Code-change eligibility |
-|---|---|---|
-| `confirmed_low_risk_defect` | Current deployed behavior is proven to violate current Product Truth or a deterministic invariant, and the fix is local and allowlisted. | Potentially eligible only after all gates. |
-| `expected_behavior` | Evidence proves the observed result is current intended behavior. | No patch. |
-| `external_failure` | Bounded evidence proves a network/provider/external dependency caused the event. | No speculative product patch; a narrow existing retry/error-handling defect may be separately classified only with proof. |
-| `insufficient_evidence` | The event cannot be correlated or reproduced well enough to establish root cause. | No patch. |
-| `feature_request` | The report asks for behavior not present in approved Product Truth. | No patch; separate product/design process. |
-| `complex_or_high_risk_defect` | A defect is plausible/proven but the repair crosses a forbidden boundary or lacks bounded ownership. | No patch; separate Architecture Design Proof/review. |
-| `deployment_failed_rolled_back` | A candidate passed pre-deploy gates, production verification failed, and the approved rollback was proven successful. | No success claim; keep issue unresolved/reviewable. |
-| `deployment_failed_rollback_risk` | Production verification failed and rollback is incomplete or unproven. | Emergency human escalation; no further agent changes. |
+Under this mode the worker may diagnose, create findings, add a regression test, make an allowlisted low-risk repair, commit, push, and create a Draft PR.
 
-The administrator’s words “bug,” “provider,” or “fixed” are evidence only of
-what was reported. They do not determine classification.
+It may not automatically merge, deploy, restart production, migrate a database, roll back production, or change production business data.
 
-## Safe autorepair allowlist
+## 2. Unit of diagnosis and repair
 
-A candidate can be `confirmed_low_risk_defect` only when current owners and
-tests prove a small, deterministic repair such as:
+A Stage 1 issue is an administrator observation, not a diagnosis.
 
-- missing Telegram callback acknowledgement;
+One source issue may produce:
+
+- zero findings when no defect or actionable work is established;
+- one finding;
+- multiple independent findings.
+
+Findings may be created only after bounded evidence, code, Product Truth, and tests have been inspected. The worker must not split an issue merely because the original text contains several sentences.
+
+Every finding receives a stable identifier:
+
+```text
+{issue_id}-F01
+{issue_id}-F02
+...
+```
+
+Each finding has its own classification, status, log reference, owner scope, and next action.
+
+## 3. Approved classifications
+
+- `confirmed_low_risk_defect`
+- `expected_behavior`
+- `external_failure`
+- `insufficient_evidence`
+- `feature_request`
+- `complex_or_high_risk_defect`
+- `authorized_data_correction_required`
+
+The reporter's words such as “bug”, “internet”, “STT”, “fixed”, or “three problems” are observations only. They do not set classification.
+
+## 4. Workshop finding statuses
+
+- `received_for_diagnosis`
+- `diagnosing`
+- `needs_more_diagnostics`
+- `queued_for_repair`
+- `repair_in_progress`
+- `patch_ready_for_review`
+- `resolved_expected_behavior`
+- `resolved_external_failure`
+- `resolved_no_code`
+- `requires_architecture_design`
+- `requires_product_decision`
+- `requires_authorized_data_correction`
+- `blocked_by_security_boundary`
+- `blocked_by_accounting_truth`
+- `insufficient_evidence`
+- `branch_pushed_pr_blocked`
+- `repair_failed_no_patch`
+
+Do not use vague machine statuses such as `not_my_competence`. The exact reason belongs in a bounded log entry and one of the explicit statuses above.
+
+`patch_ready_for_review` means the patch is tested, committed, pushed, and represented by a Draft PR. It does not mean merged or deployed.
+
+## 5. Safe repair allowlist
+
+A finding may become `confirmed_low_risk_defect` and enter `queued_for_repair` only when evidence proves a local deterministic defect such as:
+
+- missing Telegram callback acknowledgment;
 - keyboard not removed after a completed action;
 - missing terminal message after a proven successful action;
 - narrow incorrect Product Truth wording with unambiguous current truth;
 - narrow exception handling at an existing owner;
 - missing bounded structured diagnostic event;
-- one equivalent path failing to reuse an existing approved resolver,
-  normalizer, alias service, callback helper, or canonical utility;
-- a similarly local defect with a clear regression test, bounded side effects,
-  no ownership change, and no public journey redesign.
+- one equivalent path failing to reuse an existing approved helper, resolver, normalizer, alias service, or canonical utility;
+- a bounded semantic hint/example correction that does not change canonical action architecture;
+- a similarly local defect with a clear regression test, bounded side effects, no ownership change, and no public journey redesign.
 
-Allowlist membership is necessary but insufficient. The exact diff and all
-affected behavior must also remain outside every forbidden area.
+Allowlist membership is necessary but not sufficient. Root cause, exact owner, regression test, diff, and all required tests must still pass.
 
-Example: analytics may reuse the current canonical contact resolver and filter
-the current dataset by trusted `contact_id` only if evidence proves that this
-is the existing identity contract, workspace isolation and ambiguity behavior
-remain unchanged, analytics remains read only, and focused plus adjacent
-analytics/contact tests pass. The example does not authorize a contact
-resolution redesign.
+## 6. Forbidden unattended scope
 
-## Explicit forbidden scope
+The worker must not patch, create a speculative repair branch, or claim success when the work materially affects:
 
-The maintenance process must stop without patch, repair branch, commit, merge,
-or deploy if the proposed change requires or materially affects:
-
-- database schema, data repair, or migration;
+- database schema or migration;
+- arbitrary SQL or direct production SQLite mutation;
+- production contact, invoice, payment, accounting, or business data;
 - top-level, subflow, FSM, callback, or product architecture;
-- authorization, access roles, tenant, or workspace isolation;
-- OAuth, scopes, credentials, tokens, secrets, or encryption;
-- invoice numbering;
-- invoice amounts, taxes, accounting semantics, or bank settlement truth;
-- deletion, destructive data behavior, retention migration, or storage
-  migration;
+- authorization, roles, tenant, or workspace isolation;
+- OAuth, credentials, tokens, encryption, or secrets;
+- invoice numbering, amounts, taxes, settlement, or accounting truth;
+- deletion, retention, destructive behavior, or storage migration;
 - bank matching or reconciliation;
 - infrastructure, DNS, Cloudflare, network routing, or production credentials;
-- dependency, language runtime, framework, or service upgrade;
-- broad dispatcher/router refactor;
+- dependency, framework, language runtime, or service upgrade;
+- broad router/dispatcher refactor;
 - ambiguous Product Truth;
-- any behavior not safely bounded by current approved architecture.
+- behavior outside current approved architecture.
 
-The process may preserve sanitized evidence and name the relevant owners/tests.
-It must not produce a speculative patch.
+A verified stale contact or company record becomes `requires_authorized_data_correction`; it is not silently edited by the worker.
 
-Database/schema migrations remain forbidden for unattended Stage 2 repair.
-That rule governs a maintenance agent; it does not block the separately
-reviewed additive dedicated-table implementation for
-`RUNTIME_ISSUE_INTAKE_V1`.
+A top-level/FSM requirement becomes `requires_architecture_design`; the worker records owners/evidence/tests but does not create a patch.
 
-## Root-cause proof requirements
+## 7. Root-cause proof requirements
 
-Before any code edit, the issue must be tied to:
+Before code editing, the finding must be tied to:
 
-1. an atomically claimed canonical issue record;
-2. the exact deployed production SHA at the event or a proven relevant SHA;
-3. bounded, sanitized event/log evidence or a deterministic reproduction;
-4. current code symbol(s) that own the behavior;
-5. current Product Truth, contract, registry entry, or deterministic invariant
-   that proves expected behavior;
-6. a specific causal mechanism, not correlation or user wording;
-7. a regression test that fails for that mechanism before the fix and passes
-   after it; and
-8. evidence that no competing current owner or unrelated diff is involved.
+1. a durable acknowledged source handoff in the GitHub workshop;
+2. a stable finding ID and workshop log reference;
+3. the exact relevant repository SHA and available production SHA truth;
+4. bounded sanitized server evidence or deterministic reproduction;
+5. current code symbol(s) that own the behavior;
+6. current Product Truth, contract, registry entry, or deterministic invariant;
+7. a specific causal mechanism;
+8. a regression test that fails before the fix and passes after it;
+9. evidence that no competing owner or unrelated diff is involved.
 
-“Cannot reproduce,” missing event correlation, ambiguous product intent, and a
-plausible code smell are insufficient. They classify as
-`insufficient_evidence` or `complex_or_high_risk_defect`.
+Missing logs are not proof of expected behavior. A plausible code smell is not proof of root cause.
 
-## Mandatory evidence gate
+## 8. Evidence policy
 
-Every item is required for a successful autorepair claim:
+The evidence wrapper may return only bounded, sanitized facts correlated by trusted issue context:
 
-- exact current production/deployed SHA known;
-- repository and server worktrees clean;
-- no unrelated diff;
-- issue atomically claimed;
-- root cause reproduced or otherwise proven;
-- minimal bounded diff;
-- risk classified as allowed low-risk autorepair;
-- regression test added for the reported defect;
-- focused tests passed;
-- adjacent action/subflow/FSM/callback tests passed;
-- required broader regression passed;
-- compile/static checks passed;
-- no forbidden schema/config/secret/dependency changes;
-- rollback reference created;
-- controlled deploy completed;
-- startup and polling health confirmed;
-- issue-specific production smoke passed;
-- post-deploy error scan passed;
-- production exact SHA verified.
+- reported timestamp and approved time window;
+- Telegram update/message identifiers;
+- workspace scope, including valid null workspace;
+- active FSM when present;
+- `fsm_context_status=not_active` when no FSM was active;
+- `fsm_context_status=read_failed` when technical reading failed;
+- STT transcript or STT error only when actually logged;
+- semantic action/result only when actually recorded;
+- bounded Python exception/error events;
+- Docker startup/restart/health facts;
+- provider/network timeout or HTTP status when recorded;
+- exact SHA facts from trusted interfaces.
 
-Failure, absence, ambiguity, or staleness of any required item means there is no
-successful autorepair. A candidate may end as diagnostic-only, blocked,
-failed-no-deploy, rolled back, or rollback-risk, but never `fixed_deployed`.
+Raw logs, `.env`, tokens, credentials, private keys, full user records, and cross-workspace events never enter GitHub workshop files or PRs.
 
-Before any issue claim or repository mutation, the runner must also prove:
+## 9. Daily limits and backlog
 
-- the global Stage 2 concurrency lease is held; and
-- the mandatory kill switch is enabled for this run and remains checkable
-  before commit, merge, deploy, and each rollback-sensitive transition.
+Default V1 limits:
 
-Lease loss or kill-switch activation freezes the run before the next mutation
-and escalates according to the approved operational policy.
+```text
+new_handoff_limit_per_run = 3
+code_repair_limit_per_run = 1
+backlog_carries_forward = true
+```
 
-## Test requirements
+Old unresolved findings do not expire merely because no new issue arrives. The next scheduled run must inspect the workshop queue before concluding there is no work.
 
-### Focused
+## 10. Git and GitHub gates
 
-- New regression test reproducing the exact issue.
-- Existing unit/integration tests for the changed owner.
-- Explicit negative case proving no new effect outside the report.
+Workshop branch:
 
-### Adjacent
+```text
+maintenance/runtime-issue-workshop
+```
 
-Run suites for neighboring action/subflow/FSM/callback/workspace paths, chosen
-from the actual dependency graph. For issue-intake-adjacent work these include
-authorization, tenant safety, active FSM guard, voice state routing, state
-control, decision callbacks, invoice follow-up, customization admin, archive
-claim/worker, contacts, and analytics as applicable.
+Repair branch:
 
-### Broad
+```text
+autorepair/IR-YYYYMMDD-NNN-FNN-short-slug
+```
 
-Run the repository-required broader suite from current public guidance.
-`docs/Evaluation_and_Smoke_Test_Standards.md` owns Conversation Acceptance Proof
-for public journey changes. Compile/static checks and any repository-wide test
-command must be current and proven at execution time; this policy does not
-freeze or invent a command.
+Commit:
 
-No test may be skipped because the candidate appears obvious. A test
-infrastructure failure is a failed gate.
+```text
+fix(autorepair): <bounded result> [IR-YYYYMMDD-NNN-FNN]
+```
 
-## Change marking
+Rules:
 
-Target convention:
+- repair branches start from the approved current `main` SHA, not from the mutable workshop branch;
+- a local commit without push is incomplete;
+- a pushed branch without Draft PR is `branch_pushed_pr_blocked`;
+- unrelated changes are forbidden;
+- failing unrelated tests must not be “fixed while here”;
+- no force-push of `main` or the workshop branch;
+- no private server facts or raw issue text in public PR content.
 
-- branch: `autorepair/IR-YYYYMMDD-NNN-short-slug`;
-- commit: `fix(autorepair): <bounded result> [IR-YYYYMMDD-NNN]`;
-- PR/merge title:
-  `[AUTOREPAIR] <bounded result> [IR-YYYYMMDD-NNN]`;
-- `PROJECT_LOG.md`: an entry containing `[AUTOREPAIR]`, issue ID, source and
-  deployed SHAs, tests, rollback reference, smoke, and final truth.
+## 11. Required tests
 
-The marker is an audit signal, not permission. Current human-review policy
-still applies until the narrow Stage 2 amendment is approved and activated.
+For a repair candidate:
 
-## Commit, merge, and deploy gates
+- exact failing regression test;
+- existing unit/integration tests for the owner;
+- explicit negative case outside the finding;
+- adjacent action/subflow/FSM/callback/workspace tests chosen from the dependency graph;
+- required broad repository suite;
+- compile/static checks;
+- full diff inspection.
 
-### Diagnostic and patch preparation
+A test infrastructure failure is a failed gate.
 
-After root-cause proof, a future process may prepare a minimal local patch only
-if policy authority for that stage has been approved. It must start from the
-exact relevant clean SHA, isolate one issue, reject unrelated changes, and
-record a deterministic diff digest.
+## 12. Truthful result reporting
 
-### Commit/push
+Allowed claims only when verified:
 
-Commit/push requires the root-cause, scope, regression, focused, adjacent,
-broad, static, and forbidden-file gates to pass. The commit must carry the
-canonical marker and issue ID. Failure means `repair_failed_no_deploy`.
-
-### Merge/deploy
-
-The product owner has approved bounded automatic merge/deploy for fully proven,
-policy-allowlisted `[AUTOREPAIR]` changes. It remains disabled until a narrow
-canonical-contract amendment and activation proof define:
-
-- narrow authority and allowed repositories/branches;
-- required review and branch-protection behavior;
-- immutable audit identity;
-- exact production SHA and clean-state interfaces;
-- least-privilege deploy and rollback control;
-- notification and emergency escalation;
-- a mandatory kill switch and global concurrency lease.
-
-The intended amendment must not weaken review for ordinary development. It
-must state that:
-
-- ordinary features and complex defects still require human review;
-- only allowlisted, fully proven `[AUTOREPAIR]` changes may use the automatic
-  path;
-- any failed, stale, ambiguous, or unavailable gate stops before merge/deploy;
-- production smoke failure triggers the approved private rollback procedure;
-  and
-- unresolved rollback risk freezes the run and escalates to a human.
-
-The abstract deploy gate remains: controlled deployment, health, issue-specific
-smoke, error scan, and exact production SHA. **Private operational evidence
-required before implementation/deployment.**
-
-## Rollback gates
-
-A rollback reference must exist before deployment. Any failed startup,
-polling-health check, issue-specific smoke, post-deploy error scan, or SHA
-verification triggers the approved private rollback procedure. After rollback:
-
-- verify the rollback SHA/image/reference;
-- verify startup and polling health;
-- repeat safe baseline smoke;
-- scan errors;
-- record whether rollback is proven successful.
-
-Successful rollback produces `deployment_failed_rolled_back`, explicitly says
-the fix was not deployed successfully, and keeps the issue unresolved or
-reviewable. Unproven rollback produces
-`deployment_failed_rollback_risk`, stops all agent activity, and alerts a human.
-Private commands and paths must never enter this repository.
-
-## Conditions that prohibit code changes
-
-Do not patch, create a speculative repair branch, commit, merge, or deploy when:
-
-- classification is anything other than a proven allowlisted
-  `confirmed_low_risk_defect`;
-- any forbidden scope applies;
-- exact relevant SHA, clean state, claim, owner, Product Truth, reproduction,
-  or regression test is absent;
-- ambiguity or conflicting evidence remains;
-- another repair/worktree/run owns overlapping files;
-- required tests/static checks fail or cannot run;
-- the diff grows beyond the proven root cause;
-- credentials, secrets, raw logs, or cross-workspace data would enter evidence;
-- current human approval or another required gate is absent.
-
-After activation, the final bullet means the narrow Stage 2 authority itself or
-any task-specific required human gate is absent; it does not reintroduce human
-approval into a fully proven allowlisted automatic path.
-
-Complex issues must identify the owner, evidence, tests, stop reason, and
-required separate Architecture Design Proof or product decision. They must
-explicitly report that code and production were not changed.
-
-## Truthful result reporting
-
-Allowed result facts, only when supported:
-
-- issue stored;
+- issue received in workshop;
 - diagnosis completed;
-- classification and bounded evidence basis;
+- source issue decomposed into a specific number of findings;
+- classification and evidence basis;
 - code and production unchanged;
-- safe fix committed, with exact commit SHA;
-- deployed exact SHA;
-- focused/adjacent/broad tests passed;
-- startup/polling and issue-specific smoke passed;
+- repair queued;
+- exact commit pushed;
+- Draft PR created;
+- expected behavior;
 - external failure proven;
 - insufficient evidence;
-- complex/high-risk stop;
-- rollback completed and verified;
-- unresolved rollback risk.
+- architecture/product/data boundary;
+- notification queued/sent.
 
 Forbidden claims:
 
 - guaranteed repair;
 - confirmed defect based only on the report;
-- Internet/provider cause without evidence;
-- successful deployment without exact production SHA and verification;
-- successful external upload/send without the actual supported result;
-- successful rollback without post-rollback verification;
-- “no code change” when a branch/commit was created;
-- “fixed” when only a diagnostic event or candidate patch exists.
+- STT/network/Docker/provider cause without evidence;
+- “fixed” when only a diagnosis or local patch exists;
+- deployed when production was not changed and verified;
+- data updated without verified authorized mutation;
+- “no code change” after creating a branch/commit.
 
-Notification delivery is idempotent and retryable through the proposed
-bot-owned outbox. The maintenance agent never uses production bot credentials
-directly.
+## 13. Notification boundary
 
-## Policy approval boundary
-
-`bounded_autorepair` is the approved Stage 2 product target. Activation remains
-blocked until all of the following exist and are approved:
-
-- the narrow amendment to `docs/Code_Agent_Handoff_Contract.md` and any
-  directly affected canonical approval language in
-  `docs/Evaluation_and_Smoke_Test_Standards.md`;
-- issue claim/lease, global run lease, kill switch, sanitized evidence, result
-  writer, and idempotent retryable bot-outbox owners;
-- trusted deployed-SHA and clean-state interfaces;
-- machine-verifiable allowlist, diff, test, deploy, smoke, error-scan, and
-  rollback gates; and
-- separately mounted private operational evidence with least-privilege owners
-  and escalation.
-
-The current public contracts remain unchanged by this feature-specific draft.
-The maintenance agent may not infer the amendment or activate itself.
+The worker never reads the production bot token. It calls only a bounded notification bridge with a template enum and validated fields. Telegram copy is concise business Slovak. Delivery retries must not rerun diagnosis or repair.

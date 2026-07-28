@@ -1,0 +1,60 @@
+{
+  "schema_version": "autorepair-workshop-v1",
+  "workshop_branch": "maintenance/runtime-issue-workshop",
+  "updated_at": "UTC timestamp",
+  "source_issues": [
+    {
+      "issue_id": "IR-20260727-001",
+      "handoff_id": "RH-20260727-001",
+      "received_workshop_commit": "40-hex SHA",
+      "status": "partially_resolved",
+      "finding_ids": [
+        "IR-20260727-001-F01",
+        "IR-20260727-001-F02",
+        "IR-20260727-001-F03"
+      ],
+      "log_ref": "ARL-20260727-001"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "IR-20260727-001-F01",
+      "parent_issue_id": "IR-20260727-001",
+      "classification": "data_truth_mismatch",
+      "status": "requires_authorized_data_correction",
+      "owner_scope": "production_data",
+      "log_ref": "ARL-20260727-002",
+      "next_action": "Use a separately approved deterministic data-correction flow.",
+      "branch": null,
+      "commit_sha": null,
+      "pr_reference": null,
+      "production_changed": false
+    },
+    {
+      "finding_id": "IR-20260727-001-F02",
+      "parent_issue_id": "IR-20260727-001",
+      "classification": "architecture_change_required",
+      "status": "requires_architecture_design",
+      "owner_scope": "top_level_architecture",
+      "log_ref": "ARL-20260727-003",
+      "next_action": "Prepare a separate Architecture Design Proof.",
+      "branch": null,
+      "commit_sha": null,
+      "pr_reference": null,
+      "production_changed": false
+    },
+    {
+      "finding_id": "IR-20260727-001-F03",
+      "parent_issue_id": "IR-20260727-001",
+      "classification": "confirmed_low_risk_defect",
+      "status": "queued_for_repair",
+      "owner_scope": "semantic_action_bundle",
+      "log_ref": "ARL-20260727-004",
+      "next_action": "Add exact regression coverage and make the smallest bounded owner-local repair.",
+      "branch": null,
+      "commit_sha": null,
+      "pr_reference": null,
+      "production_changed": false
+    }
+  ]
+}

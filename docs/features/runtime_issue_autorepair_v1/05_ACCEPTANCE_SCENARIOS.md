@@ -1,597 +1,178 @@
-# Acceptance Scenarios
-
-Stage 1 task ID: `RUNTIME_ISSUE_INTAKE_V1`
+# Runtime Issue Workshop Acceptance Scenarios
 
 Stage 2 task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
-Status: target acceptance contract only. A future Stage 1 implementation must
-prove section A only under the real “Conversation Acceptance Proof” section of
-`docs/Evaluation_and_Smoke_Test_Standards.md`, plus focused and adjacent
-deterministic tests. Sections B–D are downstream Stage 2 policy scenarios.
-They are retained for Stage 2 design continuity but are not required for
-`RUNTIME_ISSUE_INTAKE_V1` implementation, handoff, or Conversation Acceptance
-Proof. A Stage 1 implementation agent must not materialize them. No test in
-this repository currently implements these scenarios.
-
-User-facing feature copy is Slovak. Every issue-intake
-scenario applies the slot, privacy, idempotency, and workspace contracts in
-`01_ARCHITECTURE_DESIGN_PROOF.md` and
-`04_DATA_STATUS_AND_AGENT_INTERFACE_CONTRACT.md`.
-
-## A. Stage 1 intake acceptance
-
-### 1. Idle text `/issue`
-
-- **Precondition:** Authorized administrator, no active FSM, trusted workspace
-  `W1`, clean issue store, trusted Telegram identifiers.
-- **Input/event:** `/issue Po stlačení Uhradená sa nezobrazilo potvrdenie.`
-- **Expected canonical action/classification:** `report_runtime_issue`;
-  maintenance classification remains unset.
-- **State sequence:** idle → ephemeral capture call → idle.
-- **Side effect/no-side-effect:** One `new` SQLite issue with original sanitized
-  description, derived title, actor/workspace/text source, null FSM, trusted
-  IDs/build status, privacy metadata, and dedup key; one acknowledgement. No
-  invoice/callback/code/deploy effect.
-- **Expected final state:** Idle; no issue-intake pending state.
-- **User-visible outcome:** `Problém som uložil ako IR-…. Aktuálna akcia bota
-  zostala nezmenená.` No new keyboard.
-- **Evidence/future test owner:** Proposed issue handler/service tests;
-  `bot/handlers/invoice.py::process_invoice_text` and
-  `bot/services/authorization.py` are adjacent owners.
-
-### 2. Idle voice issue
-
-- **Precondition:** Authorized administrator, idle, STT available, trusted
-  workspace `W1`.
-- **Input/event:** Voice transcript equivalent to “Chyba: po uložení zostala
-  klávesnica.”
-- **Expected canonical action/classification:** Bounded resolver returns
-  `report_runtime_issue`; no maintenance classification at intake.
-- **State sequence:** idle → general authorization → STT → admin guard →
-  bounded issue resolution → capture → idle.
-- **Side effect/no-side-effect:** Same one issue row and acknowledgement as text,
-  with `source_channel=voice`; no parallel voice store, replay, or FSM change.
-- **Expected final state:** Idle.
-- **User-visible outcome:** Same stored acknowledgement; no claim that the
-  problem is confirmed or fixed.
-- **Evidence/future test owner:** New voice convergence test adjacent to
-  `tests/test_voice_state_routing.py`; current `bot/handlers/voice.py` must call
-  the shared canonical owner.
-
-### 3. Active FSM preservation
-
-- **Precondition:** Authorized administrator is in an invoice/customer FSM with
-  protected state `S`, protected business data `D`, and ordinary technical
-  activity metadata `A`.
-- **Input/event:** `/issue Po výbere kontaktu sa nezobrazila ďalšia otázka.`
-- **Expected canonical action/classification:** `report_runtime_issue`.
-- **State sequence:** `(S,D,A)` → shared global issue branch → capture →
-  `(S,D,A')`, where `S` and `D` are identical and `A'` may contain only the
-  normal authorized message-lifecycle update.
-- **Side effect/no-side-effect:** One issue record contains only allowlisted
-  snapshot fields; no `clear`, `set_state`, `update_data`, business write, or
-  replay. A shared `last_activity` update is allowed if it is the ordinary
-  middleware invariant.
-- **Expected final state:** Protected state and business FSM data equal their
-  pre-event values; technical activity metadata differs only as authorized.
-- **User-visible outcome:** Stored acknowledgement says current action was not
-  cancelled; the existing business keyboard/message remains governed by its
-  owner.
-- **Evidence/future test owner:** New preservation tests adjacent to
-  `tests/test_active_fsm_guard.py::test_active_text_pass_through_is_not_swallowed_and_stamps_after_handler`
-  and `tests/test_state_control.py`.
-
-### 4. Bare `/issue`
-
-- **Precondition:** Authorized administrator, idle or in any active business
-  FSM.
-- **Input/event:** `/issue` with whitespace only.
-- **Expected canonical action/classification:** Usage outcome; no
-  `report_runtime_issue` persistence and no classification.
-- **State sequence:** Exact pre-state → validation → exact pre-state.
-- **Side effect/no-side-effect:** No issue row, pending state, next-message
-  capture, or business effect; usage send only. Ordinary technical activity
-  metadata may follow the shared message lifecycle.
-- **Expected final state:** Exact pre-state/data.
-- **User-visible outcome:** `Opíšte problém v tej istej správe: /issue po
-  stlačení ...` and `Aktuálnu akciu bota som nezrušil.`
-- **Evidence/future test owner:** Proposed command validation tests plus active
-  FSM preservation suite.
-
-### 5. Unauthorized text
-
-- **Precondition:** Telegram actor is unauthorized or authorized but not an
-  administrator.
-- **Input/event:** `/issue <complete description>` or equivalent natural text.
-- **Expected canonical action/classification:** No executable issue action.
-- **State sequence:** Outer authorization or admin guard → fail closed.
-- **Side effect/no-side-effect:** No issue row, resolver/LLM call where the
-  admin guard can precede it, log lookup, FSM change, or business effect.
-- **Expected final state:** No issue-owned state; existing unauthorized flow
-  only.
-- **User-visible outcome:** Existing access response/policy; no issue ID.
-- **Evidence/future test owner:** `tests/test_access_request_flow.py`,
-  `tests/test_tenant_safety.py`, and new admin issue tests against
-  `TelegramUserAuthorizationMiddleware`/`is_admin_telegram_user`.
-
-### 6. Unauthorized voice
-
-- **Precondition:** Actor is not generally authorized.
-- **Input/event:** Voice containing an issue observation.
-- **Expected canonical action/classification:** None.
-- **State sequence:** Outer authorization → fail closed before STT.
-- **Side effect/no-side-effect:** No STT, issue resolver, persistence, log
-  lookup, or FSM/business effect.
-- **Expected final state:** Unchanged.
-- **User-visible outcome:** Existing access response/policy.
-- **Evidence/future test owner:** `tests/test_tenant_safety.py` unauthorized
-  before LLM/business; new voice authorization test.
-
-For a generally authorized non-admin actor, STT may be required before semantic
-issue intent is knowable. A separate test must prove the explicit post-STT
-admin guard runs immediately and prevents issue resolver execution,
-persistence, log access, and maintenance activity. This is the approved Stage 1
-boundary.
-
-### 7. Ambiguous normal business text
-
-- **Precondition:** Authorized admin is idle or in an FSM expecting free text.
-- **Input/event:** `Chyba v názve zákazníka Tech Company` without an explicit
-  request to record a runtime observation.
-- **Expected canonical action/classification:** Existing business/state owner,
-  clarification, or `unknown`; not `report_runtime_issue`.
-- **State sequence:** Existing routing/state sequence only.
-- **Side effect/no-side-effect:** No issue row unless the administrator sends a
-  later complete explicit report; no write default.
-- **Expected final state:** Existing owner’s state.
-- **User-visible outcome:** Existing business clarification/response.
-- **Evidence/future test owner:** Semantic boundary tests adjacent to
-  `semantic_action_resolver.py`, invoice top-level tests, and active FSM tests.
-
-### 8. Capability question
-
-- **Precondition:** Authorized administrator, any safe state.
-- **Input/event:** `Vieš nahlásiť chybu?`
-- **Expected canonical action/classification:** Product Truth/InfoHelp question.
-- **State sequence:** Existing informational route → same/owned state.
-- **Side effect/no-side-effect:** No issue row or maintenance action.
-- **Expected final state:** Existing state preserved.
-- **User-visible outcome:** Current truth says the capability is unavailable
-  until implemented; target truth explains `/issue` without executing it.
-- **Evidence/future test owner:** Product Truth/InfoHelp evals and top-level
-  semantic negative tests.
-
-### 9. Issue persistence failure
-
-- **Precondition:** Authorized administrator; issue-store transaction fails.
-- **Input/event:** Complete valid `/issue ...`.
-- **Expected canonical action/classification:** Action recognized; persistence
-  result failed, no classification.
-- **State sequence:** Pre-state → capture attempt → transaction rollback →
-  identical pre-state.
-- **Side effect/no-side-effect:** No partial issue or false stored status; no
-  business/FSM mutation. Error response send is allowed.
-- **Expected final state:** Exact protected pre-state/data; only ordinary
-  authorized technical activity metadata may update.
-- **User-visible outcome:** Truthful “problem could not be stored; retry later,”
-  with no issue ID.
-- **Evidence/future test owner:** Proposed `RuntimeIssueService` transaction
-  failure test and active-FSM failure-preservation test.
-
-### 10. Deduplicated Telegram delivery
-
-- **Precondition:** First delivery stored as `IR-1`; Telegram redelivers the
-  same trusted update/message.
-- **Input/event:** Identical delivery identifiers and source.
-- **Expected canonical action/classification:** Same issue action, idempotent
-  duplicate.
-- **State sequence:** Pre-state → dedup lookup/unique insert conflict → same
-  pre-state.
-- **Side effect/no-side-effect:** No second row and no status reset; bounded
-  acknowledgement may repeat with `IR-1`.
-- **Expected final state:** Pre-state unchanged.
-- **User-visible outcome:** Same truthful issue ID, no “stored another issue”
-  claim.
-- **Evidence/future test owner:** Proposed unique-key service test; adjacent
-  idempotency patterns in `tests/test_archive_job_service.py` and
-  `tests/test_customization_request_admin.py`.
-
-### 11. Workspace isolation
-
-- **Precondition:** Admin is a member of `W1`, not `W2`; description says
-  `workspace_id=W2`.
-- **Input/event:** `/issue workspace_id=W2, tlačidlo nefunguje`.
-- **Expected canonical action/classification:** `report_runtime_issue` only for
-  trusted `W1` context; untrusted field remains observation text or is redacted,
-  never authority.
-- **State sequence:** Read-only trusted resolution → capture in `W1`.
-- **Side effect/no-side-effect:** At most one `W1` issue; no `W2` lookup/write or
-  data disclosure.
-- **Expected final state:** Existing state unchanged.
-- **User-visible outcome:** Generic stored acknowledgement without exposing
-  workspace internals.
-- **Evidence/future test owner:** `tests/test_workspace_context.py`,
-  `tests/test_tenant_safety.py`, and proposed issue-service scope tests.
-
-### 12. No active workspace
-
-- **Precondition:** Authorized administrator has no resolvable active workspace;
-  Telegram identifiers and actor identity are trusted.
-- **Input/event:** `/issue Po uložení sa nezobrazilo potvrdenie.`
-- **Expected canonical action/classification:** `report_runtime_issue`;
-  classification unset.
-- **State sequence:** Trusted read-only workspace resolution returns none →
-  capture → original business state.
-- **Side effect/no-side-effect:** One issue row with `workspace_id=null` and
-  `workspace_resolution_reason=no_active_workspace`; no workspace switch,
-  guessed workspace, or lost report.
-- **Expected final state:** Protected business state/data unchanged.
-- **User-visible outcome:** Truthful Slovak stored acknowledgement without a
-  claim that a workspace was resolved.
-- **Evidence/future test owner:** New issue-service tests adjacent to
-  `tests/test_workspace_context.py`.
-
-### 13. Additive schema compatibility
-
-- **Precondition:** Dedicated Stage 1 runtime-issue table exists with all
-  required owned columns and one unknown future optional column; existing
-  business tables contain unchanged data.
-- **Input/event:** Store and read a valid issue using the Stage 1 service.
-- **Expected canonical action/classification:** Normal Stage 1 intake/read;
-  classification unset.
-- **State sequence:** Required-column/schema-version validation → explicit
-  named-column insert/read → success.
-- **Side effect/no-side-effect:** Only the dedicated issue row changes. No
-  business-table write, rebuild, data copy, constraint replacement, or
-  identifier change. The extra optional column alone does not fail the reader.
-- **Expected final state:** Existing business rows and schema remain unchanged.
-- **User-visible outcome:** Truthful stored acknowledgement.
-- **Evidence/future test owner:** New schema/service tests against
-  `bot/services/db.py` conventions. Companion negative tests prove a missing
-  required column or incompatible type/constraint fails safely or requires an
-  approved additive migration; no automatic DROP/rebuild.
-
-### 14. Secret redaction
-
-- **Precondition:** Admin accidentally includes a token-like value.
-- **Input/event:** `/issue API zlyhalo, token=...`.
-- **Expected canonical action/classification:** Action may be captured only
-  after approved sanitizer treatment; intake does not classify cause.
-- **State sequence:** Pre-state → redaction/validation → capture or safe reject
-  → pre-state.
-- **Side effect/no-side-effect:** Secret value never enters the canonical
-  description, title, Stage 1 structured logs, read-only retrieval/export, or
-  acknowledgement. If safe redaction cannot be guaranteed, no issue row.
-- **Expected final state:** Unchanged.
-- **User-visible outcome:** Stored acknowledgement with no echo of the secret,
-  or truthful resubmission request with no stored claim.
-- **Evidence/future test owner:** New Stage 1 sanitizer, persistence, response,
-  and optional read-only retrieval/export tests.
-
-### 15. Existing business callback invariants
-
-- **Precondition:** A current invoice/contact/follow-up callback is valid,
-  stale, wrong-state, duplicate, legacy, or unauthorized.
-- **Input/event:** Existing callback delivery, with or without a prior issue
-  report describing a callback problem.
-- **Expected canonical action/classification:** Existing callback owner; never
-  `report_runtime_issue` from callback data.
-- **State sequence:** Existing callback state/context/expiry contract.
-- **Side effect/no-side-effect:** Exactly the current acknowledgement and
-  bounded business effect; stale/wrong/unauthorized fail closed. An issue report
-  never executes or replays the callback.
-- **Expected final state:** Current callback contract’s state/keyboard.
-- **User-visible outcome:** Current callback response; no issue acknowledgement
-  unless a separate explicit issue message was sent.
-- **Evidence/future test owner:** `tests/test_decision_callbacks.py` and
-  `tests/test_invoice_followup_handler.py` full adjacent regression.
-
-## B. Downstream Stage 2 diagnosis policy scenarios
-
-All scenarios in sections B–D are downstream
-`RUNTIME_ISSUE_AUTOREPAIR_V1` design. They are not normative or required for
-Stage 1 implementation, handoff, or Conversation Acceptance Proof.
-
-### B1. Claim lease and interrupted run
-
-- **Precondition:** `IR-1` is `new`; run `R1` holds the global run lease,
-  passes the kill switch, atomically claims the issue, and then stops before
-  external work is recorded.
-- **Input/event:** Issue and global leases expire; run `R2` requests the global
-  lease and then an issue claim.
-- **Expected canonical action/classification:** Maintenance claim recovery; no
-  diagnosis yet.
-- **State sequence:** `new -> claimed(R1) -> lease expired ->
-  new/audited reclaim -> claimed(R2)`.
-- **Side effect/no-side-effect:** One canonical issue; new claim token and
-  incremented attempt; stale `R1` result rejected. No code/Git/deploy effect.
-- **Expected final state:** `claimed(R2)` or `insufficient_evidence` after
-  approved retry cap.
-- **User-visible outcome:** No duplicate diagnosis notification; later result
-  only.
-- **Evidence/future test owner:** Proposed maintenance service tests modeled on
-  `tests/test_archive_job_service.py` active lease/expiry/reclaim and
-  `tests/test_archive_worker.py`.
-
-If the kill switch activates or the global lease is lost at any mutation
-boundary, the run stops before the next commit/merge/deploy operation. It may
-not continue merely because the per-issue claim is still live.
-
-### B2. Insufficient evidence
-
-- **Precondition:** Issue is claimed; build SHA or correlating event is missing
-  and deterministic reproduction fails.
-- **Input/event:** Daily diagnosis reaches the evidence gate.
-- **Expected canonical action/classification:** `insufficient_evidence`.
-- **State sequence:** `new -> claimed -> insufficient_evidence`.
-- **Side effect/no-side-effect:** Result/evidence metadata and notification
-  only; no patch, branch, commit, merge, or deploy.
-- **Expected final state:** `insufficient_evidence`, lease released.
-- **User-visible outcome:** Concise missing-evidence explanation and explicit
-  “code and production were not changed.”
-- **Evidence/future test owner:** Result transition/outbox tests and policy
-  classification fixtures.
-
-### B3. External failure
-
-- **Precondition:** Claimed issue correlates with bounded provider status/error
-  evidence; current bot handled it according to current contract.
-- **Input/event:** Diagnosis proves a provider/network failure.
-- **Expected canonical action/classification:** `external_failure`.
-- **State sequence:** `new -> claimed -> external_failure`.
-- **Side effect/no-side-effect:** Store diagnosis and enqueue result; no
-  speculative product patch/deploy.
-- **Expected final state:** `external_failure`.
-- **User-visible outcome:** External cause is stated only with evidence and
-  code/production unchanged.
-- **Evidence/future test owner:** Classification schema/outbox tests; future
-  approved sanitized integration evidence owner.
-
-### B4. Feature request is not a confirmed bug
-
-- **Precondition:** Report says `/issue pridajte automatické mesačné faktúry`;
-  Product Truth does not support that capability.
-- **Input/event:** Daily classification compares report with current truth.
-- **Expected canonical action/classification:** Intake action was valid;
-  maintenance classification `feature_request`.
-- **State sequence:** `new -> claimed -> feature_request`.
-- **Side effect/no-side-effect:** No repair branch, commit, merge, deploy, or
-  Product Truth edit; bounded handoff suggestion only.
-- **Expected final state:** `feature_request`.
-- **User-visible outcome:** Truthfully says it is a feature request, not a
-  confirmed defect, and code/production were not changed.
-- **Evidence/future test owner:** Product Truth comparison fixtures and result
-  transition/notification tests.
-
-### B5. Complex/high-risk defect
-
-- **Precondition:** Evidence suggests an invoice-tax calculation or workspace
-  authorization defect requiring architecture or data change.
-- **Input/event:** Daily policy evaluation hits forbidden scope.
-- **Expected canonical action/classification:**
-  `complex_or_high_risk_defect`.
-- **State sequence:** `new -> claimed -> blocked_high_risk`.
-- **Side effect/no-side-effect:** Sanitized evidence, owner/test list, and stop
-  reason only; no patch, speculative branch, commit, merge, deploy, migration,
-  or data repair.
-- **Expected final state:** `blocked_high_risk`.
-- **User-visible outcome:** Concise blocked report, required separate proof or
-  review, and explicit no code/production change.
-- **Evidence/future test owner:** Forbidden-scope policy fixtures and transition
-  tests.
-
-### B6. Diagnostic logging only
-
-- **Precondition:** The symptom cannot be causally resolved, but a bounded
-  structured diagnostic gap is identified; evidence is insufficient to prove
-  that adding an event would repair the reported behavior.
-- **Input/event:** Daily diagnosis completes.
-- **Expected canonical action/classification:** `insufficient_evidence`, with a
-  diagnostic recommendation; not a confirmed repair.
-- **State sequence:** `new -> claimed -> insufficient_evidence`.
-- **Side effect/no-side-effect:** Store bounded recommendation and notification
-  only. No logging patch, branch, commit, merge, or deploy under insufficient
-  root-cause proof.
-- **Expected final state:** `insufficient_evidence`.
-- **User-visible outcome:** Diagnosis limitation and explicit statement that
-  neither behavior nor production was changed.
-- **Evidence/future test owner:** Classification-policy fixtures; a separately
-  proven missing structured event can be evaluated later under the low-risk
-  allowlist with its own regression test.
-
-## C. Downstream Stage 2 activation-gated repair and deployment policy scenarios
-
-The following scenarios describe the approved product target. Automatic
-commit/merge/deploy is unavailable until the narrow canonical-contract
-amendment, public Stage 2 owners, global lease, kill switch, trusted SHA,
-retryable outbox, and private operational proof are implemented and approved.
-
-### C1. Allowed low-risk repair
-
-- **Precondition:** Claimed issue proves a missing callback acknowledgement in
-  an existing owner at an exact deployed SHA; current callback contract and a
-  failing regression test establish the defect; no forbidden scope applies.
-- **Input/event:** Approved repair workflow evaluates the candidate.
-- **Expected canonical action/classification:**
-  `confirmed_low_risk_defect`.
-- **State sequence:** `new -> claimed -> repair_validating ->
-  repair_ready_to_deploy`; after activated bounded authority, controlled
-  deployment, and every verification, `fixed_deployed`.
-- **Side effect/no-side-effect:** One minimal marked repair branch/commit and
-  tests. Before activation, merge/deploy requires the current human approval.
-  After activation, only an allowlisted fully proven `[AUTOREPAIR]` change may
-  automatically merge/deploy.
-- **Expected final state:** Before activation, `repair_ready_to_deploy` while
-  awaiting human approval; after activation, `fixed_deployed` only after exact
-  production proof.
-- **User-visible outcome:** Before deploy, “candidate ready for review,” not
-  fixed. After proof, exact commit/deployed SHA and smoke result.
-- **Evidence/future test owner:** `tests/test_decision_callbacks.py`, callback
-  owner test, broader regression, service transition, and notification tests.
-
-### C2. Failed test gate
-
-- **Precondition:** Proven allowlisted candidate and minimal patch; an adjacent
-  callback/FSM/workspace or broader test fails.
-- **Input/event:** Required test phase.
-- **Expected canonical action/classification:**
-  `confirmed_low_risk_defect`, outcome `repair_failed_no_deploy`.
-- **State sequence:** `claimed -> repair_validating ->
-  repair_failed_no_deploy`.
-- **Side effect/no-side-effect:** No successful-fix commit claim, merge, or
-  deploy; no unrelated test repair. Any uncommitted candidate is discarded by
-  the isolated workflow according to approved safe cleanup.
-- **Expected final state:** `repair_failed_no_deploy`.
-- **User-visible outcome:** Test gate failed; code was not deployed and
-  production was unchanged.
-- **Evidence/future test owner:** Maintenance orchestration gate tests with
-  simulated focused/adjacent/broad failure.
-
-### C3. Failed production smoke and rollback
-
-- **Precondition:** Candidate passed all pre-deploy and approval gates; rollback
-  reference exists; controlled deploy completes but issue-specific smoke fails.
-- **Input/event:** Production smoke failure.
-- **Expected canonical action/classification:**
-  `deployment_failed_rolled_back` if rollback verification passes, otherwise
-  `deployment_failed_rollback_risk`.
-- **State sequence:** `repair_ready_to_deploy -> deploy verification failed ->
-  rollback -> deployment_failed_rolled_back` or
-  `deployment_failed_rollback_risk`.
-- **Side effect/no-side-effect:** Execute only the approved private rollback;
-  stop all further issue processing on unresolved risk.
-- **Expected final state:** Verified rollback status or frozen rollback-risk
-  status; never `fixed_deployed`.
-- **User-visible outcome:** Truthful failed-deploy and rollback result, exact
-  verified SHA/reference where safe, and no success claim.
-- **Evidence/future test owner:** Maintenance deployment state-machine tests;
-  private production proof required before deployment.
-
-### C4. Truthful fixed/deployed notification
-
-- **Precondition:** `IR-1` has exact repair commit, approved merge, exact
-  production SHA, health, issue-specific smoke, error scan, and final SHA
-  verification.
-- **Input/event:** Result transaction enqueues and worker sends notification.
-- **Expected canonical action/classification:**
-  `confirmed_low_risk_defect`, status `fixed_deployed`.
-- **State sequence:** `repair_ready_to_deploy -> fixed_deployed`; outbox
-  `pending -> sending -> sent`.
-- **Side effect/no-side-effect:** One idempotent notification; no second deploy
-  or diagnosis on delivery retry.
-- **Expected final state:** Issue `fixed_deployed`, outbox `sent`.
-- **User-visible outcome:** Exact issue ID, commit/deployed SHA, tests/smoke
-  result, and bounded repair summary; no guarantee beyond proven result.
-- **Evidence/future test owner:** Result validation, trusted-SHA verification,
-  outbox idempotency/retry, and production acceptance proof.
-
-### C5. Truthful complex/blocked notification
-
-- **Precondition:** Issue is `blocked_high_risk`.
-- **Input/event:** Outbox worker sends terminal result.
-- **Expected canonical action/classification:**
-  `complex_or_high_risk_defect`.
-- **State sequence:** Issue remains `blocked_high_risk`; outbox
-  `pending -> sending -> sent`.
-- **Side effect/no-side-effect:** Notification only; no repair branch, commit,
-  merge, deploy, or new business action.
-- **Expected final state:** Blocked status and delivered notification.
-- **User-visible outcome:** Stop reason, relevant owner/review needed, and
-  explicit “code and production were not changed.”
-- **Evidence/future test owner:** Result template and outbox transition tests.
-
-## D. Downstream Stage 2 motivating examples
-
-### D1. Paid-invoice callback motivating example
-
-- **Precondition:** Administrator reports that after `Uhradená`, the spinner
-  continued and terminal message was absent; exact event correlates to a
-  proven successful mark-paid mutation but missing callback acknowledgement or
-  terminal response.
-- **Input/event:** Claimed issue diagnosis at the exact deployed SHA.
-- **Expected canonical action/classification:** Intake was
-  `report_runtime_issue`; maintenance may classify
-  `confirmed_low_risk_defect` only after callback evidence proves the precise
-  missing acknowledgement/message mechanism.
-- **State sequence:** `new -> claimed -> repair_validating`; then the same gate
-  outcomes as scenarios C1–C3.
-- **Side effect/no-side-effect:** A candidate may alter only the existing
-  acknowledgement/terminal UI owner and add regression coverage. It must not
-  mark the invoice paid again, change settlement truth, replay the callback,
-  change amounts, or redesign callback architecture.
-- **Expected final state:** Existing invoice/callback state contract; issue
-  status reflects actual gate outcome.
-- **User-visible outcome:** Diagnosis/fix result never claims a second payment
-  mutation; deployment success only with exact SHA and smoke.
-- **Evidence/future test owner:** `bot/handlers/decision_callbacks.py`,
-  `bot/handlers/invoice_followup.py`,
-  `tests/test_decision_callbacks.py`, and
-  `tests/test_invoice_followup_handler.py`.
-
-If evidence instead implicates bank settlement truth, data repair, callback
-architecture, or ambiguous Product Truth, classify
-`complex_or_high_risk_defect` and stop without a patch.
-
-### D2. Contact resolver / analytics motivating example
-
-- **Precondition:** Analytics for invoices issued to “Тех Компані” misses
-  stored contact “Tech Company s. r. o.”; current voice/contact creation already
-  proves canonical exact/normalized/alias/legal-suffix/bounded-fuzzy resolution;
-  datasets expose trusted `contact_id`.
-- **Input/event:** Claimed issue diagnosis and deterministic analytics
-  reproduction in workspace `W1`.
-- **Expected canonical action/classification:** Intake was
-  `report_runtime_issue`; `confirmed_low_risk_defect` only if evidence proves
-  the analytics path alone failed to reuse the approved resolver and identity
-  filter.
-- **State sequence:** `new -> claimed -> repair_validating`; further transition
-  depends on all test/approval/deploy gates.
-- **Side effect/no-side-effect:** Candidate reuses the existing resolver,
-  preserves ambiguity/no-result behavior, and filters the read-only analytics
-  dataset by trusted `contact_id`. No contact resolver redesign, contact write,
-  workspace widening, raw-name write, invoice edit, or architecture change.
-- **Expected final state:** Analytics remains read only; issue status reflects
-  actual validation/deployment result.
-- **User-visible outcome:** A fixed claim only after focused contact/analytics,
-  adjacent workspace/voice, broad tests, and exact production smoke pass.
-- **Evidence/future test owner:**
-  `bot/services/contact_service.py::resolve_contact_lookup`,
-  workspace counterpart, invoice analytics dataset/planner services,
-  `tests/test_contact_lookup_normalization.py`,
-  `tests/test_workspace_contact_service.py`, dataset tests, and planner tests.
-
-If resolver reuse requires changing its ambiguity semantics, workspace
-identity, action architecture, or Product Truth, classify
-`complex_or_high_risk_defect` and stop with no branch/commit/deploy.
-
-## Stage 1 proof boundary
-
-Only scenarios A1–A15 form the mandatory Stage 1 proof set. They cover intake,
-routing, dedicated persistence, deduplication, trusted context, truthful
-acknowledgement, negative space, additive compatibility, secret handling, and
-unchanged business journeys. If Stage 1 implements the optional bounded
-read-only retrieval/export boundary, its focused tests must prove that the read
-does not claim, lease, change status, create a run, or generate a claimed
-manifest.
-
-Sections B–D remain downstream Stage 2 policy material only. They must not be
-copied into a `RUNTIME_ISSUE_INTAKE_V1` implementation prompt, handoff,
-mandatory test plan, or Conversation Acceptance Proof.
-
-## Cross-scenario proof rules
-
-- The issue description never grants repair, merge, deploy, workspace, actor,
-  SHA, FSM, or credential authority.
-- A “stored” acknowledgement requires a committed canonical row or recognized
-  duplicate.
-- A “fixed/deployed” notification requires exact production SHA plus all
-  pre-deploy and post-deploy gates.
-- Every active-FSM scenario proves protected state and business data are
-  unchanged and separately verifies that any technical activity-metadata
-  change is only the ordinary authorized lifecycle update.
-- Every non-code classification asserts no repair branch, commit, merge, or
-  production change.
-- Every notification test proves retry does not repeat diagnosis, repair, or
-  deploy.
-- Private operations evidence is supplied separately only at an authorized
-  implementation/deployment phase and is never copied into public fixtures.
+Status: `approved_target_contract`
+
+These scenarios cover the OfficeFlow-intake / GitHub-workshop bridge. Stage 1 intake acceptance remains owned by its completed Conversation Acceptance Proof.
+
+## 1. No active FSM
+
+- Stage 1 source issue has `active_fsm_state=null`.
+- Handoff manifest returns `fsm_context_status=not_active`.
+- Issue is received, acknowledged, diagnosed, and may be decomposed normally.
+- No missing-FSM error is claimed.
+
+## 2. FSM read failure
+
+- Technical read fails while preparing trusted context/evidence.
+- Interface returns `fsm_context_status=read_failed` rather than `not_active`.
+- Handoff may continue with an explicit evidence gap.
+- Worker does not claim that no FSM was active.
+
+## 3. Durable handoff before acknowledgment
+
+- `take-next` leases and returns `IR-1`.
+- Worker writes queue/log receipt, commits, and pushes workshop branch.
+- `ack` verifies handoff/digest/branch/commit and records acknowledgment.
+- Future `take-next` does not return `IR-1` as a new issue.
+
+## 4. Failure before workshop push
+
+- `take-next` returns `IR-1`.
+- Worker crashes before durable push.
+- No acknowledgment exists.
+- After lease expiry, `IR-1` may be returned again.
+- No issue is lost.
+
+## 5. Push succeeds, acknowledgment temporarily fails
+
+- Durable workshop receipt exists with exact commit SHA.
+- `ack` fails due to temporary server/network error.
+- Worker retries or reconciles acknowledgment using the same handoff and receipt facts.
+- It does not append a duplicate source issue.
+
+## 6. One issue decomposes into three findings
+
+- Source observation is received as one issue.
+- Worker inspects bounded logs, code, Product Truth, tests, and Git history.
+- Evidence proves three independent work items.
+- Queue contains `F01`, `F02`, `F03` with independent statuses and log references.
+- Source issue becomes `partially_resolved` when one is resolved, one blocked, and one queued.
+
+## 7. No premature decomposition
+
+- Intake wording appears to mention three symptoms.
+- Evidence shows one shared root cause.
+- Worker creates one finding, not three.
+- Log explains the causal result.
+
+## 8. No new production issue, old repair remains
+
+- `take-next` returns an empty set.
+- Workshop queue contains an eligible old `queued_for_repair` finding.
+- Worker continues that finding.
+- Run does not report “no work”.
+
+## 9. STT evidence available
+
+- Trusted issue IDs/time window correlate to a stored STT transcript or STT error.
+- Evidence wrapper returns a sanitized bounded fact.
+- Worker may use it in diagnosis and cite only the bounded summary.
+
+## 10. STT evidence unavailable
+
+- No retained STT fact exists.
+- Evidence wrapper reports unavailable.
+- Worker does not reconstruct or invent the transcript.
+- Finding may become `needs_more_diagnostics` or rely on other proof.
+
+## 11. Docker or network disturbance
+
+- Bounded evidence proves a container restart/unhealthy state or provider/network timeout at the relevant time.
+- Worker classifies `external_failure` or a separate local error-handling defect only when causal proof exists.
+- It does not patch application code merely because “internet jumped”.
+
+## 12. Proven low-risk callback/keyboard defect
+
+- Deterministic reproduction and failing regression prove an allowlisted local defect.
+- Worker creates an isolated branch, minimal fix, required tests, commit, push, and Draft PR.
+- Finding becomes `patch_ready_for_review`.
+- Telegram states production was not changed.
+
+## 13. Top-level or FSM architecture requirement
+
+- Diagnosis proves material top-level/FSM architecture work is required.
+- Finding becomes `requires_architecture_design`.
+- No speculative repair branch, commit, or PR is created.
+- Log identifies relevant owners/contracts/tests.
+
+## 14. Verified stale contact/company data
+
+- Authoritative registry evidence proves stored production data is stale.
+- Finding becomes `requires_authorized_data_correction`.
+- Worker records verification and required next action.
+- It does not mutate production data under V1.
+
+## 15. Expected behavior
+
+- Current Product Truth and deterministic behavior prove the observation is intended.
+- Finding becomes `resolved_expected_behavior`.
+- No code change.
+- Slovak notification truthfully explains the result without calling it a bug.
+
+## 16. Insufficient evidence
+
+- Logs/reproduction cannot establish root cause.
+- Finding becomes `insufficient_evidence` or `needs_more_diagnostics` with exact missing evidence.
+- No patch is created.
+
+## 17. Cross-workspace evidence request
+
+- Requested scope conflicts with trusted issue workspace.
+- Evidence interface rejects it with no data disclosure.
+- Worker records a bounded policy failure, not a diagnosis.
+
+## 18. Workshop secret scan
+
+- Returned observation/evidence contains a token-like or private-path value.
+- Sanitizer redacts it or rejects the item.
+- Secret does not enter queue, log, commit, PR, or Telegram.
+
+## 19. Repair limit
+
+- Two findings are eligible for low-risk repair in the same run.
+- Worker repairs at most one.
+- The other remains `queued_for_repair` for a later run.
+
+## 20. Local commit without push
+
+- Repair is committed locally but push fails.
+- Finding does not become `patch_ready_for_review`.
+- Log records exact blocker and preservation state.
+
+## 21. Branch pushed, Draft PR failed
+
+- Exact repair branch and commit exist remotely.
+- PR creation fails.
+- Finding becomes `branch_pushed_pr_blocked`.
+- Notification does not claim review is ready.
+
+## 22. Notification retry
+
+- Result is already recorded in workshop state.
+- First Telegram delivery attempt fails.
+- Bot-owned delivery retries the same idempotent notification.
+- Diagnosis and repair do not rerun.
+
+## 23. Business Slovak decomposition message
+
+For a source issue with three findings, the notification contains:
+
+- source issue ID;
+- count of separate work items;
+- compact truthful result for each;
+- explicit code/production truth where relevant;
+- no raw logs or private technical details.
+
+## 24. Direct SQL prohibition
+
+- Worker attempts or is instructed to run arbitrary SQLite commands.
+- Private skill and CLI contract require it to stop.
+- Only `take-next`, `ack`, bounded evidence, and notification interfaces are allowed.
+
+## 25. Existing Stage 1 behavior remains unchanged
+
+- `/issue` still stores one sanitized observation and preserves the active business state/data.
+- Stage 2 adds no public top-level action, issue FSM, callback, or next-message capture.
+- Stage 2 cannot replay, undo, or execute the reported business action.
