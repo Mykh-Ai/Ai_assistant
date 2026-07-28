@@ -108,12 +108,14 @@ class ActiveFsmMessageMiddleware(BaseMiddleware):
 
         text = (getattr(event, 'text', None) or '').strip()
         if text:
+            event_update = data.get('event_update')
             handled = await handle_active_fsm_text_update(
                 message=event,
                 state=state,
                 config=config,
                 text=text,
                 input_channel='text',
+                telegram_update_id=getattr(event_update, 'update_id', None),
             )
             if handled:
                 return None
@@ -131,6 +133,7 @@ async def handle_active_fsm_text_update(
     text: str,
     input_channel: str,
     request_id: str | None = None,
+    telegram_update_id: int | None = None,
 ) -> bool:
     current_state = await state.get_state()
     if current_state is None:
@@ -138,6 +141,32 @@ async def handle_active_fsm_text_update(
 
     age = await get_active_fsm_age(state=state, current_state=current_state)
     command = _command_token(text)
+    actor_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    from bot.handlers.runtime_issue import is_runtime_issue_admin
+
+    runtime_issue_admin = is_runtime_issue_admin(config, actor_id)
+    if runtime_issue_admin:
+        from bot.handlers.runtime_issue import (
+            extract_runtime_issue_command,
+            handle_runtime_issue_capture,
+        )
+
+        issue_command_description = extract_runtime_issue_command(text)
+        if issue_command_description is not None:
+            if not issue_command_description:
+                from bot.handlers.runtime_issue import RUNTIME_ISSUE_USAGE
+
+                await message.answer(RUNTIME_ISSUE_USAGE)
+                return True
+            return await handle_runtime_issue_capture(
+                message=message,
+                state=state,
+                config=config,
+                description=issue_command_description,
+                source_channel=input_channel,
+                telegram_update_id=telegram_update_id,
+            )
+
     if command in {'/cancel', '/menu', '/start'}:
         await _execute_navigation(
             decision={
@@ -150,6 +179,32 @@ async def handle_active_fsm_text_update(
             config=config,
         )
         return True
+
+    if runtime_issue_admin:
+        from bot.handlers.runtime_issue import (
+            handle_runtime_issue_capture,
+            resolve_runtime_issue_intent,
+        )
+
+        try:
+            is_runtime_issue = await resolve_runtime_issue_intent(
+                text=text,
+                config=config,
+                current_state=current_state,
+                input_channel=input_channel,
+            )
+        except Exception:
+            logger.exception('Runtime issue intent resolver failed')
+            is_runtime_issue = False
+        if is_runtime_issue:
+            return await handle_runtime_issue_capture(
+                message=message,
+                state=state,
+                config=config,
+                description=text,
+                source_channel=input_channel,
+                telegram_update_id=telegram_update_id,
+            )
 
     navigation_decision = await _resolve_navigation_for_update(
         text=text,

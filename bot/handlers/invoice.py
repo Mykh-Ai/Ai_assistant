@@ -12,7 +12,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import FSInputFile, Message
+from aiogram.types import FSInputFile, Message, Update
 
 from bot.config import Config
 from bot.handlers.accounting_document_intake import cmd_accounting_document_intake
@@ -22,6 +22,11 @@ from bot.handlers.business_profiles import start_switch_business_profile
 from bot.handlers.delete_user_database import DELETE_USER_DATABASE_INTENT, start_delete_user_database_flow
 from bot.handlers.onboarding import cmd_moj_profil, cmd_upravit_profil
 from bot.handlers.start import cmd_menu, cmd_start
+from bot.handlers.runtime_issue import (
+    RUNTIME_ISSUE_ACTION,
+    handle_runtime_issue_capture,
+    is_runtime_issue_admin,
+)
 from bot.handlers.work_time import (
     start_add_work_time_entry,
     start_close_work_day,
@@ -3436,40 +3441,47 @@ async def process_invoice_text(
     invoice_text: str,
     request_id: str | None = None,
     input_channel: str = 'text',
+    telegram_update_id: int | None = None,
 ) -> None:
     flow_request_id = request_id or str(uuid4())
     message_id = getattr(message, 'message_id', None)
     top_level_diagnostics: dict[str, object] = {}
 
+    actor_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    runtime_issue_allowed = is_runtime_issue_admin(config, actor_telegram_id)
+    allowed_actions = [
+        _START_INTENT,
+        _CREATE_INVOICE_INTENT,
+        _SHOW_EXISTING_INVOICE_INTENT,
+        _INVOICE_ANALYTICS_INTENT,
+        _ACCOUNTING_DOCUMENT_ANALYTICS_INTENT,
+        _SHOW_SUPPLIER_PROFILE_INTENT,
+        _SWITCH_BUSINESS_PROFILE_INTENT,
+        _EDIT_SUPPLIER_INTENT,
+        _ADD_CONTACT_INTENT,
+        _ADD_SERVICE_ALIAS_INTENT,
+        _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT,
+        _ADD_RECEIPT_INTENT,
+        _DELETE_USER_DATABASE_INTENT,
+        _OPEN_WORK_DAY_INTENT,
+        _CLOSE_WORK_DAY_INTENT,
+        _ADD_WORK_TIME_ENTRY_INTENT,
+        _GENERATE_WORK_TIME_REPORT_INTENT,
+        _DELETE_WORK_TIME_MONTH_INTENT,
+        _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT,
+        _SEND_INVOICE_INTENT,
+        _EDIT_EXISTING_INVOICE_INTENT,
+        _DELETE_EXISTING_INVOICE_INTENT,
+        _MARK_EXISTING_INVOICE_PAID_INTENT,
+        _EDIT_INVOICE_INTENT,
+    ]
+    if runtime_issue_allowed:
+        allowed_actions.append(RUNTIME_ISSUE_ACTION)
+    allowed_actions.append(_UNKNOWN_INVOICE_INTENT)
+
     top_level_intent = await resolve_semantic_action(
         context_name='top_level_action',
-        allowed_actions=[
-            _START_INTENT,
-            _CREATE_INVOICE_INTENT,
-            _SHOW_EXISTING_INVOICE_INTENT,
-            _INVOICE_ANALYTICS_INTENT,
-            _ACCOUNTING_DOCUMENT_ANALYTICS_INTENT,
-            _SHOW_SUPPLIER_PROFILE_INTENT,
-            _SWITCH_BUSINESS_PROFILE_INTENT,
-            _EDIT_SUPPLIER_INTENT,
-            _ADD_CONTACT_INTENT,
-            _ADD_SERVICE_ALIAS_INTENT,
-            _SHOW_RECENT_ACCOUNTING_DOCUMENTS_INTENT,
-            _ADD_RECEIPT_INTENT,
-            _DELETE_USER_DATABASE_INTENT,
-            _OPEN_WORK_DAY_INTENT,
-            _CLOSE_WORK_DAY_INTENT,
-            _ADD_WORK_TIME_ENTRY_INTENT,
-            _GENERATE_WORK_TIME_REPORT_INTENT,
-            _DELETE_WORK_TIME_MONTH_INTENT,
-            _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT,
-            _SEND_INVOICE_INTENT,
-            _EDIT_EXISTING_INVOICE_INTENT,
-            _DELETE_EXISTING_INVOICE_INTENT,
-            _MARK_EXISTING_INVOICE_PAID_INTENT,
-            _EDIT_INVOICE_INTENT,
-            _UNKNOWN_INVOICE_INTENT,
-        ],
+        allowed_actions=allowed_actions,
         user_input_text=invoice_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
@@ -3483,6 +3495,29 @@ async def process_invoice_text(
         },
         diagnostics=top_level_diagnostics,
         action_hints={
+            **(
+                {
+                    RUNTIME_ISSUE_ACTION: {
+                        'meaning': (
+                            'administrator explicitly asks to store one concrete observed bot/runtime '
+                            'problem as an issue; Python stores the observation only and does not '
+                            'diagnose, repair, replay, promise timing, or deploy anything'
+                        ),
+                        'positive_examples': [
+                            'Po uložení bločku zostala stará klávesnica; ulož to ako problém.',
+                            'Nahlás chybu: po potvrdení sa správa nezobrazila.',
+                        ],
+                        'not_this': [
+                            'capability or usage question about reporting problems',
+                            'feature or customization request',
+                            'ordinary invoice, contact, supplier profile, receipt, accounting document, or work-time action',
+                            'generic dissatisfaction or text merely containing bug, issue, error, or chyba',
+                        ],
+                    }
+                }
+                if runtime_issue_allowed
+                else {}
+            ),
             _START_INTENT: {
                 'meaning': (
                     'user wants to open, start, restart, or resume the main FakturaBot entry flow; '
@@ -3726,7 +3761,7 @@ async def process_invoice_text(
             {
                 'event': 'top_level_intent_resolved',
                 'request_id': flow_request_id,
-                'telegram_update_id': None,
+                'telegram_update_id': telegram_update_id,
                 'telegram_message_id': message_id,
                 'top_level_intent': top_level_intent,
                 'input_text': invoice_text,
@@ -3734,6 +3769,17 @@ async def process_invoice_text(
             ensure_ascii=False,
         )
     )
+    if top_level_intent == RUNTIME_ISSUE_ACTION:
+        await handle_runtime_issue_capture(
+            message=message,
+            state=state,
+            config=config,
+            description=invoice_text,
+            source_channel=input_channel,
+            telegram_update_id=telegram_update_id,
+        )
+        return
+
     if top_level_intent in {
         _UNKNOWN_INVOICE_INTENT,
         _SEND_INVOICE_INTENT,
@@ -6441,7 +6487,12 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
 
 
 @router.message(lambda message: bool((message.text or '').strip()) and not (message.text or '').startswith('/'))
-async def semantic_top_level_input(message: Message, state: FSMContext, config: Config) -> None:
+async def semantic_top_level_input(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    event_update: Update | None = None,
+) -> None:
     if await state.get_state() is not None:
         return
     await process_invoice_text(
@@ -6449,4 +6500,5 @@ async def semantic_top_level_input(message: Message, state: FSMContext, config: 
         state=state,
         config=config,
         invoice_text=message.text or '',
+        telegram_update_id=getattr(event_update, 'update_id', None),
     )

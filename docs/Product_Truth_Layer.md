@@ -747,3 +747,16 @@ Forbidden claims:
 - either official source is guaranteed real-time or always available.
 
 Limitations and forbidden claims: official source availability and freshness are external; source fields may be absent; email, IBAN, and contact person are normally manual; IČ DPH is not inferred; no commercial-registry scraping, automatic contact creation from idle attachments, email/IBAN/person discovery, background synchronization, foreign registry, or automatic invoice creation is supported. A shown registry preview is not a saved contact. Registry import never silently overwrites a same-name/different-IČO row.
+
+### Runtime issue intake - 2026-07-28
+
+`runtime_issue_intake` is `supported`, requires an administrator, and is available
+through `/issue`, bounded natural text, and bounded voice. It stores one sanitized
+observed problem with a stable issue ID. The same ephemeral capture owner is used
+from idle and from an existing business FSM, whose protected state and data remain
+unchanged.
+
+Forbidden claims: a stored report confirms a bug; performs diagnosis,
+classification, repair, maintenance, merge, deployment, restart, or rollback;
+promises whether or when a fix will happen; or authorizes Stage 2 autorepair.
+Automatic maintenance and autorepair remain unavailable.

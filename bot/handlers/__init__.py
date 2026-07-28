@@ -15,6 +15,7 @@ from .officeflow_attachment_router import router as officeflow_attachment_router
 from .onboarding import router as onboarding_router
 from .settings import router as settings_router
 from .state_control import router as state_control_router
+from .runtime_issue import router as runtime_issue_router
 from .supplier import router as supplier_router
 from .start import router as start_router
 from .voice import router as voice_router
@@ -23,6 +24,7 @@ routers: list[Router] = [
     access_admin_router,
     start_router,
     state_control_router,
+    runtime_issue_router,
     delete_user_database_router,
     business_profiles_router,
     voice_router,

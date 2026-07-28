@@ -8167,3 +8167,14 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 - No `storage/invoices` or `pdf_path` changes.
 - No `storage/contracts` changes.
 - No Google Drive sync, delete/edit/search, or broad document browser was implemented.
+# 2026-07-28 - Runtime Issue Intake V1
+
+- Implemented administrator-only `report_runtime_issue` through exact `/issue`,
+  bounded idle text/voice, and the shared active-FSM interrupt.
+- Added deterministic secret/path redaction, trusted Telegram/workspace/FSM
+  metadata collection, stable delivery deduplication, and an additive dedicated
+  SQLite `runtime_issues` table at schema version 1.
+- Kept active business state/data unchanged and added no issue FSM, confirmation,
+  callback, repair, maintenance, merge, deployment, or other Stage 2 behavior.
+- Synchronized Product Truth, InfoHelp and the canonical action registry. Runtime
+  proof and final test totals are recorded in the conversation acceptance proof.

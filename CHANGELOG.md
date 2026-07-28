@@ -44,6 +44,11 @@
 # CHANGELOG
 
 ## [Unreleased]
+- Added administrator-only Runtime Issue Intake V1 through `/issue`, bounded
+  text/voice, and an active-FSM-preserving ephemeral interrupt, with sanitized
+  deduplicated SQLite storage and truthful Slovak acknowledgements. This records
+  reports only; diagnosis, repair, maintenance, deployment and Stage 2 remain
+  unavailable.
 - Fixed canonical multi-workspace dry-run ownership validation for already migrated actors with multiple supplier profiles: persisted workspace ownership is now authoritative, while unknown workspaces and cross-workspace relations remain deployment blockers.
 
 - Added and deployed a disabled-by-default, workspace-pilot-gated official Slovak RPO lookup strategy inside the existing add_contact flow, including bounded candidate callbacks, typed missing DIČ and optional contact email/IBAN/person, additive nullable contact.iban migration, conflict-safe transactional merge, manual/PDF fallback, Product Truth/InfoHelp guidance, fake-only acceptance coverage, and a bounded live RPO provider smoke. Production code/schema are live; registry lookup remains disabled until explicit pilot workspace configuration.

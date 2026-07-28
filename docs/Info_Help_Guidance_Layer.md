@@ -903,3 +903,11 @@ InfoHelp must explain that exact normalized company names suppress unrelated wea
 RPO supplies identity/address data. Financial Administration DIČ/IČ DPH enrichment uses an audited official exact-IČO mapping but remains optional, disabled by default, and dependent on an API key plus parent RPO/pilot gates. Any unavailable, invalid, ambiguous, or missing DIČ result falls back to typed DIČ without losing the RPO draft. IČ DPH is accepted only when officially returned for the exact selected IČO and is never constructed from DIČ. No commercial scraping is used.
 
 InfoHelp must disclose that the official source can be unavailable or stale and may omit DIČ/IČ DPH; IČ DPH is never inferred. It must not claim commercial scraping, automatic discovery, automatic save, background synchronization, or a distinct top-level registry action.
+
+### Runtime issue intake guidance - 2026-07-28
+
+Questions such as `Vieš nahlásiť problém?` and `Ako nahlásim problém?` are
+informational and must not create a record. InfoHelp answers in Slovak that only an
+administrator can store one complete report using `/issue <opis>` or bounded
+text/voice. It must state that storage does not confirm, diagnose, repair, merge or
+deploy a bug, promise timing, or alter the active business action.
