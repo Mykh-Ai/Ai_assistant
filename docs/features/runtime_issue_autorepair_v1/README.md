@@ -5,16 +5,33 @@ Package IDs:
 - Stage 1: `RUNTIME_ISSUE_INTAKE_V1`
 - Stage 2: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
-Canonical action candidate: `report_runtime_issue`
+Canonical Stage 1 action: `report_runtime_issue`
 
 Package status:
 
 - Stage 1 Architecture Design Proof: `ready_for_handoff`
+- Stage 1 implementation handoff: available
+  (`06_IMPLEMENTATION_HANDOFF.md`)
+- Stage 1 implementation: not started
 - Stage 2: `planned`; activation blocked
 - Runtime behavior: not implemented
 
-This PR is a documentation revision only. It does not create an implementation
-handoff or implementation prompt for either stage.
+## Handoff status
+
+`06_IMPLEMENTATION_HANDOFF.md` now transfers the approved
+`RUNTIME_ISSUE_INTAKE_V1` design to a future implementation agent without
+delegating architecture choices.
+
+- The Stage 1 Architecture Design Proof verdict remains
+  `ready_for_handoff`.
+- Stage 1 implementation has not started.
+- The handoff is not merge, deployment, migration, server-write, or production
+  approval.
+- The handoff is not an implementation prompt.
+- Stage 2 remains `planned / activation-blocked` and is excluded from the
+  Stage 1 implementation.
+
+This documentation change does not modify runtime behavior.
 
 ## Purpose and staged model
 
@@ -105,7 +122,6 @@ The approved Stage 1 target truth is:
 - A multilingual phrase whitelist, free-form agent authority, automatic
   feature approval, or a general code-change mechanism.
 - Modification of current canonical registries, Product Truth, or InfoHelp.
-- `06_IMPLEMENTATION_HANDOFF.md`.
 - `docs/llm/Runtime_Autorepair_Agent_Contract.md`.
 
 ## Source-of-truth order
@@ -143,15 +159,18 @@ competing writable source of truth.
 - [05_ACCEPTANCE_SCENARIOS.md](05_ACCEPTANCE_SCENARIOS.md) — separate Stage 1
   mandatory acceptance and downstream Stage 2 policy scenarios that are not
   required for Stage 1 implementation or handoff.
+- [06_IMPLEMENTATION_HANDOFF.md](06_IMPLEMENTATION_HANDOFF.md) — complete
+  Stage 1 implementation handoff derived from the approved Architecture Design
+  Proof; no Stage 2 implementation authority.
 
 ## Approval and implementation gates
 
-Stage 1 is ready for a later implementation handoff, but this PR does not
-create that handoff. Before implementation, a separate approved task must
-translate the Stage 1 proof without allowing the implementation agent to
-redesign the action. That handoff must not include Stage 2 claim/lease,
+Stage 1 now has the approved implementation handoff in
+`06_IMPLEMENTATION_HANDOFF.md`. Stage 1 implementation has not started. The
+handoff transfers the approved proof without allowing the implementation
+agent to redesign the action, and it excludes Stage 2 claim/lease,
 claimed-manifest, maintenance-run, diagnosis/result, outbox, repair, merge,
-deployment, or rollback work.
+deployment, and rollback work.
 
 Stage 2 activation separately requires:
 
@@ -194,5 +213,6 @@ never enter this package.
 ## Deferred general contract
 
 The future general LLM/Work/Codex autorepair contract is intentionally not
-created here. This PR produces no implementation prompt and no runtime
-implementation handoff.
+created here. This PR produces no implementation prompt and no Stage 2 or
+general autorepair implementation handoff. The Stage 1 intake handoff is
+`06_IMPLEMENTATION_HANDOFF.md`.
