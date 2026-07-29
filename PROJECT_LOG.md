@@ -2,15 +2,15 @@
 
 ### Implementation
 - Added the dedicated additive `runtime_issue_handoffs` table with strict owned-schema validation, stable one-per-issue receipts, 60-minute atomic leases, safe expiry/redelivery, token rotation, verified acknowledgment, and no Stage 1 mutation.
-- Added bounded JSON-only `take-next`, stdin-only `ack`, recorded-evidence collection, and idempotent workshop queue/log bootstrap CLIs. Raw lease tokens are never persisted or accepted through argv; remote receipt verification uses a fixed branch-only fetch plus an ancestor check with `shell=False`.
-- Added fixed-window recorded STT/Docker/network/provider evidence from Docker stdout and stderr with exact labeled correlation, cross-tenant rejection, unavailable/source-error truth, combined input/item/excerpt caps, secret/path redaction, and no active probe.
-- Review amendment: remote verification now runs outside `BEGIN IMMEDIATE`; acknowledgment reopens a write transaction and atomically revalidates the live lease before its conditional update. Receipt commits remain valid when the workshop branch advances after durable storage.
+- Added bounded JSON-only `take-next`, stdin-only `ack`, recorded-evidence collection, and idempotent workshop queue/log bootstrap CLIs. Raw lease tokens are never persisted or accepted through argv; remote receipt verification clones the fixed workshop branch into an automatically cleaned isolated temporary bare repository and performs the ancestor check there without mutating the project repository.
+- Added fixed-window recorded STT/Docker/network/provider evidence from Docker stdout and stderr with exact labeled correlation, conflicting-identity rejection, a strict global Docker lifecycle/health allowlist, cross-tenant rejection, unavailable/source-error truth, combined input/item/excerpt caps, secret/path redaction, and no active probe.
+- Review amendment: remote verification runs outside `BEGIN IMMEDIATE`; acknowledgment obtains a fresh timezone-aware UTC value after verification, reopens a write transaction, atomically revalidates every live lease/ack fact against that fresh time, and uses it for the conditional update and `acknowledged_at`. A lease expiring during verification fails without canonical mutation.
 - Kept `reconciled` schema-reserved and unreachable. Telegram routing, FSM, callbacks, Product Truth, InfoHelp, nightly scheduling, diagnosis, repair, notifications, deploy, and production data remain unchanged.
 
 ### Verification
-- Focused bridge suite after review amendments: 58 passed in 6.78s.
-- Required adjacent runtime-issue/FSM/access/tenant/workspace/Product Truth/InfoHelp set after review amendments: 593 passed in 29.16s.
-- Full repository suite after review amendments: 2345 passed, 7 subtests passed in 87.73s.
+- Focused bridge suite after review amendments: 69 passed in 8.27s.
+- Required adjacent runtime-issue/FSM/access/tenant/workspace/Product Truth/InfoHelp set after review amendments: 622 passed in 32.80s.
+- Full repository suite after review amendments: 2356 passed, 7 subtests passed in 86.24s.
 - Compileall, diff check, internal Markdown links, canonical/workshop JSON parsing, final scope audit, and secret/private-path scan passed.
 - Temporary migration proof preserves all pre-existing table/index/trigger definitions and row values and rejects missing/type/default/check/unique/index incompatibility. Real Docker/GitHub/provider/server smoke and production migration were not run.
 - Architecture verdict remains `ready_for_handoff`; implementation verification verdict is `safe_to_review`; design-to-code variance is `none_identified`.

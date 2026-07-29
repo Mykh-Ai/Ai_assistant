@@ -40,6 +40,20 @@ _WORKSPACE_CORRELATION_FIELD = re.compile(
     r'\s*[:=]\s*(?P<value>[A-Za-z0-9_-]{1,80})(?![A-Za-z0-9_-])',
     re.IGNORECASE,
 )
+_DOCKER_TENANT_PAYLOAD_FIELD = re.compile(
+    r'(?<![A-Za-z0-9_])'
+    r'(?:customer_data|tenant_data|payload|message_body|transcript|document_data)'
+    r'(?![A-Za-z0-9_])\s*[:=]',
+    re.IGNORECASE,
+)
+_GLOBAL_DOCKER_FACT = re.compile(
+    r'^(?:docker\s+)?container'
+    r'(?:\s+[A-Za-z0-9_.-]+)?\s+'
+    r'(?:started|stopped|restarted|healthy|unhealthy|'
+    r'health(?:check)?\s+(?:passed|failed|healthy|unhealthy|restart))$'
+    r'|^(?:fakturabot\s+)?start polling(?: for bot)?$',
+    re.IGNORECASE,
+)
 _SECRET = re.compile(
     r'(?i)\b(password|passwd|pwd|token|api[_-]?key|secret|authorization)'
     r'\s*[:=]\s*[^\s,;]+'
@@ -205,7 +219,6 @@ class RuntimeIssueEvidenceService:
             category = self._category(line.text)
             if category is None:
                 continue
-            tenant_specific = category in {'stt', 'network', 'provider'}
             correlations = self._correlation_ids(
                 line.text,
                 update_id=int(row['telegram_update_id']),
@@ -218,6 +231,13 @@ class RuntimeIssueEvidenceService:
                     else None
                 ),
             )
+            tenant_specific = category in {'stt', 'network', 'provider'}
+            if category == 'docker':
+                tenant_specific = (
+                    not self._is_global_docker_fact(line.text)
+                    or self._has_correlation_fields(line.text)
+                    or _DOCKER_TENANT_PAYLOAD_FIELD.search(line.text) is not None
+                )
             if tenant_specific and not correlations:
                 continue
             excerpt, flags = self._sanitize(line.text)
@@ -323,16 +343,34 @@ class RuntimeIssueEvidenceService:
         ):
             return []
 
-        correlations: list[str] = []
-        if update_id in values('telegram_update_id', 'update_id', 'update'):
-            correlations.append(f'update:{update_id}')
-        if message_id in values(
+        update_values = values('telegram_update_id', 'update_id', 'update')
+        message_values = values(
             'telegram_message_id',
             'message_id',
             'message',
-        ):
+        )
+        if update_values and any(value != update_id for value in update_values):
+            return []
+        if message_values and any(value != message_id for value in message_values):
+            return []
+
+        correlations: list[str] = []
+        if update_values:
+            correlations.append(f'update:{update_id}')
+        if message_values:
             correlations.append(f'message:{message_id}')
         return correlations
+
+    @staticmethod
+    def _has_correlation_fields(text: str) -> bool:
+        return (
+            _NUMERIC_CORRELATION_FIELD.search(text) is not None
+            or _WORKSPACE_CORRELATION_FIELD.search(text) is not None
+        )
+
+    @staticmethod
+    def _is_global_docker_fact(text: str) -> bool:
+        return _GLOBAL_DOCKER_FACT.fullmatch(text.strip()) is not None
 
     @staticmethod
     def _category(text: str) -> str | None:

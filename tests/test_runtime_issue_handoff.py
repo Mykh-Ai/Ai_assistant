@@ -418,6 +418,81 @@ def test_ack_reread_rejects_lease_redelivered_during_remote_verification(tmp_pat
     assert row == ('leased', 2, None, None)
 
 
+def test_ack_uses_fresh_clock_after_verification_and_rejects_expired_lease(tmp_path):
+    db_path = tmp_path / 'db.sqlite'
+    init_db(db_path)
+    _capture(db_path, update_id=1)
+    manifest = _service(db_path).take_next(limit=1)[0]
+    clock_values = iter([NOW, NOW + timedelta(minutes=61)])
+    service = RuntimeIssueHandoffService(
+        db_path,
+        clock=lambda: next(clock_values),
+    )
+    with sqlite3.connect(db_path) as connection:
+        before = connection.execute(
+            'SELECT * FROM runtime_issue_handoffs'
+        ).fetchall()
+
+    with pytest.raises(
+        RuntimeIssueHandoffConflict,
+        match='handoff_lease_expired',
+    ):
+        service.acknowledge(
+            handoff_id=manifest['handoff_id'],
+            raw_token=manifest['lease_token'],
+            manifest_digest=manifest['manifest_digest'],
+            workshop_branch=WORKSHOP_BRANCH,
+            workshop_commit_sha=COMMIT,
+            verifier=lambda branch, commit: True,
+        )
+
+    with sqlite3.connect(db_path) as connection:
+        after = connection.execute(
+            'SELECT * FROM runtime_issue_handoffs'
+        ).fetchall()
+    assert after == before
+
+
+def test_ack_reread_rejects_acknowledgment_facts_changed_during_verification(
+    tmp_path,
+):
+    db_path = tmp_path / 'db.sqlite'
+    init_db(db_path)
+    _capture(db_path, update_id=1)
+    service = _service(db_path)
+    manifest = service.take_next(limit=1)[0]
+
+    def verifier(branch, commit):
+        with sqlite3.connect(db_path) as connection:
+            connection.execute(
+                'UPDATE runtime_issue_handoffs SET workshop_branch = ?, '
+                'workshop_commit_sha = ?, acknowledged_at = ?',
+                (branch, commit, NOW.isoformat()),
+            )
+            connection.commit()
+        return True
+
+    with pytest.raises(
+        RuntimeIssueHandoffConflict,
+        match='handoff_ack_facts_mismatch',
+    ):
+        service.acknowledge(
+            handoff_id=manifest['handoff_id'],
+            raw_token=manifest['lease_token'],
+            manifest_digest=manifest['manifest_digest'],
+            workshop_branch=WORKSHOP_BRANCH,
+            workshop_commit_sha=COMMIT,
+            verifier=verifier,
+        )
+
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            'SELECT status, workshop_branch, workshop_commit_sha, acknowledged_at '
+            'FROM runtime_issue_handoffs'
+        ).fetchone()
+    assert row == ('leased', WORKSHOP_BRANCH, COMMIT, NOW.isoformat())
+
+
 @pytest.mark.parametrize(
     ('case', 'now'),
     [
@@ -478,41 +553,54 @@ def test_fixed_remote_verifier_uses_bounded_exact_branch_reachability(tmp_path):
 
     def runner(argv, **kwargs):
         calls.append((argv, kwargs))
+        if argv[-3:] == ['remote', 'get-url', 'origin']:
+            return subprocess.CompletedProcess(
+                argv, 0, stdout='fixed-remote\n', stderr=''
+            )
         return subprocess.CompletedProcess(argv, 0, stdout='', stderr='')
 
     verifier = FixedRemoteCommitVerifier(repository=tmp_path, runner=runner)
     assert verifier(WORKSHOP_BRANCH, COMMIT) is True
-    fetch_argv, fetch_kwargs = calls[0]
-    assert fetch_argv == [
+    remote_argv, remote_kwargs = calls[0]
+    assert remote_argv == [
         'git',
         '-C',
         str(tmp_path),
-        'fetch',
-        '--no-tags',
-        '--force',
+        'remote',
+        'get-url',
         'origin',
-        (
-            f'+refs/heads/{WORKSHOP_BRANCH}:'
-            f'refs/remotes/origin/{WORKSHOP_BRANCH}'
-        ),
     ]
-    assert fetch_kwargs['shell'] is False
-    assert fetch_kwargs['timeout'] == 15.0
-    ancestor_argv, ancestor_kwargs = calls[1]
+    assert remote_kwargs['shell'] is False
+    assert remote_kwargs['timeout'] == 15.0
+    clone_argv, clone_kwargs = calls[1]
+    assert clone_argv[:6] == [
+        'git',
+        'clone',
+        '--bare',
+        '--no-tags',
+        '--single-branch',
+        '--branch',
+    ]
+    assert clone_argv[6:8] == [WORKSHOP_BRANCH, 'fixed-remote']
+    isolated_repository = clone_argv[8]
+    assert isolated_repository != str(tmp_path)
+    assert clone_kwargs['shell'] is False
+    assert clone_kwargs['timeout'] == 15.0
+    ancestor_argv, ancestor_kwargs = calls[2]
     assert ancestor_argv == [
         'git',
         '-C',
-        str(tmp_path),
+        isolated_repository,
         'merge-base',
         '--is-ancestor',
         COMMIT,
-        f'refs/remotes/origin/{WORKSHOP_BRANCH}',
+        'HEAD',
     ]
     assert ancestor_kwargs['shell'] is False
     assert ancestor_kwargs['timeout'] == 15.0
     assert verifier('maintenance/other', COMMIT) is False
     assert verifier(WORKSHOP_BRANCH, 'not-a-commit') is False
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 def test_fixed_remote_verifier_fails_closed_when_remote_is_unavailable(tmp_path):
@@ -524,9 +612,12 @@ def test_fixed_remote_verifier_fails_closed_when_remote_is_unavailable(tmp_path)
     assert verifier(WORKSHOP_BRANCH, COMMIT) is False
 
 
-def test_crash_before_ack_accepts_receipt_after_workshop_branch_advances(tmp_path):
+def test_remote_verifier_leaves_project_unchanged_for_tip_ancestor_and_unrelated(
+    tmp_path,
+):
     remote = tmp_path / 'remote.git'
     workshop = tmp_path / 'workshop'
+    project = tmp_path / 'project'
 
     def git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -558,21 +649,37 @@ def test_crash_before_ack_accepts_receipt_after_workshop_branch_advances(tmp_pat
     advanced_commit = git('rev-parse', 'HEAD', cwd=workshop).stdout.strip()
     git('push', 'origin', WORKSHOP_BRANCH, cwd=workshop)
     assert advanced_commit != receipt_commit
+    git('clone', str(remote), str(project))
+    git('checkout', WORKSHOP_BRANCH, cwd=project)
+    unrelated = project / 'unrelated.txt'
+    unrelated.write_text('unrelated\n', encoding='utf-8')
+    git('add', 'unrelated.txt', cwd=project)
+    git('commit', '-m', 'unrelated local commit', cwd=project)
+    unrelated_commit = git('rev-parse', 'HEAD', cwd=project).stdout.strip()
 
-    db_path = tmp_path / 'db.sqlite'
-    init_db(db_path)
-    _capture(db_path, update_id=1)
-    service = _service(db_path)
-    manifest = service.take_next(limit=1)[0]
-    result = service.acknowledge(
-        handoff_id=manifest['handoff_id'],
-        raw_token=manifest['lease_token'],
-        manifest_digest=manifest['manifest_digest'],
-        workshop_branch=WORKSHOP_BRANCH,
-        workshop_commit_sha=receipt_commit,
-        verifier=FixedRemoteCommitVerifier(repository=workshop),
-    )
-    assert result.workshop_commit_sha == receipt_commit
+    def snapshot() -> dict[str, bytes]:
+        paths = [
+            project / '.git' / 'config',
+            project / '.git' / 'packed-refs',
+            project / '.git' / 'HEAD',
+            project / '.git' / 'index',
+            project / 'receipt.txt',
+            project / 'unrelated.txt',
+        ]
+        refs = sorted((project / '.git' / 'refs').rglob('*'))
+        return {
+            str(path.relative_to(project)): path.read_bytes()
+            for path in [*paths, *refs]
+            if path.is_file()
+        }
+
+    before = snapshot()
+    verifier = FixedRemoteCommitVerifier(repository=project)
+    assert verifier(WORKSHOP_BRANCH, advanced_commit) is True
+    assert verifier(WORKSHOP_BRANCH, receipt_commit) is True
+    assert verifier(WORKSHOP_BRANCH, unrelated_commit) is False
+    assert snapshot() == before
+    assert git('status', '--porcelain=v1', cwd=project).stdout == ''
 
 
 def test_conflicting_repeat_and_reserved_reconciled_unreachable(tmp_path):

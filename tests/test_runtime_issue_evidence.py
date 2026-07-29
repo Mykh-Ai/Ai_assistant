@@ -269,3 +269,55 @@ def test_numeric_correlation_rejects_substrings_unlabeled_values_and_other_tenan
         'status': 'unavailable',
         'items': [],
     }
+
+
+@pytest.mark.parametrize(
+    'line',
+    [
+        'provider timeout update_id=123 message_id=999',
+        'provider timeout update_id=999 message_id=456',
+        'provider timeout update_id=123 update_id=999',
+        'provider timeout message_id=456 message_id=888',
+        'docker handler error update_id=999 customer_data=private',
+        'docker customer_data=private',
+        'container request handler failed',
+        'health customer payload leaked',
+    ],
+)
+def test_conflicting_identities_and_non_allowlisted_docker_facts_are_rejected(
+    tmp_path,
+    line,
+):
+    db_path, issue_id, handoff_id = _acknowledged(tmp_path)
+    result = RuntimeIssueEvidenceService(
+        db_path,
+        source=FakeSource([RecordedEvidenceLine(NOW, line)]),
+    ).collect(issue_id=issue_id, handoff_id=handoff_id)
+    assert all(category['status'] == 'unavailable' for category in result['categories'])
+
+
+def test_global_docker_allowlist_and_correlated_tenant_docker_fact_are_preserved(
+    tmp_path,
+):
+    db_path, issue_id, handoff_id = _acknowledged(tmp_path)
+    result = RuntimeIssueEvidenceService(
+        db_path,
+        source=FakeSource(
+            [
+                RecordedEvidenceLine(NOW, 'docker container health restart'),
+                RecordedEvidenceLine(
+                    NOW,
+                    'docker handler error update_id=123 customer_data=private',
+                ),
+            ]
+        ),
+    ).collect(issue_id=issue_id, handoff_id=handoff_id)
+    docker = next(
+        category
+        for category in result['categories']
+        if category['category'] == 'docker'
+    )
+    assert docker['status'] == 'available'
+    assert len(docker['items']) == 2
+    assert docker['items'][0]['correlation_ids'] == []
+    assert docker['items'][1]['correlation_ids'] == ['update:123']

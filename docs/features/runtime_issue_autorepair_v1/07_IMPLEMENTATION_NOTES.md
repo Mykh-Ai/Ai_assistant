@@ -141,22 +141,31 @@ stderr. It merges them by timestamp with a deterministic stdout-before-stderr
 tie break, then applies one combined 500-line / 256-KiB raw-input boundary.
 Tenant-specific STT/network/provider evidence correlates only through exact
 allowlisted update/message labels with numeric-token boundaries. A mismatched
-actor, chat, or workspace label rejects the line instead of widening evidence
-to another tenant.
+or conflicting update, message, actor, chat, or workspace label rejects the
+line instead of widening evidence to another tenant. Docker evidence is global
+only for a strict allowlist of container lifecycle/health and polling-start
+records. Any other Docker-related line, or an otherwise global-looking line
+that contains correlation fields or possible tenant payload fields, requires
+the same exact trusted update/message correlation or is rejected.
 
 `FixedRemoteCommitVerifier` owns one repository, the `origin` remote, and
-`maintenance/runtime-issue-workshop`. It performs a fixed no-tags fetch of only
-that branch and uses `git merge-base --is-ancestor` to prove that the supplied
-40-hex receipt commit is durably reachable even after the branch advances.
-Both fixed subprocess calls use argument arrays, `shell=False`, and bounded
-timeouts; there is no caller-provided command surface.
+`maintenance/runtime-issue-workshop`. It reads the fixed origin URL, clones
+only the fixed branch into an automatically cleaned isolated temporary bare
+repository, and runs `git merge-base --is-ancestor` there to prove that the
+supplied 40-hex receipt commit is durably reachable even after the branch
+advances. The project repository receives no fetch, ref, config, index,
+worktree, branch, checkout, commit, or push mutation. All fixed subprocess
+calls use argument arrays, `shell=False`, and bounded timeouts; there is no
+caller-provided command surface.
 
 Acknowledgment uses two database phases. The service first reads and validates
 the lease without a SQLite write transaction, closes that connection, and
 performs remote verification. It then opens a new connection with
 `BEGIN IMMEDIATE`, atomically rereads and revalidates the status, lease owner,
-token hash, digest, and expiry, and performs one conditional ack update. A
-changed, expired, redelivered, or otherwise stale lease fails without canonical
+token hash, digest, acknowledgment facts, and expiry against a newly obtained
+timezone-aware UTC value, and uses that same fresh value for the conditional
+update and `acknowledged_at`. A lease that expires during remote verification,
+or any changed, redelivered, or otherwise stale lease, fails without canonical
 mutation.
 
 All migration proof is performed against temporary SQLite files. Production

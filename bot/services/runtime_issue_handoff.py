@@ -11,6 +11,7 @@ import re
 import secrets
 import sqlite3
 import subprocess
+import tempfile
 
 from bot.services.db import (
     RUNTIME_ISSUE_HANDOFF_MANIFEST_SCHEMA,
@@ -71,7 +72,7 @@ def token_hash(raw_token: str) -> str:
 
 
 class FixedRemoteCommitVerifier:
-    """Verify a receipt commit is reachable from the fixed remote workshop branch."""
+    """Verify reachability without changing the project repository."""
 
     def __init__(
         self,
@@ -88,19 +89,14 @@ class FixedRemoteCommitVerifier:
         if branch != WORKSHOP_BRANCH or not _COMMIT_SHA.fullmatch(commit_sha):
             return False
         try:
-            fetch = self._runner(
+            remote = self._runner(
                 [
                     'git',
                     '-C',
                     str(self._repository),
-                    'fetch',
-                    '--no-tags',
-                    '--force',
+                    'remote',
+                    'get-url',
                     'origin',
-                    (
-                        f'+refs/heads/{WORKSHOP_BRANCH}:'
-                        f'refs/remotes/origin/{WORKSHOP_BRANCH}'
-                    ),
                 ],
                 check=False,
                 capture_output=True,
@@ -110,28 +106,51 @@ class FixedRemoteCommitVerifier:
             )
         except (OSError, subprocess.SubprocessError):
             return False
-        if fetch.returncode != 0:
+        remote_url = remote.stdout.strip()
+        if remote.returncode != 0 or not remote_url or '\n' in remote_url:
             return False
-        try:
-            reachable = self._runner(
-                [
-                    'git',
-                    '-C',
-                    str(self._repository),
-                    'merge-base',
-                    '--is-ancestor',
-                    commit_sha,
-                    f'refs/remotes/origin/{WORKSHOP_BRANCH}',
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout_seconds,
-                shell=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        return reachable.returncode == 0
+        with tempfile.TemporaryDirectory(prefix='runtime-issue-verify-') as temp_dir:
+            isolated_repository = str(Path(temp_dir) / 'repository.git')
+            try:
+                clone = self._runner(
+                    [
+                        'git',
+                        'clone',
+                        '--bare',
+                        '--no-tags',
+                        '--single-branch',
+                        '--branch',
+                        WORKSHOP_BRANCH,
+                        remote_url,
+                        isolated_repository,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=self._timeout_seconds,
+                    shell=False,
+                )
+                if clone.returncode != 0:
+                    return False
+                reachable = self._runner(
+                    [
+                        'git',
+                        '-C',
+                        isolated_repository,
+                        'merge-base',
+                        '--is-ancestor',
+                        commit_sha,
+                        'HEAD',
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=self._timeout_seconds,
+                    shell=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return False
+            return reachable.returncode == 0
 
 
 class RuntimeIssueHandoffService:
@@ -303,6 +322,8 @@ class RuntimeIssueHandoffService:
         if not verifier(workshop_branch, workshop_commit_sha):
             raise RuntimeIssueHandoffConflict('workshop_receipt_not_verified')
 
+        fresh_now = self._utc_now()
+        fresh_now_text = fresh_now.isoformat()
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             validate_runtime_issue_handoff_schema(connection)
@@ -315,7 +336,7 @@ class RuntimeIssueHandoffService:
                     manifest_digest=manifest_digest,
                     workshop_branch=workshop_branch,
                     workshop_commit_sha=workshop_commit_sha,
-                    now_text=now_text,
+                    now_text=fresh_now_text,
                 )
                 if idempotent is not None:
                     connection.commit()
@@ -330,14 +351,14 @@ class RuntimeIssueHandoffService:
                     (
                         workshop_branch,
                         workshop_commit_sha,
-                        now_text,
-                        now_text,
+                        fresh_now_text,
+                        fresh_now_text,
                         handoff_id,
                         LEASE_OWNER,
                         supplied_hash,
                         manifest_digest,
                         lease_until,
-                        now_text,
+                        fresh_now_text,
                     ),
                 )
                 if cursor.rowcount != 1:
@@ -353,7 +374,7 @@ class RuntimeIssueHandoffService:
             manifest_digest=manifest_digest,
             workshop_branch=workshop_branch,
             workshop_commit_sha=workshop_commit_sha,
-            acknowledged_at=now_text,
+            acknowledged_at=fresh_now_text,
             idempotent=False,
         )
 
@@ -402,6 +423,15 @@ class RuntimeIssueHandoffService:
             )
         if str(row['status']) != 'leased':
             raise RuntimeIssueHandoffConflict('handoff_not_live')
+        if any(
+            row[name] is not None
+            for name in (
+                'workshop_branch',
+                'workshop_commit_sha',
+                'acknowledged_at',
+            )
+        ):
+            raise RuntimeIssueHandoffConflict('handoff_ack_facts_mismatch')
         if str(row['lease_owner']) != LEASE_OWNER or not str(row['leased_at']):
             raise RuntimeIssueHandoffConflict('handoff_lease_owner_mismatch')
         if str(row['lease_until']) <= now_text:

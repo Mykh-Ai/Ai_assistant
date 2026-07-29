@@ -26,8 +26,8 @@ Mocked boundaries:
 
 Local integration boundary:
 
-- fixed Git remote workshop-branch fetch and commit-ancestor verification
-  against a temporary bare repository.
+- fixed Git remote workshop-branch clone and commit-ancestor verification
+  inside an automatically cleaned isolated temporary bare repository.
 
 Not run or not authorized:
 
@@ -47,12 +47,12 @@ Not run or not authorized:
 | oldest-first, bounded atomic lease | `test_take_next_oldest_first_limit_empty_and_no_stage1_mutation`, `test_limit_is_hard_bounded`, `test_concurrent_workers_do_not_lease_same_issue` |
 | crash/redelivery/stable receipt | `test_redelivery_stable_receipt_new_token_and_old_token_cannot_ack` |
 | canonical digest | `test_canonical_digest_contract` |
-| verified/idempotent/fail-closed ack outside the SQLite write transaction | `test_ack_requires_verified_receipt_and_is_idempotent`, `test_remote_verifier_runs_without_sqlite_write_transaction`, `test_ack_reread_rejects_lease_redelivered_during_remote_verification`, `test_ack_rejections_fail_without_canonical_mutation`, `test_conflicting_repeat_and_reserved_reconciled_unreachable` |
-| durable remote receipt reachability after branch advance | `test_fixed_remote_verifier_uses_bounded_exact_branch_reachability`, `test_fixed_remote_verifier_fails_closed_when_remote_is_unavailable`, `test_crash_before_ack_accepts_receipt_after_workshop_branch_advances` |
+| verified/idempotent/fail-closed ack outside the SQLite write transaction | `test_ack_requires_verified_receipt_and_is_idempotent`, `test_remote_verifier_runs_without_sqlite_write_transaction`, `test_ack_reread_rejects_lease_redelivered_during_remote_verification`, `test_ack_uses_fresh_clock_after_verification_and_rejects_expired_lease`, `test_ack_reread_rejects_acknowledgment_facts_changed_during_verification`, `test_ack_rejections_fail_without_canonical_mutation`, `test_conflicting_repeat_and_reserved_reconciled_unreachable` |
+| durable read-only remote receipt reachability after branch advance | `test_fixed_remote_verifier_uses_bounded_exact_branch_reachability`, `test_fixed_remote_verifier_fails_closed_when_remote_is_unavailable`, `test_remote_verifier_leaves_project_unchanged_for_tip_ancestor_and_unrelated` |
 | null/active/read-failed FSM evidence | `test_fsm_status_null_active_and_read_failed` |
 | stdin-only token and bounded JSON CLI | `test_ack_parser_has_no_argv_token_value_option`, `test_stdin_token_is_strict_and_error_never_exposes_value`, `test_ack_output_never_contains_raw_token`, `test_take_next_stdout_is_only_json` |
 | bounded truthful evidence from Docker stdout and stderr | `test_fixed_docker_source_collects_stderr_only_python_logs`, `test_fixed_docker_source_merges_streams_in_deterministic_timestamp_order`, `test_fixed_docker_source_applies_one_combined_input_boundary`, `test_collects_correlated_categories_and_global_docker_fact`, `test_missing_evidence_is_truthful_and_null_workspace_is_valid`, `test_source_error_is_bounded`, `test_unacknowledged_and_cross_issue_fail_closed`, `test_excerpt_item_and_input_limits` |
-| exact labeled correlation and cross-tenant rejection | `test_numeric_correlation_rejects_substrings_unlabeled_values_and_other_tenant` |
+| exact labeled correlation, strict Docker allowlist, and cross-tenant rejection | `test_numeric_correlation_rejects_substrings_unlabeled_values_and_other_tenant`, `test_conflicting_identities_and_non_allowlisted_docker_facts_are_rejected`, `test_global_docker_allowlist_and_correlated_tenant_docker_fact_are_preserved` |
 | idempotent fail-closed workshop bootstrap | `test_absent_directory_creates_exact_empty_seed_and_repeats_idempotently`, `test_valid_nonempty_workshop_is_preserved`, `test_incompatible_file_fails_closed_without_overwrite` |
 
 ## Migration and immutability proof
@@ -78,9 +78,9 @@ or notification path exists.
 - Focused bridge suites:
   `python -m pytest -q tests/test_runtime_issue_handoff.py
   tests/test_runtime_issue_bridge_cli.py tests/test_runtime_issue_evidence.py
-  tests/test_runtime_issue_workshop.py` -> `58 passed in 6.78s`.
-- Required adjacent set -> `593 passed in 29.16s`.
-- Full repository suite -> `2345 passed, 7 subtests passed in 87.73s`.
+  tests/test_runtime_issue_workshop.py` -> `69 passed in 8.27s`.
+- Required adjacent set -> `622 passed in 32.80s`.
+- Full repository suite -> `2356 passed, 7 subtests passed in 86.24s`.
 - `python -m compileall -q bot` -> passed.
 - `git diff --check` -> passed.
 - Repository-internal Markdown link check -> passed, zero missing targets.
@@ -95,14 +95,17 @@ Review-blocker verification:
 
 - timestamped Docker stdout and stderr records are merged deterministically
   under one 500-line / 256-KiB raw-input boundary;
-- the fixed verifier fetches only the owned remote workshop branch and accepts
-  a supplied receipt commit when it is an ancestor of the branch tip;
+- the fixed verifier clones only the owned remote workshop branch into a
+  cleaned isolated temporary bare repository, accepts both the exact tip and
+  its ancestors, rejects unrelated commits, and leaves project refs, config,
+  index, and worktree bytes unchanged;
 - remote verification runs after the first lease read is closed and before a
   new `BEGIN IMMEDIATE`; the write transaction rereads and revalidates the
-  status, owner, token hash, digest, and expiry before a conditional update;
-- update/message correlation requires an allowlisted label, delimiter, exact
-  numeric token, and matching trusted tenant fields when those fields are
-  present.
+  status, owner, token hash, digest, acknowledgment facts, and expiry against a
+  fresh post-verification UTC value before a conditional update;
+- update/message correlation rejects conflicting repeated identities, and
+  Docker facts bypass tenant correlation only when they match the strict global
+  lifecycle/health allowlist and contain no correlation or tenant-payload field.
 
 Design-to-code variance: `none_identified`.
 
