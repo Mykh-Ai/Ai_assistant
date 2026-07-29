@@ -2,7 +2,7 @@
 
 Task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
-Status: `approved_design_pending_implementation`
+Status: `phase1_bridge_implemented_repository_only`
 
 Schedule target:
 
@@ -88,13 +88,20 @@ For every returned handoff:
 6. Only after push, call:
 
 ```bash
+printf '%s' "$LEASE_TOKEN" | \
 python -m bot.cli.runtime_issue_handoff ack \
   --handoff-id RH-... \
+  --lease-token-stdin \
+  --manifest-digest sha256:... \
   --workshop-branch maintenance/runtime-issue-workshop \
   --workshop-commit <40-hex-sha>
 ```
 
 Acknowledgment records delivery only. It does not record diagnosis, findings, repair, or production truth.
+The raw lease token must never be placed in argv, an environment-backed CLI
+option, logs, errors, commits, or workshop files. The remote verifier requires
+the supplied commit to be the exact current commit of the fixed workshop
+branch. `reconciled` remains reserved and cannot be entered by Phase 1.
 
 If the worker fails before durable push, do not acknowledge. The lease may expire and the issue may be redelivered.
 

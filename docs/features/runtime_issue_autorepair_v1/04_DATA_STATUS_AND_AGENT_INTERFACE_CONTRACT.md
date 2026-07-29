@@ -4,7 +4,7 @@ Stage 1 task ID: `RUNTIME_ISSUE_INTAKE_V1`
 
 Stage 2 task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`
 
-Status: `approved_design_pending_implementation`
+Status: `phase1_bridge_implemented_repository_only`
 
 ## 1. Ownership model
 
@@ -75,6 +75,12 @@ Proposed conceptual fields:
 
 An issue may have only one acknowledged workshop handoff. An unacknowledged expired lease may be safely offered again.
 
+Phase 1 lease duration is exactly 60 minutes. Every lease/redelivery receives
+a new token with at least 256 bits of entropy; only
+`SHA-256(UTF-8(raw_token))` is persisted. `ack` accepts the token through
+`--lease-token-stdin` only. `reconciled` is reserved for a later approved
+recovery operation and has no Phase 1 transition or CLI owner.
+
 ## 4. Handoff transitions
 
 ```text
@@ -125,6 +131,16 @@ Conceptual JSON:
 ```
 
 The manifest excludes bot tokens, credentials, raw logs, arbitrary environment data, private commands, unrelated issues, and cross-workspace records.
+
+The durable receipt digest is `sha256:<lowercase-hex>` over:
+
+```python
+json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+```
+
+The payload contains the manifest schema, stable handoff ID, and bounded
+sanitized Stage 1 snapshot. It excludes the raw/hash token, generated/lease
+timestamps, attempt count, lease owner, and every other delivery-attempt fact.
 
 ## 6. Workshop persistence
 

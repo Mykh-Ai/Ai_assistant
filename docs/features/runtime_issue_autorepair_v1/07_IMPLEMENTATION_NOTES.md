@@ -112,3 +112,30 @@ SHA. Dropping `runtime_issues` is not an automatic runtime rollback and must
 not be performed by startup code. Any later removal of the table or retained
 issue data requires separate approval, retention review, backup, and a
 dedicated migration plan.
+
+## Runtime Issue Workshop Bridge Phase 1
+
+Task: `RUNTIME_ISSUE_WORKSHOP_BRIDGE_PHASE1`
+
+Design verdict: `ready_for_handoff`
+
+Phase 1 adds `runtime_issue_handoffs` without changing `runtime_issues`.
+Bootstrap is additive and validates owned columns, types, nullability, primary
+and unique ownership, exact defaults/checks, and the two owned indexes.
+Unknown optional columns are tolerated; incompatible owned schema fails closed.
+
+Executable statuses are `leased`, `expired_unacknowledged`, and
+`acknowledged`. `reconciled` is schema-reserved and unreachable in Phase 1.
+Leases last 60 minutes. Redelivery preserves the handoff ID and canonical
+receipt digest, rotates the raw 256-bit token, and increments `attempt_count`.
+
+The bridge exposes only bounded internal JSON CLIs for `take-next`, stdin-only
+`ack`, evidence collection, and idempotent workshop bootstrap. Evidence reads a
+fixed 30-minute window centered on trusted `reported_at`, caps raw input at 500
+lines/256 KiB, returns at most 20 items with 500-character sanitized excerpts,
+and reports missing facts as unavailable. No active provider/STT/network probe
+exists.
+
+All migration proof is performed against temporary SQLite files. Production
+still requires a verified backup, prior deployed SHA, reviewed rollback plan,
+and separate deployment approval.

@@ -1,3 +1,19 @@
+## 2026-07-29 - Runtime issue workshop bridge Phase 1
+
+### Implementation
+- Added the dedicated additive `runtime_issue_handoffs` table with strict owned-schema validation, stable one-per-issue receipts, 60-minute atomic leases, safe expiry/redelivery, token rotation, verified acknowledgment, and no Stage 1 mutation.
+- Added bounded JSON-only `take-next`, stdin-only `ack`, recorded-evidence collection, and idempotent workshop queue/log bootstrap CLIs. Raw lease tokens are never persisted or accepted through argv; remote receipt verification uses fixed `git ls-remote` arguments with `shell=False`.
+- Added fixed-window recorded STT/Docker/network/provider evidence with trusted correlation, unavailable/source-error truth, input/item/excerpt caps, secret/path redaction, and no active probe.
+- Kept `reconciled` schema-reserved and unreachable. Telegram routing, FSM, callbacks, Product Truth, InfoHelp, nightly scheduling, diagnosis, repair, notifications, deploy, and production data remain unchanged.
+
+### Verification
+- Focused bridge suite: 45 passed in 3.43s.
+- Required adjacent runtime-issue/FSM/access/tenant/workspace/Product Truth/InfoHelp set: 282 passed in 12.06s.
+- Full repository suite: 2332 passed, 7 subtests passed in 81.97s.
+- Compileall, diff check, internal Markdown links, canonical/workshop JSON parsing, final scope audit, and secret/private-path scan passed.
+- Temporary migration proof preserves all pre-existing table/index/trigger definitions and row values and rejects missing/type/default/check/unique/index incompatibility. Real Docker/GitHub/provider/server smoke and production migration were not run.
+- Architecture verdict remains `ready_for_handoff`; implementation verification verdict is `safe_to_review`; design-to-code variance is `none_identified`.
+
 ## 2026-07-18 - Registry tax preview wording production repair
 
 ### Cause and repair
@@ -8189,3 +8205,17 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   Stage 2 workshop documents.
 - Documentation only: Stage 2 runtime, database behavior, tests, production,
   merge, and deployment were not changed.
+
+# 2026-07-29 - Runtime Issue Workshop Bridge Phase 1
+
+- Added the additive, strictly validated `runtime_issue_handoffs` table while
+  keeping Stage 1 `runtime_issues` immutable.
+- Added atomic 60-minute leases, stable receipt digests, safe redelivery, and
+  remote-receipt-gated acknowledgment with stdin-only raw lease tokens.
+- Added bounded recorded-evidence collection for STT, Docker, network, and
+  provider facts, plus idempotent workshop queue/log bootstrap.
+- Added focused migration, handoff, CLI, evidence, and bootstrap tests and a
+  repository-only acceptance proof.
+- No public route, FSM, callback, Product Truth, InfoHelp, nightly schedule,
+  diagnosis, repair, notification, production migration, deploy, or restart
+  was added.
