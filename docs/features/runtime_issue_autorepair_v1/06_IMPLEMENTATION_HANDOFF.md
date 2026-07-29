@@ -1,5 +1,10 @@
 # Runtime Issue Intake V1 — Implementation Handoff
 
+> Historical Stage 1 handoff, now implemented and merged through PR #50.
+> Stage 1 SQLite ownership statements apply only to the immutable intake
+> record. They do not define Stage 2 maintenance state or authority.
+> `01_ARCHITECTURE_DESIGN_PROOF.md` is the canonical Stage 2 design.
+
 Handoff status: approved design transferred for a future implementation task.
 
 This document is a code-agent handoff under

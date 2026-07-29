@@ -1,5 +1,11 @@
 # Repository Audit
 
+> Historical baseline audit. Its Stage 1 evidence remains useful, but its
+> earlier Stage 2 ownership and `bounded_autorepair` proposals are superseded
+> by `01_ARCHITECTURE_DESIGN_PROOF.md`. The canonical Stage 2 design uses
+> OfficeFlow for immutable production intake and GitHub for the durable
+> diagnosis/repair workshop; automatic merge and deployment are forbidden.
+
 Stage 1 task ID: `RUNTIME_ISSUE_INTAKE_V1`
 
 Stage 2 task ID: `RUNTIME_ISSUE_AUTOREPAIR_V1`

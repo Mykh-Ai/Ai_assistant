@@ -8178,3 +8178,14 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   callback, repair, maintenance, merge, deployment, or other Stage 2 behavior.
 - Synchronized Product Truth, InfoHelp and the canonical action registry. Runtime
   proof and final test totals are recorded in the conversation acceptance proof.
+
+# 2026-07-28 - Canonical Stage 2 workshop documentation reconciliation
+
+- Replaced the canonical daily maintenance runbook with the approved workshop
+  version and removed the suffixed upload duplicate.
+- Canonicalized the workshop queue schema and Slovak notification templates
+  under filenames without upload suffixes.
+- Replaced the package README and Architecture Design Proof with the supplied
+  Stage 2 workshop documents.
+- Documentation only: Stage 2 runtime, database behavior, tests, production,
+  merge, and deployment were not changed.
