@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -52,6 +54,8 @@ from bot.services.validation import (
 )
 
 router = Router(name='contacts')
+logger = logging.getLogger(__name__)
+
 
 CONTACT_INTAKE_TIMEOUT_SECONDS = 5 * 60
 CONTACT_TIMEOUT_MESSAGE = (
@@ -1337,7 +1341,7 @@ async def _clear_registry_keyboard(callback: CallbackQuery) -> None:
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
-        return
+        logger.exception('Failed to clear contact registry inline keyboard')
 
 
 @router.callback_query(F.data.startswith(_REGISTRY_PICK_PREFIX))

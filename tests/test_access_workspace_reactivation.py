@@ -7,6 +7,7 @@ import pytest
 
 from bot.config import Config
 from bot.handlers.access_admin import cmd_approve
+from bot.handlers.business_profiles import BusinessProfileStates, cmd_business_profiles
 from bot.services.access_control import (
     ACCESS_STATUS_APPROVED,
     ACCESS_STATUS_PENDING,
@@ -39,8 +40,30 @@ class _DummyMessage:
         self.from_user = _DummyUser(user_id)
         self.answers: list[str] = []
 
-    async def answer(self, text: str) -> None:
+    async def answer(self, text: str, **kwargs) -> None:
         self.answers.append(text)
+
+
+class _DummyState:
+    def __init__(self) -> None:
+        self.current_state = None
+        self.data: dict[str, object] = {}
+
+    async def get_state(self):
+        return self.current_state
+
+    async def set_state(self, state) -> None:
+        self.current_state = state.state if hasattr(state, 'state') else state
+
+    async def get_data(self):
+        return dict(self.data)
+
+    async def update_data(self, **kwargs) -> None:
+        self.data.update(kwargs)
+
+    async def clear(self) -> None:
+        self.current_state = None
+        self.data.clear()
 
 
 class _DummyBot:
@@ -373,3 +396,91 @@ def test_approve_with_invalid_explicit_target_keeps_usage_error(tmp_path: Path) 
 
     assert message.answers == ['Pouzitie: /approve <telegram_id>']
     assert AccessControlService(config.db_path).get_authorized_user(ADMIN_ID) is None
+
+
+def test_admin_approval_of_other_migrated_user_unlocks_profily(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    workspace_id = _make_actor_migrated_inactive(config.db_path)
+    admin_message = _DummyMessage(f'/approve {USER_ID}', ADMIN_ID)
+
+    asyncio.run(cmd_approve(admin_message, config, bot=_DummyBot()))
+
+    profile_message = _DummyMessage('/profily', USER_ID)
+    state = _DummyState()
+    asyncio.run(cmd_business_profiles(profile_message, state, config))
+
+    context = WorkspaceContextService(config.db_path).resolve_for_user(USER_ID)
+    assert context.workspace_id == workspace_id
+    assert state.current_state == BusinessProfileStates.waiting_selection.state
+    assert profile_message.answers
+    assert all('dostupn' not in answer for answer in profile_message.answers)
+    assert 'Migrated business' in profile_message.answers[-1]
+
+
+def test_approving_migrated_user_preserves_existing_registered_user(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    service = AccessControlService(config.db_path)
+
+    service.approve_user(telegram_id=USER_ID, approved_by=ADMIN_ID)
+    existing = _create_profile(config.db_path, name='Existing business')
+
+    service.approve_user(telegram_id=OTHER_ID, approved_by=ADMIN_ID)
+    migrated = WorkspaceProfileService(config.db_path).create_profile(
+        actor_telegram_id=OTHER_ID,
+        profile=_supplier(OTHER_ID, 'Other migrated business'),
+        mode=CREATE_FIRST_WORKSPACE_PROFILE,
+        make_active=True,
+    )
+    with managed_connection(config.db_path) as connection:
+        connection.execute(
+            "UPDATE workspace_membership SET status='inactive' "
+            'WHERE telegram_id=? AND workspace_id=?',
+            (OTHER_ID, migrated.workspace_id),
+        )
+        connection.execute(
+            'DELETE FROM active_workspace_selection WHERE telegram_id=?',
+            (OTHER_ID,),
+        )
+        connection.execute(
+            'DELETE FROM authorized_users WHERE telegram_id=?',
+            (OTHER_ID,),
+        )
+        connection.execute(
+            'UPDATE access_requests SET status=?, decided_at=NULL, decided_by=NULL '
+            'WHERE telegram_id=?',
+            (ACCESS_STATUS_PENDING, OTHER_ID),
+        )
+        connection.commit()
+    before_counts = _counts(config.db_path)
+
+    asyncio.run(
+        cmd_approve(
+            _DummyMessage(f'/approve {OTHER_ID}', ADMIN_ID),
+            config,
+            bot=_DummyBot(),
+        )
+    )
+
+    existing_context = WorkspaceContextService(config.db_path).resolve_for_user(USER_ID)
+    existing_message = _DummyMessage('/profily', USER_ID)
+    existing_state = _DummyState()
+    asyncio.run(cmd_business_profiles(existing_message, existing_state, config))
+
+    assert existing_context.workspace_id == existing.workspace_id
+    assert existing_state.current_state == BusinessProfileStates.waiting_selection.state
+    assert 'Existing business' in existing_message.answers[-1]
+    assert _counts(config.db_path) == before_counts == (2, 2)
+    with managed_connection(config.db_path) as connection:
+        existing_membership = connection.execute(
+            'SELECT role, status FROM workspace_membership '
+            'WHERE telegram_id=? AND workspace_id=?',
+            (USER_ID, existing.workspace_id),
+        ).fetchone()
+        existing_selection = connection.execute(
+            'SELECT workspace_id FROM active_workspace_selection WHERE telegram_id=?',
+            (USER_ID,),
+        ).fetchone()
+    assert existing_membership == ('owner', 'active')
+    assert existing_selection == (existing.workspace_id,)

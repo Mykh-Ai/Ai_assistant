@@ -726,17 +726,17 @@ Forbidden claims include:
 - deleting a month removes generated Excel reports as canonical records;
 - the generated Excel report is an official payroll/legal HR document.
 
-### Contacts: official Slovak registry pilot and optional IBAN - 2026-07-17
+### Contacts: official Slovak registry lookup and optional IBAN - 2026-07-17 / 2026-07-28
 
-`contacts` remains `partial`: manual and document-assisted intake are available, while official-registry lookup is disabled by default and optionally pilot-scoped per active workspace.
+`contacts` remains `partial`: manual and document-assisted intake are available. Official-registry lookup remains disabled by default in code and deployment-configurable, but production has enabled it for every authorized user with an active workspace/profile as of 2026-07-28 by setting the parent gate on and leaving the pilot workspace set empty.
 
 Supported when enabled: search an official Slovak company by name or IČO; show at most the configured bounded candidates; require user selection when multiple candidates exist; prefill only official name/IČO/address/status fields actually returned; type missing required DIČ; optionally add or skip email, contact IBAN, and contact person; fall back to manual/PDF intake; and insert/update only after explicit final confirmation.
 
 ### Contacts: search quality and staged tax enrichment - 2026-07-18
 
-`contacts` remains `partial`. When the existing RPO workspace gate is enabled, exact normalized names collapse weak provider noise; multiple exact legal entities remain selectable; bounded spacing/one-edit suggestions such as `ZE VS` or `Empbau` always require explicit selection. A substring inside a longer surname is not exact identity evidence.
+`contacts` remains `partial`. When the parent RPO gate is enabled, exact normalized names collapse weak provider noise; multiple exact legal entities remain selectable; bounded spacing/one-edit suggestions such as `ZE VS` or `Empbau` always require explicit selection. A substring inside a longer surname is not exact identity evidence.
 
-RPO supplies official identity/address/lifecycle fields. A separate Financial Administration provider boundary uses key-authenticated mappings verified on 2026-07-18: income list `ds_dsrdp` (`ico` -> `dic`) and DPH list `ds_dphs` (`ico` -> directly returned `ic_dph`). Configuration is disabled by default in code and requires external credentials plus the parent RPO/pilot gates; the controlled server pilot was enabled on 2026-07-18 only behind that existing workspace gate. When disabled, unavailable, invalid, ambiguous, or missing an exact DIČ row, typed DIČ remains mandatory.
+RPO supplies official identity/address/lifecycle fields. A separate Financial Administration provider boundary uses key-authenticated mappings verified on 2026-07-18: income list `ds_dsrdp` (`ico` -> `dic`) and DPH list `ds_dphs` (`ico` -> directly returned `ic_dph`). Configuration is disabled by default in code and requires external credentials plus the parent RPO gate. Production has both providers enabled globally for authorized active workspaces as of 2026-07-28; deployment setup does not remove provider failure handling or user confirmation. When disabled, unavailable, invalid, ambiguous, or missing an exact DIČ row, typed DIČ remains mandatory.
 
 Forbidden claims:
 
@@ -760,3 +760,12 @@ Forbidden claims: a stored report confirms a bug; performs diagnosis,
 classification, repair, maintenance, merge, deployment, restart, or rollback;
 promises whether or when a fix will happen; or authorizes Stage 2 autorepair.
 Automatic maintenance and autorepair remain unavailable.
+
+
+### Contacts: periodic official-registry monitoring - 2026-07-29
+
+`contacts` remains `partial`, `requires_setup`, and `requires_external_credentials`. A disabled-by-default deterministic monitor can check eligible active-workspace contacts with an exact eight-digit IČO every 14 days at 03:00 `Europe/Bratislava`. It compares official name, legal address, DIČ, and IČ DPH, then notifies the workspace owner and asks whether to update the saved contact. No contact field changes before explicit button confirmation.
+
+Missing or failed tax data never clears saved DIČ/IČ DPH. Email, IBAN, contact person, contract data, invoice rows, invoice items, `pdf_path`, and existing PDF files are outside the update. Already issued invoices are never rewritten by this monitor.
+
+Forbidden claims: monitoring is active merely because code exists; registry data is always current; every contact can be checked without valid IČO; updates happen automatically; declining changes invoices; or approved contact updates rewrite previously issued invoices/PDFs.

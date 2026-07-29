@@ -974,6 +974,7 @@ def test_expired_accounting_preview_cleans_temp_and_skips_approve(monkeypatch, t
     assert not staged_path.exists()
     assert not (tmp_path / 'workspaces').exists()
     assert 'nečinnosti' in message.answers[-1]
+    assert _is_keyboard_removed(message.reply_markups[-1])
 
 
 def test_expired_accounting_preview_cleans_temp_and_skips_cancel(monkeypatch, tmp_path: Path) -> None:

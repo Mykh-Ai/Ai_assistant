@@ -45,6 +45,18 @@ class _DummyMessage:
         self.documents.append(caption or '')
 
 
+class _CallbackSourceMessage(_DummyMessage):
+    def __init__(self, user_id: int = AUTHORIZED_ID) -> None:
+        super().__init__(user_id)
+        self.reply_markup_edits: list[object | None] = []
+        self.fail_edit_reply_markup = False
+
+    async def edit_reply_markup(self, *, reply_markup=None) -> None:
+        if self.fail_edit_reply_markup:
+            raise RuntimeError('edit_reply_markup_failed')
+        self.reply_markup_edits.append(reply_markup)
+
+
 class _DummyBot:
     def __init__(self) -> None:
         self.sent: list[tuple[int, str]] = []
@@ -171,7 +183,7 @@ def _active_fsm_metadata(*, minutes_ago: int = 0) -> dict:
         ACTIVE_FSM_LAST_ACTIVITY_AT_KEY: (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat(),
     }
 
-def _callback(user_id: int, data: str) -> CallbackQuery:
+def _callback(user_id: int, data: str, source_message: object | None = None) -> CallbackQuery:
     callback = CallbackQuery(
         id='callback-id',
         from_user=User(id=user_id, is_bot=False, first_name='Test'),
@@ -185,6 +197,8 @@ def _callback(user_id: int, data: str) -> CallbackQuery:
 
     object.__setattr__(callback, 'answer', _answer)
     object.__setattr__(callback, 'answers', answers)
+    if source_message is not None:
+        object.__setattr__(callback, 'message', source_message)
     return callback
 
 
@@ -785,3 +799,65 @@ def test_button_yes_on_mark_existing_invoice_paid_routes_to_same_handler(monkeyp
 
     assert handled is True
     assert calls == [DECISION_YES]
+
+
+def test_mark_existing_invoice_paid_yes_and_no_buttons_clear_inline_keyboard(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _mark_paid(**kwargs) -> None:
+        calls.append(kwargs['canonical_decision'])
+
+    monkeypatch.setattr('bot.handlers.decision_callbacks.invoice_mark_existing_invoice_paid_confirm', _mark_paid)
+
+    for token in (DECISION_YES, DECISION_NO):
+        source_message = _CallbackSourceMessage()
+        callback = _callback(AUTHORIZED_ID, f'decision:{token}', source_message=source_message)
+        state = _DummyState(
+            data=_active_fsm_metadata(),
+            current_state=InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state,
+        )
+
+        asyncio.run(decision_callback(callback, state, _config(tmp_path)))
+
+        assert source_message.reply_markup_edits == [None]
+        assert callback.answers[-1] == (None, None)
+
+    assert calls == [DECISION_YES, DECISION_NO]
+
+
+def test_stale_mark_existing_invoice_paid_button_is_removed_without_dispatch(tmp_path: Path) -> None:
+    source_message = _CallbackSourceMessage()
+    callback = _callback(AUTHORIZED_ID, 'decision:yes', source_message=source_message)
+    state = _DummyState(
+        data=_active_fsm_metadata(minutes_ago=60),
+        current_state=InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state,
+    )
+
+    asyncio.run(decision_callback(callback, state, _config(tmp_path)))
+
+    assert source_message.reply_markup_edits == [None]
+    assert state.cleared is True
+    assert callback.answers == [(ACTIVE_FSM_EXPIRED_MESSAGE, True)]
+
+
+def test_shared_decision_keyboard_cleanup_failure_is_logged_without_reversing_dispatch(monkeypatch, tmp_path: Path, caplog) -> None:
+    calls: list[str] = []
+
+    async def _mark_paid(**kwargs) -> None:
+        calls.append(kwargs['canonical_decision'])
+
+    monkeypatch.setattr('bot.handlers.decision_callbacks.invoice_mark_existing_invoice_paid_confirm', _mark_paid)
+    source_message = _CallbackSourceMessage()
+    source_message.fail_edit_reply_markup = True
+    callback = _callback(AUTHORIZED_ID, 'decision:yes', source_message=source_message)
+    state = _DummyState(
+        data=_active_fsm_metadata(),
+        current_state=InvoiceStates.waiting_mark_existing_invoice_paid_confirm.state,
+    )
+
+    with caplog.at_level('ERROR'):
+        asyncio.run(decision_callback(callback, state, _config(tmp_path)))
+
+    assert calls == [DECISION_YES]
+    assert callback.answers[-1] == (None, None)
+    assert 'Failed to clear shared decision inline keyboard' in caplog.text

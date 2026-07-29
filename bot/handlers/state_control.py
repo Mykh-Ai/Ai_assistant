@@ -5,7 +5,7 @@ from pathlib import Path
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 
 from bot.config import Config
 from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
@@ -33,6 +33,19 @@ STATE_CANCELLED_MESSAGE = 'Rozpracovaná akcia bola zrušená. Bot je v režime 
 PERSISTED_EDIT_CANCELLED_MESSAGE = 'Úprava faktúry bola ukončená. Faktúra zostala uložená.'
 
 
+def _remove_keyboard() -> ReplyKeyboardRemove:
+    return ReplyKeyboardRemove(remove_keyboard=True)
+
+
+async def _answer_and_remove_keyboard(message: Message, text: str) -> None:
+    try:
+        await message.answer(text, reply_markup=_remove_keyboard())
+    except TypeError as exc:
+        if 'reply_markup' not in str(exc):
+            raise
+        await message.answer(text)
+
+
 @router.message(Command('cancel'))
 async def cmd_cancel(message: Message, state: FSMContext, config: Config) -> None:
     await cancel_current_state(message=message, state=state, config=config)
@@ -48,7 +61,7 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
     current_state = await state.get_state()
     if current_state is None:
         await state.clear()
-        await message.answer(IDLE_CANCEL_MESSAGE)
+        await _answer_and_remove_keyboard(message, IDLE_CANCEL_MESSAGE)
         return
 
     data = await state.get_data()
@@ -64,11 +77,11 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
 
     if current_state == InvoiceStates.waiting_pdf_decision.state and data.get('edit_stage') == 'persisted':
         await state.clear()
-        await message.answer(PERSISTED_EDIT_CANCELLED_MESSAGE)
+        await _answer_and_remove_keyboard(message, PERSISTED_EDIT_CANCELLED_MESSAGE)
         return
 
     await clear_current_state_safely(state=state, config=config)
-    await message.answer(STATE_CANCELLED_MESSAGE)
+    await _answer_and_remove_keyboard(message, STATE_CANCELLED_MESSAGE)
 
 
 async def clear_current_state_safely(*, state: FSMContext, config: Config) -> None:
@@ -89,11 +102,7 @@ async def clear_current_state_safely(*, state: FSMContext, config: Config) -> No
 
 
 def _is_accounting_intake_state(current_state: str | None) -> bool:
-    state_values = {
-        AccountingDocumentIntakeStates.waiting_upload.state,
-        AccountingDocumentIntakeStates.waiting_duplicate_decision.state,
-        AccountingDocumentIntakeStates.waiting_preview_decision.state,
-    }
+    state_values = {state.state for state in AccountingDocumentIntakeStates.__all_states__}
     return current_state in state_values
 
 

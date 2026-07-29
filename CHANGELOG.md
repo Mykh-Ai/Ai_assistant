@@ -1,10 +1,14 @@
 # Changelog
 
+- Enabled the existing official Slovak RPO contact lookup and configured Financial Administration tax enrichment for every authorized production user with an active workspace/profile by clearing the pilot workspace scope; fail-closed provider handling, manual fallback, tenant isolation, and final confirmation remain unchanged.
 - Fixed the registry detail tax note so validated official DIČ is acknowledged, missing IČ DPH is described without a non-VAT claim, and manual DIČ guidance appears only when DIČ is actually absent.
 - Fixed owner OAuth Google Drive setup commands to read and disconnect the shared configured owner connection instead of a legacy Telegram-derived connection key; re-auth status no longer claims the interactive connect command is always available.
 - Improved and deployed official RPO contact search with deterministic exact-name collapse, bounded typo/spacing suggestions that always require selection, and weak internal-substring rejection. Added the fail-closed Financial Administration enrichment boundary and audited `ds_dsrdp`/`ds_dphs` mappings; the controlled server pilot is enabled under the existing parent RPO workspace gate, while general availability and Telegram acceptance remain separately gated.
 
 ## Unreleased
+- Completed a one-time audit of all seven Telegram reply/inline keyboard families and callback handlers; strengthened the existing lifecycle contracts, repaired intake-timeout and invoice-follow-up expiry cleanup, added cleanup-failure logging and final-markup tests, and recorded ownership-sensitive contact callback gaps as `needs_revision`.
+- Fixed shared global cancellation so Telegram reply keyboards are removed and accounting intake temp staging is cleaned from every intake FSM state, including post-recognition category review and final preview.
+- Verified that both mark-existing-invoice-paid decision buttons remove their inline keyboard after normal handling, and fixed stale/expired shared decision callbacks so obsolete buttons are removed without dispatching a side effect.
 - Added and deployed immutable workspace-specific Google Drive targets for newly confirmed receipts and incoming invoices, shared deterministic path validation, fail-closed enqueue behavior, and a redacted read-only deployment blocker audit for active legacy jobs; existing owner OAuth, worker, invoice-PDF behavior, retention, and historical remote files remain unchanged. Production audit and row-count preservation passed; the owner connection has since been reauthorized, while real two-profile upload smoke remains pending.
 - Fixed access approval for one unambiguous migration-created inactive owner membership: approval now atomically validates supplier/workspace ownership, reactivates the membership, restores active selection, creates no business profile data, and rolls back fully on multiple or contradictory ownership. Configured admins may use argument-free `/approve` for safe self-targeting without exposing their Telegram ID.
 - Fixed generic multi-workspace audit/dry-run readiness so public_profile_switch_ready is derived from required workspace columns, complete ownership backfill, zero migration blockers, and valid workspace/membership/selection foundation state. Already migrated databases now report database_already_migrated instead of a false ownership blocker.
@@ -330,3 +334,6 @@
 
 ### Notes
 - scan-PDF OCR branch currently fail-loud and pluggable; full OCR provider is not yet wired in runtime
+
+
+- Added a disabled-by-default, tenant-scoped periodic contact-registry monitor: every 14 days at 03:00 Bratislava time it can detect official name/address/DIČ/IČ DPH changes and ask the active workspace owner before updating only the contact. Existing invoices and PDFs are never rewritten by this workflow.

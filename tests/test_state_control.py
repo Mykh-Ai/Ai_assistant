@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from aiogram.types import ReplyKeyboardRemove
+
 from bot.config import Config
+from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
 from bot.handlers.invoice import InvoiceStates
 from bot.handlers.state_control import (
     IDLE_CANCEL_MESSAGE,
@@ -22,9 +25,11 @@ class _DummyMessage:
         self.text = text
         self.from_user = type('U', (), {'id': 111})()
         self.answers: list[str] = []
+        self.answer_kwargs: list[dict] = []
 
-    async def answer(self, text: str) -> None:
+    async def answer(self, text: str, **kwargs) -> None:
         self.answers.append(text)
+        self.answer_kwargs.append(kwargs)
 
 
 class _DummyState:
@@ -125,6 +130,46 @@ def test_nazad_cancel_alias_clears_active_state(tmp_path: Path) -> None:
 
     assert state.cleared is True
     assert message.answers == [STATE_CANCELLED_MESSAGE]
+
+
+def test_accounting_unknown_category_cancel_removes_keyboard_and_temp_file(tmp_path: Path) -> None:
+    staged_path = tmp_path / 'uploads' / 'accounting_intake' / 'unknown-category' / 'receipt.jpg'
+    staged_path.parent.mkdir(parents=True)
+    staged_path.write_bytes(b'receipt')
+    message = _DummyMessage('\u274c Zru\u0161i\u0165')
+    state = _DummyState(
+        AccountingDocumentIntakeStates.waiting_unknown_category_decision.state,
+        {'accounting_document_temp_original_path': str(staged_path)},
+    )
+
+    asyncio.run(cancel_alias(message, state, _config(tmp_path)))
+
+    assert state.cleared is True
+    assert staged_path.exists() is False
+    assert message.answers == [STATE_CANCELLED_MESSAGE]
+    reply_markup = message.answer_kwargs[0]['reply_markup']
+    assert isinstance(reply_markup, ReplyKeyboardRemove)
+    assert reply_markup.remove_keyboard is True
+
+
+def test_accounting_preview_cancel_removes_keyboard_and_temp_file(tmp_path: Path) -> None:
+    staged_path = tmp_path / 'uploads' / 'accounting_intake' / 'preview' / 'receipt.jpg'
+    staged_path.parent.mkdir(parents=True)
+    staged_path.write_bytes(b'receipt')
+    message = _DummyMessage('\u274c Zru\u0161i\u0165')
+    state = _DummyState(
+        AccountingDocumentIntakeStates.waiting_preview_decision.state,
+        {'accounting_document_temp_original_path': str(staged_path)},
+    )
+
+    asyncio.run(cancel_alias(message, state, _config(tmp_path)))
+
+    assert state.cleared is True
+    assert staged_path.exists() is False
+    assert message.answers == [STATE_CANCELLED_MESSAGE]
+    reply_markup = message.answer_kwargs[0]['reply_markup']
+    assert isinstance(reply_markup, ReplyKeyboardRemove)
+    assert reply_markup.remove_keyboard is True
 
 
 def test_cancel_persisted_post_edit_keeps_invoice(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ from .access_admin import router as access_admin_router
 from .accounting_documents import router as accounting_documents_router
 from .accounting_document_intake import router as accounting_document_intake_router
 from .contacts import router as contacts_router
+from .contact_registry_monitor import router as contact_registry_monitor_router
 from .business_profiles import router as business_profiles_router
 from .contracts import router as contracts_router
 from .delete_user_database import router as delete_user_database_router
@@ -35,6 +36,7 @@ routers: list[Router] = [
     accounting_document_intake_router,
     accounting_documents_router,
     officeflow_attachment_router,
+    contact_registry_monitor_router,
     contacts_router,
     contracts_router,
     work_time_router,

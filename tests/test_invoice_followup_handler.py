@@ -253,7 +253,7 @@ def test_legacy_mark_paid_callback_without_timestamp_fails_closed(tmp_path: Path
     state = InvoiceFollowupService(config.db_path).get_state(invoice_id=invoice_id)
     assert state is None
     assert callback.answers == [('Tato pripomienka uz nie je dostupna pre vas ucet.', True)]
-    assert source_message.cleared_reply_markups == []
+    assert source_message.cleared_reply_markups == [None]
 
 
 def test_stale_mark_paid_callback_with_old_timestamp_fails_closed(tmp_path: Path) -> None:
@@ -272,7 +272,7 @@ def test_stale_mark_paid_callback_with_old_timestamp_fails_closed(tmp_path: Path
     state = InvoiceFollowupService(config.db_path).get_state(invoice_id=invoice_id)
     assert state is None
     assert callback.answers == [('Tato pripomienka uz nie je dostupna pre vas ucet.', True)]
-    assert source_message.cleared_reply_markups == []
+    assert source_message.cleared_reply_markups == [None]
 
 def test_remind_later_callback_persists_snoozed_state_without_drive_stub(tmp_path: Path) -> None:
     config = _config(tmp_path)

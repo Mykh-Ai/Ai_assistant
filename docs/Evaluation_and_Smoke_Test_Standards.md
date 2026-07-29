@@ -142,6 +142,10 @@ Apply every relevant case; `not_applicable` requires a reason:
 16. Tenant/workspace isolation.
 17. Persisted-data/file-output success and failure safety where applicable.
 18. At least one unchanged old journey through every modified shared layer.
+19. Keyboard lifecycle: reply and inline keyboards have explicit observed behavior for terminal success, no/cancel, error, timeout, owned stale/expired, forbidden, non-terminal retry/back/edit, and Telegram cleanup failure where applicable. `one_time_keyboard=True` alone is not a passing cleanup result.
+
+For forbidden or unproven-ownership callbacks, passing means no business effect and no mutation of another user's message. For an owned stale or expired callback, passing normally includes removing obsolete markup and producing a safe stale response.
+
 
 ### Design-to-code and slot evidence
 

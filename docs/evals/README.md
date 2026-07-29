@@ -32,3 +32,6 @@ Examples:
 Each artifact should cover runtime behavior, Product Truth answer, InfoHelp
 answer, setup/authorization limits, forbidden claims, and no side effects from
 informational questions.
+
+
+- `CONTACT_REGISTRY_PERIODIC_MONITOR_V1_conversation_acceptance_proof.md` covers the disabled-by-default 14-day exact-IČO contact monitor, confirmation safety, tenant isolation, no-write dry run, and invoice/PDF immutability.

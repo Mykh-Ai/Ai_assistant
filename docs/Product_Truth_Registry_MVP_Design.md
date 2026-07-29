@@ -183,3 +183,9 @@ Do not:
 The existing capability id remains `contacts` with canonical action `add_contact`; `/add_kontakt` is only another command alias. Runtime owner is `bot/handlers/contacts.py`, deterministic provider owner is `bot/services/slovak_company_registry.py`, and transactional merge owner is `bot/services/registry_contact_save.py`.
 
 Product status is `partial`, with account/setup status requiring authorization and an active supplier workspace. The registry sub-capability additionally requires `CONTACT_REGISTRY_LOOKUP_ENABLED=1` and, when non-empty, membership in `CONTACT_REGISTRY_PILOT_WORKSPACE_IDS`. Runtime evidence is covered by `tests/test_contact_registry_flow.py`, `tests/test_contact_registry_services.py`, `tests/test_contact_iban_migration.py`, and existing contact/workspace/voice/decision suites. No separate `search_company` capability or canonical action is registered.
+
+## Periodic contact registry monitoring amendment - 2026-07-29
+
+The existing `contacts` capability remains `partial`. Optional background monitoring is represented by the same capability entry with setup/external-credential flags; it is not a new canonical action. Python may check exact-IČO contacts on the configured 14-day 03:00 Bratislava schedule and create a confirmation proposal for official name/address/DIČ/IČ DPH differences.
+
+The capability entry must remain deployment-aware: `CONTACT_REGISTRY_MONITOR_ENABLED=0` means unavailable even when interactive registry lookup is enabled. Approved updates affect only the current contact row. Existing invoice rows and PDF files remain immutable in this workflow.

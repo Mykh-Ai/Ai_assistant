@@ -13,6 +13,9 @@ from bot.services.authorization import TelegramUserAuthorizationMiddleware
 from bot.services.db import init_db
 from bot.services.google_drive_archive_scheduler import run_google_drive_archive_scheduler
 from bot.services.invoice_followup_scheduler import run_invoice_followup_scheduler
+from bot.services.contact_registry_monitor import (
+    run_contact_registry_monitor_scheduler,
+)
 
 
 async def main() -> None:
@@ -45,12 +48,21 @@ async def main() -> None:
         run_google_drive_archive_scheduler(config=config),
         name='google_drive_archive_scheduler',
     )
+    contact_registry_monitor_task = asyncio.create_task(
+        run_contact_registry_monitor_scheduler(bot=bot, config=config),
+        name='contact_registry_monitor_scheduler',
+    )
     try:
         await dp.start_polling(bot, config=config)
     finally:
-        for task in (invoice_followup_task, google_drive_archive_task):
+        background_tasks = (
+            invoice_followup_task,
+            google_drive_archive_task,
+            contact_registry_monitor_task,
+        )
+        for task in background_tasks:
             task.cancel()
-        for task in (invoice_followup_task, google_drive_archive_task):
+        for task in background_tasks:
             with suppress(asyncio.CancelledError):
                 await task
 

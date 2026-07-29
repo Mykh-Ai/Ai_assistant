@@ -263,6 +263,14 @@ Decision UI contract:
 - stale or wrong-state callbacks are rejected without business side effects;
 - text and voice inputs continue through `bot/services/decision_resolver.py`;
 - text/voice resolver output and button callback tokens converge into the same state-aware handler execution path.
+- callback transport owns inline-markup cleanup after the state-aware handler returns;
+- handled terminal decisions remove their inline markup;
+- owned stale/expired callbacks remove obsolete markup without executing a business effect;
+- forbidden or unproven-ownership callbacks fail closed without editing another user's message;
+- reply-keyboard decisions remain text inputs to the active FSM and every terminal exit must send `ReplyKeyboardRemove`;
+- `one_time_keyboard=True` is not terminal cleanup;
+- markup cleanup failures are logged and do not reverse an already committed side effect;
+- handler/public-wrapper tests assert final keyboard state for both positive and negative decisions.
 
 Out of scope for Phase 1:
 - `decision:reupload`;

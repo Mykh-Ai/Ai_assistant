@@ -235,6 +235,22 @@ idempotency
 Ambiguity, stale state, missing context, or unauthorized input must fail closed
 before business effects.
 
+For every Telegram keyboard also define:
+
+```text
+keyboard type: reply or inline
+message and actor/workspace ownership
+terminal outcomes that remove it
+non-terminal outcomes that retain or replace it
+timeout/stale/expired/legacy/duplicate behavior
+forbidden or unproven-ownership behavior
+Telegram cleanup failure logging and user-visible effect
+named tests for final keyboard state
+```
+
+`one_time_keyboard=True` is only a client display hint. It does not satisfy reply-keyboard cleanup. Owned stale or expired inline markup should be removed, while forbidden or unproven-ownership callbacks must not alter another user's message.
+
+
 ### 9. Side-Effect And Ownership Map
 
 | Side effect | Trigger | Python owner | Validation/confirmation before effect | Failure/rollback | Idempotency |

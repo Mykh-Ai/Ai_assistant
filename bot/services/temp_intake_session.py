@@ -5,6 +5,8 @@ from pathlib import Path
 import shutil
 from typing import Any
 
+from aiogram.types import ReplyKeyboardRemove
+
 
 INTAKE_TIMEOUT_SECONDS = 5 * 60
 ORPHAN_CLEANUP_MAX_AGE_SECONDS = 24 * 60 * 60
@@ -58,7 +60,7 @@ async def ensure_intake_session_active(*, message, state, storage_dir: Path, now
 
     cleanup_expired_intake_session(storage_dir=storage_dir, data=data)
     await state.clear()
-    await message.answer(TIMEOUT_MESSAGE_SK)
+    await message.answer(TIMEOUT_MESSAGE_SK, reply_markup=ReplyKeyboardRemove(remove_keyboard=True))
     return False
 
 

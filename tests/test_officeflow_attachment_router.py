@@ -402,6 +402,7 @@ def test_accounting_proposal_no_cleans_staged_file(tmp_path: Path) -> None:
     assert state.current_state is None
     assert not staged_path.exists()
     assert 'zrušené' in message.answers[-1]
+    assert _is_keyboard_removed(message.reply_markups[-1])
 
 
 def test_expired_accounting_proposal_cleans_staged_file_and_skips_continuation(monkeypatch, tmp_path: Path) -> None:
@@ -418,6 +419,7 @@ def test_expired_accounting_proposal_cleans_staged_file_and_skips_continuation(m
     assert state.current_state is None
     assert not staged_path.exists()
     assert 'nečinnosti' in message.answers[-1]
+    assert _is_keyboard_removed(message.reply_markups[-1])
 
 
 def test_expired_route_choice_cleans_staged_file_and_skips_contact(monkeypatch, tmp_path: Path) -> None:

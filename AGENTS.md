@@ -502,6 +502,22 @@ Every new confirmation-like flow must:
 - register the context in resolver tests;
 - add handler-level tests proving shared resolver usage, not local branching.
 
+## Telegram Keyboard Lifecycle Rule
+
+Every `ReplyKeyboardMarkup`, `InlineKeyboardMarkup`, and callback flow must define and test its complete UI lifecycle.
+
+- Reply keyboards must be removed with `ReplyKeyboardRemove` on every terminal success, cancel, rejection, timeout, stale-session exit, and error that leaves the flow.
+- Inline keyboards must be removed with `edit_reply_markup(reply_markup=None)` after a handled terminal decision and for an owned stale/expired message.
+- Do not remove inline markup when callback ownership or tenant/workspace authority is not proven; a forbidden actor must not alter another user's message.
+- Non-terminal retry/edit/back branches must explicitly retain, replace, or remove the previous keyboard according to the next valid input.
+- `one_time_keyboard=True` is not cleanup and must never replace `ReplyKeyboardRemove`.
+- Callback rejection must distinguish malformed, missing, stale, expired, duplicate, and forbidden outcomes when cleanup authority differs.
+- Keyboard cleanup failure must be logged without rolling back an already committed business effect or falsely claiming cleanup succeeded.
+- Tests must assert both the business/FSM outcome and the final keyboard state for button, equivalent text, global cancel, timeout, stale/expired, forbidden, and cleanup-failure paths that apply.
+
+The normative design owner is `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`; implementation and acceptance gates are in `docs/llm/New_Action_Design_Checklist.md` and `docs/Evaluation_and_Smoke_Test_Standards.md`.
+
+
 ## Access And Security Boundary
 
 Unknown or unauthorized Telegram users must not create:

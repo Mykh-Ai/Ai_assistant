@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -62,6 +64,8 @@ from bot.keyboards.decision import (
 
 
 router = Router(name='decision_callbacks')
+logger = logging.getLogger(__name__)
+
 
 _STALE_DECISION_MESSAGE = 'Toto rozhodnutie už nie je dostupné. Pokračujte aktuálnym krokom v chate.'
 
@@ -94,14 +98,17 @@ async def decision_callback(callback: CallbackQuery, state: FSMContext, config: 
     token = _parse_decision_token(callback.data)
     current_state = _state_name(await state.get_state())
     if token is None:
+        await _clear_inline_keyboard(callback)
         await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
         return
     if current_state is None:
+        await _clear_inline_keyboard(callback)
         await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
         return
     if await is_active_fsm_callback_stale_or_legacy(state=state, current_state=current_state):
         await clear_current_state_safely(state=state, config=config)
         await callback.answer(ACTIVE_FSM_EXPIRED_MESSAGE, show_alert=True)
+        await _clear_inline_keyboard(callback)
         return
 
     adapter = _CallbackMessageAdapter(callback)
@@ -359,4 +366,4 @@ async def _clear_inline_keyboard(callback: CallbackQuery) -> None:
     try:
         await source_message.edit_reply_markup(reply_markup=None)
     except Exception:
-        return
+        logger.exception('Failed to clear shared decision inline keyboard')

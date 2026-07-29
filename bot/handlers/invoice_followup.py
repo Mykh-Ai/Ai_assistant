@@ -49,6 +49,7 @@ async def invoice_followup_callback(callback: CallbackQuery, config: Config) -> 
 
     decision, invoice_id, issued_at = parsed
     if _is_followup_callback_expired(issued_at):
+        await _clear_callback_keyboard(callback)
         await callback.answer(_STALE_OR_FORBIDDEN_CALLBACK, show_alert=True)
         return
     workspace_id = _invoice_workspace_id(config.db_path, invoice_id)

@@ -131,7 +131,9 @@ def test_profily_lists_and_switches_exact_accessible_profile(tmp_path: Path) -> 
     assert state.current_state == BusinessProfileStates.waiting_selection.state
     assert 'First business (aktívny)' in message.answers[-1]
 
-    asyncio.run(business_profile_selection(_Message('Second business'), state, config))
+    selection_message = _Message('Second business')
+    asyncio.run(business_profile_selection(selection_message, state, config))
+    assert getattr(selection_message.markups[-1], 'remove_keyboard', False) is True
     active = WorkspaceContextService(config.db_path).resolve_for_user(USER_ID)
     assert active.workspace_id == second.workspace_id
     assert state.current_state is None
@@ -194,3 +196,16 @@ def test_idle_text_router_switches_only_to_accessible_workspace(tmp_path: Path) 
 
     assert WorkspaceContextService(config.db_path).resolve_for_user(USER_ID).workspace_id == second.workspace_id
     assert 'Second business' in message.answers[-1]
+
+
+def test_business_profile_cancel_removes_reply_keyboard(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _setup(config)
+    state = _State()
+    asyncio.run(cmd_business_profiles(_Message('/profily'), state, config))
+    cancel_message = _Message('Zru\u0161i\u0165')
+
+    asyncio.run(business_profile_selection(cancel_message, state, config))
+
+    assert state.current_state is None
+    assert getattr(cancel_message.markups[-1], 'remove_keyboard', False) is True

@@ -218,6 +218,14 @@ explicit exact typed sensitive-action exception is documented.
 - [ ] Authorization and expected state/pending context are checked before effects.
 - [ ] Timestamp/nonce/expiry is checked where available.
 - [ ] Stale, legacy, missing, mismatched, and duplicate callbacks fail closed.
+- [ ] Reply and inline keyboard lifecycles are specified separately.
+- [ ] Every terminal success/cancel/no/error/timeout exit has an asserted final keyboard state.
+- [ ] Non-terminal retry/edit/back explicitly retains, replaces, or removes the old keyboard.
+- [ ] Owned stale/expired inline callbacks remove obsolete markup.
+- [ ] Forbidden or unproven-ownership callbacks do not alter another user's message.
+- [ ] Reply keyboard cleanup uses `ReplyKeyboardRemove`; `one_time_keyboard=True` is not treated as cleanup.
+- [ ] Telegram markup-edit failures are logged and do not roll back a committed business effect.
+- [ ] Public-wrapper tests assert keyboard cleanup, not only canonical token dispatch.
 - [ ] Ambiguity never executes a write.
 
 ## Side Effects, Authorization, And Tenant Safety

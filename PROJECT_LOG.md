@@ -14,6 +14,18 @@
 - Compileall, diff check, internal Markdown links, canonical/workshop JSON parsing, final scope audit, and secret/private-path scan passed.
 - Temporary migration proof preserves all pre-existing table/index/trigger definitions and row values and rejects missing/type/default/check/unique/index incompatibility. Real Docker/GitHub/provider/server smoke and production migration were not run.
 - Architecture verdict remains `ready_for_handoff`; implementation verification verdict is `safe_to_review`; design-to-code variance is `none_identified`.
+## 2026-07-28 - Official contact registry production scope expanded globally
+
+### Configuration and rollback
+- User explicitly approved replacing the single-workspace registry pilot scope with availability for every authorized user who has an active workspace/profile.
+- Read-only production audit found `CONTACT_REGISTRY_LOOKUP_ENABLED=1`, `CONTACT_TAX_LOOKUP_ENABLED=1`, a configured Financial Administration API key, five-second provider timeouts, a five-candidate maximum, and a non-empty `CONTACT_REGISTRY_PILOT_WORKSPACE_IDS`.
+- Backed up the protected server `.env` to `/var/backups/fakturabot/20260728T192708Z_contact_registry_global/.env.before`; pre-change SHA-256 is `ed4936042bcc47bc5090c147303482cfffc6c016082b4a1e52ef0cc2144a212c`.
+- Cleared only `CONTACT_REGISTRY_PILOT_WORKSPACE_IDS`, preserving the global RPO/tax enable flags, API key, timeouts, candidate bound, and all unrelated configuration. Post-change `.env` SHA-256 is `aac22b958d9ca5840774911b6dd0620736639ca214d90bebae4112ce80594f75`.
+
+### Runtime verification
+- Recreated only the existing FakturaBot container without build or code update. Effective container configuration reports registry and tax lookup enabled, an empty global pilot scope, configured tax credentials, five-second timeouts, and five maximum candidates.
+- Container startup is healthy at the existing server commit `acb1c75`: status `running`, restart count zero, and aiogram polling started without matching `ERROR`, `CRITICAL`, `Traceback`, or Telegram polling conflict output.
+- The change performs no DB/storage migration or business-data write. Authorization, active-workspace binding, bounded candidate selection, typed precision fields, provider fail-closed behavior, and explicit final confirmation remain mandatory.
 
 ## 2026-07-18 - Registry tax preview wording production repair
 
@@ -74,6 +86,19 @@
 - Authenticated `/api/lists` and list-detail calls confirmed `ds_dsrdp` searchable by `ico` and `ds_dphs` searchable by `ic_dph,ico`; exact searches confirmed lowercase `dic`/`ico` and `ic_dph`/`ico` row mappings, page envelope behavior, direct official IČ DPH, and HTTP 404 for no exact result.
 - A bounded DPH page audit observed 315 pages, 314204 items, 1000 distinct IČOs in the first 1000 rows, and no duplicate-IČO group in that sample. Conflicting/historical rows and documented failure statuses remain fake-tested/fail-closed.
 - Bound the exact audited mapping in local code and added a regression assertion; the immediate focused provider/FSM/Product Truth suite passed (`58 passed in 12.63s`). No service restart, container rebuild, deployment, DB/storage write, or feature activation occurred.
+## 2026-07-17 - Contact Registry Pilot Activation For SZČO Mykhailo Alieksieienko
+
+### Production data operation
+- User explicitly identified the test contact `Zevs s.r.o.` in workspace `SZČO Mykhailo Alieksieienko` for complete removal from the live contact registry before a controlled lookup recreation test.
+- Read-only audit found exactly one matching contact, zero linked invoices, one confirmed contact alias, and a stored contract path whose target file did not exist.
+- Verified rollback backup: `/var/backups/fakturabot/20260717T193839Z_zevs_delete_pilot`; SQLite integrity `ok`, target row present, backup SHA-256 `0872736299f9bf762bfe0bf2a7b357a66e3ff44ed30d00f367e4e2806d4fc486`, and the prior server `.env` retained server-side.
+- One transaction deleted the contact and its one contact alias. Post-write verification reports zero target rows/aliases, DB integrity `ok`, three remaining contacts, and nine unchanged invoices.
+
+### Pilot activation and verification
+- Enabled `CONTACT_REGISTRY_LOOKUP_ENABLED=1` for exactly the selected workspace, with timeout 5 seconds and maximum 5 results; all other workspaces remain outside the pilot.
+- Canonical multi-workspace dry-run remains ready with zero blockers and no writes. Accounting Drive audit remains deployment-ready with zero blockers and unchanged DB hash.
+- Recreated the existing production image without rebuild to apply env configuration. Startup/polling logs are healthy.
+- Live bounded RPO name search for `Zevs s.r.o.` normalized to `zevs`, returned at most five candidates, and included an exact normalized-name match. The real Telegram conversation remains pending user execution.
 ## 2026-07-17 - Multi-Profile Migration Audit Readiness Repair
 
 ### Cause and scope
@@ -216,6 +241,7 @@
 ### Verification
 - `python -m pytest -q tests/test_access_workspace_reactivation.py tests/test_access_request_flow.py tests/test_workspace_context.py tests/test_workspace_profile_service.py` - 35 passed.
 - `python -m pytest -q tests/test_access_workspace_reactivation.py tests/test_access_request_flow.py` - 26 passed after adding argument-free admin self-approval.
+- Added explicit integration proofs that admin `/approve <telegram_id>` unlocks `/profily` for one verified migrated user and preserves an already registered user's active membership, selection, workspace, supplier, and `/profily` access.
 - `python -m pytest -q` - 2137 passed, 7 subtests passed in 314.87s.
 
 ## 2026-07-13 - Generic Multi-Workspace Dry-Run Readiness Fix
@@ -8220,3 +8246,116 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 - No public route, FSM, callback, Product Truth, InfoHelp, nightly schedule,
   diagnosis, repair, notification, production migration, deploy, or restart
   was added.
+## 2026-07-29 - Accounting intake cancel keyboard bugfix
+
+### Finding
+- This was a deterministic router-order bug, not evidence of a transient Telegram connection failure: `state_control_router` receives the reply-keyboard text before the accounting intake state handler, but its response did not remove the reply keyboard.
+
+### Changes
+- Shared global cancel responses now send `ReplyKeyboardRemove`.
+- Accounting temp cleanup now recognizes every `AccountingDocumentIntakeStates` state, including the post-recognition unknown-category step.
+- Added regressions for cancel after recognition/category review and from the final accounting preview; both prove FSM clear, temp-file cleanup, and keyboard removal.
+
+### Verification
+- `python -m pytest -q tests\test_state_control.py tests\test_accounting_document_intake_flow.py` - 58 passed.
+- `python -m pytest -q tests\test_state_control.py tests\test_accounting_document_intake_flow.py tests\test_decision_resolver.py tests\test_officeflow_attachment_router.py tests\test_voice_state_routing.py` - 815 passed.
+- Full `python -m pytest -q` was attempted but did not complete within the 120-second tool timeout; no full-suite verdict is claimed.
+
+### Scope
+- Deterministic FSM/cancel UX fix only; AI maturity and DecisionResolver authority are unchanged.
+- No DB schema, confirmed storage, access, server, PDF, LLM, STT, or LMM changes. Server deployment and live Telegram smoke were not performed.
+
+## 2026-07-29 - Mark-paid decision button cleanup audit
+
+### Finding
+- Normal `mark_existing_invoice_paid` `yes` and `no` callbacks already dispatched through the shared wrapper and removed inline markup after handling.
+- Stale, expired, malformed, or state-less shared decision callbacks failed closed but left obsolete inline buttons visible.
+
+### Changes
+- The shared decision callback wrapper now removes inline markup before returning from stale/expired rejection paths.
+- Added public-wrapper regressions for both mark-paid buttons and an expired mark-paid callback; the expired callback clears state and markup without dispatching `mark_paid`.
+
+### Verification
+- `python -m pytest -q tests\test_decision_callbacks.py tests\test_invoice_intent_prerouter.py -k "mark_existing_invoice_paid or stale_decision_callback"` - 6 passed, 239 deselected.
+- `python -m pytest -q tests\test_decision_callbacks.py tests\test_invoice_followup_handler.py tests\test_workspace_invoice_followup_service.py` - 42 passed.
+
+### Scope
+- Shared inline-button lifecycle and tests only; no invoice content, payment semantics, DB schema, storage, access, LLM/STT/LMM, server, or deployment change.
+
+
+## 2026-07-29 - Periodic official-registry contact monitor V1
+
+### Decision
+
+- Approved schedule: every 14 days at 03:00 `Europe/Bratislava`, anchored Monday 2026-08-03.
+- Capability remains `partial`, `requires_setup`, and `requires_external_credentials`; code default is disabled.
+- Added two additive SQLite tables for monitor state and bounded change proposals. No existing contact/invoice/PDF migration or rewrite is required.
+
+### Implementation
+
+- Added exact-IČO background checks for active authorized workspaces, bounded official-field diffs, Telegram yes/no proposals, transactional revalidation, replay/stale/conflict rejection, and user-deletion cleanup.
+- Missing registry tax values preserve existing DIČ/IČ DPH. Approval may update only name, address, DIČ, and IČ DPH.
+- Invoice rows/items, `pdf_path`, PDF bytes, email, IBAN, contact person, and contract path are outside the workflow.
+- Added architecture and conversation acceptance proofs plus Product Truth/InfoHelp/TZ/in-action documentation.
+
+### Migration and rollout
+
+- Production pre-audit: SQLite quick check ok; 5 contacts, 4 valid IČO, 10 invoices, 2 referenced contacts, zero `(workspace_id, ico)` duplicate groups, and no monitor tables.
+- Approved rollout: stop and backup, deploy disabled, validate additive schema, no-write/no-notification dry-run, then enable and health-check.
+
+### Verification
+
+- Focused implementation/regression set: `67 passed`.
+- Full-suite and production rollout evidence will be appended after completion.
+
+## 2026-07-29 - One-time Telegram keyboard lifecycle audit
+
+### Decision
+
+- Strengthened the existing top-level subflow, DecisionResolver, action-design,
+  and evaluation contracts instead of creating a competing keyboard contract.
+- Added `docs/evals/telegram_keyboard_lifecycle_audit_2026_07_29.md` as a
+  one-time inventory/evidence artifact. Its verdict remains `needs_revision`.
+
+### Findings and changes
+
+- Audited all seven current `ReplyKeyboardMarkup`/`InlineKeyboardMarkup`
+  families and every decorated callback handler under `bot/handlers/`.
+- Repaired shared intake timeout exits so they send `ReplyKeyboardRemove`.
+- Repaired owned expired/legacy invoice follow-up callbacks so obsolete inline
+  buttons are removed; cross-workspace/forbidden callbacks remain fail-closed
+  without editing a message whose ownership is not proven.
+- Added cleanup-failure logging for shared decision and contact registry lookup
+  keyboards without rolling back already completed business handling.
+- Added final-keyboard assertions for business-profile select/cancel,
+  OfficeFlow proposal no/timeout, accounting preview timeout, shared mark-paid
+  yes/no/stale, cleanup-failure, and invoice follow-up expiry paths.
+- Open gaps remain in contact registry lookup validation semantics and in the
+  concurrent uncommitted registry monitor: owned stale/expired results must be
+  distinguished from forbidden/unproven ownership before cleanup is expanded.
+
+### Verification
+
+- `python -m pytest -q tests\test_business_profiles_handler.py tests\test_decision_callbacks.py tests\test_contact_registry_flow.py` - 37 passed.
+- `python -m pytest -q tests\test_temp_intake_session.py tests\test_officeflow_attachment_router.py tests\test_accounting_document_intake_flow.py tests\test_invoice_followup_handler.py` - 94 passed.
+- `python -m pytest -q` - 2373 passed, 7 subtests passed in 753.68s.
+- `git diff --check` - passed before the final documentation entry; rerun at
+  handoff.
+
+### Scope
+
+- Deterministic Telegram UI lifecycle, tests, and contracts only. No DB schema,
+  confirmed storage, access, PDF, AI maturity, Product Truth capability claim,
+  server operation, deployment, or live Telegram smoke changed.
+
+
+### Production rollout evidence - 2026-07-29
+
+- Before writes, stopped the live container and created `/var/backups/fakturabot/20260729T193158Z_contact_registry_monitor` containing the pre-change DB, `.env`, image id, commit, and `SHA256SUMS`. DB backup SHA-256: `a90c9cc8dc65ab05cbf6e97b011d259c40fd2fc7354fe17f753c0084b852612a`; environment backup SHA-256: `aac22b958d9ca5840774911b6dd0620736639ca214d90bebae4112ce80594f75`.
+- Fast-forwarded the server base from `acb1c75` to current GitHub `main` `6ce8493`, overlaid the tested monitor runtime files, and built image `sha256:b921ec05e7d8e262bb421014ec7747c4db2cb10e7adf87d254b10e89a020087d`. The server tree is intentionally dirty because this feature has not been committed/pushed.
+- An initial operational command used the dev compose file and started an isolated container with an empty ephemeral DB. It was stopped immediately; no production business row was touched. The required `docker-compose.prod.yml` was then used and its mount was verified as `/bot/repo/data/storage -> /bot/data/storage`.
+- Disabled deploy created only the two additive empty tables. Production then reported `quick_check=ok`, 5 contacts, 10 invoices, 0 monitor-state rows, and 0 proposal rows.
+- The no-write/no-notification live dry-run audited five exact-IČO contacts. Initial bounded external calls returned three checks, two detected changes, one unchanged contact, and two temporary registry-unavailable failures. A bounded retry resolved all five exact identities; no raw provider/contact values were logged.
+- Before/after dry-run DB SHA-256 remained `61d6dad55da3dae35884e296c427e93626edf00cfa013623382916917e6c3c2a`; aggregate invoice-PDF fingerprint remained `6efc241ac94e254cfac9cd3a1f513ca4ab6113bd2df33c057d348502a8da59a2`; monitor/proposal rows remained 0/0.
+- Enabled `CONTACT_REGISTRY_MONITOR_ENABLED=1` with timezone `Europe/Bratislava`, anchor `2026-08-03T03:00:00`, 14-day interval, batch 20, and proposal TTL 30 days. Post-change `.env` SHA-256 is `e069c0e512aac8c89c1a6315d5d776b43fe04954902ac28bbb0697f287fa2fca`.
+- Final runtime is `running`, restart count 0, polling active, monitor scheduler started, DB `quick_check=ok`, 5 contacts, 10 invoices, and 0/0 monitor/proposal rows before the first scheduled slot.

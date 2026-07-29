@@ -21,6 +21,8 @@ class UserDataDeletionResult:
     service_aliases_deleted: int
     invoice_number_settings_deleted: int
     confirmed_aliases_deleted: int
+    contact_registry_monitor_states_deleted: int
+    contact_registry_proposals_deleted: int
     filesystem_paths_deleted: tuple[str, ...]
     filesystem_paths_skipped: tuple[str, ...]
     filesystem_errors: tuple[str, ...]
@@ -77,6 +79,12 @@ class UserDataDeletionService:
                 'DELETE FROM invoice WHERE supplier_telegram_id = ?',
                 (telegram_id,),
             ).rowcount
+            (
+                contact_registry_monitor_states_deleted,
+                contact_registry_proposals_deleted,
+            ) = _delete_contact_registry_monitor_rows(
+                connection, telegram_id=telegram_id, workspace_ids=workspace_ids
+            )
             contacts_deleted = connection.execute(
                 'DELETE FROM contact WHERE supplier_telegram_id = ?',
                 (telegram_id,),
@@ -117,6 +125,8 @@ class UserDataDeletionService:
             service_aliases_deleted=service_aliases_deleted,
             invoice_number_settings_deleted=invoice_number_settings_deleted,
             confirmed_aliases_deleted=confirmed_aliases_deleted,
+            contact_registry_monitor_states_deleted=contact_registry_monitor_states_deleted,
+            contact_registry_proposals_deleted=contact_registry_proposals_deleted,
             filesystem_paths_deleted=tuple(deleted),
             filesystem_paths_skipped=tuple(skipped),
             filesystem_errors=tuple(errors),
@@ -248,6 +258,34 @@ def _delete_supplier_service_aliases(
         f'DELETE FROM supplier_service_alias WHERE supplier_id IN ({placeholders})',
         supplier_ids,
     ).rowcount
+
+
+def _delete_contact_registry_monitor_rows(
+    connection: sqlite3.Connection,
+    *,
+    telegram_id: int,
+    workspace_ids: list[str],
+) -> tuple[int, int]:
+    proposal_count = 0
+    state_count = 0
+    if _table_exists(connection, 'contact_registry_change_proposal'):
+        proposal_count += connection.execute(
+            'DELETE FROM contact_registry_change_proposal WHERE actor_telegram_id = ?',
+            (telegram_id,),
+        ).rowcount
+        if workspace_ids:
+            placeholders = ','.join('?' for _ in workspace_ids)
+            proposal_count += connection.execute(
+                f'DELETE FROM contact_registry_change_proposal WHERE workspace_id IN ({placeholders})',
+                workspace_ids,
+            ).rowcount
+    if _table_exists(connection, 'contact_registry_monitor_state') and workspace_ids:
+        placeholders = ','.join('?' for _ in workspace_ids)
+        state_count = connection.execute(
+            f'DELETE FROM contact_registry_monitor_state WHERE workspace_id IN ({placeholders})',
+            workspace_ids,
+        ).rowcount
+    return state_count, proposal_count
 
 
 def _delete_optional_user_rows(

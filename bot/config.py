@@ -49,6 +49,12 @@ class Config:
     contact_registry_pilot_workspace_ids: frozenset[str] = frozenset()
     contact_registry_timeout_seconds: int = 5
     contact_registry_max_results: int = 5
+    contact_registry_monitor_enabled: bool = False
+    contact_registry_monitor_timezone: str = 'Europe/Bratislava'
+    contact_registry_monitor_anchor: str = '2026-08-03T03:00:00'
+    contact_registry_monitor_interval_days: int = 14
+    contact_registry_monitor_batch_size: int = 20
+    contact_registry_monitor_proposal_ttl_days: int = 30
     contact_tax_lookup_enabled: bool = False
     financna_sprava_api_key: str | None = field(default=None, repr=False)
     financna_sprava_timeout_seconds: int = 5
@@ -155,6 +161,30 @@ def load_config() -> Config:
         maximum=10,
     )
 
+    contact_registry_monitor_enabled = _parse_bool(
+        os.getenv('CONTACT_REGISTRY_MONITOR_ENABLED', '')
+    )
+    contact_registry_monitor_timezone = (
+        os.getenv('CONTACT_REGISTRY_MONITOR_TIMEZONE', '').strip()
+        or 'Europe/Bratislava'
+    )
+    contact_registry_monitor_anchor = (
+        os.getenv('CONTACT_REGISTRY_MONITOR_ANCHOR', '').strip()
+        or '2026-08-03T03:00:00'
+    )
+    contact_registry_monitor_interval_days = _parse_bounded_positive_int(
+        os.getenv('CONTACT_REGISTRY_MONITOR_INTERVAL_DAYS', '14'),
+        env_name='CONTACT_REGISTRY_MONITOR_INTERVAL_DAYS', maximum=90,
+    )
+    contact_registry_monitor_batch_size = _parse_bounded_positive_int(
+        os.getenv('CONTACT_REGISTRY_MONITOR_BATCH_SIZE', '20'),
+        env_name='CONTACT_REGISTRY_MONITOR_BATCH_SIZE', maximum=100,
+    )
+    contact_registry_monitor_proposal_ttl_days = _parse_bounded_positive_int(
+        os.getenv('CONTACT_REGISTRY_MONITOR_PROPOSAL_TTL_DAYS', '30'),
+        env_name='CONTACT_REGISTRY_MONITOR_PROPOSAL_TTL_DAYS', maximum=90,
+    )
+
     contact_tax_lookup_enabled = _parse_bool(
         os.getenv('CONTACT_TAX_LOOKUP_ENABLED', '')
     )
@@ -200,6 +230,12 @@ def load_config() -> Config:
         contact_registry_pilot_workspace_ids=contact_registry_pilot_workspace_ids,
         contact_registry_timeout_seconds=contact_registry_timeout_seconds,
         contact_registry_max_results=contact_registry_max_results,
+        contact_registry_monitor_enabled=contact_registry_monitor_enabled,
+        contact_registry_monitor_timezone=contact_registry_monitor_timezone,
+        contact_registry_monitor_anchor=contact_registry_monitor_anchor,
+        contact_registry_monitor_interval_days=contact_registry_monitor_interval_days,
+        contact_registry_monitor_batch_size=contact_registry_monitor_batch_size,
+        contact_registry_monitor_proposal_ttl_days=contact_registry_monitor_proposal_ttl_days,
         contact_tax_lookup_enabled=contact_tax_lookup_enabled,
         financna_sprava_api_key=financna_sprava_api_key,
         financna_sprava_timeout_seconds=financna_sprava_timeout_seconds,

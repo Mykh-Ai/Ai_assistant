@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import re
+
+from aiogram import F, Router
+from aiogram.types import CallbackQuery
+
+from bot.config import Config
+from bot.services.decision_resolver import resolve_yes_no
+from bot.services.contact_registry_monitor import (
+    CALLBACK_PREFIX,
+    ContactRegistryMonitorService,
+    DECISION_NO,
+    DECISION_YES,
+)
+
+
+router = Router()
+_CALLBACK_RE = re.compile(
+    rf'^{CALLBACK_PREFIX}:(?P<decision>{DECISION_YES}|{DECISION_NO}):'
+    r'(?P<proposal>[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-'
+    r'[89ab][0-9a-f]{3}-[0-9a-f]{12})$'
+)
+_STALE = 'Tento návrh už nie je dostupný alebo nemáte oprávnenie.'
+
+
+@router.callback_query(F.data.startswith(f'{CALLBACK_PREFIX}:'))
+async def contact_registry_monitor_callback(
+    callback: CallbackQuery, config: Config
+) -> None:
+    match = _CALLBACK_RE.fullmatch(callback.data or '')
+    actor_id = getattr(getattr(callback, 'from_user', None), 'id', None)
+    if match is None or actor_id is None:
+        await callback.answer(_STALE, show_alert=True)
+        return
+    decision = await resolve_yes_no(
+        context_name='contact_registry_monitor_proposal',
+        user_input_text=match.group('decision'),
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if decision not in {DECISION_YES, DECISION_NO}:
+        await callback.answer(_STALE, show_alert=True)
+        return
+    resolution = ContactRegistryMonitorService(config.db_path, config).resolve(
+        proposal_id=match.group('proposal'),
+        actor_telegram_id=int(actor_id),
+        decision=decision,
+        now=datetime.now(timezone.utc),
+    )
+    if resolution.status == 'applied':
+        await _clear_keyboard(callback)
+        await _answer_message(
+            callback,
+            f'Kontakt „{resolution.contact_name}“ bol aktualizovaný. '
+            'Už vystavené faktúry a PDF zostali bez zmeny.',
+        )
+        await callback.answer()
+        return
+    if resolution.status == 'dismissed':
+        await _clear_keyboard(callback)
+        await _answer_message(callback, 'Kontakt zostal bez zmeny.')
+        await callback.answer()
+        return
+    await callback.answer(_STALE, show_alert=True)
+
+
+async def _clear_keyboard(callback: CallbackQuery) -> None:
+    if callback.message is None or not hasattr(callback.message, 'edit_reply_markup'):
+        return
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        return
+
+
+async def _answer_message(callback: CallbackQuery, text: str) -> None:
+    if callback.message is not None and hasattr(callback.message, 'answer'):
+        await callback.message.answer(text)

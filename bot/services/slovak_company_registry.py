@@ -67,18 +67,26 @@ class SlovakCompanyRegistry:
         self._max_results = max_results
         self._base_url = base_url.rstrip('/') + '/'
 
-    async def search(self, query: str) -> list[RegistryCompanyCandidate]:
+    async def search(
+        self, query: str, *, only_active: bool = True
+    ) -> list[RegistryCompanyCandidate]:
         raw_query = query.strip()
         if not raw_query:
             return []
         ico_query = re.sub(r'\s+', '', raw_query)
         if re.fullmatch(r'\d{8}', ico_query):
-            params = {'identifier': ico_query, 'onlyActive': 'true'}
+            params = {
+                'identifier': ico_query,
+                'onlyActive': 'true' if only_active else 'false',
+            }
         else:
             normalized_query = normalize_company_search_name(raw_query)
             if len(normalized_query) < 3:
                 return []
-            params = {'fullName': normalized_query, 'onlyActive': 'true'}
+            params = {
+                'fullName': normalized_query,
+                'onlyActive': 'true' if only_active else 'false',
+            }
 
         payload = await self._request_json('search', params=params)
         rows = payload.get('results') if isinstance(payload, dict) else None

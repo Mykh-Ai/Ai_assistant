@@ -1493,4 +1493,8 @@ def init_db(db_path: Path) -> None:
         ensure_archive_schema(connection)
         ensure_google_drive_connection_schema(connection)
         ensure_work_time_schema(connection)
+        from bot.services.contact_registry_monitor import (
+            ensure_contact_registry_monitor_schema,
+        )
+        ensure_contact_registry_monitor_schema(connection)
         connection.commit()

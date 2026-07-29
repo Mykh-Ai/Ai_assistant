@@ -1585,3 +1585,20 @@ The authorized read-only audit on 2026-07-18 verified production mappings withou
 No DB schema/storage migration is introduced. Enriched confirmed contacts use existing bounded metadata with `source_type=registry` and `source_note=slovak_rpo+financna_sprava`; no write occurs before final confirmation. Same-IČO merge preservation, same-name/different-IČO conflict refusal, invoice references, manual/PDF intake, tenant isolation, and precision rules remain unchanged.
 
 Registry candidates and drafts stay in the active contact FSM. Callback data contains only `contact_registry_pick:<nonce>:<index>` or `contact_registry_action:<nonce>:<action>`. Actor, state, active workspace/profile, nonce, index, feature eligibility, and expiry are revalidated. No contact write occurs before shared yes/no final confirmation. The dedicated transactional save owner re-checks workspace+IČO and workspace+exact-name conflicts; same-IČO updates preserve contact id, invoice references, contract path, and unsupplied local optional fields, while name/IČO split or collision fails closed.
+
+## 2026-07-28 Addendum: production-wide official-registry activation
+
+Production configuration now enables the RPO lookup and Financial Administration tax enrichment for every authorized user with an active workspace/profile. The runtime meaning is `CONTACT_REGISTRY_LOOKUP_ENABLED=1` with an empty `CONTACT_REGISTRY_PILOT_WORKSPACE_IDS`; the tax child gate remains enabled with configured external credentials. Code defaults remain fail-closed and deployment-configurable.
+
+This activation changes no canonical action, FSM ownership, schema, storage, tenant scoping, or confirmation rule. Unauthorized users still cannot trigger provider calls. Provider outage, timeout, invalid/ambiguous results, or missing tax data preserves the manual/document fallback and typed-DIČ continuation. Candidates are never auto-saved, and the selected contact is written only after explicit final confirmation.
+
+
+## 2026-07-29 Addendum: periodic official-registry contact monitor
+
+A deterministic internal `contacts` scheduler may be enabled with `CONTACT_REGISTRY_MONITOR_ENABLED=1`. It is disabled by default and depends on the existing RPO parent gate and external tax credentials. The calendar schedule is anchored at `2026-08-03T03:00:00` in `Europe/Bratislava` and repeats every 14 days, preserving 03:00 across DST.
+
+Two additive tables store per-contact check state and bounded confirmation proposals. Eligible rows require a valid eight-digit IČO, active workspace/owner membership/authorization, a due slot, and no live pending proposal. Exact-IČO RPO lookup may include inactive entities so lifecycle changes do not disappear from monitoring. Missing/failed tax lookup preserves stored DIČ/IČ DPH.
+
+A detected official name, legal-address, DIČ, or IČ DPH difference is notification-only until the owner chooses `Aktualizovať kontakt`. Approval revalidates actor, workspace, TTL, IČO, contact version/old values, and conflicts in one transaction. Decline, replay, expiry, unauthorized actor, stale contact, ambiguity, and conflicts fail closed.
+
+The monitor never updates invoice/invoice-item rows, regenerates PDFs, changes `pdf_path`, or changes contact email, IBAN, person, or contract path. User-data deletion removes monitor/proposal rows before contact/workspace deletion. Rollout is backup-first, disabled deploy, schema validation, no-write dry-run, then controlled enablement.
