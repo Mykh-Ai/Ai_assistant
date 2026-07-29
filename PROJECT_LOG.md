@@ -8359,3 +8359,19 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 - Before/after dry-run DB SHA-256 remained `61d6dad55da3dae35884e296c427e93626edf00cfa013623382916917e6c3c2a`; aggregate invoice-PDF fingerprint remained `6efc241ac94e254cfac9cd3a1f513ca4ab6113bd2df33c057d348502a8da59a2`; monitor/proposal rows remained 0/0.
 - Enabled `CONTACT_REGISTRY_MONITOR_ENABLED=1` with timezone `Europe/Bratislava`, anchor `2026-08-03T03:00:00`, 14-day interval, batch 20, and proposal TTL 30 days. Post-change `.env` SHA-256 is `e069c0e512aac8c89c1a6315d5d776b43fe04954902ac28bbb0697f287fa2fca`.
 - Final runtime is `running`, restart count 0, polling active, monitor scheduler started, DB `quick_check=ok`, 5 contacts, 10 invoices, and 0/0 monitor/proposal rows before the first scheduled slot.
+
+## 2026-07-29 - Git publication and clean production redeploy
+
+- Full repository verification passed: `2373 passed, 7 subtests passed in 753.68s`.
+- Published the complete project change set as commit
+  `c70e0576a3df2effd09072af0410d6f2b214c1f3` on `origin/main`; local Codex
+  attachment and generated pytest output files were excluded.
+- All eight dirty server runtime files matched the local release payload by
+  SHA-256. The prior server tree was retained as Git stash
+  `predeploy-c70e057-2026-07-29` before the clean fast-forward.
+- Rebuilt and restarted with `docker-compose.prod.yml`. The container reported
+  `Up`; logs showed FakturaBot startup, Telegram polling, invoice follow-up,
+  Google Drive archive, and contact registry monitor schedulers without a
+  polling conflict or startup error.
+- Server `.env`, business storage, and SQLite data were not manually rewritten;
+  normal application startup behavior remained in effect.
