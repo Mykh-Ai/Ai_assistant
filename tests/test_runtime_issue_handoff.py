@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+from pathlib import Path
 import sqlite3
 import subprocess
 
@@ -356,6 +357,67 @@ def test_ack_requires_verified_receipt_and_is_idempotent(tmp_path):
     assert service.take_next(limit=1) == []
 
 
+def test_remote_verifier_runs_without_sqlite_write_transaction(tmp_path):
+    db_path = tmp_path / 'db.sqlite'
+    init_db(db_path)
+    _capture(db_path, update_id=1)
+    service = _service(db_path)
+    manifest = service.take_next(limit=1)[0]
+
+    def verifier(branch, commit):
+        assert branch == WORKSHOP_BRANCH
+        assert commit == COMMIT
+        with sqlite3.connect(db_path, timeout=0) as probe:
+            probe.execute('BEGIN IMMEDIATE')
+            probe.rollback()
+        return True
+
+    result = service.acknowledge(
+        handoff_id=manifest['handoff_id'],
+        raw_token=manifest['lease_token'],
+        manifest_digest=manifest['manifest_digest'],
+        workshop_branch=WORKSHOP_BRANCH,
+        workshop_commit_sha=COMMIT,
+        verifier=verifier,
+    )
+    assert result.status == 'acknowledged'
+
+
+def test_ack_reread_rejects_lease_redelivered_during_remote_verification(tmp_path):
+    db_path = tmp_path / 'db.sqlite'
+    init_db(db_path)
+    _capture(db_path, update_id=1)
+    service = _service(db_path)
+    manifest = service.take_next(limit=1)[0]
+
+    def verifier(branch, commit):
+        assert branch == WORKSHOP_BRANCH
+        assert commit == COMMIT
+        redelivered = _service(
+            db_path,
+            now=NOW + timedelta(minutes=61),
+            tokens=['B' * 43],
+        ).take_next(limit=1)
+        assert redelivered[0]['attempt_count'] == 2
+        return True
+
+    with pytest.raises(RuntimeIssueHandoffConflict):
+        service.acknowledge(
+            handoff_id=manifest['handoff_id'],
+            raw_token=manifest['lease_token'],
+            manifest_digest=manifest['manifest_digest'],
+            workshop_branch=WORKSHOP_BRANCH,
+            workshop_commit_sha=COMMIT,
+            verifier=verifier,
+        )
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            'SELECT status, attempt_count, workshop_branch, workshop_commit_sha '
+            'FROM runtime_issue_handoffs'
+        ).fetchone()
+    assert row == ('leased', 2, None, None)
+
+
 @pytest.mark.parametrize(
     ('case', 'now'),
     [
@@ -411,35 +473,46 @@ def test_ack_rejections_fail_without_canonical_mutation(tmp_path, case, now):
     assert after == before
 
 
-def test_fixed_remote_verifier_uses_bounded_exact_branch_read(tmp_path):
+def test_fixed_remote_verifier_uses_bounded_exact_branch_reachability(tmp_path):
     calls = []
 
     def runner(argv, **kwargs):
         calls.append((argv, kwargs))
-        return subprocess.CompletedProcess(
-            argv,
-            0,
-            stdout=f'{COMMIT}\trefs/heads/{WORKSHOP_BRANCH}\n',
-            stderr='',
-        )
+        return subprocess.CompletedProcess(argv, 0, stdout='', stderr='')
 
     verifier = FixedRemoteCommitVerifier(repository=tmp_path, runner=runner)
     assert verifier(WORKSHOP_BRANCH, COMMIT) is True
-    argv, kwargs = calls[0]
-    assert argv == [
+    fetch_argv, fetch_kwargs = calls[0]
+    assert fetch_argv == [
         'git',
         '-C',
         str(tmp_path),
-        'ls-remote',
-        '--exit-code',
+        'fetch',
+        '--no-tags',
+        '--force',
         'origin',
-        f'refs/heads/{WORKSHOP_BRANCH}',
+        (
+            f'+refs/heads/{WORKSHOP_BRANCH}:'
+            f'refs/remotes/origin/{WORKSHOP_BRANCH}'
+        ),
     ]
-    assert kwargs['shell'] is False
-    assert kwargs['timeout'] == 15.0
+    assert fetch_kwargs['shell'] is False
+    assert fetch_kwargs['timeout'] == 15.0
+    ancestor_argv, ancestor_kwargs = calls[1]
+    assert ancestor_argv == [
+        'git',
+        '-C',
+        str(tmp_path),
+        'merge-base',
+        '--is-ancestor',
+        COMMIT,
+        f'refs/remotes/origin/{WORKSHOP_BRANCH}',
+    ]
+    assert ancestor_kwargs['shell'] is False
+    assert ancestor_kwargs['timeout'] == 15.0
     assert verifier('maintenance/other', COMMIT) is False
     assert verifier(WORKSHOP_BRANCH, 'not-a-commit') is False
-    assert len(calls) == 1
+    assert len(calls) == 2
 
 
 def test_fixed_remote_verifier_fails_closed_when_remote_is_unavailable(tmp_path):
@@ -449,6 +522,57 @@ def test_fixed_remote_verifier_fails_closed_when_remote_is_unavailable(tmp_path)
 
     verifier = FixedRemoteCommitVerifier(repository=tmp_path, runner=unavailable)
     assert verifier(WORKSHOP_BRANCH, COMMIT) is False
+
+
+def test_crash_before_ack_accepts_receipt_after_workshop_branch_advances(tmp_path):
+    remote = tmp_path / 'remote.git'
+    workshop = tmp_path / 'workshop'
+
+    def git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ['git', *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+            shell=False,
+            timeout=15,
+        )
+
+    git('init', '--bare', str(remote))
+    git('init', str(workshop))
+    git('config', 'user.name', 'Workshop Test', cwd=workshop)
+    git('config', 'user.email', 'workshop@example.invalid', cwd=workshop)
+    git('checkout', '-b', WORKSHOP_BRANCH, cwd=workshop)
+    git('remote', 'add', 'origin', str(remote), cwd=workshop)
+    receipt = workshop / 'receipt.txt'
+    receipt.write_text('receipt\n', encoding='utf-8')
+    git('add', 'receipt.txt', cwd=workshop)
+    git('commit', '-m', 'store receipt', cwd=workshop)
+    receipt_commit = git('rev-parse', 'HEAD', cwd=workshop).stdout.strip()
+    git('push', '-u', 'origin', WORKSHOP_BRANCH, cwd=workshop)
+
+    receipt.write_text('receipt\nlater workshop change\n', encoding='utf-8')
+    git('add', 'receipt.txt', cwd=workshop)
+    git('commit', '-m', 'advance workshop', cwd=workshop)
+    advanced_commit = git('rev-parse', 'HEAD', cwd=workshop).stdout.strip()
+    git('push', 'origin', WORKSHOP_BRANCH, cwd=workshop)
+    assert advanced_commit != receipt_commit
+
+    db_path = tmp_path / 'db.sqlite'
+    init_db(db_path)
+    _capture(db_path, update_id=1)
+    service = _service(db_path)
+    manifest = service.take_next(limit=1)[0]
+    result = service.acknowledge(
+        handoff_id=manifest['handoff_id'],
+        raw_token=manifest['lease_token'],
+        manifest_digest=manifest['manifest_digest'],
+        workshop_branch=WORKSHOP_BRANCH,
+        workshop_commit_sha=receipt_commit,
+        verifier=FixedRemoteCommitVerifier(repository=workshop),
+    )
+    assert result.workshop_commit_sha == receipt_commit
 
 
 def test_conflicting_repeat_and_reserved_reconciled_unreachable(tmp_path):

@@ -71,7 +71,7 @@ def token_hash(raw_token: str) -> str:
 
 
 class FixedRemoteCommitVerifier:
-    """Verify an exact receipt commit at the fixed remote workshop branch tip."""
+    """Verify a receipt commit is reachable from the fixed remote workshop branch."""
 
     def __init__(
         self,
@@ -88,15 +88,19 @@ class FixedRemoteCommitVerifier:
         if branch != WORKSHOP_BRANCH or not _COMMIT_SHA.fullmatch(commit_sha):
             return False
         try:
-            result = self._runner(
+            fetch = self._runner(
                 [
                     'git',
                     '-C',
                     str(self._repository),
-                    'ls-remote',
-                    '--exit-code',
+                    'fetch',
+                    '--no-tags',
+                    '--force',
                     'origin',
-                    f'refs/heads/{WORKSHOP_BRANCH}',
+                    (
+                        f'+refs/heads/{WORKSHOP_BRANCH}:'
+                        f'refs/remotes/origin/{WORKSHOP_BRANCH}'
+                    ),
                 ],
                 check=False,
                 capture_output=True,
@@ -106,10 +110,28 @@ class FixedRemoteCommitVerifier:
             )
         except (OSError, subprocess.SubprocessError):
             return False
-        if result.returncode != 0:
+        if fetch.returncode != 0:
             return False
-        fields = result.stdout.strip().split()
-        return len(fields) >= 2 and hmac.compare_digest(fields[0], commit_sha)
+        try:
+            reachable = self._runner(
+                [
+                    'git',
+                    '-C',
+                    str(self._repository),
+                    'merge-base',
+                    '--is-ancestor',
+                    commit_sha,
+                    f'refs/remotes/origin/{WORKSHOP_BRANCH}',
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout_seconds,
+                shell=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return reachable.returncode == 0
 
 
 class RuntimeIssueHandoffService:
@@ -266,59 +288,60 @@ class RuntimeIssueHandoffService:
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             validate_runtime_issue_handoff_schema(connection)
+            row = self._ack_row(connection, handoff_id)
+            idempotent = self._validate_ack_row(
+                row,
+                supplied_hash=supplied_hash,
+                manifest_digest=manifest_digest,
+                workshop_branch=workshop_branch,
+                workshop_commit_sha=workshop_commit_sha,
+                now_text=now_text,
+            )
+            if idempotent is not None:
+                return idempotent
+
+        if not verifier(workshop_branch, workshop_commit_sha):
+            raise RuntimeIssueHandoffConflict('workshop_receipt_not_verified')
+
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            validate_runtime_issue_handoff_schema(connection)
             try:
                 connection.execute('BEGIN IMMEDIATE')
-                row = connection.execute(
-                    'SELECT handoff_id, status, lease_token_hash, lease_until, '
-                    'manifest_digest, workshop_branch, workshop_commit_sha, acknowledged_at '
-                    'FROM runtime_issue_handoffs WHERE handoff_id = ?',
-                    (handoff_id,),
-                ).fetchone()
-                if row is None:
-                    raise RuntimeIssueHandoffInvalid('handoff_not_found')
-                if str(row['status']) == 'acknowledged':
-                    same = (
-                        hmac.compare_digest(str(row['lease_token_hash']), supplied_hash)
-                        and hmac.compare_digest(
-                            str(row['manifest_digest']), manifest_digest
-                        )
-                        and str(row['workshop_branch']) == workshop_branch
-                        and str(row['workshop_commit_sha']) == workshop_commit_sha
-                    )
-                    if not same:
-                        raise RuntimeIssueHandoffConflict('handoff_ack_conflict')
+                row = self._ack_row(connection, handoff_id)
+                idempotent = self._validate_ack_row(
+                    row,
+                    supplied_hash=supplied_hash,
+                    manifest_digest=manifest_digest,
+                    workshop_branch=workshop_branch,
+                    workshop_commit_sha=workshop_commit_sha,
+                    now_text=now_text,
+                )
+                if idempotent is not None:
                     connection.commit()
-                    return AckResult(
-                        handoff_id=handoff_id,
-                        status='acknowledged',
-                        manifest_digest=manifest_digest,
-                        workshop_branch=workshop_branch,
-                        workshop_commit_sha=workshop_commit_sha,
-                        acknowledged_at=str(row['acknowledged_at']),
-                        idempotent=True,
-                    )
-                if str(row['status']) != 'leased':
-                    raise RuntimeIssueHandoffConflict('handoff_not_live')
-                if str(row['lease_until']) <= now_text:
-                    raise RuntimeIssueHandoffConflict('handoff_lease_expired')
-                if not hmac.compare_digest(str(row['lease_token_hash']), supplied_hash):
-                    raise RuntimeIssueHandoffConflict('handoff_token_mismatch')
-                if not hmac.compare_digest(str(row['manifest_digest']), manifest_digest):
-                    raise RuntimeIssueHandoffConflict('handoff_digest_mismatch')
-                if not verifier(workshop_branch, workshop_commit_sha):
-                    raise RuntimeIssueHandoffConflict('workshop_receipt_not_verified')
-                connection.execute(
+                    return idempotent
+                lease_until = str(row['lease_until'])
+                cursor = connection.execute(
                     "UPDATE runtime_issue_handoffs SET status = 'acknowledged', "
                     'workshop_branch = ?, workshop_commit_sha = ?, acknowledged_at = ?, '
-                    'updated_at = ? WHERE handoff_id = ? AND status = \'leased\'',
+                    'updated_at = ? WHERE handoff_id = ? AND status = \'leased\' '
+                    'AND lease_owner = ? AND lease_token_hash = ? '
+                    'AND manifest_digest = ? AND lease_until = ? AND lease_until > ?',
                     (
                         workshop_branch,
                         workshop_commit_sha,
                         now_text,
                         now_text,
                         handoff_id,
+                        LEASE_OWNER,
+                        supplied_hash,
+                        manifest_digest,
+                        lease_until,
+                        now_text,
                     ),
                 )
+                if cursor.rowcount != 1:
+                    raise RuntimeIssueHandoffConflict('handoff_ack_race')
                 connection.commit()
             except Exception:
                 if connection.in_transaction:
@@ -333,6 +356,61 @@ class RuntimeIssueHandoffService:
             acknowledged_at=now_text,
             idempotent=False,
         )
+
+    @staticmethod
+    def _ack_row(
+        connection: sqlite3.Connection,
+        handoff_id: str,
+    ) -> sqlite3.Row | None:
+        return connection.execute(
+            'SELECT handoff_id, status, lease_token_hash, lease_owner, leased_at, '
+            'lease_until, manifest_digest, workshop_branch, workshop_commit_sha, '
+            'acknowledged_at FROM runtime_issue_handoffs WHERE handoff_id = ?',
+            (handoff_id,),
+        ).fetchone()
+
+    @staticmethod
+    def _validate_ack_row(
+        row: sqlite3.Row | None,
+        *,
+        supplied_hash: str,
+        manifest_digest: str,
+        workshop_branch: str,
+        workshop_commit_sha: str,
+        now_text: str,
+    ) -> AckResult | None:
+        if row is None:
+            raise RuntimeIssueHandoffInvalid('handoff_not_found')
+        handoff_id = str(row['handoff_id'])
+        if str(row['status']) == 'acknowledged':
+            same = (
+                hmac.compare_digest(str(row['lease_token_hash']), supplied_hash)
+                and hmac.compare_digest(str(row['manifest_digest']), manifest_digest)
+                and str(row['workshop_branch']) == workshop_branch
+                and str(row['workshop_commit_sha']) == workshop_commit_sha
+            )
+            if not same:
+                raise RuntimeIssueHandoffConflict('handoff_ack_conflict')
+            return AckResult(
+                handoff_id=handoff_id,
+                status='acknowledged',
+                manifest_digest=manifest_digest,
+                workshop_branch=workshop_branch,
+                workshop_commit_sha=workshop_commit_sha,
+                acknowledged_at=str(row['acknowledged_at']),
+                idempotent=True,
+            )
+        if str(row['status']) != 'leased':
+            raise RuntimeIssueHandoffConflict('handoff_not_live')
+        if str(row['lease_owner']) != LEASE_OWNER or not str(row['leased_at']):
+            raise RuntimeIssueHandoffConflict('handoff_lease_owner_mismatch')
+        if str(row['lease_until']) <= now_text:
+            raise RuntimeIssueHandoffConflict('handoff_lease_expired')
+        if not hmac.compare_digest(str(row['lease_token_hash']), supplied_hash):
+            raise RuntimeIssueHandoffConflict('handoff_token_mismatch')
+        if not hmac.compare_digest(str(row['manifest_digest']), manifest_digest):
+            raise RuntimeIssueHandoffConflict('handoff_digest_mismatch')
+        return None
 
     @staticmethod
     def _issue_snapshot(row: sqlite3.Row) -> dict[str, object]:

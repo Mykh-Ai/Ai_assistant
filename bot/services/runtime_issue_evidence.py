@@ -24,6 +24,22 @@ EVIDENCE_CATEGORIES = ('stt', 'docker', 'network', 'provider')
 _ISSUE_ID = re.compile(r'^IR-[0-9]{8}-[0-9A-F]{12}$')
 _HANDOFF_ID = re.compile(r'^RH-[0-9]{8}-[0-9A-F]{12}$')
 _TIMESTAMP_LINE = re.compile(r'^(\d{4}-\d\d-\d\dT[^\s]+)\s+(.*)$')
+_NUMERIC_CORRELATION_FIELD = re.compile(
+    r'(?<![A-Za-z0-9_])'
+    r'(?P<label>'
+    r'telegram_update_id|update_id|update|'
+    r'telegram_message_id|message_id|message|'
+    r'actor_telegram_id|telegram_user_id|user_id|'
+    r'telegram_chat_id|chat_id'
+    r')'
+    r'(?![A-Za-z0-9_])\s*[:=]\s*(?P<value>[0-9]+)(?![A-Za-z0-9_])',
+    re.IGNORECASE,
+)
+_WORKSPACE_CORRELATION_FIELD = re.compile(
+    r'(?<![A-Za-z0-9_])workspace_id(?![A-Za-z0-9_])'
+    r'\s*[:=]\s*(?P<value>[A-Za-z0-9_-]{1,80})(?![A-Za-z0-9_-])',
+    re.IGNORECASE,
+)
 _SECRET = re.compile(
     r'(?i)\b(password|passwd|pwd|token|api[_-]?key|secret|authorization)'
     r'\s*[:=]\s*[^\s,;]+'
@@ -82,25 +98,57 @@ class FixedDockerLogSource:
             raise RuntimeIssueEvidenceError('evidence_source_unavailable') from exc
         if result.returncode != 0:
             raise RuntimeIssueEvidenceError('evidence_source_failed')
-        raw = result.stdout.encode('utf-8', errors='replace')[:MAX_RAW_BYTES].decode(
-            'utf-8', errors='replace'
+        records: list[tuple[datetime | None, int, int, str]] = []
+        for stream_order, raw_stream in enumerate((result.stdout, result.stderr)):
+            for line_order, line in enumerate(raw_stream.splitlines()[:MAX_RAW_LINES]):
+                records.append(
+                    (
+                        self._timestamp(line),
+                        stream_order,
+                        line_order,
+                        line,
+                    )
+                )
+        records.sort(
+            key=lambda record: (
+                record[0] is None,
+                record[0] or datetime.max.replace(tzinfo=UTC),
+                record[1],
+                record[2],
+            )
         )
         output: list[RecordedEvidenceLine] = []
-        for line in raw.splitlines()[:MAX_RAW_LINES]:
+        used_bytes = 0
+        for timestamp, _stream_order, _line_order, line in records[:MAX_RAW_LINES]:
+            encoded = line.encode('utf-8', errors='replace')
+            record_bytes = len(encoded) + 1
+            if used_bytes + record_bytes > MAX_RAW_BYTES:
+                break
+            used_bytes += record_bytes
+            if timestamp is None:
+                continue
             match = _TIMESTAMP_LINE.match(line)
-            if match is None:
-                continue
-            try:
-                timestamp = datetime.fromisoformat(match.group(1).replace('Z', '+00:00'))
-            except ValueError:
-                continue
+            assert match is not None
             output.append(
                 RecordedEvidenceLine(
-                    timestamp=timestamp.astimezone(UTC),
+                    timestamp=timestamp,
                     text=match.group(2),
                 )
             )
         return output
+
+    @staticmethod
+    def _timestamp(line: str) -> datetime | None:
+        match = _TIMESTAMP_LINE.match(line)
+        if match is None:
+            return None
+        try:
+            timestamp = datetime.fromisoformat(match.group(1).replace('Z', '+00:00'))
+            if timestamp.tzinfo is None:
+                return None
+        except ValueError:
+            return None
+        return timestamp.astimezone(UTC)
 
 
 class RuntimeIssueEvidenceService:
@@ -116,7 +164,8 @@ class RuntimeIssueEvidenceService:
             validate_runtime_issue_schema(connection)
             validate_runtime_issue_handoff_schema(connection)
             row = connection.execute(
-                'SELECT r.issue_id, r.reported_at, r.workspace_id, '
+                'SELECT r.issue_id, r.reported_at, r.actor_telegram_id, '
+                'r.telegram_chat_id, r.workspace_id, '
                 'r.telegram_update_id, r.telegram_message_id, r.reported_build_sha, '
                 'h.handoff_id, h.status '
                 'FROM runtime_issues AS r '
@@ -152,18 +201,23 @@ class RuntimeIssueEvidenceService:
             for category in EVIDENCE_CATEGORIES:
                 base[category]['status'] = 'source_error'
             lines = []
-        update_id = str(int(row['telegram_update_id']))
-        message_id = str(int(row['telegram_message_id']))
         for line in lines:
             category = self._category(line.text)
             if category is None:
                 continue
             tenant_specific = category in {'stt', 'network', 'provider'}
-            correlations = []
-            if update_id in line.text:
-                correlations.append(f'update:{update_id}')
-            if message_id in line.text:
-                correlations.append(f'message:{message_id}')
+            correlations = self._correlation_ids(
+                line.text,
+                update_id=int(row['telegram_update_id']),
+                message_id=int(row['telegram_message_id']),
+                actor_id=int(row['actor_telegram_id']),
+                chat_id=int(row['telegram_chat_id']),
+                workspace_id=(
+                    str(row['workspace_id'])
+                    if row['workspace_id'] is not None
+                    else None
+                ),
+            )
             if tenant_specific and not correlations:
                 continue
             excerpt, flags = self._sanitize(line.text)
@@ -219,11 +273,66 @@ class RuntimeIssueEvidenceService:
             if not start <= timestamp <= end:
                 continue
             encoded = line.text.encode('utf-8', errors='replace')
-            if used_bytes + len(encoded) > MAX_RAW_BYTES:
+            record_bytes = len(encoded) + 1
+            if used_bytes + record_bytes > MAX_RAW_BYTES:
                 break
-            used_bytes += len(encoded)
+            used_bytes += record_bytes
             output.append(RecordedEvidenceLine(timestamp=timestamp, text=line.text))
         return output
+
+    @staticmethod
+    def _correlation_ids(
+        text: str,
+        *,
+        update_id: int,
+        message_id: int,
+        actor_id: int,
+        chat_id: int,
+        workspace_id: str | None,
+    ) -> list[str]:
+        fields: dict[str, list[int]] = {}
+        for match in _NUMERIC_CORRELATION_FIELD.finditer(text):
+            fields.setdefault(match.group('label').casefold(), []).append(
+                int(match.group('value'))
+            )
+
+        def values(*labels: str) -> list[int]:
+            return [
+                value
+                for label in labels
+                for value in fields.get(label, [])
+            ]
+
+        actor_values = values(
+            'actor_telegram_id',
+            'telegram_user_id',
+            'user_id',
+        )
+        chat_values = values('telegram_chat_id', 'chat_id')
+        workspace_values = [
+            match.group('value')
+            for match in _WORKSPACE_CORRELATION_FIELD.finditer(text)
+        ]
+        if actor_values and any(value != actor_id for value in actor_values):
+            return []
+        if chat_values and any(value != chat_id for value in chat_values):
+            return []
+        if workspace_values and (
+            workspace_id is None
+            or any(value != workspace_id for value in workspace_values)
+        ):
+            return []
+
+        correlations: list[str] = []
+        if update_id in values('telegram_update_id', 'update_id', 'update'):
+            correlations.append(f'update:{update_id}')
+        if message_id in values(
+            'telegram_message_id',
+            'message_id',
+            'message',
+        ):
+            correlations.append(f'message:{message_id}')
+        return correlations
 
     @staticmethod
     def _category(text: str) -> str | None:

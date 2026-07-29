@@ -2,14 +2,15 @@
 
 ### Implementation
 - Added the dedicated additive `runtime_issue_handoffs` table with strict owned-schema validation, stable one-per-issue receipts, 60-minute atomic leases, safe expiry/redelivery, token rotation, verified acknowledgment, and no Stage 1 mutation.
-- Added bounded JSON-only `take-next`, stdin-only `ack`, recorded-evidence collection, and idempotent workshop queue/log bootstrap CLIs. Raw lease tokens are never persisted or accepted through argv; remote receipt verification uses fixed `git ls-remote` arguments with `shell=False`.
-- Added fixed-window recorded STT/Docker/network/provider evidence with trusted correlation, unavailable/source-error truth, input/item/excerpt caps, secret/path redaction, and no active probe.
+- Added bounded JSON-only `take-next`, stdin-only `ack`, recorded-evidence collection, and idempotent workshop queue/log bootstrap CLIs. Raw lease tokens are never persisted or accepted through argv; remote receipt verification uses a fixed branch-only fetch plus an ancestor check with `shell=False`.
+- Added fixed-window recorded STT/Docker/network/provider evidence from Docker stdout and stderr with exact labeled correlation, cross-tenant rejection, unavailable/source-error truth, combined input/item/excerpt caps, secret/path redaction, and no active probe.
+- Review amendment: remote verification now runs outside `BEGIN IMMEDIATE`; acknowledgment reopens a write transaction and atomically revalidates the live lease before its conditional update. Receipt commits remain valid when the workshop branch advances after durable storage.
 - Kept `reconciled` schema-reserved and unreachable. Telegram routing, FSM, callbacks, Product Truth, InfoHelp, nightly scheduling, diagnosis, repair, notifications, deploy, and production data remain unchanged.
 
 ### Verification
-- Focused bridge suite: 45 passed in 3.43s.
-- Required adjacent runtime-issue/FSM/access/tenant/workspace/Product Truth/InfoHelp set: 282 passed in 12.06s.
-- Full repository suite: 2332 passed, 7 subtests passed in 81.97s.
+- Focused bridge suite after review amendments: 58 passed in 6.78s.
+- Required adjacent runtime-issue/FSM/access/tenant/workspace/Product Truth/InfoHelp set after review amendments: 593 passed in 29.16s.
+- Full repository suite after review amendments: 2345 passed, 7 subtests passed in 87.73s.
 - Compileall, diff check, internal Markdown links, canonical/workshop JSON parsing, final scope audit, and secret/private-path scan passed.
 - Temporary migration proof preserves all pre-existing table/index/trigger definitions and row values and rejects missing/type/default/check/unique/index incompatibility. Real Docker/GitHub/provider/server smoke and production migration were not run.
 - Architecture verdict remains `ready_for_handoff`; implementation verification verdict is `safe_to_review`; design-to-code variance is `none_identified`.
