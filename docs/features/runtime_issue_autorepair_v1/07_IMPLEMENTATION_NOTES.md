@@ -112,3 +112,62 @@ SHA. Dropping `runtime_issues` is not an automatic runtime rollback and must
 not be performed by startup code. Any later removal of the table or retained
 issue data requires separate approval, retention review, backup, and a
 dedicated migration plan.
+
+## Runtime Issue Workshop Bridge Phase 1
+
+Task: `RUNTIME_ISSUE_WORKSHOP_BRIDGE_PHASE1`
+
+Design verdict: `ready_for_handoff`
+
+Phase 1 adds `runtime_issue_handoffs` without changing `runtime_issues`.
+Bootstrap is additive and validates owned columns, types, nullability, primary
+and unique ownership, exact defaults/checks, and the two owned indexes.
+Unknown optional columns are tolerated; incompatible owned schema fails closed.
+
+Executable statuses are `leased`, `expired_unacknowledged`, and
+`acknowledged`. `reconciled` is schema-reserved and unreachable in Phase 1.
+Leases last 60 minutes. Redelivery preserves the handoff ID and canonical
+receipt digest, rotates the raw 256-bit token, and increments `attempt_count`.
+
+The bridge exposes only bounded internal JSON CLIs for `take-next`, stdin-only
+`ack`, evidence collection, and idempotent workshop bootstrap. Evidence reads a
+fixed 30-minute window centered on trusted `reported_at`, caps raw input at 500
+lines/256 KiB, returns at most 20 items with 500-character sanitized excerpts,
+and reports missing facts as unavailable. No active provider/STT/network probe
+exists.
+
+`FixedDockerLogSource` collects timestamped records from both Docker stdout and
+stderr. It merges them by timestamp with a deterministic stdout-before-stderr
+tie break, then applies one combined 500-line / 256-KiB raw-input boundary.
+Tenant-specific STT/network/provider evidence correlates only through exact
+allowlisted update/message labels with numeric-token boundaries. A mismatched
+or conflicting update, message, actor, chat, or workspace label rejects the
+line instead of widening evidence to another tenant. Docker evidence is global
+only for a strict allowlist of container lifecycle/health and polling-start
+records. Any other Docker-related line, or an otherwise global-looking line
+that contains correlation fields or possible tenant payload fields, requires
+the same exact trusted update/message correlation or is rejected.
+
+`FixedRemoteCommitVerifier` owns one repository, the `origin` remote, and
+`maintenance/runtime-issue-workshop`. It reads the fixed origin URL, clones
+only the fixed branch into an automatically cleaned isolated temporary bare
+repository, and runs `git merge-base --is-ancestor` there to prove that the
+supplied 40-hex receipt commit is durably reachable even after the branch
+advances. The project repository receives no fetch, ref, config, index,
+worktree, branch, checkout, commit, or push mutation. All fixed subprocess
+calls use argument arrays, `shell=False`, and bounded timeouts; there is no
+caller-provided command surface.
+
+Acknowledgment uses two database phases. The service first reads and validates
+the lease without a SQLite write transaction, closes that connection, and
+performs remote verification. It then opens a new connection with
+`BEGIN IMMEDIATE`, atomically rereads and revalidates the status, lease owner,
+token hash, digest, acknowledgment facts, and expiry against a newly obtained
+timezone-aware UTC value, and uses that same fresh value for the conditional
+update and `acknowledged_at`. A lease that expires during remote verification,
+or any changed, redelivered, or otherwise stale lease, fails without canonical
+mutation.
+
+All migration proof is performed against temporary SQLite files. Production
+still requires a verified backup, prior deployed SHA, reviewed rollback plan,
+and separate deployment approval.

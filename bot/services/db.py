@@ -278,6 +278,33 @@ CREATE TABLE IF NOT EXISTS runtime_issues (
 );
 """
 
+RUNTIME_ISSUE_HANDOFF_SCHEMA_VERSION = 1
+RUNTIME_ISSUE_HANDOFF_MANIFEST_SCHEMA = 'runtime-issue-handoff-v1'
+RUNTIME_ISSUE_HANDOFF_SCHEMA = """
+CREATE TABLE IF NOT EXISTS runtime_issue_handoffs (
+    handoff_id TEXT PRIMARY KEY NOT NULL,
+    issue_id TEXT NOT NULL UNIQUE,
+    schema_version INTEGER NOT NULL DEFAULT 1 CHECK (schema_version = 1),
+    status TEXT NOT NULL
+        CHECK (status IN ('leased', 'acknowledged', 'expired_unacknowledged', 'reconciled')),
+    lease_token_hash TEXT NOT NULL CHECK (length(lease_token_hash) = 64),
+    lease_owner TEXT NOT NULL CHECK (length(lease_owner) BETWEEN 1 AND 80),
+    leased_at TEXT NOT NULL,
+    lease_until TEXT NOT NULL,
+    manifest_schema_version TEXT NOT NULL DEFAULT 'runtime-issue-handoff-v1'
+        CHECK (manifest_schema_version = 'runtime-issue-handoff-v1'),
+    manifest_digest TEXT NOT NULL
+        CHECK (length(manifest_digest) = 71 AND substr(manifest_digest, 1, 7) = 'sha256:'),
+    workshop_branch TEXT,
+    workshop_commit_sha TEXT
+        CHECK (workshop_commit_sha IS NULL OR length(workshop_commit_sha) = 40),
+    acknowledged_at TEXT,
+    attempt_count INTEGER NOT NULL CHECK (attempt_count > 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 ARCHIVE_JOB_SCHEMA = """
 CREATE TABLE IF NOT EXISTS archive_jobs (
     job_id TEXT PRIMARY KEY,
@@ -1313,6 +1340,138 @@ def _bootstrap_runtime_issue_table(connection: sqlite3.Connection) -> None:
     )
 
 
+_RUNTIME_ISSUE_HANDOFF_REQUIRED_COLUMNS: dict[str, tuple[str, bool, bool]] = {
+    'handoff_id': ('TEXT', True, True),
+    'issue_id': ('TEXT', True, False),
+    'schema_version': ('INTEGER', True, False),
+    'status': ('TEXT', True, False),
+    'lease_token_hash': ('TEXT', True, False),
+    'lease_owner': ('TEXT', True, False),
+    'leased_at': ('TEXT', True, False),
+    'lease_until': ('TEXT', True, False),
+    'manifest_schema_version': ('TEXT', True, False),
+    'manifest_digest': ('TEXT', True, False),
+    'workshop_branch': ('TEXT', False, False),
+    'workshop_commit_sha': ('TEXT', False, False),
+    'acknowledged_at': ('TEXT', False, False),
+    'attempt_count': ('INTEGER', True, False),
+    'created_at': ('TEXT', True, False),
+    'updated_at': ('TEXT', True, False),
+}
+_RUNTIME_ISSUE_HANDOFF_REQUIRED_DEFAULTS = {
+    'schema_version': '1',
+    'manifest_schema_version': "'runtime-issue-handoff-v1'",
+}
+_RUNTIME_ISSUE_HANDOFF_REQUIRED_SQL_FRAGMENTS = (
+    'check(schema_version=1)',
+    "check(statusin('leased','acknowledged','expired_unacknowledged','reconciled'))",
+    'check(length(lease_token_hash)=64)',
+    'check(length(lease_owner)between1and80)',
+    "check(manifest_schema_version='runtime-issue-handoff-v1')",
+    "check(length(manifest_digest)=71andsubstr(manifest_digest,1,7)='sha256:')",
+    'check(workshop_commit_shaisnullorlength(workshop_commit_sha)=40)',
+    'check(attempt_count>0)',
+)
+_RUNTIME_ISSUE_HANDOFF_INDEXES = {
+    'idx_runtime_issue_handoffs_status_lease_until': ('status', 'lease_until'),
+    'idx_runtime_issue_handoffs_issue_status': ('issue_id', 'status'),
+}
+
+
+def validate_runtime_issue_handoff_schema(connection: sqlite3.Connection) -> None:
+    cursor = _runtime_issue_row_cursor(connection)
+    rows = cursor.execute(
+        'SELECT name, type, "notnull" AS not_null, dflt_value, pk '
+        "FROM pragma_table_info('runtime_issue_handoffs')"
+    ).fetchall()
+    columns = {str(row['name']): row for row in rows}
+    missing = sorted(set(_RUNTIME_ISSUE_HANDOFF_REQUIRED_COLUMNS) - set(columns))
+    if missing:
+        raise RuntimeError(
+            f'Incompatible local schema for runtime_issue_handoffs: missing required columns {missing}'
+        )
+    for name, expected in _RUNTIME_ISSUE_HANDOFF_REQUIRED_COLUMNS.items():
+        row = columns[name]
+        actual = (
+            str(row['type'] or '').strip().upper(),
+            bool(row['not_null']),
+            bool(row['pk']),
+        )
+        if actual != expected:
+            raise RuntimeError(
+                f'Incompatible local schema for runtime_issue_handoffs: column {name}'
+            )
+    for name, expected_default in _RUNTIME_ISSUE_HANDOFF_REQUIRED_DEFAULTS.items():
+        if str(columns[name]['dflt_value'] or '').strip() != expected_default:
+            raise RuntimeError(
+                f'Incompatible local schema for runtime_issue_handoffs: default {name}'
+            )
+    schema_row = cursor.execute(
+        "SELECT sql AS create_sql FROM sqlite_master "
+        "WHERE type = 'table' AND name = 'runtime_issue_handoffs'"
+    ).fetchone()
+    if schema_row is None or not isinstance(schema_row['create_sql'], str):
+        raise RuntimeError(
+            'Incompatible local schema for runtime_issue_handoffs: missing table SQL'
+        )
+    normalized = ''.join(str(schema_row['create_sql']).casefold().split()).replace('"', '')
+    for fragment in _RUNTIME_ISSUE_HANDOFF_REQUIRED_SQL_FRAGMENTS:
+        if fragment not in normalized:
+            raise RuntimeError(
+                'Incompatible local schema for runtime_issue_handoffs: required constraint'
+            )
+    unique_indexes = cursor.execute(
+        "SELECT name FROM pragma_index_list('runtime_issue_handoffs') WHERE \"unique\" = 1"
+    ).fetchall()
+    unique_shapes = {
+        tuple(
+            str(info['name'])
+            for info in cursor.execute(
+                'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
+                (str(index['name']),),
+            ).fetchall()
+        )
+        for index in unique_indexes
+    }
+    if ('issue_id',) not in unique_shapes:
+        raise RuntimeError(
+            'Incompatible local schema for runtime_issue_handoffs: issue uniqueness'
+        )
+    index_rows = cursor.execute(
+        "SELECT name FROM pragma_index_list('runtime_issue_handoffs')"
+    ).fetchall()
+    present_indexes = {str(row['name']) for row in index_rows}
+    for index_name, expected_columns in _RUNTIME_ISSUE_HANDOFF_INDEXES.items():
+        if index_name not in present_indexes:
+            raise RuntimeError(
+                f'Incompatible local schema for runtime_issue_handoffs: missing index {index_name}'
+            )
+        actual_columns = tuple(
+            str(row['name'])
+            for row in cursor.execute(
+                'SELECT name FROM pragma_index_info(?) ORDER BY seqno',
+                (index_name,),
+            ).fetchall()
+        )
+        if actual_columns != expected_columns:
+            raise RuntimeError(
+                f'Incompatible local schema for runtime_issue_handoffs: index {index_name}'
+            )
+
+
+def _bootstrap_runtime_issue_handoff_table(connection: sqlite3.Connection) -> None:
+    connection.execute(RUNTIME_ISSUE_HANDOFF_SCHEMA)
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_runtime_issue_handoffs_status_lease_until '
+        'ON runtime_issue_handoffs (status, lease_until)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_runtime_issue_handoffs_issue_status '
+        'ON runtime_issue_handoffs (issue_id, status)'
+    )
+    validate_runtime_issue_handoff_schema(connection)
+
+
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1329,6 +1488,7 @@ def init_db(db_path: Path) -> None:
         _bootstrap_confirmed_semantic_alias_table(connection)
         _bootstrap_customization_request_table(connection)
         _bootstrap_runtime_issue_table(connection)
+        _bootstrap_runtime_issue_handoff_table(connection)
         ensure_workspace_foundation_schema(connection)
         ensure_archive_schema(connection)
         ensure_google_drive_connection_schema(connection)
