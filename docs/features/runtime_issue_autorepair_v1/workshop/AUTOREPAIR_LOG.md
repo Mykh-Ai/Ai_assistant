@@ -52,3 +52,71 @@ and production events appear here only after they are verified.
 - Production changed: no.
 - Merge/deploy: not performed.
 - Next action: human review of Draft PR #54.
+
+## ARL-20260730-003 - Correction: missed routing defect and incomplete repair scope
+
+- Correction trigger: the user explicitly pointed out that the first word of
+  the recorded STT was the Ukrainian word for "Problem" and that the bot
+  launched analytics instead of recognizing a problem report.
+- Original-session failure: despite the user's earlier emphasis that the
+  preceding STT produced an unusual situation, the repair agent misread the
+  entire STT as an analytics request. It diagnosed only the defect described
+  inside the report and incorrectly marked the source issue `resolved`.
+- Bounded log evidence subsequently verified this sequence:
+  1. `invoice_stt_result` contained a report beginning with the Ukrainian word
+     for "Problem";
+  2. the immediately following `top_level_intent_resolved` event selected
+     `invoice_analytics` for that complete report text.
+- The user was reporting a problem. The embedded phrase describing "when I ask
+  the bot" referred to an earlier analytics interaction; it was not the
+  current request to run analytics.
+
+### Finding IR-20260730-5FA71FDFFCDE-F02
+
+- Classification: `insufficient_evidence`.
+- Status: `needs_more_diagnostics`.
+- Observed defect: a voice problem report was routed to `invoice_analytics`
+  instead of the implemented problem-report/intake boundary.
+- What is proven: STT preserved the problem-report wording, and the top-level
+  resolver selected the wrong action immediately afterward.
+- What is not yet diagnosed: the exact resolver/precedence mechanism that
+  allowed embedded invoice-analytics language to override the report speech
+  act, the correct existing owner to reuse, and the smallest safe repair.
+- Required next action: inspect the top-level problem-report route, canonical
+  action bounds, resolver hints, voice convergence, and focused tests; add a
+  failing regression for this exact report shape before any code change.
+- Code changed: no.
+- Production changed: no.
+
+### Scope correction for IR-20260730-5FA71FDFFCDE-F01 / Draft PR #54
+
+- Required flow stated by the report: extract the customer reference from an
+  ordinary analytics request, pass it through the same controlled contact
+  resolution chain used by invoice creation (exact, normalized, confirmed
+  alias, fuzzy where allowed, then bounded LLM/unknown), obtain canonical
+  `contact_id`, and only then run invoice analytics.
+- Draft PR #54 implements only part of this flow: bounded selection among
+  current-tenant canonical contact names followed by Python `contact_id`
+  prefiltering and a planner re-filter guard.
+- Draft PR #54 does not currently reuse the full existing exact/normalized/
+  confirmed-alias/fuzzy contact-resolution chain. It must not be described as
+  complete fulfillment of the reported requirement without revision and new
+  acceptance evidence.
+
+### Canonical documents used but omitted from the original report
+
+- `AGENTS.md`;
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`;
+- `docs/llm/Invoice_Analytics_Runtime_Contract.md`;
+- `docs/llm/Safe_Data_Analyst_Runtime_Checklist.md`;
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`;
+- `docs/llm/In_Action_Response_Registry.md`;
+- `docs/AI_Layer_Implementation_Standards.md`;
+- `docs/Product_Truth_Layer.md`;
+- `docs/Self_Learning_Layer.md`;
+- `docs/Evaluation_and_Smoke_Test_Standards.md`;
+- `docs/TZ_FakturaBot.md`.
+
+- Corrected source status: `partially_resolved`.
+- Merge/deploy: not performed.

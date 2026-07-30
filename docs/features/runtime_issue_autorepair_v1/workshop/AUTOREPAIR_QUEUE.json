@@ -4,7 +4,8 @@
       "classification": "confirmed_low_risk_defect",
       "finding_id": "IR-20260730-5FA71FDFFCDE-F01",
       "log_ref": "ARL-20260730-002",
-      "next_action": "human_review_draft_pr_54",
+      "next_action": "revise_draft_pr_54_to_reuse_full_contact_resolution_chain",
+      "remaining_gap": "patch uses bounded current-contact selection but does not reuse the full exact-normalized-confirmed-alias-fuzzy resolution chain",
       "owner_scope": "code",
       "parent_issue_id": "IR-20260730-5FA71FDFFCDE",
       "repair_branch": "autorepair/IR-20260730-5FA71FDFFCDE-F01-invoice-analytics-customer",
@@ -12,7 +13,19 @@
       "repair_pr": "https://github.com/Mykh-Ai/Ai_assistant/pull/54",
       "status": "patch_ready_for_review",
       "test_summary": "54 focused; 469 adjacent; 2376 full plus 7 subtests; compileall and diff-check passed",
-      "updated_at": "2026-07-30T18:46:26.6168527Z"
+      "updated_at": "2026-07-30T20:00:25.6736783Z"
+    },
+    {
+      "classification": "insufficient_evidence",
+      "code_changed": false,
+      "finding_id": "IR-20260730-5FA71FDFFCDE-F02",
+      "log_ref": "ARL-20260730-003",
+      "next_action": "diagnose_top_level_problem_report_routing_and_add_a_failing_regression_before_any_fix",
+      "owner_scope": "code",
+      "parent_issue_id": "IR-20260730-5FA71FDFFCDE",
+      "production_changed": false,
+      "status": "needs_more_diagnostics",
+      "updated_at": "2026-07-30T20:00:25.6736783Z"
     }
   ],
   "schema_version": "autorepair-workshop-v1",
@@ -20,7 +33,7 @@
     {
       "code_changed": true,
       "deployed_sha": "632e9b08dcf8ac5583ec98632ff1a89417972cab",
-      "finding_ids": ["IR-20260730-5FA71FDFFCDE-F01"],
+      "finding_ids": ["IR-20260730-5FA71FDFFCDE-F01", "IR-20260730-5FA71FDFFCDE-F02"],
       "handoff_id": "RH-20260730-E60821130D35",
       "issue_id": "IR-20260730-5FA71FDFFCDE",
       "log_ref": "ARL-20260730-001",
@@ -29,9 +42,9 @@
       "received_at": "2026-07-30T17:55:23.486934+00:00",
       "received_workshop_commit": "abbbbc1ffce22ffe2649c00be969a482c9867e76",
       "repository_main_sha": "715c5941076f9f952f000daeae19a119bf4679d5",
-      "status": "resolved"
+      "status": "partially_resolved"
     }
   ],
-  "updated_at": "2026-07-30T18:46:26.6168527Z",
+  "updated_at": "2026-07-30T20:00:25.6736783Z",
   "workshop_branch": "maintenance/runtime-issue-workshop"
 }
