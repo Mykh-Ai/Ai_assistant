@@ -120,3 +120,106 @@ and production events appear here only after they are verified.
 
 - Corrected source status: `partially_resolved`.
 - Merge/deploy: not performed.
+
+## ARL-20260730-004 - F01 corrected, merged, and deployed; F02 remains deferred
+
+### What the reported analytics defect meant
+
+The actionable F01 requirement was not to treat the whole STT transcript as a
+contact identity and not to let the analytics planner guess a company from raw
+speech. For an ordinary invoice-analytics question that contains a company
+name, the correct path is:
+
+1. voice is transcribed by STT into the complete text;
+2. Python-owned top-level routing selects `invoice_analytics`;
+3. a bounded extractor returns only the minimal explicit company/customer
+   reference or `null`;
+4. Python reuses the invoice-generation tenant-scoped contact resolver:
+   exact name -> normalized name -> confirmed contact alias ->
+   high-confidence fuzzy match;
+5. only if that chain is unresolved, bounded LLM selection receives
+   Python-provided current-tenant contact candidates;
+6. Python obtains the canonical `contact_id` and prefilters `invoices_df`;
+7. the analytics planner runs only on that trusted scope and cannot apply a
+   second raw-name/contact-id filter.
+
+### Why the first repair was incomplete
+
+Draft PR #54 originally formed the tenant dataframe and then asked a bounded
+LLM to choose a canonical contact directly from the full analytics question.
+That was tenant-scoped, but it bypassed the confirmed-alias and deterministic
+contact-resolution chain already used by invoice generation. The confirmed
+alias regression was made to fail against that implementation before the
+correction.
+
+### Final F01 repair
+
+- Added strict JSON extraction of `customer_reference` only; the extractor
+  does not see the contact list, choose a saved contact, or write an alias.
+- Reused `ScopedInvoiceRuntime.resolve_contact_lookup()` through the existing
+  invoice handler owner, preserving exact/normalized/confirmed-alias/fuzzy
+  order.
+- Kept `_resolve_customer_candidate_bounded()` only as the final fallback.
+- A confirmed alias now resolves before any bounded fallback.
+- An explicit unresolved customer now receives a clarification and stops before
+  planner execution; it cannot silently become analytics over all invoices.
+- General questions whose extractor returns `null` remain unscoped within the
+  active tenant.
+- No contact, alias, invoice, PDF, DB schema, storage, or historical data was
+  changed by the analytics flow.
+
+### Canonical documents used
+
+- `AGENTS.md`;
+- `docs/Product_Doctrine_2030.md`;
+- `docs/AI_Layer_Implementation_Standards.md`;
+- `docs/Product_Truth_Layer.md`;
+- `docs/Product_Truth_Registry_MVP_Design.md`;
+- `docs/Self_Learning_Layer.md`;
+- `docs/Confirmed_Semantic_Alias_Learning_Contract.md`;
+- `docs/Evaluation_and_Smoke_Test_Standards.md`;
+- `docs/Product_UX_Eval_Artifacts.md`;
+- `docs/TZ_FakturaBot.md`;
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/Canonical_Action_Registry.md`;
+- `docs/llm/In_Action_Response_Registry.md`;
+- `docs/llm/New_Action_Design_Checklist.md`;
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`;
+- `docs/llm/Invoice_Analytics_Runtime_Contract.md`;
+- `docs/llm/Safe_Data_Analyst_Runtime_Checklist.md`;
+- `docs/local-only/FakturaBot_Server_Agent_Context.md`;
+- `Skils/OfficeFlow_Interactive_Repair_SKILL.md`.
+
+### Verification and publication
+
+- Repair commit: `7d6f43f603a2661ed6d50a8244b20284a680d30e`.
+- PR: `https://github.com/Mykh-Ai/Ai_assistant/pull/54`.
+- Merge/deployed SHA: `2379869c6f609624082fc36eb1e088174e554154`.
+- Focused/adjacent suite: 546 passed.
+- Full 92-file inventory: 2385 passed and 7 subtests passed.
+- Compileall and diff-check passed.
+- Pre-deploy DB backup:
+  `/var/backups/fakturabot/20260730T211228Z_pre_pr54_invoice_analytics_alias/`.
+- Active and backup SQLite SHA-256 matched exactly; `integrity_check` returned
+  `ok`.
+- Production container is running with restart count zero; polling started and
+  no matching error/traceback marker was present.
+- Production-image temporary-DB smoke proved Cyrillic confirmed-alias lookup
+  and strict customer-reference parsing. A real Telegram voice acceptance was
+  not automated.
+
+### Deferred F02
+
+Finding `IR-20260730-5FA71FDFFCDE-F02` remains exactly
+`needs_more_diagnostics`. No top-level/runtime-issue routing code, hint,
+precedence, action registry, or test was changed in this repair. The source
+issue therefore remains `partially_resolved`.
+
+### Post-deploy documentation publication
+
+- Post-deploy truth was committed as
+  `822852f67ca65232026eb1be9e1c46217b5c47fc`, merged through docs-only PR #55
+  as `d106150ab943fba481d90b4468fb8ef96e993e56`, and fast-forwarded to the
+  clean server repository without rebuilding or restarting the already healthy
+  runtime container. Repository `main` is therefore `d106150...`; the running
+  application image remains the verified F01 runtime from `2379869...`.

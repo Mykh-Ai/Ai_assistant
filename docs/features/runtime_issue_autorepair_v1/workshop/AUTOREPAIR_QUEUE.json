@@ -2,18 +2,22 @@
   "findings": [
     {
       "classification": "confirmed_low_risk_defect",
+      "deployed_sha": "2379869c6f609624082fc36eb1e088174e554154",
       "finding_id": "IR-20260730-5FA71FDFFCDE-F01",
       "log_ref": "ARL-20260730-002",
-      "next_action": "revise_draft_pr_54_to_reuse_full_contact_resolution_chain",
-      "remaining_gap": "patch uses bounded current-contact selection but does not reuse the full exact-normalized-confirmed-alias-fuzzy resolution chain",
+      "merge_commit": "2379869c6f609624082fc36eb1e088174e554154",
+      "next_action": "run_real_telegram_voice_acceptance_when_convenient",
+      "outcome": "merged_and_deployed",
+      "remaining_gap": "real Telegram voice acceptance was not automated; code-level and production-image acceptance passed",
       "owner_scope": "code",
       "parent_issue_id": "IR-20260730-5FA71FDFFCDE",
+      "production_changed": true,
       "repair_branch": "autorepair/IR-20260730-5FA71FDFFCDE-F01-invoice-analytics-customer",
-      "repair_commit": "0f061d2035b3fad93c48ecda4267d8a052be7103",
+      "repair_commit": "7d6f43f603a2661ed6d50a8244b20284a680d30e",
       "repair_pr": "https://github.com/Mykh-Ai/Ai_assistant/pull/54",
       "status": "patch_ready_for_review",
-      "test_summary": "54 focused; 469 adjacent; 2376 full plus 7 subtests; compileall and diff-check passed",
-      "updated_at": "2026-07-30T20:00:25.6736783Z"
+      "test_summary": "546 focused/adjacent; 2385 full plus 7 subtests; compileall and diff-check passed; production-image alias smoke passed",
+      "updated_at": "2026-07-30T21:15:30.2778813Z"
     },
     {
       "classification": "insufficient_evidence",
@@ -32,19 +36,19 @@
   "source_issues": [
     {
       "code_changed": true,
-      "deployed_sha": "632e9b08dcf8ac5583ec98632ff1a89417972cab",
+      "deployed_sha": "2379869c6f609624082fc36eb1e088174e554154",
       "finding_ids": ["IR-20260730-5FA71FDFFCDE-F01", "IR-20260730-5FA71FDFFCDE-F02"],
       "handoff_id": "RH-20260730-E60821130D35",
       "issue_id": "IR-20260730-5FA71FDFFCDE",
       "log_ref": "ARL-20260730-001",
       "manifest_digest": "sha256:e3f6f93aa6b6f0b44914e498dedbc7f4ee8b5ee9f5bfef0f78512c8548130760",
-      "production_changed": false,
+      "production_changed": true,
       "received_at": "2026-07-30T17:55:23.486934+00:00",
       "received_workshop_commit": "abbbbc1ffce22ffe2649c00be969a482c9867e76",
-      "repository_main_sha": "715c5941076f9f952f000daeae19a119bf4679d5",
+      "repository_main_sha": "d106150ab943fba481d90b4468fb8ef96e993e56",
       "status": "partially_resolved"
     }
   ],
-  "updated_at": "2026-07-30T20:00:25.6736783Z",
+  "updated_at": "2026-07-30T21:15:30.2778813Z",
   "workshop_branch": "maintenance/runtime-issue-workshop"
 }
