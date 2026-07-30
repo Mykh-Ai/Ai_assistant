@@ -43,6 +43,26 @@
 - Focused and adjacent analytics/contact/tenant/voice/Product Truth suite:
   546 passed.
 - Full 92-file test inventory was run in three groups after the monolithic
+### Merge and controlled deployment
+
+- Repair commit `7d6f43f603a2661ed6d50a8244b20284a680d30e` was pushed
+  to the existing repair branch and PR #54 was updated through the connected
+  GitHub app. GitHub exposed no status checks for the commit.
+- PR #54 was marked ready and merged into `main` as
+  `2379869c6f609624082fc36eb1e088174e554154`.
+- Server `/bot/repo` was clean and fast-forwarded from `632e9b0` to the exact
+  merged SHA. Docker image `repo-bot` was rebuilt and the existing
+  `fakturabot` container recreated.
+- Pre-deploy SQLite backup:
+  `/var/backups/fakturabot/20260730T211228Z_pre_pr54_invoice_analytics_alias/`;
+  active and backup SHA-256 values matched exactly after deployment and SQLite
+  integrity check returned `ok`.
+- Production container is `running`, restart count is zero, polling started,
+  and filtered startup logs contain no error/critical/traceback marker.
+- Production-image temporary-DB smoke passed for Cyrillic confirmed-alias
+  lookup and strict customer-reference parsing. Real Telegram voice acceptance
+  remains a manual follow-up.
+
   desktop command hit its output/time limit: 409 passed; 1540 passed plus
   7 subtests; 436 passed. Aggregate: 2385 passed, 7 subtests passed.
 - `python -m compileall -q bot tests`: passed.

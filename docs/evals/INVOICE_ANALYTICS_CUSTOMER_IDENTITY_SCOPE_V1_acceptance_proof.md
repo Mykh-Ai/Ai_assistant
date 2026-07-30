@@ -1,6 +1,7 @@
 # Invoice Analytics Customer Identity Scope V1 Acceptance Proof
 
-Status: `partial`, local repair validated; review required before merge/deploy.
+Status: `partial`, merged and deployed at
+`2379869c6f609624082fc36eb1e088174e554154`; real Telegram voice acceptance remains pending.
 
 ## Product journey
 
