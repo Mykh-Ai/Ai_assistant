@@ -124,6 +124,28 @@ filter `overdue` only. Reminder mute/snooze state is not payment truth: a muted
 invoice with `invoice_followup_state.payment_status = unpaid` remains unpaid
 and may still be `overdue` for analytics.
 
+## Customer Identity Scope
+
+When an analytics question explicitly names one customer, Python may ask the
+bounded semantic resolver to select only from the current tenant-scoped contact
+names plus `unknown`. This supports transliterated, Cyrillic, and STT-noisy
+references without treating raw speech text as a database identity.
+
+The resolver must receive no cross-tenant candidates and no contact I?O, DI?,
+email, Telegram id, or workspace id. If it selects one canonical contact,
+Python filters `invoices_df` by that contact's trusted `contact_id` before the
+analytics planner runs. The data catalog then marks the dataframe as
+`prefiltered_by_trusted_contact_id` and supplies the canonical display name only
+as answer context.
+
+When this scope is active, generated analysis code must not reference or apply
+a second filter over `customer_name` or `contact_id`; such a plan is rejected
+and may enter the existing bounded repair loop. A general analytics question or
+an unresolved customer reference keeps the full current-tenant dataframe.
+
+This path is read-only. It does not create/update contacts, write confirmed
+aliases, rewrite invoices, or change historical invoice/PDF data.
+
 ## Current Date
 
 Python injects `current_date` and sends `current_date_iso` to the planner.
@@ -304,3 +326,6 @@ Tests/evals must prove:
   full accounting analytics;
 - unpaid/not-paid wording returns both `pending_payment` and `overdue` invoices,
   including muted reminders that are still not marked paid.
+- a noisy/Cyrillic explicit customer reference can select only a current
+  tenant-scoped contact and is filtered by trusted `contact_id` before planning;
+- a general question remains unscoped, and no analytics path writes an alias.

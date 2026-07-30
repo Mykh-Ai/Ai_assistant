@@ -178,6 +178,77 @@ def test_invoice_analytics_planner_rejects_unpaid_plan_missing_overdue_hint(monk
         )
 
 
+def test_invoice_analytics_planner_accepts_python_prefiltered_customer_scope(monkeypatch) -> None:
+    _PlannerOpenAICompletionsFake.last_kwargs = None
+    _PlannerOpenAICompletionsFake.next_content = json.dumps(
+        {
+            'analysis_code': (
+                'df = invoices_df.copy()\n'
+                'result = {"summary": {"total": float(df["total_amount"].sum())}, "tables": {}, "warnings": [], "answer_hints": []}'
+            ),
+            'answer_language': 'uk',
+            'reasoning_summary': 'sum trusted customer scope',
+        }
+    )
+    monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
+
+    catalog = build_invoice_analytics_data_catalog(
+        user_question='sum for noisy customer name',
+        customer_scope='Tech Company s.r.o.',
+    )
+    plan = asyncio.run(
+        plan_invoice_analytics_code(
+            user_question='sum for noisy customer name',
+            current_date_iso='2026-07-30',
+            data_catalog=catalog,
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert 'customer_name' not in plan.analysis_code
+    assert catalog['customer_scope'] == {
+        'canonical_name': 'Tech Company s.r.o.',
+        'prefiltered_by_trusted_contact_id': True,
+    }
+    assert _PlannerOpenAICompletionsFake.last_kwargs is not None
+    system_prompt = _PlannerOpenAICompletionsFake.last_kwargs['messages'][0]['content']
+    assert 'Python already restricted invoices_df' in system_prompt
+    assert 'do not reference or filter customer_name or contact_id' in system_prompt
+
+
+def test_invoice_analytics_planner_rejects_second_customer_filter_after_python_prefilter(
+    monkeypatch,
+) -> None:
+    _PlannerOpenAICompletionsFake.last_kwargs = None
+    _PlannerOpenAICompletionsFake.next_content = json.dumps(
+        {
+            'analysis_code': (
+                'df = invoices_df.copy()\n'
+                'df = df[df["customer_name"] == "Tech Company s.r.o."]\n'
+                'result = {"summary": {"count": int(len(df))}, "tables": {}, "warnings": [], "answer_hints": []}'
+            ),
+            'answer_language': 'sk',
+            'reasoning_summary': 'unsafe duplicate customer filter',
+        }
+    )
+    monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
+
+    with pytest.raises(InvoiceAnalyticsPlanError, match='customer_scope_must_not_be_refiltered'):
+        asyncio.run(
+            plan_invoice_analytics_code(
+                user_question='sum for noisy customer name',
+                current_date_iso='2026-07-30',
+                data_catalog=build_invoice_analytics_data_catalog(
+                    user_question='sum for noisy customer name',
+                    customer_scope='Tech Company s.r.o.',
+                ),
+                api_key='sk-test',
+                model='gpt-4o',
+            )
+        )
+
+
 def test_invoice_analytics_planner_passes_repair_feedback_to_model(monkeypatch) -> None:
     _PlannerOpenAICompletionsFake.last_kwargs = None
     _PlannerOpenAICompletionsFake.next_content = None

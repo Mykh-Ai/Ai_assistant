@@ -1881,6 +1881,7 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
     async def _planner(**kwargs) -> InvoiceAnalyticsPlan:
         assert kwargs['current_date_iso']
         assert 'invoices_df' in kwargs['data_catalog']['datasets']
+        assert kwargs['data_catalog']['customer_scope'] is None
         catalog_columns = kwargs['data_catalog']['datasets']['invoices_df']['columns']
         assert 'payment_status_canonical' in catalog_columns
         assert 'status' not in catalog_columns
@@ -1911,6 +1912,122 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
 
     assert state.cleared is True
     assert message.answers[-1] == 'Máte 1 faktúru v sume 300.00 EUR.'
+    assert message.documents == []
+    assert not (tmp_path / 'invoices').exists()
+
+
+def test_invoice_analytics_resolves_noisy_cyrillic_customer_to_trusted_contact_id(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    contacts = ContactService(config.db_path)
+    for name, ico in [('Tech Company s.r.o.', '12345678'), ('Other Company s.r.o.', '87654321')]:
+        contacts.create_contact(
+            ContactProfile(
+                supplier_telegram_id=111,
+                name=name,
+                ico=ico,
+                dic=f'{ico}00',
+                ic_dph=None,
+                address='Hlavna 1, Kosice',
+                email='',
+                contact_person=None,
+                source_type='manual',
+                source_note=None,
+                contract_path=None,
+            )
+        )
+    target = contacts.get_by_name(111, 'Tech Company s.r.o.')
+    other = contacts.get_by_name(111, 'Other Company s.r.o.')
+    assert target is not None and target.id is not None
+    assert other is not None and other.id is not None
+
+    invoices = InvoiceService(config.db_path)
+    for contact_id, number, total in [
+        (target.id, '20260001', 300),
+        (other.id, '20260002', 900),
+    ]:
+        invoices.create_invoice_with_items(
+            supplier_telegram_id=111,
+            contact_id=contact_id,
+            invoice_number=number,
+            issue_date='2026-05-10',
+            delivery_date='2026-05-10',
+            due_date='2026-05-24',
+            due_days=14,
+            total_amount=total,
+            currency='EUR',
+            status='unpaid',
+            items=[
+                CreateInvoiceItemPayload(
+                    description_raw='oprava',
+                    description_normalized='Oprava',
+                    item_description_raw=None,
+                    quantity=1,
+                    unit='ks',
+                    unit_price=total,
+                    total_price=total,
+                )
+            ],
+        )
+
+    async def _resolver(**kwargs) -> str:
+        if kwargs['context_name'] == 'top_level_action':
+            return 'invoice_analytics'
+        assert kwargs['context_name'] == 'invoice_analytics_customer_resolution'
+        assert set(kwargs['allowed_actions']) == {
+            'Tech Company s.r.o.',
+            'Other Company s.r.o.',
+            'unknown',
+        }
+        assert 'supplier_telegram_id' not in kwargs['auxiliary_context']
+        return 'Tech Company s.r.o.'
+
+    async def _planner(**kwargs) -> InvoiceAnalyticsPlan:
+        assert kwargs['data_catalog']['customer_scope'] == {
+            'canonical_name': 'Tech Company s.r.o.',
+            'prefiltered_by_trusted_contact_id': True,
+        }
+        return InvoiceAnalyticsPlan(
+            analysis_code=(
+                'df = invoices_df.copy()\n'
+                'result = {"summary": {"invoice_count": int(len(df)), "total": float(df["total_amount"].sum())}, "tables": {}, "warnings": [], "answer_hints": []}'
+            ),
+            answer_language='uk',
+            reasoning_summary='sum prefiltered customer invoices',
+        )
+
+    async def _answer(**kwargs) -> str:
+        assert kwargs['computed_result']['summary'] == {
+            'invoice_count': 1,
+            'total': 300.0,
+        }
+        assert kwargs['dataset_metadata']['customer_scope'] == 'Tech Company s.r.o.'
+        return 'Pre Tech Company je suma 300.00 EUR.'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _planner)
+    monkeypatch.setattr('bot.handlers.invoice.answer_invoice_analytics', _answer)
+
+    message = _authorized_message(
+        '\u041f\u043e\u043a\u0430\u0436\u0438 \u0441\u0443\u043c\u0443 \u0432\u0438\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u0438\u0445 \u0444\u0430\u043a\u0442\u0443\u0440 \u0434\u043b\u044f \u0422\u0435\u0445 \u041a\u043e\u043c\u043f\u0430\u043d\u0456.',
+        telegram_id=111,
+    )
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+        )
+    )
+
+    assert state.cleared is True
+    assert message.answers[-1] == 'Pre Tech Company je suma 300.00 EUR.'
     assert message.documents == []
     assert not (tmp_path / 'invoices').exists()
 

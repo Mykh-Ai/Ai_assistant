@@ -43,6 +43,8 @@ _PLANNER_WORKFLOW_GUIDANCE = (
     'If data_catalog.payment_status_filter_hints is non-empty, generated code must filter payment_status_canonical with exactly those hinted canonical_values. '
     'For unpaid/not paid/neuhradene/nezaplatene/neoplatene wording, unpaid means both pending_payment and overdue; never filter only pending_payment. '
     'If the period or required filter is genuinely ambiguous, do not invent it; return result warnings/answer_hints asking for clarification. '
+    'If data_catalog.customer_scope.prefiltered_by_trusted_contact_id is true, Python already restricted invoices_df to that canonical customer; do not reference or filter customer_name or contact_id in analysis_code. '
+    'Treat data_catalog.customer_scope.canonical_name as answer context only. '
     'Put a short Slovak normalized plan in reasoning_summary, including analysis_kind, period, date_column, filters, and output facts.'
 )
 
@@ -123,6 +125,14 @@ def _validate_payment_status_filter_contract(plan: InvoiceAnalyticsPlan, data_ca
     missing = sorted(value for value in expected_values if value not in plan.analysis_code)
     if missing:
         raise InvoiceAnalyticsPlanError('missing_required_payment_status_filter:' + ','.join(missing))
+
+def _validate_customer_scope_contract(plan: InvoiceAnalyticsPlan, data_catalog: dict[str, Any]) -> None:
+    scope = data_catalog.get('customer_scope') if isinstance(data_catalog, dict) else None
+    if not isinstance(scope, dict) or scope.get('prefiltered_by_trusted_contact_id') is not True:
+        return
+    if re.search(r'\b(?:customer_name|contact_id)\b', plan.analysis_code):
+        raise InvoiceAnalyticsPlanError('customer_scope_must_not_be_refiltered')
+
 
 
 def _normalize_planned_analysis_code(code: str) -> str:
@@ -207,4 +217,5 @@ async def plan_invoice_analytics_code(
     raw = response.choices[0].message.content or '{}'
     plan = parse_invoice_analytics_plan(raw)
     _validate_payment_status_filter_contract(plan, data_catalog)
+    _validate_customer_scope_contract(plan, data_catalog)
     return plan

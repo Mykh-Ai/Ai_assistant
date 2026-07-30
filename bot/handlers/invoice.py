@@ -873,6 +873,24 @@ async def _run_invoice_analytics(
         )
         await state.clear()
         return
+    customer_scope = await _resolve_invoice_analytics_customer_scope(
+        runtime=runtime,
+        user_question=user_question,
+        config=config,
+    )
+    if customer_scope is not None:
+        invoices_df = invoices_df[
+            invoices_df['contact_id'] == customer_scope.id
+        ].copy()
+    metadata['row_count'] = int(len(invoices_df))
+    metadata['customer_scope'] = (
+        customer_scope.name if customer_scope is not None else None
+    )
+    data_catalog = build_invoice_analytics_data_catalog(
+        user_question=user_question,
+        customer_scope=customer_scope.name if customer_scope is not None else None,
+    )
+
 
     repair_feedback: dict[str, object] | None = None
     for attempt in range(1, _INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS + 1):
@@ -881,7 +899,7 @@ async def _run_invoice_analytics(
             plan = await plan_invoice_analytics_code(
                 user_question=user_question,
                 current_date_iso=current_date_iso,
-                data_catalog=build_invoice_analytics_data_catalog(user_question=user_question),
+                data_catalog=data_catalog,
                 api_key=config.openai_api_key,
                 model=config.openai_llm_model,
                 repair_feedback=repair_feedback,
@@ -1518,6 +1536,51 @@ def _safe_service_alias_candidate(value: object, *, original_text: str) -> str |
     if candidate_tokens.intersection(forbidden_tokens):
         return None
     return candidate
+
+async def _resolve_invoice_analytics_customer_scope(
+    *,
+    runtime: ScopedInvoiceRuntime,
+    user_question: str,
+    config: Config,
+) -> ContactProfile | None:
+    contacts_by_name: dict[str, ContactProfile] = {}
+    duplicate_names: set[str] = set()
+    for contact in runtime.list_contacts():
+        name = contact.name.strip()
+        if not name or contact.id is None:
+            continue
+        if name in contacts_by_name:
+            duplicate_names.add(name)
+            continue
+        contacts_by_name[name] = contact
+    for name in duplicate_names:
+        contacts_by_name.pop(name, None)
+
+    if not contacts_by_name:
+        return None
+
+    allowed_names = sorted(contacts_by_name)
+    canonical = await resolve_semantic_action(
+        context_name='invoice_analytics_customer_resolution',
+        allowed_actions=[*allowed_names, 'unknown'],
+        user_input_text=user_question,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        auxiliary_context={
+            'option_descriptions': [
+                {'value': name, 'description': 'Current tenant-scoped contact name.'}
+                for name in allowed_names
+            ],
+        },
+        action_hints={
+            name: {
+                'meaning': 'Select only when the analytics question explicitly refers to this customer, including a transliterated, Cyrillic, or STT-noisy form.',
+            }
+            for name in allowed_names
+        },
+    )
+    return contacts_by_name.get(canonical)
+
 
 
 async def _resolve_customer_candidate_bounded(
