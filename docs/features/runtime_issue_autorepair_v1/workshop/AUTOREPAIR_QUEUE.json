@@ -1,22 +1,37 @@
 {
-  "findings": [],
+  "findings": [
+    {
+      "classification": "confirmed_low_risk_defect",
+      "finding_id": "IR-20260730-5FA71FDFFCDE-F01",
+      "log_ref": "ARL-20260730-002",
+      "next_action": "human_review_draft_pr_54",
+      "owner_scope": "code",
+      "parent_issue_id": "IR-20260730-5FA71FDFFCDE",
+      "repair_branch": "autorepair/IR-20260730-5FA71FDFFCDE-F01-invoice-analytics-customer",
+      "repair_commit": "0f061d2035b3fad93c48ecda4267d8a052be7103",
+      "repair_pr": "https://github.com/Mykh-Ai/Ai_assistant/pull/54",
+      "status": "patch_ready_for_review",
+      "test_summary": "54 focused; 469 adjacent; 2376 full plus 7 subtests; compileall and diff-check passed",
+      "updated_at": "2026-07-30T18:46:26.6168527Z"
+    }
+  ],
   "schema_version": "autorepair-workshop-v1",
   "source_issues": [
     {
-      "code_changed": false,
+      "code_changed": true,
       "deployed_sha": "632e9b08dcf8ac5583ec98632ff1a89417972cab",
-      "finding_ids": [],
+      "finding_ids": ["IR-20260730-5FA71FDFFCDE-F01"],
       "handoff_id": "RH-20260730-E60821130D35",
       "issue_id": "IR-20260730-5FA71FDFFCDE",
       "log_ref": "ARL-20260730-001",
       "manifest_digest": "sha256:e3f6f93aa6b6f0b44914e498dedbc7f4ee8b5ee9f5bfef0f78512c8548130760",
       "production_changed": false,
       "received_at": "2026-07-30T17:55:23.486934+00:00",
-      "received_workshop_commit": null,
+      "received_workshop_commit": "abbbbc1ffce22ffe2649c00be969a482c9867e76",
       "repository_main_sha": "715c5941076f9f952f000daeae19a119bf4679d5",
-      "status": "received_for_diagnosis"
+      "status": "resolved"
     }
   ],
-  "updated_at": "2026-07-30T17:55:23.486934+00:00",
+  "updated_at": "2026-07-30T18:46:26.6168527Z",
   "workshop_branch": "maintenance/runtime-issue-workshop"
 }
