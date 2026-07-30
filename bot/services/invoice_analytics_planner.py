@@ -12,6 +12,76 @@ class InvoiceAnalyticsPlanError(ValueError):
     pass
 
 
+_MAX_CUSTOMER_REFERENCE_LENGTH = 200
+
+
+def parse_invoice_analytics_customer_reference(raw_model_output: str) -> str | None:
+    try:
+        parsed = json.loads(raw_model_output or '{}')
+    except json.JSONDecodeError as exc:
+        raise InvoiceAnalyticsPlanError('invalid_customer_reference_json') from exc
+    if not isinstance(parsed, dict) or set(parsed) != {'customer_reference'}:
+        raise InvoiceAnalyticsPlanError('invalid_customer_reference_shape')
+
+    reference = parsed.get('customer_reference')
+    if reference is None:
+        return None
+    if not isinstance(reference, str):
+        raise InvoiceAnalyticsPlanError('invalid_customer_reference_type')
+    reference = reference.strip()
+    if not reference:
+        return None
+    if len(reference) > _MAX_CUSTOMER_REFERENCE_LENGTH or '\n' in reference or '\r' in reference:
+        raise InvoiceAnalyticsPlanError('invalid_customer_reference_value')
+    return reference
+
+
+async def extract_invoice_analytics_customer_reference(
+    *,
+    user_question: str,
+    api_key: str | None,
+    model: str,
+) -> str | None:
+    if not api_key or not api_key.startswith('sk-'):
+        raise InvoiceAnalyticsPlanError('missing_openai_api_key')
+
+    client = AsyncOpenAI(api_key=api_key)
+    response = await client.chat.completions.create(
+        model=model,
+        temperature=0,
+        response_format={'type': 'json_object'},
+        messages=[
+            {
+                'role': 'system',
+                'content': (
+                    'You are a bounded slot extractor for OfficeFlow/FakturaBot invoice analytics. '
+                    'Return strict JSON only: {"customer_reference": string|null}. '
+                    'Extract only the minimal company or customer name explicitly mentioned in the user question. '
+                    'Preserve the user wording, including Cyrillic, transliteration, and STT noise. '
+                    'Do not normalize, correct, match, or choose a saved contact. '
+                    'Do not return surrounding analytics wording. '
+                    'Return null when no specific named customer is present, including requests about all customers, '
+                    'top customers, grouping by customer, or general invoice analytics. '
+                    'Never invent a customer reference.'
+                ),
+            },
+            {
+                'role': 'user',
+                'content': json.dumps(
+                    {
+                        'user_question': user_question,
+                        'expected_json': {'customer_reference': 'explicit name or null'},
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ],
+    )
+    return parse_invoice_analytics_customer_reference(
+        response.choices[0].message.content or '{}'
+    )
+
+
 @dataclass(frozen=True)
 class InvoiceAnalyticsPlan:
     analysis_code: str
@@ -43,6 +113,8 @@ _PLANNER_WORKFLOW_GUIDANCE = (
     'If data_catalog.payment_status_filter_hints is non-empty, generated code must filter payment_status_canonical with exactly those hinted canonical_values. '
     'For unpaid/not paid/neuhradene/nezaplatene/neoplatene wording, unpaid means both pending_payment and overdue; never filter only pending_payment. '
     'If the period or required filter is genuinely ambiguous, do not invent it; return result warnings/answer_hints asking for clarification. '
+    'If data_catalog.customer_scope.prefiltered_by_trusted_contact_id is true, Python already restricted invoices_df to that canonical customer; do not reference or filter customer_name or contact_id in analysis_code. '
+    'Treat data_catalog.customer_scope.canonical_name as answer context only. '
     'Put a short Slovak normalized plan in reasoning_summary, including analysis_kind, period, date_column, filters, and output facts.'
 )
 
@@ -123,6 +195,14 @@ def _validate_payment_status_filter_contract(plan: InvoiceAnalyticsPlan, data_ca
     missing = sorted(value for value in expected_values if value not in plan.analysis_code)
     if missing:
         raise InvoiceAnalyticsPlanError('missing_required_payment_status_filter:' + ','.join(missing))
+
+def _validate_customer_scope_contract(plan: InvoiceAnalyticsPlan, data_catalog: dict[str, Any]) -> None:
+    scope = data_catalog.get('customer_scope') if isinstance(data_catalog, dict) else None
+    if not isinstance(scope, dict) or scope.get('prefiltered_by_trusted_contact_id') is not True:
+        return
+    if re.search(r'\b(?:customer_name|contact_id)\b', plan.analysis_code):
+        raise InvoiceAnalyticsPlanError('customer_scope_must_not_be_refiltered')
+
 
 
 def _normalize_planned_analysis_code(code: str) -> str:
@@ -207,4 +287,5 @@ async def plan_invoice_analytics_code(
     raw = response.choices[0].message.content or '{}'
     plan = parse_invoice_analytics_plan(raw)
     _validate_payment_status_filter_contract(plan, data_catalog)
+    _validate_customer_scope_contract(plan, data_catalog)
     return plan

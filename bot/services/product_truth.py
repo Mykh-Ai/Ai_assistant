@@ -239,6 +239,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         current_limitations=(
             'Pilot scope is outgoing invoices only, current supplier only, and read-only.',
             'It can answer bounded analytical questions such as counts, sums, lists, period comparisons, grouping by customer, normalized bot payment status, or currency, and simple averages.',
+            'An explicitly named customer is resolved through the same tenant-scoped exact, normalized, confirmed-alias, fuzzy, then bounded-fallback chain used for invoice generation; Python prefilters by trusted contact id, asks for clarification if unresolved, and does not save an alias.',
             'Payment status means the bot stored/derived state from invoice follow-up data and due date, not bank-confirmed settlement.',
             'Unpaid/not-paid invoice questions include both pending_payment and overdue bot states; muted reminders are still unpaid until marked paid.',
             'Final user-facing business answers are Slovak by default; planner answer_language metadata must not override that policy.',

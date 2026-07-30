@@ -258,7 +258,11 @@ def resolve_payment_status_filter_hints(user_question: str) -> list[dict[str, An
     return []
 
 
-def build_invoice_analytics_data_catalog(*, user_question: str = '') -> dict[str, Any]:
+def build_invoice_analytics_data_catalog(
+    *,
+    user_question: str = '',
+    customer_scope: str | None = None,
+) -> dict[str, Any]:
     return {
         'datasets': {
             'invoices_df': {
@@ -304,6 +308,13 @@ def build_invoice_analytics_data_catalog(*, user_question: str = '') -> dict[str
             'payment_status_canonical by both pending_payment and overdue. Do not implement unpaid as '
             'pending_payment only. For overdue/po splatnosti questions, filter overdue only. '
             'For paid/uhradene questions, filter paid only. Reminder mute/snooze state is not payment truth.'
+        ),
+        'customer_scope': (
+            {
+                'canonical_name': customer_scope,
+                'prefiltered_by_trusted_contact_id': True,
+            }
+            if customer_scope is not None else None
         ),
         'forbidden': [
             'No receipts or incoming invoices.',

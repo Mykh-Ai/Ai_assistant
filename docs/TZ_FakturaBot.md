@@ -63,6 +63,18 @@ Voice may start the action and may answer the bounded confirmation. Confirmation
 
 Approved users may ask broader read-only analytics questions over their saved
 outgoing invoices through canonical top-level action `invoice_analytics`.
+For an invoice analytics question that explicitly refers to one customer, the
+runtime first extracts only the stated customer reference, then reuses the
+invoice-generation tenant-scoped resolver: exact name, normalized name,
+confirmed contact alias, high-confidence fuzzy match, and bounded LLM fallback
+only if deterministic resolution did not succeed. Python prefilters the
+sanitized analytics dataframe by the resolved contact's trusted `contact_id`
+before the planner runs. An explicit unresolved customer asks for clarification
+instead of analyzing the full dataset. This path is read-only: it does not learn
+an alias, change the contact, rewrite an issued invoice, or change an existing
+PDF. A general question with no named customer keeps the full active-tenant
+dataset.
+
 Examples include counts, sums, period comparisons, customer/month/currency
 grouping, normalized bot payment-status grouping, and bounded lists of
 matching saved outgoing invoices.
