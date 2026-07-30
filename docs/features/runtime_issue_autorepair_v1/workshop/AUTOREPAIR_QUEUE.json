@@ -1,7 +1,22 @@
 {
   "findings": [],
   "schema_version": "autorepair-workshop-v1",
-  "source_issues": [],
-  "updated_at": "2026-07-29T00:00:00+00:00",
+  "source_issues": [
+    {
+      "code_changed": false,
+      "deployed_sha": "632e9b08dcf8ac5583ec98632ff1a89417972cab",
+      "finding_ids": [],
+      "handoff_id": "RH-20260730-E60821130D35",
+      "issue_id": "IR-20260730-5FA71FDFFCDE",
+      "log_ref": "ARL-20260730-001",
+      "manifest_digest": "sha256:e3f6f93aa6b6f0b44914e498dedbc7f4ee8b5ee9f5bfef0f78512c8548130760",
+      "production_changed": false,
+      "received_at": "2026-07-30T17:55:23.486934+00:00",
+      "received_workshop_commit": null,
+      "repository_main_sha": "715c5941076f9f952f000daeae19a119bf4679d5",
+      "status": "received_for_diagnosis"
+    }
+  ],
+  "updated_at": "2026-07-30T17:55:23.486934+00:00",
   "workshop_branch": "maintenance/runtime-issue-workshop"
 }
