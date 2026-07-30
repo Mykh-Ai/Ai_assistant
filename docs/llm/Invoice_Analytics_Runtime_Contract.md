@@ -126,22 +126,33 @@ and may still be `overdue` for analytics.
 
 ## Customer Identity Scope
 
-When an analytics question explicitly names one customer, Python may ask the
-bounded semantic resolver to select only from the current tenant-scoped contact
-names plus `unknown`. This supports transliterated, Cyrillic, and STT-noisy
-references without treating raw speech text as a database identity.
+When an analytics question may explicitly name one customer, a bounded slot
+extractor first returns only the minimal customer/company reference from the
+question or `null`. It does not receive saved contacts and must not normalize,
+correct, match, or invent a contact.
 
-The resolver must receive no cross-tenant candidates and no contact I?O, DI?,
-email, Telegram id, or workspace id. If it selects one canonical contact,
+Python then passes that extracted reference through the same tenant-scoped
+contact-resolution chain used for invoice generation:
+
+1. exact contact name;
+2. normalized contact name;
+3. confirmed tenant-scoped contact alias;
+4. high-confidence fuzzy match;
+5. only if still unresolved, the existing bounded LLM fallback over
+   Python-provided current-tenant candidates.
+
+No cross-tenant candidate is permitted. If one canonical contact is resolved,
 Python filters `invoices_df` by that contact's trusted `contact_id` before the
-analytics planner runs. The data catalog then marks the dataframe as
-`prefiltered_by_trusted_contact_id` and supplies the canonical display name only
-as answer context.
+analytics planner runs. The data catalog marks the dataframe as
+`prefiltered_by_trusted_contact_id` and supplies the canonical display name as
+answer context.
 
 When this scope is active, generated analysis code must not reference or apply
 a second filter over `customer_name` or `contact_id`; such a plan is rejected
-and may enter the existing bounded repair loop. A general analytics question or
-an unresolved customer reference keeps the full current-tenant dataframe.
+and may enter the existing bounded repair loop. A general analytics question
+with no explicit customer reference keeps the full current-tenant dataframe.
+An explicit but unresolved customer reference fails safe with a clarification
+and must not run analytics over the full dataframe.
 
 This path is read-only. It does not create/update contacts, write confirmed
 aliases, rewrite invoices, or change historical invoice/PDF data.

@@ -80,6 +80,7 @@ from bot.services.invoice_analytics_dataset import (
 )
 from bot.services.invoice_analytics_planner import (
     InvoiceAnalyticsPlanError,
+    extract_invoice_analytics_customer_reference,
     plan_invoice_analytics_code,
 )
 from bot.services.invoice_drive_archive_service import InvoiceDriveArchiveService
@@ -873,11 +874,34 @@ async def _run_invoice_analytics(
         )
         await state.clear()
         return
-    customer_scope = await _resolve_invoice_analytics_customer_scope(
-        runtime=runtime,
-        user_question=user_question,
-        config=config,
-    )
+    try:
+        customer_reference, customer_scope = await _resolve_invoice_analytics_customer_scope(
+            runtime=runtime,
+            user_question=user_question,
+            config=config,
+        )
+    except InvoiceAnalyticsPlanError as exc:
+        logger.warning(
+            'Invoice analytics customer reference extraction stopped: message_id=%s '
+            'source_channel=%s error_type=%s reason=%s',
+            getattr(message, 'message_id', None),
+            source_channel,
+            type(exc).__name__,
+            str(exc),
+        )
+        await message.answer(
+            'Názov odberateľa som teraz nevedel bezpečne rozpoznať. '
+            'Skúste otázku zopakovať s presným názvom uloženého kontaktu.'
+        )
+        await state.clear()
+        return
+    if customer_reference is not None and customer_scope is None:
+        await message.answer(
+            f'Odberateľa „{customer_reference}“ som nevedel jednoznačne priradiť '
+            'k uloženému kontaktu. Skúste otázku zopakovať s presným názvom kontaktu.'
+        )
+        await state.clear()
+        return
     if customer_scope is not None:
         invoices_df = invoices_df[
             invoices_df['contact_id'] == customer_scope.id
@@ -1542,44 +1566,35 @@ async def _resolve_invoice_analytics_customer_scope(
     runtime: ScopedInvoiceRuntime,
     user_question: str,
     config: Config,
-) -> ContactProfile | None:
-    contacts_by_name: dict[str, ContactProfile] = {}
-    duplicate_names: set[str] = set()
-    for contact in runtime.list_contacts():
-        name = contact.name.strip()
-        if not name or contact.id is None:
-            continue
-        if name in contacts_by_name:
-            duplicate_names.add(name)
-            continue
-        contacts_by_name[name] = contact
-    for name in duplicate_names:
-        contacts_by_name.pop(name, None)
+) -> tuple[str | None, ContactProfile | None]:
+    if not runtime.list_contacts():
+        return None, None
 
-    if not contacts_by_name:
-        return None
-
-    allowed_names = sorted(contacts_by_name)
-    canonical = await resolve_semantic_action(
-        context_name='invoice_analytics_customer_resolution',
-        allowed_actions=[*allowed_names, 'unknown'],
-        user_input_text=user_question,
+    customer_reference = await extract_invoice_analytics_customer_reference(
+        user_question=user_question,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
-        auxiliary_context={
-            'option_descriptions': [
-                {'value': name, 'description': 'Current tenant-scoped contact name.'}
-                for name in allowed_names
-            ],
-        },
-        action_hints={
-            name: {
-                'meaning': 'Select only when the analytics question explicitly refers to this customer, including a transliterated, Cyrillic, or STT-noisy form.',
-            }
-            for name in allowed_names
-        },
     )
-    return contacts_by_name.get(canonical)
+    if customer_reference is None:
+        return None, None
+
+    lookup_result = _resolve_contact_lookup(runtime, customer_reference)
+    if lookup_result.matched_contact is not None:
+        return customer_reference, lookup_result.matched_contact
+
+    bounded_names = (
+        [candidate.name for candidate in lookup_result.candidates]
+        if lookup_result.candidates
+        else None
+    )
+    resolved_contact, _ = await _resolve_customer_candidate_bounded(
+        runtime=runtime,
+        candidate_text=customer_reference,
+        config=config,
+        context_name='invoice_analytics_customer_resolution',
+        bounded_contact_names=bounded_names,
+    )
+    return customer_reference, resolved_contact
 
 
 

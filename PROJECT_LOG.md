@@ -1,3 +1,53 @@
+## 2026-07-30 - Runtime repair correction - invoice analytics alias-first customer resolution
+
+### Diagnosis and repair
+
+- The first PR #54 implementation was tenant-scoped but incomplete: after the
+  analytics dataframe was built, it asked a bounded LLM to choose a canonical
+  contact directly from the full analytics question. That bypassed the
+  confirmed contact-alias and deterministic resolution chain already used by
+  invoice generation.
+- Added a bounded analytics slot extractor that returns only the minimal
+  explicitly stated `customer_reference` or `null`. It does not receive the
+  contact list and cannot choose or persist an identity.
+- Python now sends that reference through the existing tenant-scoped invoice
+  contact path: exact -> normalized -> confirmed alias -> high-confidence
+  fuzzy -> bounded LLM fallback over current-tenant candidates.
+- A resolved contact becomes a trusted `contact_id` dataframe prefilter before
+  planner execution. An explicit unresolved reference now fails safe with a
+  clarification instead of silently analyzing all tenant invoices.
+- Analytics remains read-only and does not learn/write an alias, edit a
+  contact, rewrite an invoice, regenerate a PDF, or change DB/storage schema.
+
+### Scope and product truth
+
+- Existing canonical action: `invoice_analytics`; no new action, FSM, callback,
+  confirmation family, storage layout, access rule, or migration.
+- Current status and maturity remain `partial` bounded read-only analytics;
+  Python owns tenant scope, identity validation, dataframe filtering,
+  planner validation, execution, and all side-effect boundaries.
+- Text and voice/STT share the same post-transcription path. STT still only
+  supplies transcript text; it does not resolve the contact.
+- Confirmed alias self-learning is reused read-only. No learning hook was added
+  because an analytics answer is not user confirmation for a new alias.
+- The separate runtime issue F02 concerning routing of messages beginning with
+  “Проблема...” is explicitly deferred as `needs_more_diagnostics`; this repair
+  does not change runtime-issue/top-level routing.
+
+### Verification
+
+- Failing-before proof: the confirmed-alias regression invoked the bounded
+  analytics contact selector and failed before this correction.
+- Focused post-repair acceptance: confirmed alias resolves before bounded
+  fallback; explicit unresolved customer stops before planner execution.
+- Focused and adjacent analytics/contact/tenant/voice/Product Truth suite:
+  546 passed.
+- Full 92-file test inventory was run in three groups after the monolithic
+  desktop command hit its output/time limit: 409 passed; 1540 passed plus
+  7 subtests; 436 passed. Aggregate: 2385 passed, 7 subtests passed.
+- `python -m compileall -q bot tests`: passed.
+- `git diff --check`: passed.
+
 ## 2026-07-30 - Runtime repair - invoice analytics customer identity scope
 
 Summary:

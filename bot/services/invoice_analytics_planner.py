@@ -12,6 +12,76 @@ class InvoiceAnalyticsPlanError(ValueError):
     pass
 
 
+_MAX_CUSTOMER_REFERENCE_LENGTH = 200
+
+
+def parse_invoice_analytics_customer_reference(raw_model_output: str) -> str | None:
+    try:
+        parsed = json.loads(raw_model_output or '{}')
+    except json.JSONDecodeError as exc:
+        raise InvoiceAnalyticsPlanError('invalid_customer_reference_json') from exc
+    if not isinstance(parsed, dict) or set(parsed) != {'customer_reference'}:
+        raise InvoiceAnalyticsPlanError('invalid_customer_reference_shape')
+
+    reference = parsed.get('customer_reference')
+    if reference is None:
+        return None
+    if not isinstance(reference, str):
+        raise InvoiceAnalyticsPlanError('invalid_customer_reference_type')
+    reference = reference.strip()
+    if not reference:
+        return None
+    if len(reference) > _MAX_CUSTOMER_REFERENCE_LENGTH or '\n' in reference or '\r' in reference:
+        raise InvoiceAnalyticsPlanError('invalid_customer_reference_value')
+    return reference
+
+
+async def extract_invoice_analytics_customer_reference(
+    *,
+    user_question: str,
+    api_key: str | None,
+    model: str,
+) -> str | None:
+    if not api_key or not api_key.startswith('sk-'):
+        raise InvoiceAnalyticsPlanError('missing_openai_api_key')
+
+    client = AsyncOpenAI(api_key=api_key)
+    response = await client.chat.completions.create(
+        model=model,
+        temperature=0,
+        response_format={'type': 'json_object'},
+        messages=[
+            {
+                'role': 'system',
+                'content': (
+                    'You are a bounded slot extractor for OfficeFlow/FakturaBot invoice analytics. '
+                    'Return strict JSON only: {"customer_reference": string|null}. '
+                    'Extract only the minimal company or customer name explicitly mentioned in the user question. '
+                    'Preserve the user wording, including Cyrillic, transliteration, and STT noise. '
+                    'Do not normalize, correct, match, or choose a saved contact. '
+                    'Do not return surrounding analytics wording. '
+                    'Return null when no specific named customer is present, including requests about all customers, '
+                    'top customers, grouping by customer, or general invoice analytics. '
+                    'Never invent a customer reference.'
+                ),
+            },
+            {
+                'role': 'user',
+                'content': json.dumps(
+                    {
+                        'user_question': user_question,
+                        'expected_json': {'customer_reference': 'explicit name or null'},
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ],
+    )
+    return parse_invoice_analytics_customer_reference(
+        response.choices[0].message.content or '{}'
+    )
+
+
 @dataclass(frozen=True)
 class InvoiceAnalyticsPlan:
     analysis_code: str

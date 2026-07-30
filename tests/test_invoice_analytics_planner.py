@@ -7,6 +7,8 @@ import pytest
 from bot.services.invoice_analytics_dataset import build_invoice_analytics_data_catalog
 from bot.services.invoice_analytics_planner import (
     InvoiceAnalyticsPlanError,
+    extract_invoice_analytics_customer_reference,
+    parse_invoice_analytics_customer_reference,
     parse_invoice_analytics_plan,
     plan_invoice_analytics_code,
 )
@@ -65,6 +67,80 @@ class _PlannerOpenAIChatFake:
 class _PlannerOpenAIFake:
     def __init__(self, **kwargs) -> None:
         self.chat = _PlannerOpenAIChatFake()
+
+
+def test_invoice_analytics_customer_reference_extractor_returns_minimal_explicit_name(
+    monkeypatch,
+) -> None:
+    _PlannerOpenAICompletionsFake.last_kwargs = None
+    _PlannerOpenAICompletionsFake.next_content = json.dumps(
+        {'customer_reference': 'Тех Компані'},
+        ensure_ascii=False,
+    )
+    monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
+
+    reference = asyncio.run(
+        extract_invoice_analytics_customer_reference(
+            user_question='Покажи суму виставлених фактур для Тех Компані.',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert reference == 'Тех Компані'
+    assert _PlannerOpenAICompletionsFake.last_kwargs is not None
+    system_prompt = _PlannerOpenAICompletionsFake.last_kwargs['messages'][0]['content']
+    assert 'minimal company or customer name' in system_prompt
+    assert 'Do not normalize, correct, match, or choose a saved contact' in system_prompt
+    payload = json.loads(
+        _PlannerOpenAICompletionsFake.last_kwargs['messages'][1]['content']
+    )
+    assert payload['user_question'].endswith('Тех Компані.')
+
+
+def test_invoice_analytics_customer_reference_extractor_returns_none_for_general_query(
+    monkeypatch,
+) -> None:
+    _PlannerOpenAICompletionsFake.next_content = json.dumps(
+        {'customer_reference': None}
+    )
+    monkeypatch.setattr('bot.services.invoice_analytics_planner.AsyncOpenAI', _PlannerOpenAIFake)
+
+    reference = asyncio.run(
+        extract_invoice_analytics_customer_reference(
+            user_question='Покажи топ клієнтів за сумою фактур.',
+            api_key='sk-test',
+            model='gpt-4o',
+        )
+    )
+
+    assert reference is None
+
+
+@pytest.mark.parametrize(
+    'raw',
+    [
+        '[]',
+        '{"customer_reference": 123}',
+        '{"customer_reference": "Tech", "extra": true}',
+        '{"customer_reference": "' + ('x' * 201) + '"}',
+        '{"customer_reference": "Tech\\nCompany"}',
+    ],
+)
+def test_invoice_analytics_customer_reference_parser_rejects_unbounded_output(
+    raw: str,
+) -> None:
+    with pytest.raises(InvoiceAnalyticsPlanError):
+        parse_invoice_analytics_customer_reference(raw)
+
+
+def test_invoice_analytics_customer_reference_parser_accepts_null() -> None:
+    assert (
+        parse_invoice_analytics_customer_reference(
+            '{"customer_reference": null}'
+        )
+        is None
+    )
 
 
 def test_invoice_analytics_planner_prompt_declares_python_owned_runtime_policy(monkeypatch) -> None:

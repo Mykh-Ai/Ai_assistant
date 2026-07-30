@@ -1873,6 +1873,9 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
         ],
     )
 
+    async def _extractor(**kwargs) -> None:
+        return None
+
     async def _resolver(**kwargs) -> str:
         if kwargs['context_name'] == 'top_level_action':
             return 'invoice_analytics'
@@ -1902,6 +1905,10 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
         return 'Máte 1 faktúru v sume 300.00 EUR.'
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr(
+        'bot.handlers.invoice.extract_invoice_analytics_customer_reference',
+        _extractor,
+    )
     monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _planner)
     monkeypatch.setattr('bot.handlers.invoice.answer_invoice_analytics', _answer)
 
@@ -1916,7 +1923,7 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
     assert not (tmp_path / 'invoices').exists()
 
 
-def test_invoice_analytics_resolves_noisy_cyrillic_customer_to_trusted_contact_id(
+def test_invoice_analytics_reuses_confirmed_contact_alias_before_bounded_fallback(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1943,6 +1950,13 @@ def test_invoice_analytics_resolves_noisy_cyrillic_customer_to_trusted_contact_i
     other = contacts.get_by_name(111, 'Other Company s.r.o.')
     assert target is not None and target.id is not None
     assert other is not None and other.id is not None
+
+    contacts.create_confirmed_contact_alias(
+        supplier_telegram_id=111,
+        alias_text='\u0422\u0435\u0445 \u041a\u043e\u043c\u043f\u0430\u043d\u0456',
+        contact_id=target.id,
+        source='preview_approved',
+    )
 
     invoices = InvoiceService(config.db_path)
     for contact_id, number, total in [
@@ -1973,17 +1987,16 @@ def test_invoice_analytics_resolves_noisy_cyrillic_customer_to_trusted_contact_i
             ],
         )
 
+    async def _extractor(**kwargs) -> str:
+        assert kwargs['user_question'].endswith('\u0422\u0435\u0445 \u041a\u043e\u043c\u043f\u0430\u043d\u0456.')
+        return '\u0422\u0435\u0445 \u041a\u043e\u043c\u043f\u0430\u043d\u0456'
+
     async def _resolver(**kwargs) -> str:
         if kwargs['context_name'] == 'top_level_action':
             return 'invoice_analytics'
-        assert kwargs['context_name'] == 'invoice_analytics_customer_resolution'
-        assert set(kwargs['allowed_actions']) == {
-            'Tech Company s.r.o.',
-            'Other Company s.r.o.',
-            'unknown',
-        }
-        assert 'supplier_telegram_id' not in kwargs['auxiliary_context']
-        return 'Tech Company s.r.o.'
+        raise AssertionError(
+            'bounded contact fallback must not run after a confirmed alias match'
+        )
 
     async def _planner(**kwargs) -> InvoiceAnalyticsPlan:
         assert kwargs['data_catalog']['customer_scope'] == {
@@ -2008,6 +2021,11 @@ def test_invoice_analytics_resolves_noisy_cyrillic_customer_to_trusted_contact_i
         return 'Pre Tech Company je suma 300.00 EUR.'
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr(
+        'bot.handlers.invoice.extract_invoice_analytics_customer_reference',
+        _extractor,
+        raising=False,
+    )
     monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _planner)
     monkeypatch.setattr('bot.handlers.invoice.answer_invoice_analytics', _answer)
 
@@ -3767,3 +3785,96 @@ def test_process_invoice_text_mark_existing_invoice_paid_enters_confirmation(tmp
     assert state.data['pending_mark_paid_invoice_id'] == invoice_id
     assert state.data['pending_mark_paid_invoice_number'] == '20260006'
     assert any('bankove potvrdenie' in answer.lower() for answer in message.answers)
+
+
+def test_invoice_analytics_explicit_unresolved_customer_fails_safe_before_planner(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    contacts = ContactService(config.db_path)
+    contacts.create_contact(
+        ContactProfile(
+            supplier_telegram_id=111,
+            name='Tech Company s.r.o.',
+            ico='12345678',
+            dic='1234567800',
+            ic_dph=None,
+            address='Hlavna 1, Kosice',
+            email='',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+    contact = contacts.get_by_name(111, 'Tech Company s.r.o.')
+    assert contact is not None and contact.id is not None
+    InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=contact.id,
+        invoice_number='20260001',
+        issue_date='2026-05-10',
+        delivery_date='2026-05-10',
+        due_date='2026-05-24',
+        due_days=14,
+        total_amount=300,
+        currency='EUR',
+        status='unpaid',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='oprava',
+                description_normalized='Oprava',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=300,
+                total_price=300,
+            )
+        ],
+    )
+
+    async def _extractor(**kwargs) -> str:
+        return 'Невідома фірма'
+
+    async def _resolver(**kwargs) -> str:
+        if kwargs['context_name'] == 'top_level_action':
+            return 'invoice_analytics'
+        if kwargs['context_name'] == 'invoice_analytics_customer_resolution':
+            assert kwargs['user_input_text'] == 'Невідома фірма'
+            assert kwargs['allowed_actions'] == ['Tech Company s.r.o.']
+            return 'unknown'
+        return 'unknown'
+
+    async def _unexpected_planner(**kwargs):
+        raise AssertionError('planner must not run for an explicit unresolved customer')
+
+    monkeypatch.setattr(
+        'bot.handlers.invoice.extract_invoice_analytics_customer_reference',
+        _extractor,
+    )
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr(
+        'bot.handlers.invoice.plan_invoice_analytics_code',
+        _unexpected_planner,
+    )
+
+    message = _authorized_message(
+        'Покажи суму фактур для Невідома фірма.',
+        telegram_id=111,
+    )
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+        )
+    )
+
+    assert state.cleared is True
+    assert 'Невідома фірма' in message.answers[-1]
+    assert 'nevedel jednoznačne priradiť' in message.answers[-1]
