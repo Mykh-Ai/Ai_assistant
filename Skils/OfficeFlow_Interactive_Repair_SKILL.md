@@ -1,11 +1,13 @@
 ---
 name: officeflow-interactive-repair
-description: Use when the user starts a supervised OfficeFlow / FakturaBot repair session from a local CLI. Retrieve recorded runtime issues from production through the approved handoff CLI over SSH, inspect bounded server evidence, diagnose against current repository contracts, preserve the GitHub workshop ledger, implement safe repairs, run the required tests, commit, push, and open reviewable pull requests. Do not schedule work or silently merge, deploy, restart, migrate, or change production business data.
+description: Use when the user starts a supervised OfficeFlow / FakturaBot repair session from a local CLI. Retrieve recorded runtime issues from production through the approved handoff CLI over SSH, classify the likely error domain, find the canonical architecture and expected-behavior documents before diagnosis, inspect bounded evidence, preserve the GitHub workshop ledger, implement safe repairs, run the required tests, and only then commit, push, and open reviewable pull requests. Do not schedule work or silently merge, deploy, restart, migrate, or change production business data.
 ---
 
 # OfficeFlow Interactive Runtime Repair
 
 Status: `manual_supervised_cli_mode`
+
+Agent Claim Bridge V2 status: `planned_not_implemented`.
 
 Publication boundary: this repository copy must remain public-safe. Keep server addresses, environment-specific paths, commands, tenant facts, secrets, and raw logs only in the local `FakturaBot_Server_Agent_Context.md`; do not duplicate them here or in public GitHub content.
 
@@ -15,18 +17,22 @@ This skill runs a user-started repair session for OfficeFlow / FakturaBot.
 
 The user reports a runtime problem when it happens. The bot records the observation. Later, the user starts a local CLI agent. The agent retrieves the recorded issue, reads the relevant server evidence and repository truth, diagnoses it, records durable findings, and repairs safe defects without requiring the user to remember or rewrite the original report.
 
+Target workflow after Agent Claim Bridge V2 is implemented and deployed:
+
 ```text
 runtime issue reported in OfficeFlow
 -> immutable runtime_issues observation
 -> approved handoff lease
--> durable GitHub workshop receipt
--> handoff acknowledgment
+-> local workshop receipt
+-> agent delivery claim without waiting for GitHub publication
 -> bounded server and repository evidence
+-> candidate error class and canonical architecture/behavior documents
 -> diagnosis
 -> zero, one, or multiple findings
 -> safe repair(s), blocked outcome, or product/architecture decision
 -> tests
 -> commit + push + pull request when code changed
+-> durable GitHub workshop receipt
 -> concise session report to the user
 ```
 
@@ -53,18 +59,62 @@ The agent may use:
 
 The skill does not grant SSH, GitHub, filesystem, or network access. Verify that the current CLI session actually has the required access before claiming work can proceed.
 
-The user's act of starting an OfficeFlow repair session authorizes the agent to perform the routine repair workflow described here:
+### GitHub connection and authentication order
+
+Prefer the connected GitHub app/connector for repository, issue, pull request,
+review, PR creation, and PR merge operations that it exposes. The connector and
+the local `gh` executable use separate authentication paths. An
+unauthenticated `gh` CLI does not mean that GitHub or PR merge is unavailable.
+
+Before reporting `github_auth_unavailable`:
+
+1. resolve the intended `Mykh-Ai/Ai_assistant` repository from the local
+   `origin`;
+2. test the required read through the GitHub connector;
+3. inspect whether the connector exposes the required write, including PR
+   merge;
+4. use the existing local Git transport for fetch/push when it works;
+5. fall back to `gh` only for a connector coverage gap.
+
+If `gh` is genuinely required, first run:
+
+```powershell
+gh auth status --hostname github.com
+```
+
+If it is not authenticated, the correct interactive setup is:
+
+```powershell
+gh auth login --hostname github.com --git-protocol https --web
+gh auth status --hostname github.com
+gh auth setup-git
+gh repo view Mykh-Ai/Ai_assistant
+```
+
+The user completes the browser/device confirmation. Never ask the user to paste
+a token into chat, source code, repository documentation, shell history, or
+workshop files. Do not block a connector-supported operation merely because
+the CLI path is unauthenticated.
+
+The user's act of starting an OfficeFlow repair session authorizes the agent to perform the routine repair workflow described here. Git publication is the final phase of a completed local outcome, not an intake or progress checkpoint:
 
 - read the repository and current contracts;
 - perform read-only SSH inspection inside the OfficeFlow boundaries;
 - retrieve pending issues through the approved CLI;
-- commit and push durable workshop receipts;
-- acknowledge successfully delivered handoffs;
+- publish finalized workshop receipts only after a final local outcome;
+- claim successfully delivered handoffs through the deployed V2 CLI;
 - inspect bounded relevant logs;
 - diagnose and decompose issues into findings;
 - edit local code for safe, in-scope defects;
 - add tests and update affected active documentation;
 - create commits, push repair branches, and open pull requests.
+
+Do not push an intake-only receipt, `repair_in_progress` state, partial
+diagnosis, failing repair, or other intermediate artifact. Commit and push only
+after the finding has a final local outcome, required tests have completed, the
+full diff has been inspected, and the workshop record can truthfully describe
+the result. Independent findings may publish independently when each has its
+own final local outcome.
 
 Do not stop for repeated confirmation before each routine step above.
 
@@ -166,19 +216,46 @@ Then read current files from the current `main` branch. Never rely on a previous
 2. `docs/features/runtime_issue_autorepair_v1/README.md`;
 3. `docs/features/runtime_issue_autorepair_v1/02_AUTOREPAIR_POLICY.md`;
 4. `docs/features/runtime_issue_autorepair_v1/04_DATA_STATUS_AND_AGENT_INTERFACE_CONTRACT.md`;
-5. `docs/Implementation_Agent_Checklist.md`;
-6. `docs/Evaluation_and_Smoke_Test_Standards.md`;
-7. the recent relevant entries in `PROJECT_LOG.md`;
-8. current code owners and focused tests for the issue.
+5. `docs/Evaluation_and_Smoke_Test_Standards.md`;
+6. the recent relevant entries in `PROJECT_LOG.md`;
+7. current code owners and focused tests for the issue.
 
 Before the first server-side action, also read the local
 `FakturaBot_Server_Agent_Context.md` required by section 3.
 
 Read `docs/Code_Agent_Handoff_Contract.md` when a reported issue is actually a feature/customization request or when implementation readiness is unclear.
 
+Before implementing any code repair, read
+`docs/Implementation_Agent_Checklist.md` in full and verify the proposed repair
+against it. This checklist is not mandatory when the final diagnostic outcome
+is `expected_behavior`, `external_failure`, `insufficient_evidence`, or another
+no-code result.
+
 Do not treat `docs/archive/` as current truth.
 
 Do not read every project document blindly. Use the issue-type map below after the first evidence pass.
+
+### Mandatory class-and-contract preflight
+
+Before diagnosing root cause or editing code:
+
+1. assign one or more candidate error classes from the observed surface, such
+   as routing, LLM/STT, FSM, confirmation/callback, Product Truth/InfoHelp,
+   authorization/tenant, persistence/storage, external integration, PDF, or
+   feature-local domain behavior;
+2. use the issue-type map below to locate the active canonical documents for
+   every candidate class;
+3. identify the document, registry, approved design, code owner, or test that
+   defines the intended architecture or correct behavior;
+4. record the exact documents and owner evidence used in the workshop log
+   before recording a root-cause conclusion;
+5. if no active source defines the expected behavior, record
+   `missing_canonical_truth` and classify the work as an architecture/product
+   decision or insufficient evidence; do not invent the contract and do not
+   patch by intuition.
+
+The candidate class only selects evidence and documents. It is not the final
+finding classification and does not prove a defect.
 
 ## 6. Issue-type document map
 
@@ -337,6 +414,13 @@ read-only server preflight:
 - verify the bridge CLI modules exist in the deployed server repository;
 - do not expose `.env` or full Docker/environment output.
 
+Inspect the deployed handoff CLI help before leasing new work. Under the
+final-only Git publication policy, the CLI must expose the V2 `claim` command
+that does not require a GitHub branch or commit. If only the V1 `ack` command
+is available, report `agent_claim_bridge_not_deployed` and do not lease a new
+issue. Do not start a hidden wait helper and do not push an intake-only receipt
+as a workaround.
+
 Repository merge does not prove deployment. If the deployed runtime does not contain the bridge, report `production_bridge_not_deployed` and stop before attempting direct SQL or inventing another intake path.
 
 ## 8. Work selection
@@ -350,7 +434,11 @@ Selection order:
 5. oldest new intake issue;
 6. additional new issues when the current batch can be durably received before lease expiry.
 
-The handoff CLI accepts at most three issues per call. Process work in batches. Do not lease more issues than can be committed, pushed, and acknowledged within the 60-minute lease.
+The handoff CLI accepts at most three issues per call. Process work in batches.
+Do not lease more issues than can receive a validated local receipt and a
+verified `accepted_by_agent` response within the 60-minute lease. After that
+claim, diagnosis and local repair are no longer lease-bound. If the lease
+expires before claim, obtain safe redelivery.
 
 There is no artificial one-repair-per-session limit in manual supervised mode. The agent may complete multiple safe findings in one session, one finding at a time, while preserving clean branches, tests, and review boundaries.
 
@@ -372,11 +460,14 @@ Treat the returned lease token as ephemeral secret material:
 - do not put it in Git, logs, issue notes, PR text, shell history, or command arguments;
 - do not export it as a persistent environment variable.
 
-The bot does not rewrite `runtime_issues.intake_status`. “Transferred” means the corresponding handoff has been durably acknowledged in `runtime_issue_handoffs`.
+The bot does not rewrite `runtime_issues.intake_status`. In deployed V1,
+“transferred” means the handoff was durably `acknowledged`; in planned V2,
+delivery truth is the separate `accepted_by_agent` handoff state. Neither state
+is diagnosis or repair status.
 
 Never use direct SQLite queries as the normal intake interface. If the bridge is broken, report the exact failure. A read-only recovery audit requires explicit user approval; production writes still require a separate migration/data-correction authorization.
 
-## 10. Durable workshop receipt and acknowledgment
+## 10. Local receipt and Agent Claim V2
 
 For each leased source issue:
 
@@ -387,23 +478,27 @@ For each leased source issue:
 5. do not create findings before evidence-based diagnosis;
 6. validate queue JSON;
 7. inspect the exact diff for secrets, raw tenant data, private paths, and unrelated changes;
-8. commit the receipt;
-9. push `maintenance/runtime-issue-workshop` without force;
-10. verify the commit is reachable on the remote branch;
-11. only then acknowledge the handoff on the server by piping the raw token through stdin.
+8. compute the canonical bounded local receipt digest required by the approved
+   V2 contract;
+9. use the deployed `claim` interface immediately, piping the raw lease token
+   through stdin with `--lease-token-stdin`;
+10. verify the returned state is `accepted_by_agent` for the exact handoff and
+    manifest digest;
+11. make no Git commit or push at this receipt/claim phase;
+12. continue diagnosis and repair locally without waiting on the delivery
+    lease.
 
-Use the `ack` interface exposed by the deployed
+Use the `claim` interface exposed by the deployed
 `bot.cli.runtime_issue_handoff` module and the invocation rules from the local
 server context. Pipe the raw token through standard input with
 `--lease-token-stdin`; do not place it in a visible command or transcript.
 Construct the pipe programmatically or with a non-exported ephemeral shell
 variable that is never echoed.
 
-Acknowledgment proves durable delivery only. It is not diagnosis, repair, merge, deployment, or user notification.
-
-If the workshop push fails, do not acknowledge. Allow lease expiry and safe redelivery.
-
-If acknowledgment fails after a verified push, preserve the durable receipt and report the exact handoff state. Do not duplicate the source receipt blindly.
+A successful claim proves delivery to the agent only. It is not diagnosis,
+repair, Git publication, merge, deployment, or user notification. If claim
+fails, preserve the local receipt, report the exact handoff state, and allow
+safe expiry/redelivery; do not duplicate the source receipt blindly.
 
 ## 11. Evidence collection
 
@@ -532,7 +627,8 @@ For each approved safe finding:
 
 1. synchronize current `origin/main`;
 2. create an isolated worktree/branch from exact current `main`;
-3. record the finding as `repair_in_progress` in the workshop and push that ledger state;
+3. record the finding as `repair_in_progress` in the local workshop ledger
+   without pushing incomplete work;
 4. add a regression test that fails for the proven defect;
 5. make the smallest owner-local fix;
 6. update affected active contracts, Product Truth, InfoHelp, registries, or eval artifacts only when the behavior actually changes;
@@ -543,10 +639,10 @@ For each approved safe finding:
 11. run manual/server/product smoke when the claim requires it and it is authorized;
 12. record exactly what was real, mocked, unavailable, and not run;
 13. create a commit;
-14. push the branch;
+14. push the completed branch;
 15. open a pull request;
 16. update workshop queue/log with branch, commit, PR, exact tests, remaining risk, and `production changed: no`;
-17. push the workshop ledger update.
+17. push the finalized workshop ledger update and verify both publications.
 
 Do not over-engineer commit messages or PR prose. Follow current repository conventions and make the change reviewable. A local patch is not completed work. For code changes, completion requires at least a pushed commit and an open PR unless the user explicitly requests another endpoint.
 
@@ -613,7 +709,7 @@ repair branches, commits, PRs, tests, and acceptance artifacts
 
 A later session must continue from these facts even when no new issue is returned and even when the user no longer remembers the original report.
 
-Do not use raw production intake as the long-term diagnosis ledger after acknowledgment.
+Do not use raw production intake as the long-term diagnosis ledger after the delivery claim.
 
 ## 18. Failure and recovery rules
 
@@ -625,17 +721,21 @@ Report `server_access_unavailable`. Do not guess production state.
 
 Report `production_bridge_not_deployed` or `bridge_cli_unavailable`. Do not fall back to manual SQL.
 
-### Lease expires before durable receipt
+### Lease expires before Agent Claim V2
 
-Do not acknowledge. Let the issue be safely redelivered.
+Do not claim ownership. Preserve the local receipt and obtain safe redelivery.
+After a verified `accepted_by_agent` response, repair work is not tied to the
+delivery lease.
 
 ### Workshop push fails
 
-Do not acknowledge. Preserve local work and report the blocker.
+The earlier agent claim remains true. Preserve the completed local work and
+report the publication blocker.
 
-### Receipt pushed but acknowledgment fails
+### Local receipt written but claim fails
 
-Verify whether the durable receipt already exists and inspect the handoff state through the approved CLI/service path. Do not create duplicate receipts blindly.
+Inspect the handoff state through the approved CLI/service path. Do not create
+duplicate receipts or push an intake-only workaround.
 
 ### Workshop conflict or overlapping worktree
 
@@ -660,7 +760,7 @@ At the end, report concisely:
 ```text
 server access and deployed SHA truth
 workshop baseline SHA
-new issues leased / durably acknowledged
+new issues leased / accepted by agent (or legacy acknowledged)
 source issues diagnosed
 findings and classifications
 repairs completed or blocked

@@ -46,5 +46,8 @@ Canonical documents:
 - `04_SLOVAK_NOTIFICATION_TEMPLATES.md`
 - `05_ACCEPTANCE_SCENARIOS.md`
 - `07_IMPLEMENTATION_NOTES.md`
+- `08_AGENT_CLAIM_BRIDGE_V2_ARCHITECTURE_DESIGN_PROOF.md` — planned V2
+  delivery claim that does not wait for GitHub publication; not implemented or
+  deployed yet
 - `workshop/AUTOREPAIR_QUEUE.json`
 - `workshop/AUTOREPAIR_LOG.md`
