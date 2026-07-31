@@ -8553,3 +8553,25 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 - Marked PR #53 ready for review and merged exact head `f5be15bf24e54a7f700ed481b99c96ad28d63209` into `main`.
 - Merge commit: `e1112251f36c5e22b96b72f98ea542be8b490b0d`.
 - Documentation layout only; no runtime, database, storage, production, or business-data change.
+
+## 2026-07-31 - FakturaBot Python test-suite audit
+
+- Completed a documentation-only audit of all 101 Python test files on
+  `origin/main` baseline `4a69b31`; no test, production code, behavior,
+  dependency, pytest configuration, CI, database, storage, server, or
+  deployment state changed.
+- Exact collection: 2,433 pytest tests. Two full runs passed with seven
+  additional passing unittest subtests in 467.17s and 485.03s.
+- Repeated 123 stateful migration/handoff/OAuth/archive/work-time cases three
+  times and once in reverse file order; all four runs passed.
+- Added the canonical audit and complete per-file evidence inventory under
+  `docs/audits/`. The audit recommends no deletions: 78 `KEEP_CRITICAL`, 10
+  `KEEP`, 7 `PARAMETRIZE`, 3 `CONSOLIDATE`, 2 `INVESTIGATE`, and 1
+  `OBSOLETE_CANDIDATE` file-level classification.
+- The obsolete candidate is legacy Google Drive service-account coverage and
+  remains blocked on Product Truth/deployment confirmation. Current owner-OAuth
+  and retention protections must exist before any future retirement.
+- Documented missing marker/CI taxonomy, over-mocked public-route boundaries,
+  open keyboard lifecycle evidence, externally unproven Gmail/Drive/provider
+  smoke, PDF visual acceptance, phased cleanup, risks, rollback, and product
+  owner questions.
