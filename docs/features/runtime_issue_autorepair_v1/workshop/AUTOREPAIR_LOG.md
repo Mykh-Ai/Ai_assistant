@@ -289,3 +289,37 @@ the resolver instead of exercising this collision.
 - Repair commit: `3964046e80cd368d46e2d5c4036b08a644183c37`.
 - Draft PR: `https://github.com/Mykh-Ai/Ai_assistant/pull/57`.
 - Merge, deployment, restart, migration, and production data writes: not run.
+
+## ARL-20260731-006 - F02 merged and deployed
+
+### Publication
+
+- PR #57 was moved from draft to ready and merged after its head SHA was
+  verified as `3964046e80cd368d46e2d5c4036b08a644183c37`.
+- Merge and deployed SHA:
+  `4a69b312226b7c4254427f3c3c1b0a99243647c8`.
+- Production repository is clean on `main` and matches `origin/main`.
+- Standard production compose rebuild recreated and started `fakturabot`.
+- The running image is
+  `sha256:0c37c9aa7278667769628fb1c20a40a6ac1d10bcf91645e8f56d25a1efa0e27b`.
+
+### Production verification
+
+- Container state: running, restart count zero.
+- Runtime log confirms `FakturaBot starting`, aiogram polling, invoice
+  follow-up scheduler, Google Drive archive scheduler, and the fourteen-day
+  Contact Registry monitor all started.
+- The runtime image intentionally does not include the pytest development
+  dependency, so repository tests were not rerun inside production.
+- Pre-merge verification remains: 47 focused tests; 553 adjacent tests plus
+  7 subtests; 2433 full tests plus 7 subtests; compileall and diff-check passed.
+- A real Telegram voice acceptance was not automated and remains the only
+  stated acceptance gap.
+
+### Change boundary
+
+- Code and production runtime changed: yes.
+- DB schema, persisted business data, environment configuration, and storage
+  paths changed: no.
+- Source issue `IR-20260730-5FA71FDFFCDE` is resolved by deployed findings F01
+  and F02.

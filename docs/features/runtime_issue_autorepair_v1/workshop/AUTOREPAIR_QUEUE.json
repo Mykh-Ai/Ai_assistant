@@ -22,27 +22,29 @@
     {
       "classification": "confirmed_low_risk_defect",
       "code_changed": true,
+      "deployed_sha": "4a69b312226b7c4254427f3c3c1b0a99243647c8",
       "finding_id": "IR-20260730-5FA71FDFFCDE-F02",
-      "log_ref": "ARL-20260731-005",
-      "next_action": "review_merge_and_deploy_pr_57",
-      "outcome": "patch_ready_for_review",
-      "remaining_gap": "merge and production deployment pending; real Telegram voice acceptance not run",
+      "log_ref": "ARL-20260731-006",
+      "merge_commit": "4a69b312226b7c4254427f3c3c1b0a99243647c8",
+      "next_action": "run_real_telegram_voice_acceptance_when_convenient",
+      "outcome": "merged_and_deployed",
+      "remaining_gap": "real Telegram voice acceptance was not automated; code-level tests and production startup verification passed",
       "owner_scope": "code",
       "parent_issue_id": "IR-20260730-5FA71FDFFCDE",
-      "production_changed": false,
+      "production_changed": true,
       "repair_branch": "autorepair/IR-20260730-5FA71FDFFCDE-F02-runtime-issue-prefix",
       "repair_commit": "3964046e80cd368d46e2d5c4036b08a644183c37",
       "repair_pr": "https://github.com/Mykh-Ai/Ai_assistant/pull/57",
       "status": "patch_ready_for_review",
-      "test_summary": "47 focused; 553 adjacent plus 7 subtests; 2433 full plus 7 subtests; compileall and diff-check passed",
-      "updated_at": "2026-07-31T09:50:17.8445351Z"
+      "test_summary": "47 focused; 553 adjacent plus 7 subtests; 2433 full plus 7 subtests; compileall and diff-check passed; production container startup and polling verified",
+      "updated_at": "2026-07-31T09:59:22.7390917Z"
     }
   ],
   "schema_version": "autorepair-workshop-v1",
   "source_issues": [
     {
       "code_changed": true,
-      "deployed_sha": "2379869c6f609624082fc36eb1e088174e554154",
+      "deployed_sha": "4a69b312226b7c4254427f3c3c1b0a99243647c8",
       "finding_ids": ["IR-20260730-5FA71FDFFCDE-F01", "IR-20260730-5FA71FDFFCDE-F02"],
       "handoff_id": "RH-20260730-E60821130D35",
       "issue_id": "IR-20260730-5FA71FDFFCDE",
@@ -52,9 +54,9 @@
       "received_at": "2026-07-30T17:55:23.486934+00:00",
       "received_workshop_commit": "abbbbc1ffce22ffe2649c00be969a482c9867e76",
       "repository_main_sha": "d106150ab943fba481d90b4468fb8ef96e993e56",
-      "status": "partially_resolved"
+      "status": "resolved"
     }
   ],
-  "updated_at": "2026-07-31T09:50:17.8445351Z",
+  "updated_at": "2026-07-31T09:59:22.7390917Z",
   "workshop_branch": "maintenance/runtime-issue-workshop"
 }
