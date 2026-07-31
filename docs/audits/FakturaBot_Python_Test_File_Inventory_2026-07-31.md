@@ -1,6 +1,14 @@
 ﻿# FakturaBot Python Test File Inventory - 2026-07-31
 
+Snapshot note: this inventory is the pre-implementation audit snapshot from
+baseline `4a69b31`. Statuses such as `PARAMETRIZE` and `CONSOLIDATE` describe
+the original audit recommendations. Implemented results and the current exact
+old-to-new mappings are recorded in
+`docs/testing/FakturaBot_Test_Taxonomy_Phase1_Evidence_2026-07-31.md`.
+
 Generated from pytest collection, AST import/fixture inspection and JUnit timing from the second full run. `Cases` is the exact collected count per file. `Runtime` is summed testcase time, not independent wall-clock time. `T/V/B` means direct text, voice/STT or button/callback evidence appears in that file; it does not by itself prove complete parity. `real SQLite` means the file imports SQLite/DB bootstrap or calls `init_db`; external services remain fake/mocked unless the row says otherwise.
+
+
 
 A file-level status identifies scoped future work and never authorizes deletion of the file. See the canonical audit for test-level evidence, risks and replacement requirements.
 

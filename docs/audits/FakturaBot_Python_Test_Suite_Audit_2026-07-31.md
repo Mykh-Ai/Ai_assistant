@@ -6,11 +6,12 @@ Branch: `audit/fakturabot-test-suite`
 Scope: audit and documentation only
 
 ## 1. Executive summary
-## Implementation follow-up
+### Implementation follow-up
 
-The approved taxonomy and high-confidence consolidation slice was implemented
-on 2026-07-31 on branch test/fakturabot-taxonomy-phase1. Its exact old-to-new
-node mapping and validation evidence are recorded in
+The delivery on 2026-07-31 on branch test/fakturabot-taxonomy-phase1 combined
+the audit's planned Phase 1 taxonomy/documentation work with the approved
+high-confidence subset of its planned Phase 2 parametrization/consolidation
+work. Its exact old-to-new node mapping and validation evidence are recorded in
 docs/testing/FakturaBot_Test_Taxonomy_Phase1_Evidence_2026-07-31.md. The
 baseline findings and recommendation totals below remain the audit snapshot.
 
