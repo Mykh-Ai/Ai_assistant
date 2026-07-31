@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from enum import Enum
 from typing import Any
@@ -37,6 +38,11 @@ RUNTIME_ISSUE_FAILURE = (
     'Problém sa nepodarilo uložiť. Skúste to neskôr. '
     'Aktuálna akcia bota zostala nezmenená.'
 )
+
+RUNTIME_ISSUE_PREFIX_MARKERS = frozenset(
+    {'проблема', 'помилка', 'баг', 'chyba', 'problem', 'bug', 'error'}
+)
+_RUNTIME_ISSUE_PREFIX_RE = re.compile(r'^\s*[\W_]*?([^\W\d_]+)(?!\w)(.*)$', re.UNICODE)
 
 router = Router(name='runtime_issue')
 logger = logging.getLogger(__name__)
@@ -81,6 +87,17 @@ def extract_runtime_issue_command(text: str) -> str | None:
     if token.split('@', 1)[0].casefold() != '/issue':
         return None
     return remainder.strip() if separator else ''
+
+
+def extract_runtime_issue_prefix_description(text: str) -> str | None:
+    """Return the description after an explicit first-token problem marker."""
+    match = _RUNTIME_ISSUE_PREFIX_RE.match(text)
+    if match is None:
+        return None
+    marker = match.group(1).casefold()
+    if marker not in RUNTIME_ISSUE_PREFIX_MARKERS:
+        return None
+    return match.group(2).lstrip(' \t\r\n:;,.!?-–—').strip()
 
 
 async def resolve_runtime_issue_intent(

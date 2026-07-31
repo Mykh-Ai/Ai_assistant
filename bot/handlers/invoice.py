@@ -24,6 +24,8 @@ from bot.handlers.onboarding import cmd_moj_profil, cmd_upravit_profil
 from bot.handlers.start import cmd_menu, cmd_start
 from bot.handlers.runtime_issue import (
     RUNTIME_ISSUE_ACTION,
+    RUNTIME_ISSUE_USAGE,
+    extract_runtime_issue_prefix_description,
     handle_runtime_issue_capture,
     is_runtime_issue_admin,
 )
@@ -52,6 +54,7 @@ from bot.services.customization_requests import (
 )
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.info_help import (
+    TRIAGE_ADMIN_REVIEW_CANDIDATE,
     TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
     build_product_truth_guidance,
     build_top_level_unknown_guidance,
@@ -3527,6 +3530,47 @@ async def process_invoice_text(
 
     actor_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
     runtime_issue_allowed = is_runtime_issue_admin(config, actor_telegram_id)
+    runtime_issue_prefix_description = extract_runtime_issue_prefix_description(
+        invoice_text
+    )
+    if runtime_issue_prefix_description is not None:
+        if not runtime_issue_prefix_description:
+            await message.answer(RUNTIME_ISSUE_USAGE)
+            return
+        if runtime_issue_allowed:
+            await handle_runtime_issue_capture(
+                message=message,
+                state=state,
+                config=config,
+                description=invoice_text,
+                source_channel=input_channel,
+                telegram_update_id=telegram_update_id,
+            )
+            return
+
+        telegram_id = _message_supplier_telegram_id(message)
+        if telegram_id is None:
+            await message.answer(
+                'Nepodarilo sa identifikova\u0165 pou\u017e\u00edvate\u013ea. Po\u017eiadavku som neulo\u017eil.'
+            )
+            return
+        await _start_customization_request_preview(
+            message=message,
+            state=state,
+            requester_telegram_id=telegram_id,
+            user_input_text=invoice_text,
+            source_channel=input_channel,
+            triage_class=TRIAGE_ADMIN_REVIEW_CANDIDATE,
+            capability_id='runtime_issue_intake',
+            topic_id='admin_review',
+            confidence=1.0,
+            business_need=runtime_issue_prefix_description,
+            detected_domain='other',
+            expected_outcome='Spr\u00e1vca prever\u00ed op\u00edsan\u00e9 spr\u00e1vanie bota.',
+            risk_level='medium',
+        )
+        return
+
     allowed_actions = [
         _START_INTENT,
         _CREATE_INVOICE_INTENT,

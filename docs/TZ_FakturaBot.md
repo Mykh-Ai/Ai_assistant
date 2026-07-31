@@ -1,3 +1,18 @@
+## 2026-07-31 - Runtime issue prefix routing
+
+Status: implemented bounded repair.
+
+After authorization and STT, the first meaningful token `проблема`, `помилка`,
+`баг`, `chyba`, `problem`, `bug`, or `error` is a deterministic support
+boundary. For administrators it routes the complete report to the existing
+runtime issue intake before any invoice/contact/receipt/analytics action
+resolver. Administrator capture also preserves an active FSM.
+
+For other authorized users while idle, the same prefix opens the existing
+confirmation-gated admin-review request preview; it does not create an
+administrator issue or save a request before approval. Active non-admin FSM
+ownership remains unchanged. Unauthorized users remain blocked before
+STT/LLM and persistence.
 # Технічне завдання: FakturaBot
 
 ## Telegram-бот для створення фактур з голосу, тексту та договору

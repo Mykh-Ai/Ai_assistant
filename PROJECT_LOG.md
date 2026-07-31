@@ -1,3 +1,30 @@
+# 2026-07-31 - Runtime Issue F02 Prefix Routing Repair
+
+- Classified `IR-20260730-5FA71FDFFCDE-F02` as a confirmed low-risk routing
+  defect: the complete STT problem report competed with invoice analytics in
+  the generic top-level resolver.
+- Added a deterministic first-token boundary for `проблема`, `помилка`, `баг`,
+  `chyba`, `problem`, `bug`, and `error`.
+- Authorized administrators now reach the existing shared runtime issue owner
+  before business routing; the original report remains intact and active FSM
+  state/data are preserved.
+- Authorized non-admin idle users enter the existing confirmation-gated
+  admin-review request preview. No request is saved before approval, and no
+  administrator notification is claimed.
+- Active non-admin FSM ownership remains unchanged; no nested/suspended FSM
+  architecture was introduced.
+- Unauthorized users remain blocked before STT/LLM and persistence.
+- AI maturity remains partial Level 3 for non-admin human-review capture and
+  the existing bounded runtime-issue layer for administrators.
+- Self-learning was not added: explicit support prefixes are deterministic
+  control markers, not learned business aliases.
+- No DB schema, persisted data, tenant boundary, dependencies, or production
+  data changed.
+- Verification: 47 focused runtime issue/voice tests passed; 553 adjacent
+  routing, InfoHelp, customization, and access tests plus 7 subtests passed;
+  the final full repository suite passed with 2433 tests plus 7 subtests.
+  `python -m compileall -q bot` and `git diff --check` passed.
+
 ## 2026-07-30 - Gmail OAuth foundation and statement collector V1 local implementation
 
 ### Status

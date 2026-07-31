@@ -243,6 +243,130 @@ def test_authorized_non_admin_normal_voice_keeps_existing_voice_dispatch(
     assert _rows(config) == []
 
 
+@pytest.mark.parametrize(
+    'prefix',
+    [
+        '\u041f\u0440\u043e\u0431\u043b\u0435\u043c\u0430',
+        '\u041f\u043e\u043c\u0438\u043b\u043a\u0430',
+        '\u0411\u0430\u0433',
+        'Chyba',
+        'Problem',
+        'Bug',
+        'Error',
+    ],
+)
+def test_admin_idle_voice_problem_prefix_bypasses_business_router(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    prefix: str,
+) -> None:
+    config = _config(tmp_path)
+    transcript = (
+        f'{prefix}: invoice analytics for a company started the wrong action.'
+    )
+
+    async def _stt(*args, **kwargs) -> str:
+        return transcript
+
+    async def _unexpected_business_resolver(**kwargs):
+        raise AssertionError('problem-prefixed STT must not reach the business resolver')
+
+    monkeypatch.setattr(voice, 'transcribe_audio', _stt)
+    monkeypatch.setattr(invoice, 'resolve_semantic_action', _unexpected_business_resolver)
+    message = _Message()
+
+    asyncio.run(
+        voice.handle_voice(
+            message,
+            _Bot(),
+            config,
+            _State(),
+            type('Update', (), {'update_id': 1601})(),
+        )
+    )
+
+    rows = _rows(config)
+    assert len(rows) == 1
+    assert rows[0]['source_channel'] == 'voice'
+    assert rows[0]['description'] == transcript
+    assert 'IR-' in message.answers[-1]
+
+
+def test_non_admin_idle_voice_problem_prefix_enters_confirmed_admin_review_preview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    transcript = (
+        '\u041f\u043e\u043c\u0438\u043b\u043a\u0430: yearly invoice analytics asks for an invoice number.'
+    )
+
+    async def _stt(*args, **kwargs) -> str:
+        return transcript
+
+    async def _unexpected_business_resolver(**kwargs):
+        raise AssertionError('problem-prefixed STT must not reach the business resolver')
+
+    monkeypatch.setattr(voice, 'transcribe_audio', _stt)
+    monkeypatch.setattr(invoice, 'resolve_semantic_action', _unexpected_business_resolver)
+    message = _Message(actor=USER_ID)
+    state = _State()
+
+    asyncio.run(
+        voice.handle_voice(
+            message,
+            _Bot(),
+            config,
+            state,
+            type('Update', (), {'update_id': 1701})(),
+        )
+    )
+
+    assert _rows(config) == []
+    assert state.current == 'CustomizationRequestStates:waiting_preview_decision'
+    assert message.answers
+
+
+def test_admin_active_fsm_voice_problem_prefix_preserves_owned_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    transcript = 'Chyba: invoice confirmation did not show a response.'
+    protected = {'invoice_draft': {'customer': 'Alfa', 'total': '100.00'}}
+    state = _State('InvoiceStates:waiting_input', protected)
+
+    async def _stt(*args, **kwargs) -> str:
+        return transcript
+
+    async def _unexpected_issue_resolver(**kwargs):
+        raise AssertionError('explicit problem prefix must bypass the LLM issue resolver')
+
+    monkeypatch.setattr(voice, 'transcribe_audio', _stt)
+    monkeypatch.setattr(
+        'bot.handlers.runtime_issue.resolve_runtime_issue_intent',
+        _unexpected_issue_resolver,
+    )
+    message = _Message()
+
+    asyncio.run(
+        voice.handle_voice(
+            message,
+            _Bot(),
+            config,
+            state,
+            type('Update', (), {'update_id': 1801})(),
+        )
+    )
+
+    rows = _rows(config)
+    assert len(rows) == 1
+    assert rows[0]['description'] == transcript
+    assert state.current == 'InvoiceStates:waiting_input'
+    assert state.data == protected
+    assert state.clear_calls == state.set_calls == state.update_calls == 0
+
+
 def test_generally_unauthorized_voice_is_blocked_before_handler_and_stt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

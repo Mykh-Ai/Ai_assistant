@@ -12,6 +12,7 @@ from bot.handlers.runtime_issue import (
     RUNTIME_ISSUE_FAILURE,
     RUNTIME_ISSUE_ACTION,
     cmd_runtime_issue,
+    extract_runtime_issue_prefix_description,
     resolve_runtime_issue_intent,
 )
 from bot.services.runtime_issue import RuntimeIssueError
@@ -742,3 +743,19 @@ def test_product_truth_and_info_help_are_non_executing_and_truthful(
         assert '/issue' in answer
         assert 'nepotvrdzuje chybu' in answer
         assert _count(config) == 0
+
+
+@pytest.mark.parametrize(
+    ('text', 'expected'),
+    [
+        ('Error123: show invoice analytics', None),
+        ('Show invoices with an error', None),
+        ('-- Bug: invoice analytics chose the wrong action', 'invoice analytics chose the wrong action'),
+        ('Problem', ''),
+    ],
+)
+def test_runtime_issue_prefix_requires_a_complete_first_word(
+    text: str,
+    expected: str | None,
+) -> None:
+    assert extract_runtime_issue_prefix_description(text) == expected

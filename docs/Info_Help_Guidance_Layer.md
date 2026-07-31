@@ -918,3 +918,17 @@ deploy a bug, promise timing, or alter the active business action.
 InfoHelp must classify the capability under `contacts` as `partial`, `requires_setup`, and `requires_external_credentials`. When enabled, the bot checks eligible exact-IČO contacts every 14 days at 03:00 Bratislava time, reports bounded official name/address/DIČ/IČ DPH differences, and offers buttons to update the contact or leave it unchanged.
 
 InfoHelp must state that no contact changes automatically, unavailable tax data does not clear saved tax fields, and already issued invoices/PDFs are not rewritten. It must not promise live/real-time data, monitoring for contacts without valid IČO, email/IBAN/person discovery, or background monitoring when the deployment flag is off.
+
+### Explicit problem-prefix routing - 2026-07-31
+
+After authorization and STT, the first meaningful token is a deterministic
+support boundary. The markers `проблема`, `помилка`, `баг`, `chyba`,
+`problem`, `bug`, and `error` must not be interpreted as invoice, contact,
+receipt, accounting-document, or analytics commands merely because the report
+mentions those domains.
+
+For administrators, the complete text/voice report enters the existing
+`report_runtime_issue` capture. For other authorized idle users, the same
+prefix starts the existing confirmation-gated admin-review request preview;
+no request row exists until approval. Unauthorized users still do not reach
+STT/LLM or either persistence path. Active non-admin FSM ownership is unchanged.
