@@ -20,16 +20,22 @@
       "updated_at": "2026-07-30T21:15:30.2778813Z"
     },
     {
-      "classification": "insufficient_evidence",
-      "code_changed": false,
+      "classification": "confirmed_low_risk_defect",
+      "code_changed": true,
       "finding_id": "IR-20260730-5FA71FDFFCDE-F02",
-      "log_ref": "ARL-20260730-003",
-      "next_action": "diagnose_top_level_problem_report_routing_and_add_a_failing_regression_before_any_fix",
+      "log_ref": "ARL-20260731-005",
+      "next_action": "review_merge_and_deploy_pr_57",
+      "outcome": "patch_ready_for_review",
+      "remaining_gap": "merge and production deployment pending; real Telegram voice acceptance not run",
       "owner_scope": "code",
       "parent_issue_id": "IR-20260730-5FA71FDFFCDE",
       "production_changed": false,
-      "status": "needs_more_diagnostics",
-      "updated_at": "2026-07-30T20:00:25.6736783Z"
+      "repair_branch": "autorepair/IR-20260730-5FA71FDFFCDE-F02-runtime-issue-prefix",
+      "repair_commit": "3964046e80cd368d46e2d5c4036b08a644183c37",
+      "repair_pr": "https://github.com/Mykh-Ai/Ai_assistant/pull/57",
+      "status": "patch_ready_for_review",
+      "test_summary": "47 focused; 553 adjacent plus 7 subtests; 2433 full plus 7 subtests; compileall and diff-check passed",
+      "updated_at": "2026-07-31T09:50:17.8445351Z"
     }
   ],
   "schema_version": "autorepair-workshop-v1",
@@ -49,6 +55,6 @@
       "status": "partially_resolved"
     }
   ],
-  "updated_at": "2026-07-30T21:15:30.2778813Z",
+  "updated_at": "2026-07-31T09:50:17.8445351Z",
   "workshop_branch": "maintenance/runtime-issue-workshop"
 }

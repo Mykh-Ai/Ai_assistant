@@ -223,3 +223,69 @@ issue therefore remains `partially_resolved`.
   clean server repository without rebuilding or restarting the already healthy
   runtime container. Repository `main` is therefore `d106150...`; the running
   application image remains the verified F01 runtime from `2379869...`.
+
+## ARL-20260731-005 - F02 diagnosed and repaired for review
+
+### Finding
+
+- Finding: `IR-20260730-5FA71FDFFCDE-F02`.
+- Classification: `confirmed_low_risk_defect`.
+- Status: `patch_ready_for_review`.
+- Owner scope: code.
+- Code changed: yes.
+- Production changed: no.
+
+### Diagnosis
+
+The recorded `invoice_stt_result` preserved the first problem-report word, but
+idle voice then entered the generic `top_level_action` resolver. The complete
+report contained invoice/company/analytics language, so the current report
+speech act competed with the business actions described inside it. The idle
+route had no deterministic first-token support boundary, and its tests mocked
+the resolver instead of exercising this collision.
+
+### Repair
+
+- Added an exact first-meaningful-token boundary for `проблема`, `помилка`,
+  `баг`, `chyba`, `problem`, `bug`, and `error`.
+- Authorized administrators bypass the business resolver and reuse the existing
+  sanitized runtime issue capture.
+- Active administrator FSM state/data remain unchanged.
+- Authorized non-admin idle users reuse the existing confirmation-gated
+  admin-review request preview; no row is saved before approval.
+- Active non-admin FSM ownership remains unchanged; no nested/suspended FSM
+  architecture was introduced.
+- A bare marker requests a complete description. Embedded or alphanumeric
+  occurrences such as `Error123` do not trigger the boundary.
+- No self-learning hook was added because these are deterministic support
+  control markers, not learned business aliases.
+
+### Canonical documents used
+
+- `AGENTS.md`;
+- `Skils/OfficeFlow_Interactive_Repair_SKILL.md`;
+- `docs/Product_Doctrine_2030.md`;
+- `docs/AI_Layer_Implementation_Standards.md`;
+- `docs/Product_Truth_Layer.md`;
+- `docs/Product_Truth_Registry_MVP_Design.md`;
+- `docs/Info_Help_Guidance_Layer.md`;
+- `docs/Customization_Request_Layer.md`;
+- `docs/Evaluation_and_Smoke_Test_Standards.md`;
+- `docs/TZ_FakturaBot.md`;
+- `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`;
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`;
+- `docs/llm/Canonical_Action_Registry.md`;
+- `docs/llm/In_Action_Response_Registry.md`;
+- `docs/llm/New_Action_Design_Checklist.md`;
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`.
+
+### Verification and publication
+
+- Regression first: 8 F02 cases failed before the repair.
+- Focused: 47 passed.
+- Adjacent: 553 passed plus 7 subtests.
+- Full suite: 2433 passed plus 7 subtests.
+- Compileall and diff-check passed.
+- Repair commit: `3964046e80cd368d46e2d5c4036b08a644183c37`.
+- Draft PR: `https://github.com/Mykh-Ai/Ai_assistant/pull/57`.
+- Merge, deployment, restart, migration, and production data writes: not run.
