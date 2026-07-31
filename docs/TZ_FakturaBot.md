@@ -8,6 +8,41 @@
 
 ---
 
+## 2026-07-30 Addendum: Gmail OAuth and bank-statement collection V1
+
+The repository contains a partial, disabled-by-default Google identity and
+service-grant foundation for one explicitly configured Gmail account and one
+canonical workspace. An authorized administrator can use `/gmail_connect`,
+`/gmail_status`, and `/gmail_disconnect`; the actual connection still requires
+external Google OAuth credentials, restricted-scope verification, callback
+deployment, an exact expected Google email, and an exact target workspace.
+
+The Gmail grant permits only OIDC identity scopes and
+`https://www.googleapis.com/auth/gmail.readonly`. It does not grant Google
+Drive access and does not replace or migrate the existing owner-run Drive
+connection. The collector uses a trusted deployment query, bounded historical
+overlap and pagination, reads filename-bearing allowlisted attachments only,
+and never marks, labels, archives, deletes, drafts, or sends Gmail messages.
+
+New originals and bounded metadata are stored atomically under the owning
+workspace. Repeated Gmail sources and workspace-local content are deduplicated.
+When the existing owner Drive archive is independently enabled, a newly stored
+canonical original may be enqueued as `bank_statement_original` under
+`<workspace folder>/<YYYY>/bankove_vypisy/<YYYY-MM>`; local files remain the
+source of truth and are never deleted by this flow. The workspace owner receives
+one bounded notification per newly stored canonical statement; reauthorization
+notifications are cooldown-protected.
+
+Statement content parsing, transaction import, reconciliation, cashflow, VAT,
+tax conclusions, Gmail send/modify operations, Tatra banka API, Google Sheets,
+and Google Docs are unsupported. Every import remains
+`parse_status=deferred`. Public website indexing remains enabled by explicit
+product decision; Gmail OAuth availability is a separate fail-closed launch
+gate. No production deployment or real mailbox smoke is proven by this
+addendum.
+
+---
+
 ## 2026-05-09 Addendum: state reset and read-only invoice view
 
 Approved users may view an already created outgoing invoice through the canonical top-level action `show_existing_invoice`. User wording such as “show/open invoice/faktura 04” must resolve to read-only invoice display, not to persisted invoice editing. Python resolves the invoice only inside the current supplier scope, sends the invoice summary and available PDF, and then clears FSM state / returns the bot to idle.

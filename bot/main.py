@@ -12,6 +12,9 @@ from bot.services.active_fsm_guard import ActiveFsmMessageMiddleware
 from bot.services.authorization import TelegramUserAuthorizationMiddleware
 from bot.services.db import init_db
 from bot.services.google_drive_archive_scheduler import run_google_drive_archive_scheduler
+from bot.services.google_gmail_config import load_google_gmail_config
+from bot.services.gmail_statement_scheduler import run_gmail_statement_scheduler
+from bot.services.google_integration_callback_runner import run_google_integration_callback
 from bot.services.invoice_followup_scheduler import run_invoice_followup_scheduler
 from bot.services.contact_registry_monitor import (
     run_contact_registry_monitor_scheduler,
@@ -25,6 +28,7 @@ async def main() -> None:
     )
 
     config = load_config()
+    gmail_config = load_google_gmail_config()
     init_db(config.db_path)
 
     bot = Bot(
@@ -52,14 +56,26 @@ async def main() -> None:
         run_contact_registry_monitor_scheduler(bot=bot, config=config),
         name='contact_registry_monitor_scheduler',
     )
+    background_tasks = [
+        invoice_followup_task,
+        google_drive_archive_task,
+        contact_registry_monitor_task,
+    ]
+    if gmail_config.enabled:
+        background_tasks.append(asyncio.create_task(
+            run_gmail_statement_scheduler(bot=bot, config=config),
+            name='gmail_statement_scheduler',
+        ))
+    if gmail_config.enabled and gmail_config.callback_enabled:
+        background_tasks.append(asyncio.create_task(
+            run_google_integration_callback(
+                bot=bot, config=config, gmail=gmail_config
+            ),
+            name='google_integration_callback',
+        ))
     try:
         await dp.start_polling(bot, config=config)
     finally:
-        background_tasks = (
-            invoice_followup_task,
-            google_drive_archive_task,
-            contact_registry_monitor_task,
-        )
         for task in background_tasks:
             task.cancel()
         for task in background_tasks:
