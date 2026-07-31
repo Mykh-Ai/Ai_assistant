@@ -33,6 +33,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'admin_response_delivery_observability',
     'access_request_approval',
     'send_invoice_email',
+    'gmail_statement_collection',
     'google_drive_invoice_storage',
     'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
@@ -111,6 +112,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'summary': 'Automatické odosielanie faktúr emailom priamo z bota nie je v aktuálnej verzii implementované.',
         'limitation': 'Emailové údaje môžu existovať v kontaktoch, ale neexistuje podporovaný odosielací tok.',
         'safe_next': 'PDF môžete v Telegrame manuálne preposlať cez „Preposlať“. Ak ho chcete poslať emailom, použite „Zdieľať“ alebo „Stiahnuť“ a priložte PDF ručne vo vlastnej emailovej aplikácii; adresu príjemcu aj text emailu vypĺňate ručne.',
+    },
+    'gmail_statement_collection': {
+        'title': 'Zber bankových výpisov z Gmailu',
+        'summary': 'Pre jeden presne nastavený workspace je čiastočne pripravené bezpečné pripojenie overeného Gmail konta a zber zodpovedajúcich príloh bankových výpisov.',
+        'limitation': 'Integrácia je predvolene vypnutá a vyžaduje správcu, externé Google OAuth credentials, očakávanú Gmail adresu, nasadený callback a zapnutý worker. Používa iba gmail.readonly; nevie posielať emaily ani nežiada Google Drive scope. Výpisy sa iba uložia s parse_status=deferred — neparsujú sa, nepárujú sa s platbami a nevytvárajú cashflow, DPH ani daňové závery.',
+        'safe_next': 'Správca musí dokončiť Google Console nastavenie, zapnúť samostatné Gmail flags, potom použiť /gmail_connect a overiť stav cez /gmail_status.',
     },
     'google_drive_invoice_storage': {
         'title': 'Ukladanie faktúr na Google Drive',
@@ -282,6 +289,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'admin_response_delivery_observability': 'stav doručenia odpovede správcu',
     'access_request_approval': 'žiadosť o prístup a schválenie',
     'send_invoice_email': 'odosielanie faktúr emailom',
+    'gmail_statement_collection': 'zber bankových výpisov z Gmailu',
     'google_drive_invoice_storage': 'ukladanie faktúr na Google Drive',
     'google_drive_invoice_archive_after_due_date': 'archivácia faktúry na Google Drive po splatnosti',
     'sms_reminders': 'SMS pripomienky',
@@ -742,6 +750,8 @@ def classify_info_help_capability(
     if any(phrase in normalized for phrase in _OVERVIEW_PHRASES):
         return 'overview'
 
+    if _mentions_gmail_statement_collection(normalized, tokens):
+        return 'gmail_statement_collection'
     if _mentions_email_invoice(normalized, tokens):
         return 'send_invoice_email'
     if _mentions_google_drive_invoice_archive_after_due_date(normalized, tokens):
@@ -908,6 +918,22 @@ def _mentions_runtime_issue_intake(normalized: str, tokens: set[str]) -> bool:
     report_terms = {'nahlasit', 'nahlasim', 'nahlas', 'ulozit', 'ulozim'}
     help_terms = {'ako', 'vies', 'mozno', 'mozem'}
     return bool(tokens & issue_terms and tokens & report_terms and tokens & help_terms)
+
+
+def _mentions_gmail_statement_collection(normalized: str, tokens: set[str]) -> bool:
+    gmail = any(token.startswith('gmail') for token in tokens) or (
+        'google' in tokens and 'mail' in tokens
+    )
+    statement_terms = {
+        'vypis', 'vypisy', 'vypisov', 'statement', 'statements',
+        'банківські', 'банківський', 'виписки', 'виписка',
+        'банковские', 'банковский', 'выписки', 'выписка',
+    }
+    collection_terms = {
+        'zber', 'zbierat', 'stahovat', 'import', 'collect', 'download',
+        'збирати', 'завантажувати', 'импорт', 'собирать',
+    }
+    return gmail and bool(tokens.intersection(statement_terms | collection_terms))
 
 
 def _mentions_email_invoice(normalized: str, tokens: set[str]) -> bool:

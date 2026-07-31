@@ -17,6 +17,7 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'invoice_pdf_generation',
     'invoice_pdf_custom_template',
     'send_invoice_email',
+    'gmail_statement_collection',
     'google_drive_invoice_storage',
     'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
@@ -57,6 +58,7 @@ NOT_SUPPORTED_CAPABILITY_IDS = {
 
 EXTERNAL_CREDENTIAL_CAPABILITY_IDS = {
     'send_invoice_email',
+    'gmail_statement_collection',
     'google_drive_invoice_storage',
     'google_drive_invoice_archive_after_due_date',
     'sms_reminders',
@@ -309,6 +311,18 @@ def test_bank_cashflow_tax_analytics_record_is_unsupported() -> None:
     assert 'I analyzed bank movements.' in entry.forbidden_claims
     assert 'I produced a VAT or tax report.' in entry.forbidden_claims
     assert 'This is full accounting analytics.' in entry.forbidden_claims
+
+
+def test_gmail_statement_collection_is_honest_partial_runtime() -> None:
+    entry = _registry_by_id()['gmail_statement_collection']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert entry.requires_external_credentials is True
+    assert entry.requires_admin is True
+    assert 'gmail.readonly' in entry.current_limitations[1]
+    assert 'parse_status=deferred' in entry.current_limitations[3]
+    assert 'gmail_statement_scheduler.py' in (entry.runtime_owner or '')
+    assert 'A collected statement was parsed or reconciled.' in entry.forbidden_claims
 
 
 def test_google_drive_after_due_date_archive_record_is_partial_owner_oauth() -> None:

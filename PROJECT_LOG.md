@@ -1,3 +1,25 @@
+## 2026-07-30 - Gmail OAuth foundation and statement collector V1 local implementation
+
+### Status
+- Implemented the bounded local foundation as `partial`, `requires_setup`, `requires_admin`, and `requires_external_credentials`.
+- Acceptance remains `runtime_not_proven`: no production callback deployment, real Google consent, restricted-scope verification, or real mailbox/Drive smoke was performed.
+- Explicit product decision: `PUBLIC_INDEXING_ENABLED=true` remains unchanged; Gmail OAuth has an independent fail-closed launch gate.
+
+### Runtime and storage
+- Added separate Google identity, service grant, workspace binding, OAuth state, and notification-cooldown tables without rewriting the existing owner Drive connection table.
+- Added official OIDC token verification, nonce/audience/email checks, hashed short-lived single-use state/nonce persistence, encrypted token envelopes, same-subject refresh-token preservation, local disconnect, and `needs_reauth` transitions.
+- Added an internal secret-bound callback service and a bounded server-side callback gateway in the companion `zevsflow-site` repository.
+- Added admin-only `/gmail_connect`, `/gmail_status`, and `/gmail_disconnect`, a Gmail read-only adapter with no mutation methods, bounded historical overlap/pagination, attachment-only MIME traversal, atomic workspace storage, source/content deduplication, and parser-deferred metadata.
+- Added one bounded Telegram notification per newly stored canonical statement, cooldown-protected reauthorization notifications, and optional idempotent `bank_statement_original` enqueue through the existing owner Drive archive path. Local originals are preserved.
+
+### Truth, safety, and verification
+- Updated Product Truth, InfoHelp, TZ, setup/rollback runbook, architecture proof, changelog, and conversation acceptance evidence. No canonical action, FSM, DecisionResolver, LLM/STT/LMM, invoice/PDF, or existing Drive credential behavior was changed.
+- Focused Gmail/Product Truth/InfoHelp tests: 161 passed.
+- Existing archive/Drive regression tests: 109 passed.
+- Full backend suite after the final config guard: 2408 passed, 7 subtests passed in 469.16 seconds.
+- Post-suite Telegram HTML-escaping/config focused smoke: 10 passed.
+- Companion gateway direct Node tests: 4 passed earlier in the session.
+- Full companion lint/test commands were not run because the environment approval reviewer reported its usage limit; no workaround or deployment was attempted.
 ## 2026-07-30 - Runtime repair correction - invoice analytics alias-first customer resolution
 
 ### Diagnosis and repair

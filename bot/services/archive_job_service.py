@@ -12,6 +12,11 @@ from bot.services.accounting_document_archive_path import (
     normalize_relative_drive_target_path,
     validate_confirmed_accounting_document_path,
 )
+from bot.services.gmail_statement_archive_path import (
+    DOCUMENT_TYPE_BANK_STATEMENT_ORIGINAL,
+    derive_gmail_statement_drive_target_path,
+    validate_gmail_statement_archive_paths,
+)
 from bot.services.db import ensure_archive_schema, managed_connection
 
 
@@ -116,6 +121,30 @@ class ArchiveJobService:
             )
             if metadata_path_text is not None:
                 raise ArchiveJobServiceError('metadata_path_invoice_pdf_rejected')
+        elif document_type == DOCUMENT_TYPE_BANK_STATEMENT_ORIGINAL:
+            storage_key = accounting_storage_key or workspace_id
+            try:
+                validate_gmail_statement_archive_paths(
+                    local_file_path=local_file_path_text,
+                    metadata_path=metadata_path_text,
+                    workspace_storage_key=storage_key,
+                )
+                if accounting_drive_folder_name is not None:
+                    expected_target = derive_gmail_statement_drive_target_path(
+                        local_file_path=local_file_path_text,
+                        metadata_path=metadata_path_text,
+                        workspace_storage_key=storage_key,
+                        workspace_drive_folder_name=accounting_drive_folder_name,
+                    )
+                    if target_folder_path is None:
+                        raise AccountingDocumentArchivePathError('target_folder_path_required')
+                    if normalize_relative_drive_target_path(target_folder_path) != expected_target:
+                        raise AccountingDocumentArchivePathError('target_folder_path_mismatch')
+                    target_folder_path = expected_target
+                elif target_folder_path is not None:
+                    target_folder_path = normalize_relative_drive_target_path(target_folder_path)
+            except AccountingDocumentArchivePathError as exc:
+                raise ArchiveJobServiceError(str(exc)) from exc
         else:
             storage_key = accounting_storage_key or workspace_id
             try:

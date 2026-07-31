@@ -10,6 +10,10 @@ from bot.services.accounting_document_archive_path import (
     AccountingDocumentArchivePathError,
     derive_accounting_document_drive_target_path,
 )
+from bot.services.gmail_statement_archive_path import (
+    DOCUMENT_TYPE_BANK_STATEMENT_ORIGINAL,
+    derive_gmail_statement_drive_target_path,
+)
 from bot.services.archive_job_service import (
     ARCHIVE_JOB_ABANDONED,
     ARCHIVE_JOB_FAILED,
@@ -102,13 +106,21 @@ class AccountingDocumentArchiveService:
             raise AccountingDocumentArchiveServiceError('workspace_archive_context_incomplete')
         if has_workspace_target_context:
             try:
-                expected_target = derive_accounting_document_drive_target_path(
-                    local_file_path=local_file_path_text,
-                    metadata_path=metadata_path_text,
-                    workspace_storage_key=workspace_storage_key,
-                    workspace_drive_folder_name=workspace_drive_folder_name,
-                    document_type=document_type,
-                )
+                if document_type == DOCUMENT_TYPE_BANK_STATEMENT_ORIGINAL:
+                    expected_target = derive_gmail_statement_drive_target_path(
+                        local_file_path=local_file_path_text,
+                        metadata_path=metadata_path_text,
+                        workspace_storage_key=workspace_storage_key,
+                        workspace_drive_folder_name=workspace_drive_folder_name,
+                    )
+                else:
+                    expected_target = derive_accounting_document_drive_target_path(
+                        local_file_path=local_file_path_text,
+                        metadata_path=metadata_path_text,
+                        workspace_storage_key=workspace_storage_key,
+                        workspace_drive_folder_name=workspace_drive_folder_name,
+                        document_type=document_type,
+                    )
             except AccountingDocumentArchivePathError as exc:
                 raise AccountingDocumentArchiveServiceError(str(exc)) from exc
             if target_folder_path is not None and target_folder_path != expected_target:
