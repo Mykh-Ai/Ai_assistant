@@ -1,13 +1,16 @@
+import pytest
+
 from bot.services.service_term_normalizer import normalize_service_term
 
 
-def test_normalize_opravy() -> None:
-    assert normalize_service_term('opravy') == 'oprava'
-
-
-def test_normalize_remont_ru() -> None:
-    assert normalize_service_term('ремонт') == 'oprava'
-
-
-def test_normalize_montazh_ru() -> None:
-    assert normalize_service_term('монтаж') == 'montáž'
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('raw_term', 'expected'),
+    [
+        pytest.param('opravy', 'oprava', id='slovak-plural-opravy'),
+        pytest.param('ремонт', 'oprava', id='russian-remont'),
+        pytest.param('монтаж', 'montáž', id='russian-montazh'),
+    ],
+)
+def test_normalize_service_term(raw_term: str, expected: str) -> None:
+    assert normalize_service_term(raw_term) == expected

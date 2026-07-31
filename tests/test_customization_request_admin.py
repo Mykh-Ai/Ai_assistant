@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import sqlite3
 
+import pytest
+
 from bot.config import Config
 from bot.handlers.access_admin import (
     CustomizationRequestAdminResponseStates,
@@ -207,10 +209,51 @@ def test_non_admin_authorized_user_cannot_list_customization_requests(tmp_path: 
     assert message.answers == [UNAUTHORIZED_MESSAGE]
 
 
-def test_unauthorized_user_is_blocked_by_middleware_for_customization_requests(tmp_path: Path) -> None:
+@pytest.mark.contract
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    'command_text',
+    [
+        pytest.param('/customization_requests', id='list'),
+        pytest.param('/customization_request cr_detail', id='detail'),
+        pytest.param('/customization_request_reply cr_reply', id='reply'),
+    ],
+)
+def test_bootstrap_admin_customization_command_passes_middleware_without_user_access(
+    tmp_path: Path,
+    command_text: str,
+) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
-    message = _DummyMessage('/customization_requests', UNKNOWN_ID)
+    message = _DummyMessage(command_text, ADMIN_ID)
+    calls: list[str] = []
+
+    async def _handler(event, data):
+        calls.append('handler-called')
+
+    asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config}))
+
+    assert calls == ['handler-called']
+    assert message.answers == []
+
+
+@pytest.mark.contract
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    'command_text',
+    [
+        pytest.param('/customization_requests', id='list'),
+        pytest.param('/customization_request cr_detail_hidden', id='detail'),
+        pytest.param('/customization_request_reply cr_reply_hidden', id='reply'),
+    ],
+)
+def test_unauthorized_user_is_blocked_by_middleware_for_customization_command(
+    tmp_path: Path,
+    command_text: str,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _DummyMessage(command_text, UNKNOWN_ID)
     state = _DummyState()
     calls: list[str] = []
 
@@ -228,21 +271,6 @@ def test_unauthorized_user_is_blocked_by_middleware_for_customization_requests(t
     assert calls == []
     assert state.cleared is True
     assert message.answers == [UNAUTHORIZED_MESSAGE]
-
-
-def test_bootstrap_admin_command_passes_middleware_without_user_access(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _DummyMessage('/customization_requests', ADMIN_ID)
-    calls: list[str] = []
-
-    async def _handler(event, data):
-        calls.append('handler-called')
-
-    asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config}))
-
-    assert calls == ['handler-called']
-    assert message.answers == []
 
 
 def test_customization_request_admin_list_only_includes_pending_requests(tmp_path: Path) -> None:
@@ -467,44 +495,6 @@ def test_non_admin_authorized_user_cannot_view_customization_request_detail(tmp_
     assert message.answers == [UNAUTHORIZED_MESSAGE]
 
 
-def test_unauthorized_user_is_blocked_by_middleware_for_customization_request_detail(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _DummyMessage('/customization_request cr_detail_hidden', UNKNOWN_ID)
-    state = _DummyState()
-    calls: list[str] = []
-
-    async def _handler(event, data):
-        calls.append('handler-called')
-
-    asyncio.run(
-        TelegramUserAuthorizationMiddleware()(
-            _handler,
-            message,
-            {'config': config, 'state': state},
-        )
-    )
-
-    assert calls == []
-    assert state.cleared is True
-    assert message.answers == [UNAUTHORIZED_MESSAGE]
-
-
-def test_bootstrap_admin_detail_command_passes_middleware_without_user_access(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _DummyMessage('/customization_request cr_detail', ADMIN_ID)
-    calls: list[str] = []
-
-    async def _handler(event, data):
-        calls.append('handler-called')
-
-    asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config}))
-
-    assert calls == ['handler-called']
-    assert message.answers == []
-
-
 def test_customization_request_detail_omits_hash_and_redacts_sensitive_values(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
@@ -720,44 +710,6 @@ def test_admin_reply_command_is_admin_only(tmp_path: Path) -> None:
     assert after is not None
     assert after.admin_response_text is None
     assert message.answers == [UNAUTHORIZED_MESSAGE]
-
-
-def test_unauthorized_user_is_blocked_by_middleware_for_customization_request_reply(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _DummyMessage('/customization_request_reply cr_reply_hidden', UNKNOWN_ID)
-    state = _DummyState()
-    calls: list[str] = []
-
-    async def _handler(event, data):
-        calls.append('handler-called')
-
-    asyncio.run(
-        TelegramUserAuthorizationMiddleware()(
-            _handler,
-            message,
-            {'config': config, 'state': state},
-        )
-    )
-
-    assert calls == []
-    assert state.cleared is True
-    assert message.answers == [UNAUTHORIZED_MESSAGE]
-
-
-def test_bootstrap_admin_reply_command_passes_middleware_without_user_access(tmp_path: Path) -> None:
-    config = _config(tmp_path)
-    init_db(config.db_path)
-    message = _DummyMessage('/customization_request_reply cr_reply', ADMIN_ID)
-    calls: list[str] = []
-
-    async def _handler(event, data):
-        calls.append('handler-called')
-
-    asyncio.run(TelegramUserAuthorizationMiddleware()(_handler, message, {'config': config}))
-
-    assert calls == ['handler-called']
-    assert message.answers == []
 
 
 def test_customization_request_reply_missing_ambiguous_and_short_prefix_are_safe(tmp_path: Path) -> None:

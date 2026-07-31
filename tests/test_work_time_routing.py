@@ -7,6 +7,8 @@ import json
 from datetime import datetime, date
 from pathlib import Path
 
+import pytest
+
 from bot.config import Config
 from bot.handlers import voice
 from bot.handlers.work_time import (
@@ -140,16 +142,27 @@ def _resolve(text: str) -> str:
     )
 
 
-def test_top_level_work_time_open_routes_from_slovak_text() -> None:
-    assert _resolve('zacinam pracovny den') == 'open_work_day'
-
-
-def test_top_level_work_time_close_routes_from_slovak_text() -> None:
-    assert _resolve('zatvor pracovny den 10 hodin') == 'close_work_day'
-
-
-def test_top_level_work_time_manual_range_routes_from_text() -> None:
-    assert _resolve('pracoval som dnes od 5:30 do 17:00') == 'add_work_time_entry'
+@pytest.mark.contract
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ('user_input', 'expected_action'),
+    [
+        pytest.param('zacinam pracovny den', 'open_work_day', id='open-slovak-text'),
+        pytest.param('zatvor pracovny den 10 hodin', 'close_work_day', id='close-slovak-text'),
+        pytest.param(
+            'pracoval som dnes od 5:30 do 17:00',
+            'add_work_time_entry',
+            id='manual-range-slovak-text',
+        ),
+        pytest.param(
+            'vytvor vykaz hodin za jun',
+            'generate_work_time_report',
+            id='report-month-slovak-text',
+        ),
+    ],
+)
+def test_top_level_work_time_action_routes_from_text(user_input: str, expected_action: str) -> None:
+    assert _resolve(user_input) == expected_action
 
 
 def test_top_level_work_time_duration_only_routes_through_bounded_llm(monkeypatch) -> None:
@@ -175,9 +188,6 @@ def test_top_level_work_time_duration_only_routes_through_bounded_llm(monkeypatc
     assert _TopLevelActionOpenAIFake.last_payload is not None
     assert 'add_work_time_entry' in _TopLevelActionOpenAIFake.last_payload['allowed_actions']
 
-
-def test_top_level_work_time_report_routes_from_month_request() -> None:
-    assert _resolve('vytvor vykaz hodin za jun') == 'generate_work_time_report'
 
 
 def test_top_level_work_time_report_routes_from_timesheet_request_through_llm_bundle(monkeypatch) -> None:
