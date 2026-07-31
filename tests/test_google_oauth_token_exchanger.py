@@ -478,17 +478,3 @@ def test_env_examples_contain_oauth_client_secret_placeholder_only() -> None:
         assert CLIENT_SECRET not in content
         assert ACCESS_TOKEN not in content
         assert REFRESH_TOKEN not in content
-
-
-def test_token_exchanger_module_has_no_google_client_or_drive_upload_imports() -> None:
-    source = inspect.getsource(google_oauth_token_exchanger)
-
-    forbidden = (
-        'googleapiclient',
-        'google.auth',
-        'archive_worker',
-        'drive_adapter',
-        'upload_file',
-    )
-
-    assert not any(name in source for name in forbidden)

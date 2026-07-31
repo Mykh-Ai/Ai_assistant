@@ -354,12 +354,6 @@ def test_clear_folder_cache_for_workspace_is_scoped(tmp_path: Path) -> None:
     ) is not None
 
 
-def test_google_drive_connection_service_has_no_google_or_network_imports() -> None:
-    source = inspect.getsource(google_drive_connection_service)
-
-    forbidden = ('googleapiclient', 'google.auth', 'requests', 'httpx', 'aiohttp', 'socket')
-
-    assert not any(name in source for name in forbidden)
 
 
 def test_google_drive_product_truth_is_partial_service_account_not_oauth() -> None:

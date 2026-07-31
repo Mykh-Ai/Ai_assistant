@@ -53,48 +53,57 @@ def test_case_insensitive_match(tmp_path: Path) -> None:
     assert result.matched_contact.name == 'Tesla s.r.o.'
 
 
-def test_legal_suffix_sro_variant_match(tmp_path: Path) -> None:
+@pytest.mark.contract
+@pytest.mark.integration
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ('saved_name', 'query', 'expected_state', 'expected_saved_name'),
+    [
+        pytest.param(
+            'Tesla s.r.o.',
+            'Tesla sro',
+            'normalized_match',
+            'Tesla s.r.o.',
+            id='legal-suffix-sro',
+        ),
+        pytest.param(
+            'Tesla s.r.o.',
+            'Tesla s. r. o.',
+            'normalized_match',
+            'Tesla s.r.o.',
+            id='legal-suffix-spaced',
+        ),
+        pytest.param(
+            'TECH COMPANY, s.r.o.',
+            'Tech-Company',
+            'normalized_match',
+            'TECH COMPANY, s.r.o.',
+            id='separator-hyphen',
+        ),
+        pytest.param(
+            'TECH COMPANY, s.r.o.',
+            'Tech Company',
+            'normalized_match',
+            'TECH COMPANY, s.r.o.',
+            id='separator-spaces',
+        ),
+    ],
+)
+def test_normalized_contact_variant_match(
+    tmp_path: Path,
+    saved_name: str,
+    query: str,
+    expected_state: str,
+    expected_saved_name: str,
+) -> None:
     service = _service(tmp_path)
-    service.create_or_replace(_contact('Tesla s.r.o.'))
+    service.create_or_replace(_contact(saved_name))
 
-    result = service.resolve_contact_lookup(TELEGRAM_ID, 'Tesla sro')
+    result = service.resolve_contact_lookup(TELEGRAM_ID, query)
 
-    assert result.state == 'normalized_match'
+    assert result.state == expected_state
     assert result.matched_contact is not None
-    assert result.matched_contact.name == 'Tesla s.r.o.'
-
-
-def test_legal_suffix_spaced_variant_match(tmp_path: Path) -> None:
-    service = _service(tmp_path)
-    service.create_or_replace(_contact('Tesla s.r.o.'))
-
-    result = service.resolve_contact_lookup(TELEGRAM_ID, 'Tesla s. r. o.')
-
-    assert result.state == 'normalized_match'
-    assert result.matched_contact is not None
-    assert result.matched_contact.name == 'Tesla s.r.o.'
-
-
-def test_separator_insensitive_match_hyphen(tmp_path: Path) -> None:
-    service = _service(tmp_path)
-    service.create_or_replace(_contact('TECH COMPANY, s.r.o.'))
-
-    result = service.resolve_contact_lookup(TELEGRAM_ID, 'Tech-Company')
-
-    assert result.state == 'normalized_match'
-    assert result.matched_contact is not None
-    assert result.matched_contact.name == 'TECH COMPANY, s.r.o.'
-
-
-def test_separator_insensitive_match_spaces(tmp_path: Path) -> None:
-    service = _service(tmp_path)
-    service.create_or_replace(_contact('TECH COMPANY, s.r.o.'))
-
-    result = service.resolve_contact_lookup(TELEGRAM_ID, 'Tech Company')
-
-    assert result.state == 'normalized_match'
-    assert result.matched_contact is not None
-    assert result.matched_contact.name == 'TECH COMPANY, s.r.o.'
+    assert result.matched_contact.name == expected_saved_name
 
 
 def test_multiple_candidates_state(tmp_path: Path) -> None:

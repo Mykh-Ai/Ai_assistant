@@ -452,12 +452,6 @@ def test_dry_run_does_not_mutate_db_rows(tmp_path: Path) -> None:
     assert after == before
 
 
-def test_cleanup_service_has_no_google_or_network_imports() -> None:
-    source = inspect.getsource(accounting_original_cleanup_service)
-
-    forbidden = ('googleapiclient', 'google.auth', 'requests', 'httpx', 'aiohttp', 'socket')
-
-    assert not any(name in source for name in forbidden)
 
 
 def test_ordering_is_deterministic_on_equal_timestamps(tmp_path: Path) -> None:

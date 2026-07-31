@@ -7198,6 +7198,33 @@ Supplier profile Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р В�
 - QR Pay by Square
 - email-Р В Р вЂ Р РЋРІР‚вЂњР В РўвЂР В РЎвЂ”Р РЋР вЂљР В Р’В°Р В Р вЂ Р В РЎвЂќР В Р’В°
 - Р РЋРІР‚вЂњР РЋР С“Р РЋРІР‚С™Р В РЎвЂўР РЋР вЂљР РЋРІР‚вЂњР РЋР РЏ Р РЋРІР‚С›Р В Р’В°Р В РЎвЂќР РЋРІР‚С™Р РЋРЎвЂњР РЋР вЂљ
+
+## 2026-07-31 - FakturaBot test taxonomy and consolidation Phase 1
+
+- Started from origin/main
+  4a69b312226b7c4254427f3c3c1b0a99243647c8 in an isolated worktree and
+  carried forward the approved audit baseline.
+- Registered the eleven audit-defined pytest markers and documented focused,
+  adjacent, full-suite, integration, acceptance, external opt-in, and server
+  smoke tiers. Marker coverage remains intentionally partial.
+- Parametrized only the approved high-confidence Pay by Square,
+  service-normalization, work-time routing, contact normalization, invoice
+  analytics, and customization-admin scenarios with stable IDs.
+- Moved three literal Google Drive Product Truth copies to one canonical test
+  in tests/test_product_truth.py. Product Truth values and production code did
+  not change.
+- Centralized ten equivalent Google/network import-boundary checks while
+  retaining every module-specific forbidden set and the archive-worker
+  required token. Independent parser, callback, phrase-dictionary, and
+  side-effect source contracts remain separate.
+- Collection changed from 2,433 to 2,431 only because three literal duplicate
+  nodes became one; 2,431 unique logical protections remain.
+- Validation: changed-file focused set 431 passed; adjacent sets 949 passed
+  and 210 passed plus 7 subtests; final collection 2,431; full suite 2,431
+  passed plus 7 subtests in 490.10s.
+- Delivery-date parametrization and legacy service-account retirement remain
+  deferred. No CI, dependency, schema, runtime, server, deploy, restart, or
+  production-data change was made.
 - Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР С“Р В РЎвЂ
 - SQLite
 - Docker deploy

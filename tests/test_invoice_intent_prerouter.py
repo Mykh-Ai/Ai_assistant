@@ -550,9 +550,7 @@ def test_send_invoice_request_does_not_become_invoice_creation() -> None:
     assert result == 'send_invoice'
 
 
-@pytest.mark.parametrize(
-    'user_input',
-    [
+YEARLY_INVOICE_ANALYTICS_INPUTS = [
         'Na akú sumu som vystavil faktúry v tomto roku?',
         'Koľko som vystavil faktúr tento rok?',
         'Súhrn faktúr za 2026',
@@ -561,18 +559,7 @@ def test_send_invoice_request_does_not_become_invoice_creation() -> None:
         'На яку суму я вже виставив фактуру в цьому році?',
         'На какую сумму я выставил фактур в этом году?',
         'На якую суму я выставіў фактур у гэтым годзе?',
-    ],
-)
-def test_yearly_invoice_summary_resolves_to_invoice_analytics_top_level_action(user_input: str) -> None:
-    assert asyncio.run(
-        resolve_semantic_action(
-            context_name='top_level_action',
-            allowed_actions=['create_invoice', 'invoice_analytics', 'unknown'],
-            user_input_text=user_input,
-            api_key=None,
-            model='gpt-4o',
-        )
-    ) == 'invoice_analytics'
+]
 
 
 def test_process_invoice_text_answers_invoice_period_summary_without_side_effects(tmp_path: Path) -> None:
@@ -1781,9 +1768,7 @@ def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
     assert 'pridaj bloček' in message.answers[-1]
 
 
-@pytest.mark.parametrize(
-    'user_input',
-    [
+GENERAL_INVOICE_ANALYTICS_INPUTS = [
         'Покажи фактури за травень',
         'На яку суму я виставив фактури в березні та травні?',
         'Koľko som vystavil faktúr v marci a máji?',
@@ -1792,6 +1777,38 @@ def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
         'Порівняй травень 2026 і травень 2025',
         'Koľko mám neuhradených faktúr?',
         'Top klientov podľa sumy faktúr',
+]
+
+@pytest.mark.contract
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[0], id='yearly-sk-total-current-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[1], id='yearly-sk-count-current-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[2], id='yearly-sk-summary-explicit-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[3], id='yearly-uk-total-current-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[4], id='yearly-uk-count-current-year'),
+        pytest.param(
+            YEARLY_INVOICE_ANALYTICS_INPUTS[5],
+            id='yearly-uk-total-already-current-year',
+        ),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[6], id='yearly-ru-total-current-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[7], id='yearly-be-total-current-year'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[0], id='general-uk-show-month'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[1], id='general-uk-total-two-months'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[2], id='general-sk-count-two-months'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[3], id='general-sk-compare-two-months'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[4], id='general-uk-total-by-month'),
+        pytest.param(
+            GENERAL_INVOICE_ANALYTICS_INPUTS[5],
+            id='general-uk-compare-same-month-two-years',
+        ),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[6], id='general-sk-unpaid-count'),
+        pytest.param(
+            GENERAL_INVOICE_ANALYTICS_INPUTS[7],
+            id='general-sk-top-customers-by-total',
+        ),
     ],
 )
 def test_invoice_analytics_resolves_as_read_only_top_level_action(user_input: str) -> None:

@@ -35,8 +35,6 @@ from bot.services.google_drive_connection_service import (
     GoogleDriveConnectionService,
 )
 from bot.services.google_drive_oauth_state_service import DEFAULT_GOOGLE_DRIVE_OAUTH_SCOPES
-from bot.services.info_help import build_product_truth_guidance
-from bot.services.product_truth import ProductTruthStatus, get_capability
 from bot.services.token_crypto import DeterministicFakeTokenCryptoProvider
 
 
@@ -438,21 +436,3 @@ def test_non_admin_cannot_disconnect(tmp_path: Path) -> None:
     asyncio.run(cmd_google_drive_disconnect(message, config))
 
     assert message.answers == [GOOGLE_DRIVE_ADMIN_ONLY_MESSAGE]
-
-
-def test_google_drive_setup_commands_have_no_google_api_or_network_imports() -> None:
-    source = inspect.getsource(settings)
-
-    forbidden = ('googleapiclient', 'google.auth', 'requests', 'httpx', 'aiohttp', 'socket')
-
-    assert not any(name in source for name in forbidden)
-
-
-def test_google_drive_product_truth_is_partial_service_account_not_oauth() -> None:
-    result = get_capability('google_drive_invoice_storage')
-    answer = build_product_truth_guidance(user_input_text='Can bot save invoices to Google Drive?')
-
-    assert result.capability is not None
-    assert result.capability.status == ProductTruthStatus.PARTIAL
-    assert result.capability.runtime_owner is not None
-    assert answer is not None

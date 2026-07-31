@@ -3,7 +3,10 @@ from __future__ import annotations
 import ast
 import inspect
 
+import pytest
+
 from bot.services import product_truth
+from bot.services.info_help import build_product_truth_guidance
 from bot.services.product_truth import AccountTruthStatus, ProductTruthStatus
 
 
@@ -358,6 +361,17 @@ def test_google_drive_invoice_storage_record_is_partial_owner_oauth() -> None:
     assert any('Service-account mode is unsupported' in limitation for limitation in entry.current_limitations)
     assert 'This is per-client Google OAuth Drive storage.' in entry.forbidden_claims
     assert 'Service-account mode works with personal My Drive.' in entry.forbidden_claims
+
+
+@pytest.mark.contract
+def test_google_drive_invoice_storage_product_truth_is_partial_owner_oauth() -> None:
+    result = product_truth.get_capability('google_drive_invoice_storage')
+    answer = build_product_truth_guidance(user_input_text='Can bot save invoices to Google Drive?')
+
+    assert result.capability is not None
+    assert result.capability.status == ProductTruthStatus.PARTIAL
+    assert result.capability.runtime_owner is not None
+    assert answer is not None
 
 
 def test_create_invoice_returns_supported_with_account_setup_requirement() -> None:

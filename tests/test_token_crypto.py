@@ -124,13 +124,6 @@ def test_deterministic_fake_provider_is_documented_as_tests_only() -> None:
     assert 'not cryptographically secure' in doc
 
 
-def test_token_crypto_has_no_google_or_network_imports() -> None:
-    source = token_crypto.__loader__.get_source(token_crypto.__name__)  # type: ignore[union-attr]
-
-    forbidden = ('googleapiclient', 'google.auth', 'requests', 'httpx', 'aiohttp', 'socket')
-
-    assert source is not None
-    assert not any(name in source for name in forbidden)
 
 
 def test_env_examples_contain_only_token_crypto_secret_placeholders() -> None:
