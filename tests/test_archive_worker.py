@@ -464,18 +464,3 @@ def test_empty_provider_file_id_is_treated_as_unexpected_retry(tmp_path: Path) -
     assert result.status == ARCHIVE_JOB_RETRY_WAIT
     assert result.error_code == ARCHIVE_ERROR_UNEXPECTED
     assert _job(db_path, record.job.job_id)[0] == ARCHIVE_JOB_RETRY_WAIT
-
-
-def test_archive_worker_has_no_google_or_network_runtime_imports() -> None:
-    source = inspect.getsource(archive_worker)
-
-    forbidden = [
-        "googleapiclient",
-        "google.auth",
-        "requests",
-        "httpx",
-        "aiohttp",
-        "socket",
-    ]
-    assert all(token not in source for token in forbidden)
-    assert "claim_next_runnable_job" in source

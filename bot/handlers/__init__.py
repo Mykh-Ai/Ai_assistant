@@ -14,6 +14,7 @@ from .invoice import router as invoice_router
 from .invoice_followup import router as invoice_followup_router
 from .officeflow_attachment_router import router as officeflow_attachment_router
 from .onboarding import router as onboarding_router
+from .gmail_settings import router as gmail_settings_router
 from .settings import router as settings_router
 from .state_control import router as state_control_router
 from .runtime_issue import router as runtime_issue_router
@@ -41,5 +42,6 @@ routers: list[Router] = [
     contracts_router,
     work_time_router,
     invoice_router,
+    gmail_settings_router,
     settings_router,
 ]

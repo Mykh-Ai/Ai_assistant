@@ -10,8 +10,6 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
-import subprocess
-import tempfile
 
 from bot.services.db import (
     RUNTIME_ISSUE_HANDOFF_MANIFEST_SCHEMA,
@@ -27,7 +25,6 @@ LEASE_OWNER = 'chatgpt-work-runtime-issue-runner'
 WORKSHOP_BRANCH = 'maintenance/runtime-issue-workshop'
 HANDOFF_LIMIT_MAX = 3
 _HANDOFF_ID = re.compile(r'^RH-[0-9]{8}-[0-9A-F]{12}$')
-_COMMIT_SHA = re.compile(r'^[0-9a-f]{40}$')
 _DIGEST = re.compile(r'^sha256:[0-9a-f]{64}$')
 
 
@@ -44,17 +41,15 @@ class RuntimeIssueHandoffConflict(RuntimeIssueHandoffError):
 
 
 @dataclass(frozen=True)
-class AckResult:
+class ClaimResult:
     handoff_id: str
     status: str
     manifest_digest: str
-    workshop_branch: str
-    workshop_commit_sha: str
     acknowledged_at: str
     idempotent: bool
 
 
-def canonical_receipt_json(payload: Mapping[str, object]) -> bytes:
+def canonical_manifest_json(payload: Mapping[str, object]) -> bytes:
     return json.dumps(
         dict(payload),
         sort_keys=True,
@@ -63,94 +58,12 @@ def canonical_receipt_json(payload: Mapping[str, object]) -> bytes:
     ).encode('utf-8')
 
 
-def canonical_receipt_digest(payload: Mapping[str, object]) -> str:
-    return f"sha256:{hashlib.sha256(canonical_receipt_json(payload)).hexdigest()}"
+def canonical_manifest_digest(payload: Mapping[str, object]) -> str:
+    return f"sha256:{hashlib.sha256(canonical_manifest_json(payload)).hexdigest()}"
 
 
 def token_hash(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
-
-
-class FixedRemoteCommitVerifier:
-    """Verify reachability without changing the project repository."""
-
-    def __init__(
-        self,
-        *,
-        repository: Path,
-        timeout_seconds: float = 15.0,
-        runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-    ) -> None:
-        self._repository = repository
-        self._timeout_seconds = timeout_seconds
-        self._runner = runner
-
-    def __call__(self, branch: str, commit_sha: str) -> bool:
-        if branch != WORKSHOP_BRANCH or not _COMMIT_SHA.fullmatch(commit_sha):
-            return False
-        try:
-            remote = self._runner(
-                [
-                    'git',
-                    '-C',
-                    str(self._repository),
-                    'remote',
-                    'get-url',
-                    'origin',
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout_seconds,
-                shell=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        remote_url = remote.stdout.strip()
-        if remote.returncode != 0 or not remote_url or '\n' in remote_url:
-            return False
-        with tempfile.TemporaryDirectory(prefix='runtime-issue-verify-') as temp_dir:
-            isolated_repository = str(Path(temp_dir) / 'repository.git')
-            try:
-                clone = self._runner(
-                    [
-                        'git',
-                        'clone',
-                        '--bare',
-                        '--no-tags',
-                        '--single-branch',
-                        '--branch',
-                        WORKSHOP_BRANCH,
-                        remote_url,
-                        isolated_repository,
-                    ],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=self._timeout_seconds,
-                    shell=False,
-                )
-                if clone.returncode != 0:
-                    return False
-                reachable = self._runner(
-                    [
-                        'git',
-                        '-C',
-                        isolated_repository,
-                        'merge-base',
-                        '--is-ancestor',
-                        commit_sha,
-                        'HEAD',
-                    ],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    timeout=self._timeout_seconds,
-                    shell=False,
-                )
-            except (OSError, subprocess.SubprocessError):
-                return False
-            return reachable.returncode == 0
 
 
 class RuntimeIssueHandoffService:
@@ -217,7 +130,7 @@ class RuntimeIssueHandoffService:
                         'handoff_id': handoff_id,
                         'issue': issue,
                     }
-                    digest = canonical_receipt_digest(durable_payload)
+                    digest = canonical_manifest_digest(durable_payload)
                     if row['manifest_digest'] is not None and not hmac.compare_digest(
                         str(row['manifest_digest']), digest
                     ):
@@ -283,60 +196,30 @@ class RuntimeIssueHandoffService:
                 raise
         return results
 
-    def acknowledge(
+    def claim(
         self,
         *,
         handoff_id: str,
         raw_token: str,
         manifest_digest: str,
-        workshop_branch: str,
-        workshop_commit_sha: str,
-        verifier: Callable[[str, str], bool],
-    ) -> AckResult:
+    ) -> ClaimResult:
         if not _HANDOFF_ID.fullmatch(handoff_id):
             raise RuntimeIssueHandoffInvalid('handoff_id_invalid')
         if not _DIGEST.fullmatch(manifest_digest):
             raise RuntimeIssueHandoffInvalid('manifest_digest_invalid')
-        if workshop_branch != WORKSHOP_BRANCH:
-            raise RuntimeIssueHandoffInvalid('workshop_branch_invalid')
-        if not _COMMIT_SHA.fullmatch(workshop_commit_sha):
-            raise RuntimeIssueHandoffInvalid('workshop_commit_invalid')
         supplied_hash = token_hash(raw_token)
-        now = self._utc_now()
-        now_text = now.isoformat()
-        with managed_connection(self._db_path) as connection:
-            connection.row_factory = sqlite3.Row
-            validate_runtime_issue_handoff_schema(connection)
-            row = self._ack_row(connection, handoff_id)
-            idempotent = self._validate_ack_row(
-                row,
-                supplied_hash=supplied_hash,
-                manifest_digest=manifest_digest,
-                workshop_branch=workshop_branch,
-                workshop_commit_sha=workshop_commit_sha,
-                now_text=now_text,
-            )
-            if idempotent is not None:
-                return idempotent
-
-        if not verifier(workshop_branch, workshop_commit_sha):
-            raise RuntimeIssueHandoffConflict('workshop_receipt_not_verified')
-
-        fresh_now = self._utc_now()
-        fresh_now_text = fresh_now.isoformat()
+        now_text = self._utc_now().isoformat()
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             validate_runtime_issue_handoff_schema(connection)
             try:
                 connection.execute('BEGIN IMMEDIATE')
-                row = self._ack_row(connection, handoff_id)
-                idempotent = self._validate_ack_row(
+                row = self._claim_row(connection, handoff_id)
+                idempotent = self._validate_claim_row(
                     row,
                     supplied_hash=supplied_hash,
                     manifest_digest=manifest_digest,
-                    workshop_branch=workshop_branch,
-                    workshop_commit_sha=workshop_commit_sha,
-                    now_text=fresh_now_text,
+                    now_text=now_text,
                 )
                 if idempotent is not None:
                     connection.commit()
@@ -344,45 +227,30 @@ class RuntimeIssueHandoffService:
                 lease_until = str(row['lease_until'])
                 cursor = connection.execute(
                     "UPDATE runtime_issue_handoffs SET status = 'acknowledged', "
-                    'workshop_branch = ?, workshop_commit_sha = ?, acknowledged_at = ?, '
-                    'updated_at = ? WHERE handoff_id = ? AND status = \'leased\' '
+                    'acknowledged_at = ?, updated_at = ? '
+                    "WHERE handoff_id = ? AND status = 'leased' "
                     'AND lease_owner = ? AND lease_token_hash = ? '
                     'AND manifest_digest = ? AND lease_until = ? AND lease_until > ?',
-                    (
-                        workshop_branch,
-                        workshop_commit_sha,
-                        fresh_now_text,
-                        fresh_now_text,
-                        handoff_id,
-                        LEASE_OWNER,
-                        supplied_hash,
-                        manifest_digest,
-                        lease_until,
-                        fresh_now_text,
-                    ),
+                    (now_text, now_text, handoff_id, LEASE_OWNER, supplied_hash,
+                     manifest_digest, lease_until, now_text),
                 )
                 if cursor.rowcount != 1:
-                    raise RuntimeIssueHandoffConflict('handoff_ack_race')
+                    raise RuntimeIssueHandoffConflict('handoff_claim_race')
                 connection.commit()
             except Exception:
                 if connection.in_transaction:
                     connection.rollback()
                 raise
-        return AckResult(
+        return ClaimResult(
             handoff_id=handoff_id,
             status='acknowledged',
             manifest_digest=manifest_digest,
-            workshop_branch=workshop_branch,
-            workshop_commit_sha=workshop_commit_sha,
-            acknowledged_at=fresh_now_text,
+            acknowledged_at=now_text,
             idempotent=False,
         )
 
     @staticmethod
-    def _ack_row(
-        connection: sqlite3.Connection,
-        handoff_id: str,
-    ) -> sqlite3.Row | None:
+    def _claim_row(connection: sqlite3.Connection, handoff_id: str) -> sqlite3.Row | None:
         return connection.execute(
             'SELECT handoff_id, status, lease_token_hash, lease_owner, leased_at, '
             'lease_until, manifest_digest, workshop_branch, workshop_commit_sha, '
@@ -391,15 +259,13 @@ class RuntimeIssueHandoffService:
         ).fetchone()
 
     @staticmethod
-    def _validate_ack_row(
+    def _validate_claim_row(
         row: sqlite3.Row | None,
         *,
         supplied_hash: str,
         manifest_digest: str,
-        workshop_branch: str,
-        workshop_commit_sha: str,
         now_text: str,
-    ) -> AckResult | None:
+    ) -> ClaimResult | None:
         if row is None:
             raise RuntimeIssueHandoffInvalid('handoff_not_found')
         handoff_id = str(row['handoff_id'])
@@ -407,31 +273,22 @@ class RuntimeIssueHandoffService:
             same = (
                 hmac.compare_digest(str(row['lease_token_hash']), supplied_hash)
                 and hmac.compare_digest(str(row['manifest_digest']), manifest_digest)
-                and str(row['workshop_branch']) == workshop_branch
-                and str(row['workshop_commit_sha']) == workshop_commit_sha
             )
             if not same:
-                raise RuntimeIssueHandoffConflict('handoff_ack_conflict')
-            return AckResult(
+                raise RuntimeIssueHandoffConflict('handoff_claim_conflict')
+            return ClaimResult(
                 handoff_id=handoff_id,
                 status='acknowledged',
                 manifest_digest=manifest_digest,
-                workshop_branch=workshop_branch,
-                workshop_commit_sha=workshop_commit_sha,
                 acknowledged_at=str(row['acknowledged_at']),
                 idempotent=True,
             )
         if str(row['status']) != 'leased':
             raise RuntimeIssueHandoffConflict('handoff_not_live')
-        if any(
-            row[name] is not None
-            for name in (
-                'workshop_branch',
-                'workshop_commit_sha',
-                'acknowledged_at',
-            )
-        ):
-            raise RuntimeIssueHandoffConflict('handoff_ack_facts_mismatch')
+        if any(row[name] is not None for name in (
+            'workshop_branch', 'workshop_commit_sha', 'acknowledged_at'
+        )):
+            raise RuntimeIssueHandoffConflict('handoff_claim_facts_mismatch')
         if str(row['lease_owner']) != LEASE_OWNER or not str(row['leased_at']):
             raise RuntimeIssueHandoffConflict('handoff_lease_owner_mismatch')
         if str(row['lease_until']) <= now_text:

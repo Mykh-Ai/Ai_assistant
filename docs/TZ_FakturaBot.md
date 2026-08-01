@@ -1,3 +1,42 @@
+## 2026-08-01 Addendum: internal runtime issue Agent Claim
+
+Status: `implemented_repository_only / production_not_deployed`.
+
+The supervised repair bridge now has a repository implementation of
+`runtime_issue_handoff claim`. It accepts the lease token only through stdin,
+validates the exact live handoff and manifest, and reuses the existing
+`runtime_issue_handoffs.status='acknowledged'` plus `acknowledged_at` as the
+terminal fact that the agent accepted delivery. The CLI exposes the clearer
+outward state `accepted_by_agent`.
+
+This change adds no schema and needs no data migration. Existing
+`workshop_branch` and `workshop_commit_sha` columns remain nullable legacy
+fields and are not populated by new claims. Historical rows are preserved.
+
+The former GitHub-verified `ack` method is obsolete and its documents are
+archived. GitHub publication happens only after diagnosis/repair reaches a
+final local outcome. Stage 1 `runtime_issues` remains the immutable
+administrator observation.
+
+Repository implementation does not prove deployment. Repair sessions must not
+lease new production issues until production CLI help exposes `claim`, the
+exact merged SHA is deployed, and bounded production-image smoke passes.
+
+## 2026-07-31 - Runtime issue prefix routing
+
+Status: implemented bounded repair.
+
+After authorization and STT, the first meaningful token `проблема`, `помилка`,
+`баг`, `chyba`, `problem`, `bug`, or `error` is a deterministic support
+boundary. For administrators it routes the complete report to the existing
+runtime issue intake before any invoice/contact/receipt/analytics action
+resolver. Administrator capture also preserves an active FSM.
+
+For other authorized users while idle, the same prefix opens the existing
+confirmation-gated admin-review request preview; it does not create an
+administrator issue or save a request before approval. Active non-admin FSM
+ownership remains unchanged. Unauthorized users remain blocked before
+STT/LLM and persistence.
 # Технічне завдання: FakturaBot
 
 ## Telegram-бот для створення фактур з голосу, тексту та договору
@@ -5,6 +44,41 @@
 **Версія:** 2.0 Concept Update  
 **Дата:** 30.03.2026  
 **Автор:** Mykhailo Alieksieienko
+
+---
+
+## 2026-07-30 Addendum: Gmail OAuth and bank-statement collection V1
+
+The repository contains a partial, disabled-by-default Google identity and
+service-grant foundation for one explicitly configured Gmail account and one
+canonical workspace. An authorized administrator can use `/gmail_connect`,
+`/gmail_status`, and `/gmail_disconnect`; the actual connection still requires
+external Google OAuth credentials, restricted-scope verification, callback
+deployment, an exact expected Google email, and an exact target workspace.
+
+The Gmail grant permits only OIDC identity scopes and
+`https://www.googleapis.com/auth/gmail.readonly`. It does not grant Google
+Drive access and does not replace or migrate the existing owner-run Drive
+connection. The collector uses a trusted deployment query, bounded historical
+overlap and pagination, reads filename-bearing allowlisted attachments only,
+and never marks, labels, archives, deletes, drafts, or sends Gmail messages.
+
+New originals and bounded metadata are stored atomically under the owning
+workspace. Repeated Gmail sources and workspace-local content are deduplicated.
+When the existing owner Drive archive is independently enabled, a newly stored
+canonical original may be enqueued as `bank_statement_original` under
+`<workspace folder>/<YYYY>/bankove_vypisy/<YYYY-MM>`; local files remain the
+source of truth and are never deleted by this flow. The workspace owner receives
+one bounded notification per newly stored canonical statement; reauthorization
+notifications are cooldown-protected.
+
+Statement content parsing, transaction import, reconciliation, cashflow, VAT,
+tax conclusions, Gmail send/modify operations, Tatra banka API, Google Sheets,
+and Google Docs are unsupported. Every import remains
+`parse_status=deferred`. Public website indexing remains enabled by explicit
+product decision; Gmail OAuth availability is a separate fail-closed launch
+gate. No production deployment or real mailbox smoke is proven by this
+addendum.
 
 ---
 
@@ -63,6 +137,18 @@ Voice may start the action and may answer the bounded confirmation. Confirmation
 
 Approved users may ask broader read-only analytics questions over their saved
 outgoing invoices through canonical top-level action `invoice_analytics`.
+For an invoice analytics question that explicitly refers to one customer, the
+runtime first extracts only the stated customer reference, then reuses the
+invoice-generation tenant-scoped resolver: exact name, normalized name,
+confirmed contact alias, high-confidence fuzzy match, and bounded LLM fallback
+only if deterministic resolution did not succeed. Python prefilters the
+sanitized analytics dataframe by the resolved contact's trusted `contact_id`
+before the planner runs. An explicit unresolved customer asks for clarification
+instead of analyzing the full dataset. This path is read-only: it does not learn
+an alias, change the contact, rewrite an issued invoice, or change an existing
+PDF. A general question with no named customer keeps the full active-tenant
+dataset.
+
 Examples include counts, sums, period comparisons, customer/month/currency
 grouping, normalized bot payment-status grouping, and bounded lists of
 matching saved outgoing invoices.

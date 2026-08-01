@@ -507,3 +507,27 @@ Last recorded full-suite evidence in `PROJECT_LOG.md` for this slice:
 Manual product UX smoke run:
 
 - not recorded in this artifact yet.
+
+### CR-MVP-USER-019 - Explicit Problem Prefix Uses Admin Review
+
+account_state: authorized non-admin user, idle FSM
+input_channel: text or voice
+user_input: first meaningful token is `проблема`, `помилка`, `баг`, `chyba`,
+`problem`, `bug`, or `error`, followed by a concrete bot-behavior description
+that may mention invoices, contacts, receipts, or analytics
+expected_response_behavior: show the existing admin-review request preview and
+require approve/edit/cancel before persistence
+side_effect_expectation: no business action runs and no request row exists
+before approval
+forbidden_behavior: invoice/contact/receipt/analytics execution, administrator
+issue persistence for a non-admin actor, hidden save, or admin-notified claim
+automation_status: covered by runtime issue voice/route tests
+
+### RI-MVP-ADMIN-020 - Explicit Problem Prefix Bypasses Business Routing
+
+account_state: authorized administrator, idle or active FSM
+input_channel: text or voice
+user_input: one supported first-token problem marker plus a complete report
+expected_response_behavior: store one runtime issue through the shared owner
+and return its stable ID
+side_effect_expectation: no referenced business action runs; active FSM state

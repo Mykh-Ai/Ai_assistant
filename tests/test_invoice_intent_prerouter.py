@@ -550,9 +550,7 @@ def test_send_invoice_request_does_not_become_invoice_creation() -> None:
     assert result == 'send_invoice'
 
 
-@pytest.mark.parametrize(
-    'user_input',
-    [
+YEARLY_INVOICE_ANALYTICS_INPUTS = [
         'Na akú sumu som vystavil faktúry v tomto roku?',
         'Koľko som vystavil faktúr tento rok?',
         'Súhrn faktúr za 2026',
@@ -561,18 +559,7 @@ def test_send_invoice_request_does_not_become_invoice_creation() -> None:
         'На яку суму я вже виставив фактуру в цьому році?',
         'На какую сумму я выставил фактур в этом году?',
         'На якую суму я выставіў фактур у гэтым годзе?',
-    ],
-)
-def test_yearly_invoice_summary_resolves_to_invoice_analytics_top_level_action(user_input: str) -> None:
-    assert asyncio.run(
-        resolve_semantic_action(
-            context_name='top_level_action',
-            allowed_actions=['create_invoice', 'invoice_analytics', 'unknown'],
-            user_input_text=user_input,
-            api_key=None,
-            model='gpt-4o',
-        )
-    ) == 'invoice_analytics'
+]
 
 
 def test_process_invoice_text_answers_invoice_period_summary_without_side_effects(tmp_path: Path) -> None:
@@ -1781,9 +1768,7 @@ def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
     assert 'pridaj bloček' in message.answers[-1]
 
 
-@pytest.mark.parametrize(
-    'user_input',
-    [
+GENERAL_INVOICE_ANALYTICS_INPUTS = [
         'Покажи фактури за травень',
         'На яку суму я виставив фактури в березні та травні?',
         'Koľko som vystavil faktúr v marci a máji?',
@@ -1792,6 +1777,38 @@ def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
         'Порівняй травень 2026 і травень 2025',
         'Koľko mám neuhradených faktúr?',
         'Top klientov podľa sumy faktúr',
+]
+
+@pytest.mark.contract
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    'user_input',
+    [
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[0], id='yearly-sk-total-current-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[1], id='yearly-sk-count-current-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[2], id='yearly-sk-summary-explicit-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[3], id='yearly-uk-total-current-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[4], id='yearly-uk-count-current-year'),
+        pytest.param(
+            YEARLY_INVOICE_ANALYTICS_INPUTS[5],
+            id='yearly-uk-total-already-current-year',
+        ),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[6], id='yearly-ru-total-current-year'),
+        pytest.param(YEARLY_INVOICE_ANALYTICS_INPUTS[7], id='yearly-be-total-current-year'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[0], id='general-uk-show-month'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[1], id='general-uk-total-two-months'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[2], id='general-sk-count-two-months'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[3], id='general-sk-compare-two-months'),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[4], id='general-uk-total-by-month'),
+        pytest.param(
+            GENERAL_INVOICE_ANALYTICS_INPUTS[5],
+            id='general-uk-compare-same-month-two-years',
+        ),
+        pytest.param(GENERAL_INVOICE_ANALYTICS_INPUTS[6], id='general-sk-unpaid-count'),
+        pytest.param(
+            GENERAL_INVOICE_ANALYTICS_INPUTS[7],
+            id='general-sk-top-customers-by-total',
+        ),
     ],
 )
 def test_invoice_analytics_resolves_as_read_only_top_level_action(user_input: str) -> None:
@@ -1873,6 +1890,9 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
         ],
     )
 
+    async def _extractor(**kwargs) -> None:
+        return None
+
     async def _resolver(**kwargs) -> str:
         if kwargs['context_name'] == 'top_level_action':
             return 'invoice_analytics'
@@ -1881,6 +1901,7 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
     async def _planner(**kwargs) -> InvoiceAnalyticsPlan:
         assert kwargs['current_date_iso']
         assert 'invoices_df' in kwargs['data_catalog']['datasets']
+        assert kwargs['data_catalog']['customer_scope'] is None
         catalog_columns = kwargs['data_catalog']['datasets']['invoices_df']['columns']
         assert 'payment_status_canonical' in catalog_columns
         assert 'status' not in catalog_columns
@@ -1901,6 +1922,10 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
         return 'Máte 1 faktúru v sume 300.00 EUR.'
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr(
+        'bot.handlers.invoice.extract_invoice_analytics_customer_reference',
+        _extractor,
+    )
     monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _planner)
     monkeypatch.setattr('bot.handlers.invoice.answer_invoice_analytics', _answer)
 
@@ -1911,6 +1936,133 @@ def test_process_invoice_text_runs_invoice_analytics_without_side_effects(tmp_pa
 
     assert state.cleared is True
     assert message.answers[-1] == 'Máte 1 faktúru v sume 300.00 EUR.'
+    assert message.documents == []
+    assert not (tmp_path / 'invoices').exists()
+
+
+def test_invoice_analytics_reuses_confirmed_contact_alias_before_bounded_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    contacts = ContactService(config.db_path)
+    for name, ico in [('Tech Company s.r.o.', '12345678'), ('Other Company s.r.o.', '87654321')]:
+        contacts.create_contact(
+            ContactProfile(
+                supplier_telegram_id=111,
+                name=name,
+                ico=ico,
+                dic=f'{ico}00',
+                ic_dph=None,
+                address='Hlavna 1, Kosice',
+                email='',
+                contact_person=None,
+                source_type='manual',
+                source_note=None,
+                contract_path=None,
+            )
+        )
+    target = contacts.get_by_name(111, 'Tech Company s.r.o.')
+    other = contacts.get_by_name(111, 'Other Company s.r.o.')
+    assert target is not None and target.id is not None
+    assert other is not None and other.id is not None
+
+    contacts.create_confirmed_contact_alias(
+        supplier_telegram_id=111,
+        alias_text='\u0422\u0435\u0445 \u041a\u043e\u043c\u043f\u0430\u043d\u0456',
+        contact_id=target.id,
+        source='preview_approved',
+    )
+
+    invoices = InvoiceService(config.db_path)
+    for contact_id, number, total in [
+        (target.id, '20260001', 300),
+        (other.id, '20260002', 900),
+    ]:
+        invoices.create_invoice_with_items(
+            supplier_telegram_id=111,
+            contact_id=contact_id,
+            invoice_number=number,
+            issue_date='2026-05-10',
+            delivery_date='2026-05-10',
+            due_date='2026-05-24',
+            due_days=14,
+            total_amount=total,
+            currency='EUR',
+            status='unpaid',
+            items=[
+                CreateInvoiceItemPayload(
+                    description_raw='oprava',
+                    description_normalized='Oprava',
+                    item_description_raw=None,
+                    quantity=1,
+                    unit='ks',
+                    unit_price=total,
+                    total_price=total,
+                )
+            ],
+        )
+
+    async def _extractor(**kwargs) -> str:
+        assert kwargs['user_question'].endswith('\u0422\u0435\u0445 \u041a\u043e\u043c\u043f\u0430\u043d\u0456.')
+        return '\u0422\u0435\u0445 \u041a\u043e\u043c\u043f\u0430\u043d\u0456'
+
+    async def _resolver(**kwargs) -> str:
+        if kwargs['context_name'] == 'top_level_action':
+            return 'invoice_analytics'
+        raise AssertionError(
+            'bounded contact fallback must not run after a confirmed alias match'
+        )
+
+    async def _planner(**kwargs) -> InvoiceAnalyticsPlan:
+        assert kwargs['data_catalog']['customer_scope'] == {
+            'canonical_name': 'Tech Company s.r.o.',
+            'prefiltered_by_trusted_contact_id': True,
+        }
+        return InvoiceAnalyticsPlan(
+            analysis_code=(
+                'df = invoices_df.copy()\n'
+                'result = {"summary": {"invoice_count": int(len(df)), "total": float(df["total_amount"].sum())}, "tables": {}, "warnings": [], "answer_hints": []}'
+            ),
+            answer_language='uk',
+            reasoning_summary='sum prefiltered customer invoices',
+        )
+
+    async def _answer(**kwargs) -> str:
+        assert kwargs['computed_result']['summary'] == {
+            'invoice_count': 1,
+            'total': 300.0,
+        }
+        assert kwargs['dataset_metadata']['customer_scope'] == 'Tech Company s.r.o.'
+        return 'Pre Tech Company je suma 300.00 EUR.'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr(
+        'bot.handlers.invoice.extract_invoice_analytics_customer_reference',
+        _extractor,
+        raising=False,
+    )
+    monkeypatch.setattr('bot.handlers.invoice.plan_invoice_analytics_code', _planner)
+    monkeypatch.setattr('bot.handlers.invoice.answer_invoice_analytics', _answer)
+
+    message = _authorized_message(
+        '\u041f\u043e\u043a\u0430\u0436\u0438 \u0441\u0443\u043c\u0443 \u0432\u0438\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u0438\u0445 \u0444\u0430\u043a\u0442\u0443\u0440 \u0434\u043b\u044f \u0422\u0435\u0445 \u041a\u043e\u043c\u043f\u0430\u043d\u0456.',
+        telegram_id=111,
+    )
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+        )
+    )
+
+    assert state.cleared is True
+    assert message.answers[-1] == 'Pre Tech Company je suma 300.00 EUR.'
     assert message.documents == []
     assert not (tmp_path / 'invoices').exists()
 
@@ -3650,3 +3802,96 @@ def test_process_invoice_text_mark_existing_invoice_paid_enters_confirmation(tmp
     assert state.data['pending_mark_paid_invoice_id'] == invoice_id
     assert state.data['pending_mark_paid_invoice_number'] == '20260006'
     assert any('bankove potvrdenie' in answer.lower() for answer in message.answers)
+
+
+def test_invoice_analytics_explicit_unresolved_customer_fails_safe_before_planner(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _config_with_api_key(tmp_path)
+    init_db(config.db_path)
+    contacts = ContactService(config.db_path)
+    contacts.create_contact(
+        ContactProfile(
+            supplier_telegram_id=111,
+            name='Tech Company s.r.o.',
+            ico='12345678',
+            dic='1234567800',
+            ic_dph=None,
+            address='Hlavna 1, Kosice',
+            email='',
+            contact_person=None,
+            source_type='manual',
+            source_note=None,
+            contract_path=None,
+        )
+    )
+    contact = contacts.get_by_name(111, 'Tech Company s.r.o.')
+    assert contact is not None and contact.id is not None
+    InvoiceService(config.db_path).create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=contact.id,
+        invoice_number='20260001',
+        issue_date='2026-05-10',
+        delivery_date='2026-05-10',
+        due_date='2026-05-24',
+        due_days=14,
+        total_amount=300,
+        currency='EUR',
+        status='unpaid',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='oprava',
+                description_normalized='Oprava',
+                item_description_raw=None,
+                quantity=1,
+                unit='ks',
+                unit_price=300,
+                total_price=300,
+            )
+        ],
+    )
+
+    async def _extractor(**kwargs) -> str:
+        return 'Невідома фірма'
+
+    async def _resolver(**kwargs) -> str:
+        if kwargs['context_name'] == 'top_level_action':
+            return 'invoice_analytics'
+        if kwargs['context_name'] == 'invoice_analytics_customer_resolution':
+            assert kwargs['user_input_text'] == 'Невідома фірма'
+            assert kwargs['allowed_actions'] == ['Tech Company s.r.o.']
+            return 'unknown'
+        return 'unknown'
+
+    async def _unexpected_planner(**kwargs):
+        raise AssertionError('planner must not run for an explicit unresolved customer')
+
+    monkeypatch.setattr(
+        'bot.handlers.invoice.extract_invoice_analytics_customer_reference',
+        _extractor,
+    )
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr(
+        'bot.handlers.invoice.plan_invoice_analytics_code',
+        _unexpected_planner,
+    )
+
+    message = _authorized_message(
+        'Покажи суму фактур для Невідома фірма.',
+        telegram_id=111,
+    )
+    state = _DummyState()
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+        )
+    )
+
+    assert state.cleared is True
+    assert 'Невідома фірма' in message.answers[-1]
+    assert 'nevedel jednoznačne priradiť' in message.answers[-1]

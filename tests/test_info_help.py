@@ -93,6 +93,22 @@ def test_email_capability_question_renders_unsupported_product_truth_guidance() 
     assert 'I emailed the invoice.' not in answer
 
 
+def test_gmail_statement_collection_question_is_partial_and_no_parsing_claim() -> None:
+    answer = build_product_truth_guidance(
+        user_input_text='Vieš zbierať bankové výpisy z Gmailu?'
+    )
+
+    assert answer is not None
+    assert 'Zber bankových výpisov z Gmailu' in answer
+    assert 'čiastočné' in answer
+    assert 'gmail.readonly' in answer
+    assert 'neparsujú sa' in answer
+    assert '/gmail_connect' in answer
+    assert classify_info_help_triage(
+        user_input_text='Чи можна збирати банківські виписки з Gmail?'
+    ).capability_id == 'gmail_statement_collection'
+
+
 def test_google_drive_question_renders_external_limitation() -> None:
     answer = build_product_truth_guidance(user_input_text='Vie bot ukladat faktury na Google Drive?')
 

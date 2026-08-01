@@ -769,3 +769,16 @@ Automatic maintenance and autorepair remain unavailable.
 Missing or failed tax data never clears saved DIČ/IČ DPH. Email, IBAN, contact person, contract data, invoice rows, invoice items, `pdf_path`, and existing PDF files are outside the update. Already issued invoices are never rewritten by this monitor.
 
 Forbidden claims: monitoring is active merely because code exists; registry data is always current; every contact can be checked without valid IČO; updates happen automatically; declining changes invoices; or approved contact updates rewrite previously issued invoices/PDFs.
+
+### Runtime issue explicit prefixes - 2026-07-31
+
+For an authorized administrator, text or STT beginning with the first
+meaningful token `проблема`, `помилка`, `баг`, `chyba`, `problem`, `bug`, or
+`error` deterministically enters the existing runtime issue intake and bypasses
+business action routing. The complete original report is stored through the
+same sanitized owner; a bare marker requests a complete description.
+
+For an authorized non-admin user while idle, the same prefix opens the
+existing confirmation-gated admin-review request preview. This does not create
+an administrator runtime issue, notify an administrator, or persist anything
+before confirmation. Active non-admin FSM ownership is not interrupted.

@@ -144,9 +144,11 @@ async def handle_active_fsm_text_update(
     actor_id = getattr(getattr(message, 'from_user', None), 'id', None)
     from bot.handlers.runtime_issue import (
         RUNTIME_ISSUE_FAILURE,
+        RUNTIME_ISSUE_USAGE,
         RuntimeIssueAdminCheck,
         check_runtime_issue_admin,
         extract_runtime_issue_command,
+        extract_runtime_issue_prefix_description,
         handle_runtime_issue_capture,
     )
 
@@ -171,6 +173,20 @@ async def handle_active_fsm_text_update(
                 source_channel=input_channel,
                 telegram_update_id=telegram_update_id,
             )
+
+    issue_prefix_description = extract_runtime_issue_prefix_description(text)
+    if runtime_issue_admin and issue_prefix_description is not None:
+        if not issue_prefix_description:
+            await message.answer(RUNTIME_ISSUE_USAGE)
+            return True
+        return await handle_runtime_issue_capture(
+            message=message,
+            state=state,
+            config=config,
+            description=text,
+            source_channel=input_channel,
+            telegram_update_id=telegram_update_id,
+        )
 
     if command in {'/cancel', '/menu', '/start'}:
         await _execute_navigation(

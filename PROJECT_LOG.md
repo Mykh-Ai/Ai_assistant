@@ -1,3 +1,216 @@
+# 2026-08-01 - Runtime issue Agent Claim reuses the existing handoff schema
+
+- Owner decision: the former V1 GitHub-verified acknowledgment method is
+  obsolete. Receiving an issue must be recorded by the deterministic handoff
+  service without waiting for a Workshop commit.
+- Reused the existing `runtime_issue_handoffs` columns and persisted states.
+  A successful `claim` validates the live stdin token and exact
+  `manifest_digest`, then atomically writes existing
+  `status='acknowledged'` and `acknowledged_at`.
+- The CLI renders that terminal status as
+  `delivery_state=accepted_by_agent`. New claims leave
+  `workshop_branch` and `workshop_commit_sha` null.
+- Removed the active `ack` command and remote Git commit verifier. Git
+  publication remains a final repair-session step, not an intake gate.
+- No table, column, CHECK constraint, Stage 1 issue row, business data,
+  tenant/workspace boundary, Telegram route, LLM/STT/FSM behavior, or Product
+  Truth capability changed. No database migration is required.
+- Preserved historical acknowledged rows without rewrite or deletion.
+- Archived the superseded V1 bridge documents under
+  `docs/archive/runtime_issue_autorepair_v1/` with an explicit obsolete
+  notice. Current contract and Workshop paths now live under
+  `docs/features/runtime_issue_agent_claim/`.
+- Repository status: implemented locally; not merged or deployed. Production
+  still exposes the obsolete CLI until a separately approved deployment.
+- Verification: the new CLI regression failed before implementation; 62 focused
+  bridge/evidence/workshop tests and compileall passed after implementation;
+  the full repository suite passed with 2424 tests and 7 subtests in
+  398.95 seconds.
+
+# 2026-07-31 - Repair skill gates and Agent Claim Bridge V2 design
+
+- Updated the interactive repair skill so diagnosis begins with a candidate
+  error class and the active canonical documents, registries, code owners, or
+  tests that define the intended architecture and correct behavior.
+- Required the exact canonical sources used for diagnosis to be recorded in
+  the Workshop log; missing canonical truth blocks intuitive repair.
+- Made `docs/Implementation_Agent_Checklist.md` conditional: it is mandatory
+  before a code repair, but not for final no-code diagnostic outcomes such as
+  expected behavior, external failure, or insufficient evidence.
+- Clarified that repair/workshop commit and push are final publication steps
+  after a complete local outcome, required tests, and final diff inspection;
+  intermediate intake/progress artifacts must not be pushed.
+- Added the `RUNTIME_ISSUE_AGENT_CLAIM_BRIDGE_V2` Architecture Design Proof.
+  The proposed deterministic `claim` transition records
+  `accepted_by_agent` after a bounded local receipt and does not wait for a
+  GitHub commit, PR, merge, or deployment.
+- V2 remains `planned_not_implemented` and migration-sensitive. Runtime code,
+  SQLite schema/data, server state, and production were not changed in this
+  documentation/design step.
+
+# 2026-07-31 - Runtime Issue F02 Prefix Routing Repair
+
+- Classified `IR-20260730-5FA71FDFFCDE-F02` as a confirmed low-risk routing
+  defect: the complete STT problem report competed with invoice analytics in
+  the generic top-level resolver.
+- Added a deterministic first-token boundary for `проблема`, `помилка`, `баг`,
+  `chyba`, `problem`, `bug`, and `error`.
+- Authorized administrators now reach the existing shared runtime issue owner
+  before business routing; the original report remains intact and active FSM
+  state/data are preserved.
+- Authorized non-admin idle users enter the existing confirmation-gated
+  admin-review request preview. No request is saved before approval, and no
+  administrator notification is claimed.
+- Active non-admin FSM ownership remains unchanged; no nested/suspended FSM
+  architecture was introduced.
+- Unauthorized users remain blocked before STT/LLM and persistence.
+- AI maturity remains partial Level 3 for non-admin human-review capture and
+  the existing bounded runtime-issue layer for administrators.
+- Self-learning was not added: explicit support prefixes are deterministic
+  control markers, not learned business aliases.
+- No DB schema, persisted data, tenant boundary, dependencies, or production
+  data changed.
+- Verification: 47 focused runtime issue/voice tests passed; 553 adjacent
+  routing, InfoHelp, customization, and access tests plus 7 subtests passed;
+  the final full repository suite passed with 2433 tests plus 7 subtests.
+  `python -m compileall -q bot` and `git diff --check` passed.
+
+## 2026-07-30 - Gmail OAuth foundation and statement collector V1 local implementation
+
+### Status
+- Implemented the bounded local foundation as `partial`, `requires_setup`, `requires_admin`, and `requires_external_credentials`.
+- Acceptance remains `runtime_not_proven`: no production callback deployment, real Google consent, restricted-scope verification, or real mailbox/Drive smoke was performed.
+- Explicit product decision: `PUBLIC_INDEXING_ENABLED=true` remains unchanged; Gmail OAuth has an independent fail-closed launch gate.
+
+### Runtime and storage
+- Added separate Google identity, service grant, workspace binding, OAuth state, and notification-cooldown tables without rewriting the existing owner Drive connection table.
+- Added official OIDC token verification, nonce/audience/email checks, hashed short-lived single-use state/nonce persistence, encrypted token envelopes, same-subject refresh-token preservation, local disconnect, and `needs_reauth` transitions.
+- Added an internal secret-bound callback service and a bounded server-side callback gateway in the companion `zevsflow-site` repository.
+- Added admin-only `/gmail_connect`, `/gmail_status`, and `/gmail_disconnect`, a Gmail read-only adapter with no mutation methods, bounded historical overlap/pagination, attachment-only MIME traversal, atomic workspace storage, source/content deduplication, and parser-deferred metadata.
+- Added one bounded Telegram notification per newly stored canonical statement, cooldown-protected reauthorization notifications, and optional idempotent `bank_statement_original` enqueue through the existing owner Drive archive path. Local originals are preserved.
+
+### Truth, safety, and verification
+- Updated Product Truth, InfoHelp, TZ, setup/rollback runbook, architecture proof, changelog, and conversation acceptance evidence. No canonical action, FSM, DecisionResolver, LLM/STT/LMM, invoice/PDF, or existing Drive credential behavior was changed.
+- Focused Gmail/Product Truth/InfoHelp tests: 161 passed.
+- Existing archive/Drive regression tests: 109 passed.
+- Full backend suite after the final config guard: 2408 passed, 7 subtests passed in 469.16 seconds.
+- Post-suite Telegram HTML-escaping/config focused smoke: 10 passed.
+- Companion gateway direct Node tests: 4 passed earlier in the session.
+- Full companion lint/test commands were not run because the environment approval reviewer reported its usage limit; no workaround or deployment was attempted.
+## 2026-07-30 - Runtime repair correction - invoice analytics alias-first customer resolution
+
+### Diagnosis and repair
+
+- The first PR #54 implementation was tenant-scoped but incomplete: after the
+  analytics dataframe was built, it asked a bounded LLM to choose a canonical
+  contact directly from the full analytics question. That bypassed the
+  confirmed contact-alias and deterministic resolution chain already used by
+  invoice generation.
+- Added a bounded analytics slot extractor that returns only the minimal
+  explicitly stated `customer_reference` or `null`. It does not receive the
+  contact list and cannot choose or persist an identity.
+- Python now sends that reference through the existing tenant-scoped invoice
+  contact path: exact -> normalized -> confirmed alias -> high-confidence
+  fuzzy -> bounded LLM fallback over current-tenant candidates.
+- A resolved contact becomes a trusted `contact_id` dataframe prefilter before
+  planner execution. An explicit unresolved reference now fails safe with a
+  clarification instead of silently analyzing all tenant invoices.
+- Analytics remains read-only and does not learn/write an alias, edit a
+  contact, rewrite an invoice, regenerate a PDF, or change DB/storage schema.
+
+### Scope and product truth
+
+- Existing canonical action: `invoice_analytics`; no new action, FSM, callback,
+  confirmation family, storage layout, access rule, or migration.
+- Current status and maturity remain `partial` bounded read-only analytics;
+  Python owns tenant scope, identity validation, dataframe filtering,
+  planner validation, execution, and all side-effect boundaries.
+- Text and voice/STT share the same post-transcription path. STT still only
+  supplies transcript text; it does not resolve the contact.
+- Confirmed alias self-learning is reused read-only. No learning hook was added
+  because an analytics answer is not user confirmation for a new alias.
+- The separate runtime issue F02 concerning routing of messages beginning with
+  “Проблема...” is explicitly deferred as `needs_more_diagnostics`; this repair
+  does not change runtime-issue/top-level routing.
+
+### Verification
+
+- Failing-before proof: the confirmed-alias regression invoked the bounded
+  analytics contact selector and failed before this correction.
+- Focused post-repair acceptance: confirmed alias resolves before bounded
+  fallback; explicit unresolved customer stops before planner execution.
+- Focused and adjacent analytics/contact/tenant/voice/Product Truth suite:
+  546 passed.
+- Full 92-file test inventory was run in three groups after the monolithic
+### Merge and controlled deployment
+
+- Repair commit `7d6f43f603a2661ed6d50a8244b20284a680d30e` was pushed
+  to the existing repair branch and PR #54 was updated through the connected
+  GitHub app. GitHub exposed no status checks for the commit.
+- PR #54 was marked ready and merged into `main` as
+  `2379869c6f609624082fc36eb1e088174e554154`.
+- Server `/bot/repo` was clean and fast-forwarded from `632e9b0` to the exact
+  merged SHA. Docker image `repo-bot` was rebuilt and the existing
+  `fakturabot` container recreated.
+- Pre-deploy SQLite backup:
+  `/var/backups/fakturabot/20260730T211228Z_pre_pr54_invoice_analytics_alias/`;
+  active and backup SHA-256 values matched exactly after deployment and SQLite
+  integrity check returned `ok`.
+- Production container is `running`, restart count is zero, polling started,
+  and filtered startup logs contain no error/critical/traceback marker.
+- Production-image temporary-DB smoke passed for Cyrillic confirmed-alias
+  lookup and strict customer-reference parsing. Real Telegram voice acceptance
+  remains a manual follow-up.
+
+  desktop command hit its output/time limit: 409 passed; 1540 passed plus
+  7 subtests; 436 passed. Aggregate: 2385 passed, 7 subtests passed.
+- `python -m compileall -q bot tests`: passed.
+- `git diff --check`: passed.
+
+## 2026-07-30 - Runtime repair - invoice analytics customer identity scope
+
+Summary:
+- Diagnosed a recorded production observation where a noisy/Cyrillic spoken
+  customer reference reached invoice analytics but was not resolved to the
+  existing canonical contact before planner filtering.
+- Added a bounded internal customer identity step over unique contacts from the
+  active tenant plus `unknown`; Python now prefilters the sanitized dataframe by
+  trusted `contact_id` before planning.
+- Added a planner contract that rejects a second `customer_name` or `contact_id`
+  filter after Python has established the customer scope.
+
+Preflight:
+- Docs/contracts read: AGENTS, Product Doctrine 2030, AI Layer Implementation
+  Standards, Product Truth Layer/Registry design, Self-Learning Layer,
+  Confirmed Semantic Alias Learning Contract, Evaluation/UX standards, TZ,
+  LLM orchestrator/action/in-action/resolver contracts, Invoice Analytics
+  Runtime Contract, Safe Data Analyst checklist, runtime repair policy/runbook,
+  repository audit, server context, current code/tests, and recent project log.
+- Touched scopes: bounded LLM canonicalization, invoice analytics handler,
+  sanitized dataset catalog, planner validation, Product Truth, contracts,
+  eval artifact, tests, changelog, and project log.
+- Current status: `partial` read-only invoice analytics; no status uplift.
+- AI maturity: existing bounded partial Level 2 behavior; Python owns scope,
+  validation, execution, and every side-effect boundary.
+- Out of scope: new action/FSM/callback/confirmation, DB/schema/storage migration,
+  contact or alias write, invoice/PDF rewrite, deployment, merge, or production
+  configuration/data change.
+- User journey proof: an authorized idle user asks by text or voice/STT for an
+  invoice total for a noisy/Cyrillic customer name; bounded resolution selects
+  only a current-tenant contact or `unknown`; Python computes only over matching
+  trusted `contact_id` rows and returns a read-only answer.
+- Self-learning considered: intentionally not added. Analytics alone is not
+  user confirmation for a reusable contact alias.
+- Product claim sources: runtime code/tests, Product Truth `invoice_analytics`,
+  Invoice Analytics Runtime Contract, TZ, orchestrator/in-action contracts.
+
+Verification:
+- Focused invoice analytics suite: 54 passed, 195 deselected.
+- Adjacent analytics/Product Truth/InfoHelp/voice suite: 469 passed.
+- Full repository suite: 2376 passed, 7 subtests passed.
+- `python -m compileall -q bot tests`: passed.
+- `git diff --check`: passed with line-ending conversion warnings only.
+
 ## 2026-07-29 - Runtime issue workshop bridge Phase 1
 
 ### Implementation
@@ -7035,6 +7248,33 @@ Supplier profile Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р В�
 - QR Pay by Square
 - email-Р В Р вЂ Р РЋРІР‚вЂњР В РўвЂР В РЎвЂ”Р РЋР вЂљР В Р’В°Р В Р вЂ Р В РЎвЂќР В Р’В°
 - Р РЋРІР‚вЂњР РЋР С“Р РЋРІР‚С™Р В РЎвЂўР РЋР вЂљР РЋРІР‚вЂњР РЋР РЏ Р РЋРІР‚С›Р В Р’В°Р В РЎвЂќР РЋРІР‚С™Р РЋРЎвЂњР РЋР вЂљ
+
+## 2026-07-31 - FakturaBot test taxonomy and consolidation Phase 1
+
+- Started from origin/main
+  4a69b312226b7c4254427f3c3c1b0a99243647c8 in an isolated worktree and
+  carried forward the approved audit baseline.
+- Registered the eleven audit-defined pytest markers and documented focused,
+  adjacent, full-suite, integration, acceptance, external opt-in, and server
+  smoke tiers. Marker coverage remains intentionally partial.
+- Parametrized only the approved high-confidence Pay by Square,
+  service-normalization, work-time routing, contact normalization, invoice
+  analytics, and customization-admin scenarios with stable IDs.
+- Moved three literal Google Drive Product Truth copies to one canonical test
+  in tests/test_product_truth.py. Product Truth values and production code did
+  not change.
+- Centralized ten equivalent Google/network import-boundary checks while
+  retaining every module-specific forbidden set and the archive-worker
+  required token. Independent parser, callback, phrase-dictionary, and
+  side-effect source contracts remain separate.
+- Collection changed from 2,433 to 2,431 only because three literal duplicate
+  nodes became one; 2,431 unique logical protections remain.
+- Validation: changed-file focused set 431 passed; adjacent sets 949 passed
+  and 210 passed plus 7 subtests; final collection 2,431; full suite 2,431
+  passed plus 7 subtests in 490.10s.
+- Delivery-date parametrization and legacy service-account retirement remain
+  deferred. No CI, dependency, schema, runtime, server, deploy, restart, or
+  production-data change was made.
 - Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР С“Р В РЎвЂ
 - SQLite
 - Docker deploy
@@ -8390,3 +8630,25 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 - Marked PR #53 ready for review and merged exact head `f5be15bf24e54a7f700ed481b99c96ad28d63209` into `main`.
 - Merge commit: `e1112251f36c5e22b96b72f98ea542be8b490b0d`.
 - Documentation layout only; no runtime, database, storage, production, or business-data change.
+
+## 2026-07-31 - FakturaBot Python test-suite audit
+
+- Completed a documentation-only audit of all 101 Python test files on
+  `origin/main` baseline `4a69b31`; no test, production code, behavior,
+  dependency, pytest configuration, CI, database, storage, server, or
+  deployment state changed.
+- Exact collection: 2,433 pytest tests. Two full runs passed with seven
+  additional passing unittest subtests in 467.17s and 485.03s.
+- Repeated 123 stateful migration/handoff/OAuth/archive/work-time cases three
+  times and once in reverse file order; all four runs passed.
+- Added the canonical audit and complete per-file evidence inventory under
+  `docs/audits/`. The audit recommends no deletions: 78 `KEEP_CRITICAL`, 10
+  `KEEP`, 7 `PARAMETRIZE`, 3 `CONSOLIDATE`, 2 `INVESTIGATE`, and 1
+  `OBSOLETE_CANDIDATE` file-level classification.
+- The obsolete candidate is legacy Google Drive service-account coverage and
+  remains blocked on Product Truth/deployment confirmation. Current owner-OAuth
+  and retention protections must exist before any future retirement.
+- Documented missing marker/CI taxonomy, over-mocked public-route boundaries,
+  open keyboard lifecycle evidence, externally unproven Gmail/Drive/provider
+  smoke, PDF visual acceptance, phased cleanup, risks, rollback, and product
+  owner questions.

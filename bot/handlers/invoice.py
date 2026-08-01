@@ -24,6 +24,8 @@ from bot.handlers.onboarding import cmd_moj_profil, cmd_upravit_profil
 from bot.handlers.start import cmd_menu, cmd_start
 from bot.handlers.runtime_issue import (
     RUNTIME_ISSUE_ACTION,
+    RUNTIME_ISSUE_USAGE,
+    extract_runtime_issue_prefix_description,
     handle_runtime_issue_capture,
     is_runtime_issue_admin,
 )
@@ -52,6 +54,7 @@ from bot.services.customization_requests import (
 )
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.info_help import (
+    TRIAGE_ADMIN_REVIEW_CANDIDATE,
     TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
     build_product_truth_guidance,
     build_top_level_unknown_guidance,
@@ -80,6 +83,7 @@ from bot.services.invoice_analytics_dataset import (
 )
 from bot.services.invoice_analytics_planner import (
     InvoiceAnalyticsPlanError,
+    extract_invoice_analytics_customer_reference,
     plan_invoice_analytics_code,
 )
 from bot.services.invoice_drive_archive_service import InvoiceDriveArchiveService
@@ -873,6 +877,47 @@ async def _run_invoice_analytics(
         )
         await state.clear()
         return
+    try:
+        customer_reference, customer_scope = await _resolve_invoice_analytics_customer_scope(
+            runtime=runtime,
+            user_question=user_question,
+            config=config,
+        )
+    except InvoiceAnalyticsPlanError as exc:
+        logger.warning(
+            'Invoice analytics customer reference extraction stopped: message_id=%s '
+            'source_channel=%s error_type=%s reason=%s',
+            getattr(message, 'message_id', None),
+            source_channel,
+            type(exc).__name__,
+            str(exc),
+        )
+        await message.answer(
+            'Názov odberateľa som teraz nevedel bezpečne rozpoznať. '
+            'Skúste otázku zopakovať s presným názvom uloženého kontaktu.'
+        )
+        await state.clear()
+        return
+    if customer_reference is not None and customer_scope is None:
+        await message.answer(
+            f'Odberateľa „{customer_reference}“ som nevedel jednoznačne priradiť '
+            'k uloženému kontaktu. Skúste otázku zopakovať s presným názvom kontaktu.'
+        )
+        await state.clear()
+        return
+    if customer_scope is not None:
+        invoices_df = invoices_df[
+            invoices_df['contact_id'] == customer_scope.id
+        ].copy()
+    metadata['row_count'] = int(len(invoices_df))
+    metadata['customer_scope'] = (
+        customer_scope.name if customer_scope is not None else None
+    )
+    data_catalog = build_invoice_analytics_data_catalog(
+        user_question=user_question,
+        customer_scope=customer_scope.name if customer_scope is not None else None,
+    )
+
 
     repair_feedback: dict[str, object] | None = None
     for attempt in range(1, _INVOICE_ANALYTICS_MAX_PLANNER_ATTEMPTS + 1):
@@ -881,7 +926,7 @@ async def _run_invoice_analytics(
             plan = await plan_invoice_analytics_code(
                 user_question=user_question,
                 current_date_iso=current_date_iso,
-                data_catalog=build_invoice_analytics_data_catalog(user_question=user_question),
+                data_catalog=data_catalog,
                 api_key=config.openai_api_key,
                 model=config.openai_llm_model,
                 repair_feedback=repair_feedback,
@@ -1518,6 +1563,42 @@ def _safe_service_alias_candidate(value: object, *, original_text: str) -> str |
     if candidate_tokens.intersection(forbidden_tokens):
         return None
     return candidate
+
+async def _resolve_invoice_analytics_customer_scope(
+    *,
+    runtime: ScopedInvoiceRuntime,
+    user_question: str,
+    config: Config,
+) -> tuple[str | None, ContactProfile | None]:
+    if not runtime.list_contacts():
+        return None, None
+
+    customer_reference = await extract_invoice_analytics_customer_reference(
+        user_question=user_question,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+    )
+    if customer_reference is None:
+        return None, None
+
+    lookup_result = _resolve_contact_lookup(runtime, customer_reference)
+    if lookup_result.matched_contact is not None:
+        return customer_reference, lookup_result.matched_contact
+
+    bounded_names = (
+        [candidate.name for candidate in lookup_result.candidates]
+        if lookup_result.candidates
+        else None
+    )
+    resolved_contact, _ = await _resolve_customer_candidate_bounded(
+        runtime=runtime,
+        candidate_text=customer_reference,
+        config=config,
+        context_name='invoice_analytics_customer_resolution',
+        bounded_contact_names=bounded_names,
+    )
+    return customer_reference, resolved_contact
+
 
 
 async def _resolve_customer_candidate_bounded(
@@ -3449,6 +3530,47 @@ async def process_invoice_text(
 
     actor_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
     runtime_issue_allowed = is_runtime_issue_admin(config, actor_telegram_id)
+    runtime_issue_prefix_description = extract_runtime_issue_prefix_description(
+        invoice_text
+    )
+    if runtime_issue_prefix_description is not None:
+        if not runtime_issue_prefix_description:
+            await message.answer(RUNTIME_ISSUE_USAGE)
+            return
+        if runtime_issue_allowed:
+            await handle_runtime_issue_capture(
+                message=message,
+                state=state,
+                config=config,
+                description=invoice_text,
+                source_channel=input_channel,
+                telegram_update_id=telegram_update_id,
+            )
+            return
+
+        telegram_id = _message_supplier_telegram_id(message)
+        if telegram_id is None:
+            await message.answer(
+                'Nepodarilo sa identifikova\u0165 pou\u017e\u00edvate\u013ea. Po\u017eiadavku som neulo\u017eil.'
+            )
+            return
+        await _start_customization_request_preview(
+            message=message,
+            state=state,
+            requester_telegram_id=telegram_id,
+            user_input_text=invoice_text,
+            source_channel=input_channel,
+            triage_class=TRIAGE_ADMIN_REVIEW_CANDIDATE,
+            capability_id='runtime_issue_intake',
+            topic_id='admin_review',
+            confidence=1.0,
+            business_need=runtime_issue_prefix_description,
+            detected_domain='other',
+            expected_outcome='Spr\u00e1vca prever\u00ed op\u00edsan\u00e9 spr\u00e1vanie bota.',
+            risk_level='medium',
+        )
+        return
+
     allowed_actions = [
         _START_INTENT,
         _CREATE_INVOICE_INTENT,
