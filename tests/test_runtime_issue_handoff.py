@@ -4,9 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
-from pathlib import Path
 import sqlite3
-import subprocess
 
 import pytest
 
@@ -14,17 +12,14 @@ from bot.services import db
 from bot.services.db import init_db
 from bot.services.runtime_issue import RuntimeIssueCaptureInput, RuntimeIssueService
 from bot.services.runtime_issue_handoff import (
-    FixedRemoteCommitVerifier,
     RuntimeIssueHandoffConflict,
     RuntimeIssueHandoffInvalid,
     RuntimeIssueHandoffService,
-    WORKSHOP_BRANCH,
-    canonical_receipt_digest,
+    canonical_manifest_digest,
 )
 
 
 NOW = datetime(2026, 7, 29, 8, 0, tzinfo=UTC)
-COMMIT = 'a' * 40
 
 
 def _capture(db_path, *, update_id: int, description: str = 'Unicode chyba žltý účet') -> str:
@@ -289,7 +284,7 @@ def test_concurrent_workers_do_not_lease_same_issue(tmp_path):
     assert leased[0]['issue']['issue_id'] == issue_id
 
 
-def test_redelivery_stable_receipt_new_token_and_old_token_cannot_ack(tmp_path):
+def test_redelivery_stable_receipt_new_token_and_old_token_cannot_claim(tmp_path):
     db_path = tmp_path / 'db.sqlite'
     init_db(db_path)
     _capture(db_path, update_id=1)
@@ -302,384 +297,120 @@ def test_redelivery_stable_receipt_new_token_and_old_token_cannot_ack(tmp_path):
     second = retry_service.take_next(limit=1)[0]
     assert second['handoff_id'] == first['handoff_id']
     assert second['manifest_digest'] == first['manifest_digest']
-    assert second['attempt_count'] == 2
     assert second['lease_token'] != first['lease_token']
-    with sqlite3.connect(db_path) as connection:
-        stored = connection.execute(
-            'SELECT lease_token_hash, attempt_count FROM runtime_issue_handoffs'
-        ).fetchone()
-    assert stored == (hashlib.sha256(('B' * 43).encode()).hexdigest(), 2)
-    assert first['lease_token'] not in stored[0]
-    with pytest.raises(RuntimeIssueHandoffConflict):
-        retry_service.acknowledge(
-            handoff_id=first['handoff_id'],
+    with pytest.raises(RuntimeIssueHandoffConflict, match='handoff_token_mismatch'):
+        retry_service.claim(
+            handoff_id=second['handoff_id'],
             raw_token=first['lease_token'],
-            manifest_digest=first['manifest_digest'],
-            workshop_branch=WORKSHOP_BRANCH,
-            workshop_commit_sha=COMMIT,
-            verifier=lambda branch, commit: True,
+            manifest_digest=second['manifest_digest'],
         )
+    result = retry_service.claim(
+        handoff_id=second['handoff_id'],
+        raw_token=second['lease_token'],
+        manifest_digest=second['manifest_digest'],
+    )
+    assert result.status == 'acknowledged'
 
 
-def test_ack_requires_verified_receipt_and_is_idempotent(tmp_path):
+def test_claim_reuses_existing_columns_without_github_and_is_idempotent(tmp_path):
     db_path = tmp_path / 'db.sqlite'
     init_db(db_path)
     _capture(db_path, update_id=1)
     service = _service(db_path)
-    manifest = service.take_next(limit=1)[0]
-    with pytest.raises(RuntimeIssueHandoffConflict):
-        service.acknowledge(
-            handoff_id=manifest['handoff_id'],
-            raw_token=manifest['lease_token'],
-            manifest_digest=manifest['manifest_digest'],
-            workshop_branch=WORKSHOP_BRANCH,
-            workshop_commit_sha=COMMIT,
-            verifier=lambda branch, commit: False,
-        )
-    result = service.acknowledge(
-        handoff_id=manifest['handoff_id'],
-        raw_token=manifest['lease_token'],
-        manifest_digest=manifest['manifest_digest'],
-        workshop_branch=WORKSHOP_BRANCH,
-        workshop_commit_sha=COMMIT,
-        verifier=lambda branch, commit: True,
+    item = service.take_next(limit=1)[0]
+    result = service.claim(
+        handoff_id=item['handoff_id'],
+        raw_token=item['lease_token'],
+        manifest_digest=item['manifest_digest'],
+    )
+    repeated = service.claim(
+        handoff_id=item['handoff_id'],
+        raw_token=item['lease_token'],
+        manifest_digest=item['manifest_digest'],
     )
     assert result.status == 'acknowledged'
-    repeated = service.acknowledge(
-        handoff_id=manifest['handoff_id'],
-        raw_token=manifest['lease_token'],
-        manifest_digest=manifest['manifest_digest'],
-        workshop_branch=WORKSHOP_BRANCH,
-        workshop_commit_sha=COMMIT,
-        verifier=lambda branch, commit: True,
-    )
+    assert result.idempotent is False
     assert repeated.idempotent is True
-    assert service.take_next(limit=1) == []
-
-
-def test_remote_verifier_runs_without_sqlite_write_transaction(tmp_path):
-    db_path = tmp_path / 'db.sqlite'
-    init_db(db_path)
-    _capture(db_path, update_id=1)
-    service = _service(db_path)
-    manifest = service.take_next(limit=1)[0]
-
-    def verifier(branch, commit):
-        assert branch == WORKSHOP_BRANCH
-        assert commit == COMMIT
-        with sqlite3.connect(db_path, timeout=0) as probe:
-            probe.execute('BEGIN IMMEDIATE')
-            probe.rollback()
-        return True
-
-    result = service.acknowledge(
-        handoff_id=manifest['handoff_id'],
-        raw_token=manifest['lease_token'],
-        manifest_digest=manifest['manifest_digest'],
-        workshop_branch=WORKSHOP_BRANCH,
-        workshop_commit_sha=COMMIT,
-        verifier=verifier,
-    )
-    assert result.status == 'acknowledged'
-
-
-def test_ack_reread_rejects_lease_redelivered_during_remote_verification(tmp_path):
-    db_path = tmp_path / 'db.sqlite'
-    init_db(db_path)
-    _capture(db_path, update_id=1)
-    service = _service(db_path)
-    manifest = service.take_next(limit=1)[0]
-
-    def verifier(branch, commit):
-        assert branch == WORKSHOP_BRANCH
-        assert commit == COMMIT
-        redelivered = _service(
-            db_path,
-            now=NOW + timedelta(minutes=61),
-            tokens=['B' * 43],
-        ).take_next(limit=1)
-        assert redelivered[0]['attempt_count'] == 2
-        return True
-
-    with pytest.raises(RuntimeIssueHandoffConflict):
-        service.acknowledge(
-            handoff_id=manifest['handoff_id'],
-            raw_token=manifest['lease_token'],
-            manifest_digest=manifest['manifest_digest'],
-            workshop_branch=WORKSHOP_BRANCH,
-            workshop_commit_sha=COMMIT,
-            verifier=verifier,
-        )
-    with sqlite3.connect(db_path) as connection:
-        row = connection.execute(
-            'SELECT status, attempt_count, workshop_branch, workshop_commit_sha '
-            'FROM runtime_issue_handoffs'
-        ).fetchone()
-    assert row == ('leased', 2, None, None)
-
-
-def test_ack_uses_fresh_clock_after_verification_and_rejects_expired_lease(tmp_path):
-    db_path = tmp_path / 'db.sqlite'
-    init_db(db_path)
-    _capture(db_path, update_id=1)
-    manifest = _service(db_path).take_next(limit=1)[0]
-    clock_values = iter([NOW, NOW + timedelta(minutes=61)])
-    service = RuntimeIssueHandoffService(
-        db_path,
-        clock=lambda: next(clock_values),
-    )
-    with sqlite3.connect(db_path) as connection:
-        before = connection.execute(
-            'SELECT * FROM runtime_issue_handoffs'
-        ).fetchall()
-
-    with pytest.raises(
-        RuntimeIssueHandoffConflict,
-        match='handoff_lease_expired',
-    ):
-        service.acknowledge(
-            handoff_id=manifest['handoff_id'],
-            raw_token=manifest['lease_token'],
-            manifest_digest=manifest['manifest_digest'],
-            workshop_branch=WORKSHOP_BRANCH,
-            workshop_commit_sha=COMMIT,
-            verifier=lambda branch, commit: True,
-        )
-
-    with sqlite3.connect(db_path) as connection:
-        after = connection.execute(
-            'SELECT * FROM runtime_issue_handoffs'
-        ).fetchall()
-    assert after == before
-
-
-def test_ack_reread_rejects_acknowledgment_facts_changed_during_verification(
-    tmp_path,
-):
-    db_path = tmp_path / 'db.sqlite'
-    init_db(db_path)
-    _capture(db_path, update_id=1)
-    service = _service(db_path)
-    manifest = service.take_next(limit=1)[0]
-
-    def verifier(branch, commit):
-        with sqlite3.connect(db_path) as connection:
-            connection.execute(
-                'UPDATE runtime_issue_handoffs SET workshop_branch = ?, '
-                'workshop_commit_sha = ?, acknowledged_at = ?',
-                (branch, commit, NOW.isoformat()),
-            )
-            connection.commit()
-        return True
-
-    with pytest.raises(
-        RuntimeIssueHandoffConflict,
-        match='handoff_ack_facts_mismatch',
-    ):
-        service.acknowledge(
-            handoff_id=manifest['handoff_id'],
-            raw_token=manifest['lease_token'],
-            manifest_digest=manifest['manifest_digest'],
-            workshop_branch=WORKSHOP_BRANCH,
-            workshop_commit_sha=COMMIT,
-            verifier=verifier,
-        )
-
     with sqlite3.connect(db_path) as connection:
         row = connection.execute(
             'SELECT status, workshop_branch, workshop_commit_sha, acknowledged_at '
             'FROM runtime_issue_handoffs'
         ).fetchone()
-    assert row == ('leased', WORKSHOP_BRANCH, COMMIT, NOW.isoformat())
+    assert row[0] == 'acknowledged'
+    assert row[1] is None
+    assert row[2] is None
+    assert row[3] == NOW.isoformat()
+    assert service.take_next(limit=1) == []
 
 
 @pytest.mark.parametrize(
-    ('case', 'now'),
+    ('field', 'value', 'error'),
     [
-        ('wrong_token', NOW),
-        ('wrong_digest', NOW),
-        ('wrong_branch', NOW),
-        ('wrong_commit', NOW),
-        ('expired', NOW + timedelta(minutes=61)),
-        ('verifier_false', NOW),
-        ('verifier_error', NOW),
+        ('handoff_id', 'invalid', 'handoff_id_invalid'),
+        ('manifest_digest', 'invalid', 'manifest_digest_invalid'),
+        ('raw_token', 'B' * 43, 'handoff_token_mismatch'),
+        ('manifest_digest', 'sha256:' + 'b' * 64, 'handoff_digest_mismatch'),
     ],
 )
-def test_ack_rejections_fail_without_canonical_mutation(tmp_path, case, now):
+def test_claim_rejections_do_not_mutate_handoff(tmp_path, field, value, error):
     db_path = tmp_path / 'db.sqlite'
     init_db(db_path)
     _capture(db_path, update_id=1)
-    lease_service = _service(db_path)
-    manifest = lease_service.take_next(limit=1)[0]
+    service = _service(db_path)
+    item = service.take_next(limit=1)[0]
+    values = {
+        'handoff_id': item['handoff_id'],
+        'raw_token': item['lease_token'],
+        'manifest_digest': item['manifest_digest'],
+    }
+    values[field] = value
     with sqlite3.connect(db_path) as connection:
         before = connection.execute(
             'SELECT * FROM runtime_issue_handoffs'
-        ).fetchall()
-    values = {
-        'handoff_id': manifest['handoff_id'],
-        'raw_token': manifest['lease_token'],
-        'manifest_digest': manifest['manifest_digest'],
-        'workshop_branch': WORKSHOP_BRANCH,
-        'workshop_commit_sha': COMMIT,
-        'verifier': lambda branch, commit: True,
-    }
-    if case == 'wrong_token':
-        values['raw_token'] = 'Z' * 43
-    elif case == 'wrong_digest':
-        values['manifest_digest'] = 'sha256:' + 'b' * 64
-    elif case == 'wrong_branch':
-        values['workshop_branch'] = 'maintenance/other'
-    elif case == 'wrong_commit':
-        values['workshop_commit_sha'] = 'not-a-commit'
-    elif case == 'verifier_false':
-        values['verifier'] = lambda branch, commit: False
-    elif case == 'verifier_error':
-        def unavailable(branch, commit):
-            del branch, commit
-            raise OSError('unavailable')
-
-        values['verifier'] = unavailable
-    with pytest.raises((RuntimeIssueHandoffConflict, RuntimeIssueHandoffInvalid, OSError)):
-        _service(db_path, now=now).acknowledge(**values)
+        ).fetchone()
+    with pytest.raises((RuntimeIssueHandoffInvalid, RuntimeIssueHandoffConflict), match=error):
+        service.claim(**values)
     with sqlite3.connect(db_path) as connection:
         after = connection.execute(
             'SELECT * FROM runtime_issue_handoffs'
-        ).fetchall()
+        ).fetchone()
     assert after == before
 
 
-def test_fixed_remote_verifier_uses_bounded_exact_branch_reachability(tmp_path):
-    calls = []
-
-    def runner(argv, **kwargs):
-        calls.append((argv, kwargs))
-        if argv[-3:] == ['remote', 'get-url', 'origin']:
-            return subprocess.CompletedProcess(
-                argv, 0, stdout='fixed-remote\n', stderr=''
-            )
-        return subprocess.CompletedProcess(argv, 0, stdout='', stderr='')
-
-    verifier = FixedRemoteCommitVerifier(repository=tmp_path, runner=runner)
-    assert verifier(WORKSHOP_BRANCH, COMMIT) is True
-    remote_argv, remote_kwargs = calls[0]
-    assert remote_argv == [
-        'git',
-        '-C',
-        str(tmp_path),
-        'remote',
-        'get-url',
-        'origin',
-    ]
-    assert remote_kwargs['shell'] is False
-    assert remote_kwargs['timeout'] == 15.0
-    clone_argv, clone_kwargs = calls[1]
-    assert clone_argv[:6] == [
-        'git',
-        'clone',
-        '--bare',
-        '--no-tags',
-        '--single-branch',
-        '--branch',
-    ]
-    assert clone_argv[6:8] == [WORKSHOP_BRANCH, 'fixed-remote']
-    isolated_repository = clone_argv[8]
-    assert isolated_repository != str(tmp_path)
-    assert clone_kwargs['shell'] is False
-    assert clone_kwargs['timeout'] == 15.0
-    ancestor_argv, ancestor_kwargs = calls[2]
-    assert ancestor_argv == [
-        'git',
-        '-C',
-        isolated_repository,
-        'merge-base',
-        '--is-ancestor',
-        COMMIT,
-        'HEAD',
-    ]
-    assert ancestor_kwargs['shell'] is False
-    assert ancestor_kwargs['timeout'] == 15.0
-    assert verifier('maintenance/other', COMMIT) is False
-    assert verifier(WORKSHOP_BRANCH, 'not-a-commit') is False
-    assert len(calls) == 3
-
-
-def test_fixed_remote_verifier_fails_closed_when_remote_is_unavailable(tmp_path):
-    def unavailable(*args, **kwargs):
-        del args, kwargs
-        raise OSError('unavailable')
-
-    verifier = FixedRemoteCommitVerifier(repository=tmp_path, runner=unavailable)
-    assert verifier(WORKSHOP_BRANCH, COMMIT) is False
-
-
-def test_remote_verifier_leaves_project_unchanged_for_tip_ancestor_and_unrelated(
-    tmp_path,
-):
-    remote = tmp_path / 'remote.git'
-    workshop = tmp_path / 'workshop'
-    project = tmp_path / 'project'
-
-    def git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ['git', *args],
-            cwd=cwd,
-            check=True,
-            capture_output=True,
-            text=True,
-            shell=False,
-            timeout=15,
+def test_expired_lease_cannot_be_claimed_until_redelivery(tmp_path):
+    db_path = tmp_path / 'db.sqlite'
+    init_db(db_path)
+    _capture(db_path, update_id=1)
+    item = _service(db_path).take_next(limit=1)[0]
+    expired = _service(db_path, now=NOW + timedelta(minutes=61))
+    with pytest.raises(RuntimeIssueHandoffConflict, match='handoff_lease_expired'):
+        expired.claim(
+            handoff_id=item['handoff_id'],
+            raw_token=item['lease_token'],
+            manifest_digest=item['manifest_digest'],
         )
 
-    git('init', '--bare', str(remote))
-    git('init', str(workshop))
-    git('config', 'user.name', 'Workshop Test', cwd=workshop)
-    git('config', 'user.email', 'workshop@example.invalid', cwd=workshop)
-    git('checkout', '-b', WORKSHOP_BRANCH, cwd=workshop)
-    git('remote', 'add', 'origin', str(remote), cwd=workshop)
-    receipt = workshop / 'receipt.txt'
-    receipt.write_text('receipt\n', encoding='utf-8')
-    git('add', 'receipt.txt', cwd=workshop)
-    git('commit', '-m', 'store receipt', cwd=workshop)
-    receipt_commit = git('rev-parse', 'HEAD', cwd=workshop).stdout.strip()
-    git('push', '-u', 'origin', WORKSHOP_BRANCH, cwd=workshop)
 
-    receipt.write_text('receipt\nlater workshop change\n', encoding='utf-8')
-    git('add', 'receipt.txt', cwd=workshop)
-    git('commit', '-m', 'advance workshop', cwd=workshop)
-    advanced_commit = git('rev-parse', 'HEAD', cwd=workshop).stdout.strip()
-    git('push', 'origin', WORKSHOP_BRANCH, cwd=workshop)
-    assert advanced_commit != receipt_commit
-    git('clone', str(remote), str(project))
-    git('checkout', WORKSHOP_BRANCH, cwd=project)
-    unrelated = project / 'unrelated.txt'
-    unrelated.write_text('unrelated\n', encoding='utf-8')
-    git('add', 'unrelated.txt', cwd=project)
-    git('commit', '-m', 'unrelated local commit', cwd=project)
-    unrelated_commit = git('rev-parse', 'HEAD', cwd=project).stdout.strip()
-
-    def snapshot() -> dict[str, bytes]:
-        paths = [
-            project / '.git' / 'config',
-            project / '.git' / 'packed-refs',
-            project / '.git' / 'HEAD',
-            project / '.git' / 'index',
-            project / 'receipt.txt',
-            project / 'unrelated.txt',
-        ]
-        refs = sorted((project / '.git' / 'refs').rglob('*'))
-        return {
-            str(path.relative_to(project)): path.read_bytes()
-            for path in [*paths, *refs]
-            if path.is_file()
-        }
-
-    before = snapshot()
-    verifier = FixedRemoteCommitVerifier(repository=project)
-    assert verifier(WORKSHOP_BRANCH, advanced_commit) is True
-    assert verifier(WORKSHOP_BRANCH, receipt_commit) is True
-    assert verifier(WORKSHOP_BRANCH, unrelated_commit) is False
-    assert snapshot() == before
-    assert git('status', '--porcelain=v1', cwd=project).stdout == ''
+def test_legacy_acknowledged_row_is_preserved_as_terminal_delivery_fact(tmp_path):
+    db_path = tmp_path / 'db.sqlite'
+    init_db(db_path)
+    _capture(db_path, update_id=1)
+    service = _service(db_path)
+    item = service.take_next(limit=1)[0]
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            "UPDATE runtime_issue_handoffs SET status = 'acknowledged', "
+            'workshop_branch = ?, workshop_commit_sha = ?, acknowledged_at = ?',
+            ('maintenance/runtime-issue-workshop', 'a' * 40, NOW.isoformat()),
+        )
+        connection.commit()
+    result = service.claim(
+        handoff_id=item['handoff_id'],
+        raw_token=item['lease_token'],
+        manifest_digest=item['manifest_digest'],
+    )
+    assert result.idempotent is True
+    assert service.take_next(limit=1) == []
 
 
 def test_conflicting_repeat_and_reserved_reconciled_unreachable(tmp_path):
@@ -687,32 +418,36 @@ def test_conflicting_repeat_and_reserved_reconciled_unreachable(tmp_path):
     init_db(db_path)
     _capture(db_path, update_id=1)
     service = _service(db_path)
-    manifest = service.take_next(limit=1)[0]
-    service.acknowledge(
-        handoff_id=manifest['handoff_id'],
-        raw_token=manifest['lease_token'],
-        manifest_digest=manifest['manifest_digest'],
-        workshop_branch=WORKSHOP_BRANCH,
-        workshop_commit_sha=COMMIT,
-        verifier=lambda branch, commit: True,
+    item = service.take_next(limit=1)[0]
+    service.claim(
+        handoff_id=item['handoff_id'],
+        raw_token=item['lease_token'],
+        manifest_digest=item['manifest_digest'],
     )
-    with pytest.raises(RuntimeIssueHandoffConflict):
-        service.acknowledge(
-            handoff_id=manifest['handoff_id'],
-            raw_token=manifest['lease_token'],
-            manifest_digest=manifest['manifest_digest'],
-            workshop_branch=WORKSHOP_BRANCH,
-            workshop_commit_sha='b' * 40,
-            verifier=lambda branch, commit: True,
+    with pytest.raises(RuntimeIssueHandoffConflict, match='handoff_claim_conflict'):
+        service.claim(
+            handoff_id=item['handoff_id'],
+            raw_token='B' * 43,
+            manifest_digest=item['manifest_digest'],
         )
-    with sqlite3.connect(db_path) as connection:
-        statuses = {
-            row[0] for row in connection.execute(
-                'SELECT DISTINCT status FROM runtime_issue_handoffs'
-            )
-        }
-    assert statuses <= {'leased', 'expired_unacknowledged', 'acknowledged'}
-    assert 'reconciled' not in RuntimeIssueHandoffService.__dict__
+
+    other_db = tmp_path / 'other.sqlite'
+    init_db(other_db)
+    _capture(other_db, update_id=2)
+    other = _service(other_db)
+    leased = other.take_next(limit=1)[0]
+    with sqlite3.connect(other_db) as connection:
+        connection.execute(
+            "UPDATE runtime_issue_handoffs SET status = 'reconciled'"
+        )
+        connection.commit()
+    with pytest.raises(RuntimeIssueHandoffConflict, match='handoff_not_live'):
+        other.claim(
+            handoff_id=leased['handoff_id'],
+            raw_token=leased['lease_token'],
+            manifest_digest=leased['manifest_digest'],
+        )
+    assert other.take_next(limit=1) == []
 
 
 def test_fsm_status_null_active_and_read_failed(tmp_path):
@@ -755,8 +490,8 @@ def test_fsm_status_null_active_and_read_failed(tmp_path):
 def test_canonical_digest_contract():
     first = {'z': 'žltý', 'a': {'b': 2, 'a': 1}}
     reordered = {'a': {'a': 1, 'b': 2}, 'z': 'žltý'}
-    digest = canonical_receipt_digest(first)
-    assert digest == canonical_receipt_digest(reordered)
+    digest = canonical_manifest_digest(first)
+    assert digest == canonical_manifest_digest(reordered)
     assert digest.startswith('sha256:') and len(digest) == 71
     durable = {
         'schema_version': 'runtime-issue-handoff-v1',
@@ -764,8 +499,8 @@ def test_canonical_digest_contract():
         'issue': {'description': 'žltý účet'},
     }
     with_delivery = dict(durable, lease_token='secret', attempt_count=2)
-    assert canonical_receipt_digest(durable) != canonical_receipt_digest(with_delivery)
-    assert canonical_receipt_digest(durable) != canonical_receipt_digest(
+    assert canonical_manifest_digest(durable) != canonical_manifest_digest(with_delivery)
+    assert canonical_manifest_digest(durable) != canonical_manifest_digest(
         {**durable, 'issue': {'description': 'iný účet'}}
     )
     expected = hashlib.sha256(
@@ -776,4 +511,4 @@ def test_canonical_digest_contract():
             ensure_ascii=False,
         ).encode('utf-8')
     ).hexdigest()
-    assert canonical_receipt_digest(durable) == f'sha256:{expected}'
+    assert canonical_manifest_digest(durable) == f'sha256:{expected}'

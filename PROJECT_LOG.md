@@ -1,3 +1,32 @@
+# 2026-08-01 - Runtime issue Agent Claim reuses the existing handoff schema
+
+- Owner decision: the former V1 GitHub-verified acknowledgment method is
+  obsolete. Receiving an issue must be recorded by the deterministic handoff
+  service without waiting for a Workshop commit.
+- Reused the existing `runtime_issue_handoffs` columns and persisted states.
+  A successful `claim` validates the live stdin token and exact
+  `manifest_digest`, then atomically writes existing
+  `status='acknowledged'` and `acknowledged_at`.
+- The CLI renders that terminal status as
+  `delivery_state=accepted_by_agent`. New claims leave
+  `workshop_branch` and `workshop_commit_sha` null.
+- Removed the active `ack` command and remote Git commit verifier. Git
+  publication remains a final repair-session step, not an intake gate.
+- No table, column, CHECK constraint, Stage 1 issue row, business data,
+  tenant/workspace boundary, Telegram route, LLM/STT/FSM behavior, or Product
+  Truth capability changed. No database migration is required.
+- Preserved historical acknowledged rows without rewrite or deletion.
+- Archived the superseded V1 bridge documents under
+  `docs/archive/runtime_issue_autorepair_v1/` with an explicit obsolete
+  notice. Current contract and Workshop paths now live under
+  `docs/features/runtime_issue_agent_claim/`.
+- Repository status: implemented locally; not merged or deployed. Production
+  still exposes the obsolete CLI until a separately approved deployment.
+- Verification: the new CLI regression failed before implementation; 62 focused
+  bridge/evidence/workshop tests and compileall passed after implementation;
+  the full repository suite passed with 2424 tests and 7 subtests in
+  398.95 seconds.
+
 # 2026-07-31 - Repair skill gates and Agent Claim Bridge V2 design
 
 - Updated the interactive repair skill so diagnosis begins with a candidate

@@ -7,7 +7,7 @@ description: Use when the user starts a supervised OfficeFlow / FakturaBot repai
 
 Status: `manual_supervised_cli_mode`
 
-Agent Claim Bridge V2 status: `planned_not_implemented`.
+Agent Claim status: `implemented_repository_only`; production deployment must still be verified.
 
 Publication boundary: this repository copy must remain public-safe. Keep server addresses, environment-specific paths, commands, tenant facts, secrets, and raw logs only in the local `FakturaBot_Server_Agent_Context.md`; do not duplicate them here or in public GitHub content.
 
@@ -17,7 +17,7 @@ This skill runs a user-started repair session for OfficeFlow / FakturaBot.
 
 The user reports a runtime problem when it happens. The bot records the observation. Later, the user starts a local CLI agent. The agent retrieves the recorded issue, reads the relevant server evidence and repository truth, diagnoses it, records durable findings, and repairs safe defects without requiring the user to remember or rewrite the original report.
 
-Target workflow after Agent Claim Bridge V2 is implemented and deployed:
+Target workflow after the Agent Claim implementation is deployed:
 
 ```text
 runtime issue reported in OfficeFlow
@@ -102,7 +102,7 @@ The user's act of starting an OfficeFlow repair session authorizes the agent to 
 - perform read-only SSH inspection inside the OfficeFlow boundaries;
 - retrieve pending issues through the approved CLI;
 - publish finalized workshop receipts only after a final local outcome;
-- claim successfully delivered handoffs through the deployed V2 CLI;
+- claim successfully delivered handoffs through the deployed claim CLI;
 - inspect bounded relevant logs;
 - diagnose and decompose issues into findings;
 - edit local code for safe, in-scope defects;
@@ -182,7 +182,6 @@ Current bridge owners include:
 
 - `bot/services/db.py::RUNTIME_ISSUE_HANDOFF_SCHEMA`;
 - `bot/services/runtime_issue_handoff.py::RuntimeIssueHandoffService`;
-- `bot/services/runtime_issue_handoff.py::FixedRemoteCommitVerifier`;
 - `bot/services/runtime_issue_evidence.py::RuntimeIssueEvidenceService`;
 - `bot/services/runtime_issue_evidence.py::FixedDockerLogSource`;
 - `bot/services/runtime_issue_workshop.py::bootstrap_workshop`;
@@ -213,12 +212,11 @@ Then read current files from the current `main` branch. Never rely on a previous
 ### Always read
 
 1. `AGENTS.md`;
-2. `docs/features/runtime_issue_autorepair_v1/README.md`;
-3. `docs/features/runtime_issue_autorepair_v1/02_AUTOREPAIR_POLICY.md`;
-4. `docs/features/runtime_issue_autorepair_v1/04_DATA_STATUS_AND_AGENT_INTERFACE_CONTRACT.md`;
-5. `docs/Evaluation_and_Smoke_Test_Standards.md`;
-6. the recent relevant entries in `PROJECT_LOG.md`;
-7. current code owners and focused tests for the issue.
+2. `docs/features/runtime_issue_agent_claim/README.md`;
+3. `docs/features/runtime_issue_agent_claim/01_ARCHITECTURE_DESIGN_PROOF.md`;
+4. `docs/Evaluation_and_Smoke_Test_Standards.md`;
+5. the recent relevant entries in `PROJECT_LOG.md`;
+6. current code owners and focused tests for the issue.
 
 Before the first server-side action, also read the local
 `FakturaBot_Server_Agent_Context.md` required by section 3.
@@ -396,8 +394,8 @@ maintenance/runtime-issue-workshop
 8. Read:
 
 ```text
-docs/features/runtime_issue_autorepair_v1/workshop/AUTOREPAIR_QUEUE.json
-docs/features/runtime_issue_autorepair_v1/workshop/AUTOREPAIR_LOG.md
+docs/features/runtime_issue_agent_claim/workshop/AUTOREPAIR_QUEUE.json
+docs/features/runtime_issue_agent_claim/workshop/AUTOREPAIR_LOG.md
 ```
 
 9. Check interrupted handoffs, pending findings, pushed branches without PRs, and overlapping worktrees.
@@ -415,8 +413,8 @@ read-only server preflight:
 - do not expose `.env` or full Docker/environment output.
 
 Inspect the deployed handoff CLI help before leasing new work. Under the
-final-only Git publication policy, the CLI must expose the V2 `claim` command
-that does not require a GitHub branch or commit. If only the V1 `ack` command
+final-only Git publication policy, the CLI must expose the `claim` command
+that does not require a GitHub branch or commit. If only the obsolete `ack` command
 is available, report `agent_claim_bridge_not_deployed` and do not lease a new
 issue. Do not start a hidden wait helper and do not push an intake-only receipt
 as a workaround.
@@ -460,14 +458,14 @@ Treat the returned lease token as ephemeral secret material:
 - do not put it in Git, logs, issue notes, PR text, shell history, or command arguments;
 - do not export it as a persistent environment variable.
 
-The bot does not rewrite `runtime_issues.intake_status`. In deployed V1,
-“transferred” means the handoff was durably `acknowledged`; in planned V2,
-delivery truth is the separate `accepted_by_agent` handoff state. Neither state
-is diagnosis or repair status.
+The bot does not rewrite `runtime_issues.intake_status`. The existing persisted
+`acknowledged` handoff status is the terminal delivery fact; the current CLI
+renders it as `delivery_state=accepted_by_agent`. It is not diagnosis or
+repair status. The legacy GitHub columns are not used by `claim`.
 
 Never use direct SQLite queries as the normal intake interface. If the bridge is broken, report the exact failure. A read-only recovery audit requires explicit user approval; production writes still require a separate migration/data-correction authorization.
 
-## 10. Local receipt and Agent Claim V2
+## 10. Local receipt and Agent Claim
 
 For each leased source issue:
 
@@ -478,14 +476,12 @@ For each leased source issue:
 5. do not create findings before evidence-based diagnosis;
 6. validate queue JSON;
 7. inspect the exact diff for secrets, raw tenant data, private paths, and unrelated changes;
-8. compute the canonical bounded local receipt digest required by the approved
-   V2 contract;
-9. use the deployed `claim` interface immediately, piping the raw lease token
-   through stdin with `--lease-token-stdin`;
-10. verify the returned state is `accepted_by_agent` for the exact handoff and
-    manifest digest;
-11. make no Git commit or push at this receipt/claim phase;
-12. continue diagnosis and repair locally without waiting on the delivery
+8. use the deployed `claim` interface immediately, piping the raw lease token
+   through stdin with `--lease-token-stdin` and the exact manifest digest;
+9. verify the returned `delivery_state` is `accepted_by_agent` for the exact
+   handoff and manifest digest;
+10. make no Git commit or push at this receipt/claim phase;
+11. continue diagnosis and repair locally without waiting on the delivery
     lease.
 
 Use the `claim` interface exposed by the deployed
@@ -702,8 +698,8 @@ Durable memory belongs in:
 
 ```text
 maintenance/runtime-issue-workshop
-docs/features/runtime_issue_autorepair_v1/workshop/AUTOREPAIR_QUEUE.json
-docs/features/runtime_issue_autorepair_v1/workshop/AUTOREPAIR_LOG.md
+docs/features/runtime_issue_agent_claim/workshop/AUTOREPAIR_QUEUE.json
+docs/features/runtime_issue_agent_claim/workshop/AUTOREPAIR_LOG.md
 repair branches, commits, PRs, tests, and acceptance artifacts
 ```
 
@@ -721,7 +717,7 @@ Report `server_access_unavailable`. Do not guess production state.
 
 Report `production_bridge_not_deployed` or `bridge_cli_unavailable`. Do not fall back to manual SQL.
 
-### Lease expires before Agent Claim V2
+### Lease expires before Agent Claim
 
 Do not claim ownership. Preserve the local receipt and obtain safe redelivery.
 After a verified `accepted_by_agent` response, repair work is not tied to the
@@ -760,7 +756,7 @@ At the end, report concisely:
 ```text
 server access and deployed SHA truth
 workshop baseline SHA
-new issues leased / accepted by agent (or legacy acknowledged)
+new issues leased / accepted by agent
 source issues diagnosed
 findings and classifications
 repairs completed or blocked

@@ -17,7 +17,7 @@ from bot.services.runtime_issue_evidence import (
     RuntimeIssueEvidenceInvalid,
     RuntimeIssueEvidenceService,
 )
-from bot.services.runtime_issue_handoff import RuntimeIssueHandoffService, WORKSHOP_BRANCH
+from bot.services.runtime_issue_handoff import RuntimeIssueHandoffService
 
 
 NOW = datetime(2026, 7, 29, 8, 0, tzinfo=UTC)
@@ -70,13 +70,10 @@ def _acknowledged(tmp_path, *, workspace_id=None):
         handoff_id_factory=lambda now: 'RH-20260729-ABCDEF123456',
     )
     manifest = handoff_service.take_next(limit=1)[0]
-    handoff_service.acknowledge(
+    handoff_service.claim(
         handoff_id=manifest['handoff_id'],
         raw_token=manifest['lease_token'],
         manifest_digest=manifest['manifest_digest'],
-        workshop_branch=WORKSHOP_BRANCH,
-        workshop_commit_sha='a' * 40,
-        verifier=lambda branch, commit: True,
     )
     return db_path, issue.issue_id, manifest['handoff_id']
 

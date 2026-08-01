@@ -6,10 +6,20 @@ import sys
 import pytest
 
 from bot.cli import runtime_issue_handoff
-from bot.services.runtime_issue_handoff import AckResult
+from bot.services.runtime_issue_handoff import ClaimResult
 
 
-def test_ack_parser_has_no_argv_token_value_option(capsys):
+def test_parser_exposes_claim_and_rejects_obsolete_ack():
+    parser = runtime_issue_handoff._parser()
+    assert parser.parse_args([
+        'claim', '--handoff-id', 'RH-20260729-ABCDEF123456',
+        '--lease-token-stdin', '--manifest-digest', 'sha256:' + 'a' * 64,
+    ]).command == 'claim'
+    with pytest.raises(SystemExit):
+        parser.parse_args(['ack'])
+
+
+def test_claim_parser_has_no_argv_token_value_option(capsys):
     token = 'never-argv-sensitive-value'
     actions = {
         option
@@ -19,7 +29,7 @@ def test_ack_parser_has_no_argv_token_value_option(capsys):
     assert '--lease-token' not in actions
     with pytest.raises(SystemExit):
         runtime_issue_handoff._parser().parse_args(
-            ['ack', '--lease-token', token]
+            ['claim', '--lease-token', token]
         )
     captured = capsys.readouterr()
     assert token not in captured.out
@@ -38,22 +48,19 @@ def test_stdin_token_is_strict_and_error_never_exposes_value(monkeypatch, value)
         assert value not in str(error.value)
 
 
-def test_ack_output_never_contains_raw_token(monkeypatch, capsys):
+def test_claim_output_never_contains_raw_token_or_github_fields(monkeypatch, capsys):
     token = 'A' * 43
 
     class FakeService:
         def __init__(self, path):
             del path
 
-        def acknowledge(self, **kwargs):
+        def claim(self, **kwargs):
             assert kwargs.pop('raw_token') == token
-            kwargs.pop('verifier')
-            return AckResult(
+            return ClaimResult(
                 handoff_id=kwargs['handoff_id'],
                 status='acknowledged',
                 manifest_digest=kwargs['manifest_digest'],
-                workshop_branch=kwargs['workshop_branch'],
-                workshop_commit_sha=kwargs['workshop_commit_sha'],
                 acknowledged_at='2026-07-29T08:00:00+00:00',
                 idempotent=False,
             )
@@ -62,23 +69,23 @@ def test_ack_output_never_contains_raw_token(monkeypatch, capsys):
     monkeypatch.setattr(sys, 'stdin', type('Input', (), {'read': lambda self, size: token})())
     exit_code = runtime_issue_handoff.main(
         [
-            'ack',
+            'claim',
             '--handoff-id',
             'RH-20260729-ABCDEF123456',
             '--lease-token-stdin',
             '--manifest-digest',
             'sha256:' + 'a' * 64,
-            '--workshop-branch',
-            'maintenance/runtime-issue-workshop',
-            '--workshop-commit',
-            'b' * 40,
         ]
     )
     captured = capsys.readouterr()
     assert exit_code == 0
     assert token not in captured.out
     assert token not in captured.err
-    assert json.loads(captured.out)['status'] == 'acknowledged'
+    payload = json.loads(captured.out)
+    assert payload['status'] == 'acknowledged'
+    assert payload['delivery_state'] == 'accepted_by_agent'
+    assert 'workshop_branch' not in payload
+    assert 'workshop_commit_sha' not in payload
 
 
 def test_take_next_stdout_is_only_json(monkeypatch, capsys):
