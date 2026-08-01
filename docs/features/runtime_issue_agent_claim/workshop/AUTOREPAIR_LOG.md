@@ -323,3 +323,155 @@ the resolver instead of exercising this collision.
   paths changed: no.
 - Source issue `IR-20260730-5FA71FDFFCDE` is resolved by deployed findings F01
   and F02.
+
+## ARL-20260801-007 - Resolved source handoff redelivery reconciliation
+
+### Receipt
+
+- Source issue: `IR-20260730-5FA71FDFFCDE`.
+- Handoff: `RH-20260730-E60821130D35`.
+- Manifest digest: `sha256:e3f6f93aa6b6f0b44914e498dedbc7f4ee8b5ee9f5bfef0f78512c8548130760`.
+- Received again at `2026-08-01T19:01:17.4746261Z` after Agent Claim was
+  deployed at repository SHA `465df389c1b0c6ad3281733fe7888f5b49122c1d`.
+- Existing Workshop truth already classifies both findings as resolved and
+  deployed. No duplicate source receipt or new finding was created.
+
+### Reconciliation
+
+- The same handoff ID and manifest were redelivered, proving the previous V1
+  delivery record was not terminal in production.
+- Next action: claim this exact live handoff through the deployed Agent Claim
+  interface, then request the next pending source issue.
+- Code changed: no.
+- Production business data changed: no.
+- Diagnosis changed: no.
+
+### Claim result
+
+- Delivery state: `accepted_by_agent`.
+- Acknowledged at: `2026-08-01T19:02:45.695883Z`.
+- The source remains resolved; no finding or diagnosis was reopened.
+
+## ARL-20260801-008 - Runtime issue received for diagnosis
+
+### Source receipt
+
+- Source issue: `IR-20260801-78B6680F2D16`.
+- Handoff: `RH-20260801-7CFAEACC0695`.
+- Manifest digest: `sha256:178037449f5875bfc6d83d923bd6857e204d1f9a5264fe3eb6a2410047bf23e1`.
+- Source channel: voice.
+- Received at: `2026-08-01T19:03:10.817879Z`.
+- Repository and deployed SHA: `465df389c1b0c6ad3281733fe7888f5b49122c1d`.
+- Active FSM state at report capture: none.
+
+### Observed behavior (not diagnosis)
+
+- The user asked how to add information to a billed service/item.
+- The bot directed the user to provide an invoice number.
+- After the user replied `05`, the bot asked for a concrete business service
+  instead of continuing the expected context.
+- The report explicitly points to the preceding STT and subsequent bot reply
+  as the required evidence. Those logs have not yet been collected.
+
+### Pre-diagnosis state
+
+- Status: `received_for_diagnosis`.
+- Candidate classes are not final: routing/FSM continuity and invoice/service
+  domain behavior.
+- Findings created: none.
+- Code changed: no.
+- Production business data changed: no.
+
+### Claim result
+
+- Delivery state: `accepted_by_agent`.
+- Acknowledged at: `2026-08-01T19:04:11.620147Z`.
+- Diagnosis and repair status remain unchanged.
+
+## ARL-20260801-009 - Diagnosis: lost invoice-reference continuation
+
+### Canonical documents used
+
+- `AGENTS.md`.
+- `Skils/OfficeFlow_Interactive_Repair_SKILL.md`.
+- `docs/Product_Doctrine_2030.md`.
+- `docs/AI_Layer_Implementation_Standards.md`.
+- `docs/Product_Truth_Layer.md`.
+- `docs/Product_Truth_Registry_MVP_Design.md`.
+- `docs/Info_Help_Guidance_Layer.md`.
+- `docs/Evaluation_and_Smoke_Test_Standards.md`.
+- `docs/TZ_FakturaBot.md`.
+- `docs/llm/Top_Level_Subflow_Architecture_Design_Proof_Contract.md`.
+- `docs/llm/New_Action_Design_Checklist.md`.
+- `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`.
+- `docs/llm/Canonical_Action_Registry.md`.
+- `docs/llm/In_Action_Response_Registry.md`.
+- `docs/llm/Bounded_Resolver_Prompt_Template.md`.
+
+### Runtime and owner evidence
+
+- The source report identifies the bot prompt asking for the invoice number and
+  the follow-up text `05`.
+- `bot/handlers/invoice.py::process_invoice_text` emits the unique prompt
+  `Napíšte číslo faktúry, ktorú chcete upraviť.` only for
+  `edit_existing_invoice` with a missing invoice reference.
+- That branch returns without setting an FSM state or storing pending action
+  context. The next user message therefore re-enters idle top-level routing.
+- `bot/services/info_help.py::classify_info_help_triage` deterministically
+  classifies `05` as `spam_or_abuse`; local reproduction returned the exact
+  user-facing reply asking for a concrete business task.
+- No focused test covers missing-reference continuation for
+  `edit_existing_invoice`. Existing tests cover direct action-plus-reference
+  and later edit states only.
+
+### Evidence availability
+
+- The production evidence CLI returned `source_error` when invoked inside the
+  container because Docker logs are not available there.
+- The same bounded service invoked on the host returned all categories
+  `unavailable`. The issue predates the deployment container recreation and
+  no mounted application log file exists.
+- Therefore the exact preceding STT and exact resolver diagnostics cannot be
+  recovered in this session. They are not reconstructed from memory.
+
+### Findings
+
+#### IR-20260801-78B6680F2D16-F01
+
+- Classification: `complex_or_high_risk_defect`.
+- Causal mechanism: clarification text was emitted without the required
+  continuation FSM. The numeric reply was processed as a fresh top-level
+  message and fell into InfoHelp noise handling.
+- Repair boundary: add a state-aware, text-only invoice-reference
+  continuation that reuses the current scoped lookup and edit owner.
+- A new/materially changed FSM route requires an Architecture Design Proof and
+  explicit owner approval before implementation.
+- Code changed: no. Production business data changed: no.
+
+#### IR-20260801-78B6680F2D16-F02
+
+- Classification: `insufficient_evidence`.
+- Question: why the exact preceding voice/STT was resolved as
+  `edit_existing_invoice`, and whether that selection matched the full user
+  meaning.
+- The exact STT and resolver event are unavailable after container recreation.
+  The issue summary alone is insufficient to repair semantic hints safely.
+- No routing prompt, alias, precedence, or Product Truth behavior is changed.
+
+### Next action
+
+Prepare a task-specific Architecture Design Proof for F01 with verdict
+`ready_for_handoff`, then request explicit owner approval before code repair.
+
+## ARL-20260801-010 - F01 architecture design published
+
+- Finding: `IR-20260801-78B6680F2D16-F01`.
+- Architecture Design Proof verdict: `ready_for_handoff`.
+- Branch: `codex/invoice-reference-continuation-design`.
+- Commit: `72598445148d2636dd3f1da7052fbcb85752319d`.
+- Draft PR: `https://github.com/Mykh-Ai/Ai_assistant/pull/62`.
+- Runtime implementation: not started; waiting for explicit owner approval.
+- F02 remains `insufficient_evidence`; semantic routing was not changed.
+- Validation: documentation diff check and `python -m compileall -q bot` passed.
+- Production Agent Claim deployment was verified; no production business data
+  was changed by diagnosis or design work.

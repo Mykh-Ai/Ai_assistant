@@ -38,6 +38,35 @@
       "status": "patch_ready_for_review",
       "test_summary": "47 focused; 553 adjacent plus 7 subtests; 2433 full plus 7 subtests; compileall and diff-check passed; production container startup and polling verified",
       "updated_at": "2026-07-31T09:59:22.7390917Z"
+    },
+    {
+      "classification": "complex_or_high_risk_defect",
+      "code_changed": false,
+      "finding_id": "IR-20260801-78B6680F2D16-F01",
+      "log_ref": "ARL-20260801-009",
+      "architecture_branch": "codex/invoice-reference-continuation-design",
+      "architecture_commit": "72598445148d2636dd3f1da7052fbcb85752319d",
+      "architecture_pr": "https://github.com/Mykh-Ai/Ai_assistant/pull/62",
+      "next_action": "owner_approve_ready_for_handoff_design",
+      "outcome": "diagnosed_design_published",
+      "owner_scope": "routing_fsm_invoice_edit",
+      "parent_issue_id": "IR-20260801-78B6680F2D16",
+      "production_changed": false,
+      "status": "waiting_owner_approval",
+      "updated_at": "2026-08-01T19:09:31.3873032Z"
+    },
+    {
+      "classification": "insufficient_evidence",
+      "code_changed": false,
+      "finding_id": "IR-20260801-78B6680F2D16-F02",
+      "log_ref": "ARL-20260801-009",
+      "next_action": "preserve_exact_stt_and_response_evidence_on_reproduction",
+      "outcome": "exact_prior_stt_unavailable_after_container_recreate",
+      "owner_scope": "top_level_routing",
+      "parent_issue_id": "IR-20260801-78B6680F2D16",
+      "production_changed": false,
+      "status": "insufficient_evidence",
+      "updated_at": "2026-08-01T19:09:31.3873032Z"
     }
   ],
   "schema_version": "autorepair-workshop-v1",
@@ -50,13 +79,33 @@
       "issue_id": "IR-20260730-5FA71FDFFCDE",
       "log_ref": "ARL-20260730-001",
       "manifest_digest": "sha256:e3f6f93aa6b6f0b44914e498dedbc7f4ee8b5ee9f5bfef0f78512c8548130760",
+      "delivery_state": "accepted_by_agent",
+      "redelivered_at": "2026-08-01T19:01:17.4746261Z",
+      "claim_reconciled_at": "2026-08-01T19:02:45.695883Z",
+      "redelivery_log_ref": "ARL-20260801-007",
+      "claim_reconciliation_repository_sha": "465df389c1b0c6ad3281733fe7888f5b49122c1d",
       "production_changed": true,
       "received_at": "2026-07-30T17:55:23.486934+00:00",
       "received_workshop_commit": "abbbbc1ffce22ffe2649c00be969a482c9867e76",
       "repository_main_sha": "d106150ab943fba481d90b4468fb8ef96e993e56",
       "status": "resolved"
+    },
+    {
+      "code_changed": false,
+      "deployed_sha": "465df389c1b0c6ad3281733fe7888f5b49122c1d",
+      "finding_ids": ["IR-20260801-78B6680F2D16-F01", "IR-20260801-78B6680F2D16-F02"],
+      "handoff_id": "RH-20260801-7CFAEACC0695",
+      "issue_id": "IR-20260801-78B6680F2D16",
+      "log_ref": "ARL-20260801-008",
+      "manifest_digest": "sha256:178037449f5875bfc6d83d923bd6857e204d1f9a5264fe3eb6a2410047bf23e1",
+      "delivery_state": "accepted_by_agent",
+      "acknowledged_at": "2026-08-01T19:04:11.620147Z",
+      "production_changed": false,
+      "received_at": "2026-08-01T19:03:10.817879Z",
+      "repository_main_sha": "465df389c1b0c6ad3281733fe7888f5b49122c1d",
+      "status": "diagnosed_waiting_owner_approval"
     }
   ],
-  "updated_at": "2026-07-31T09:59:22.7390917Z",
+  "updated_at": "2026-08-01T19:16:20.0000000Z",
   "workshop_branch": "maintenance/runtime-issue-workshop"
 }
