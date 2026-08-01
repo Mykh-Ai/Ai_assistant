@@ -3,10 +3,10 @@
 Task: `RUNTIME_ISSUE_INTAKE_V1`
 
 Approved Architecture Design Proof:
-`docs/features/runtime_issue_autorepair_v1/01_ARCHITECTURE_DESIGN_PROOF.md`
+`docs/archive/runtime_issue_autorepair_v1/01_ARCHITECTURE_DESIGN_PROOF.md`
 
 Authoritative implementation handoff:
-`docs/features/runtime_issue_autorepair_v1/06_IMPLEMENTATION_HANDOFF.md`
+`docs/archive/runtime_issue_autorepair_v1/06_IMPLEMENTATION_HANDOFF.md`
 
 Evidence state: PR #50 correction worktree on
 `feat/runtime-issue-intake-v1`, based on implementation commit
@@ -186,7 +186,7 @@ authorized context.
 ## Persistence and migration evidence
 
 The dedicated table and index are documented in
-`docs/features/runtime_issue_autorepair_v1/07_IMPLEMENTATION_NOTES.md`.
+`docs/archive/runtime_issue_autorepair_v1/07_IMPLEMENTATION_NOTES.md`.
 `bot/services/db.py` performs only additive `CREATE TABLE IF NOT EXISTS` and
 `CREATE INDEX IF NOT EXISTS`, then audits owned columns, types, nullability,
 primary key, defaults, constraints, schema version, and deduplication

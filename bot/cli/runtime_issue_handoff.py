@@ -8,7 +8,6 @@ import re
 import sys
 
 from bot.services.runtime_issue_handoff import (
-    FixedRemoteCommitVerifier,
     RuntimeIssueHandoffError,
     RuntimeIssueHandoffService,
 )
@@ -31,12 +30,10 @@ def _parser() -> argparse.ArgumentParser:
     take = subparsers.add_parser('take-next')
     take.add_argument('--limit', type=int, required=True)
     take.add_argument('--format', choices=('json',), required=True)
-    ack = subparsers.add_parser('ack')
-    ack.add_argument('--handoff-id', required=True)
-    ack.add_argument('--lease-token-stdin', action='store_true', required=True)
-    ack.add_argument('--manifest-digest', required=True)
-    ack.add_argument('--workshop-branch', required=True)
-    ack.add_argument('--workshop-commit', required=True)
+    claim = subparsers.add_parser('claim')
+    claim.add_argument('--handoff-id', required=True)
+    claim.add_argument('--lease-token-stdin', action='store_true', required=True)
+    claim.add_argument('--manifest-digest', required=True)
     return parser
 
 
@@ -65,25 +62,19 @@ def main(argv: list[str] | None = None) -> int:
             }
         else:
             token = _stdin_token()
-            ack = service.acknowledge(
+            claim = service.claim(
                 handoff_id=args.handoff_id,
                 raw_token=token,
                 manifest_digest=args.manifest_digest,
-                workshop_branch=args.workshop_branch,
-                workshop_commit_sha=args.workshop_commit,
-                verifier=FixedRemoteCommitVerifier(
-                    repository=Path(__file__).resolve().parents[2]
-                ),
             )
             result = {
-                'schema_version': 'runtime-issue-handoff-ack-v1',
-                'handoff_id': ack.handoff_id,
-                'status': ack.status,
-                'manifest_digest': ack.manifest_digest,
-                'workshop_branch': ack.workshop_branch,
-                'workshop_commit_sha': ack.workshop_commit_sha,
-                'acknowledged_at': ack.acknowledged_at,
-                'idempotent': ack.idempotent,
+                'schema_version': 'runtime-issue-handoff-claim-v2',
+                'handoff_id': claim.handoff_id,
+                'status': claim.status,
+                'delivery_state': 'accepted_by_agent',
+                'manifest_digest': claim.manifest_digest,
+                'acknowledged_at': claim.acknowledged_at,
+                'idempotent': claim.idempotent,
             }
         print(json.dumps(result, ensure_ascii=False, separators=(',', ':'), sort_keys=True))
         return 0

@@ -1188,8 +1188,8 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'bot/services/runtime_issue.py',
         ),
         truth_source_refs=(
-            'docs/features/runtime_issue_autorepair_v1/01_ARCHITECTURE_DESIGN_PROOF.md',
-            'docs/features/runtime_issue_autorepair_v1/06_IMPLEMENTATION_HANDOFF.md',
+            'docs/TZ_FakturaBot.md',
+            'docs/evals/RUNTIME_ISSUE_INTAKE_V1_conversation_acceptance_proof.md',
             'docs/llm/Canonical_Action_Registry.md',
         ),
         test_refs=(

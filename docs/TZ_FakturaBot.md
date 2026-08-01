@@ -1,3 +1,27 @@
+## 2026-08-01 Addendum: internal runtime issue Agent Claim
+
+Status: `implemented_repository_only / production_not_deployed`.
+
+The supervised repair bridge now has a repository implementation of
+`runtime_issue_handoff claim`. It accepts the lease token only through stdin,
+validates the exact live handoff and manifest, and reuses the existing
+`runtime_issue_handoffs.status='acknowledged'` plus `acknowledged_at` as the
+terminal fact that the agent accepted delivery. The CLI exposes the clearer
+outward state `accepted_by_agent`.
+
+This change adds no schema and needs no data migration. Existing
+`workshop_branch` and `workshop_commit_sha` columns remain nullable legacy
+fields and are not populated by new claims. Historical rows are preserved.
+
+The former GitHub-verified `ack` method is obsolete and its documents are
+archived. GitHub publication happens only after diagnosis/repair reaches a
+final local outcome. Stage 1 `runtime_issues` remains the immutable
+administrator observation.
+
+Repository implementation does not prove deployment. Repair sessions must not
+lease new production issues until production CLI help exposes `claim`, the
+exact merged SHA is deployed, and bounded production-image smoke passes.
+
 ## 2026-07-31 - Runtime issue prefix routing
 
 Status: implemented bounded repair.

@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
             Path(__file__).resolve().parents[2]
             / 'docs'
             / 'features'
-            / 'runtime_issue_autorepair_v1'
+            / 'runtime_issue_agent_claim'
             / 'workshop'
         )
         result = bootstrap_workshop(directory)
