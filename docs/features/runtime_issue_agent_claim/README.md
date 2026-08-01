@@ -1,8 +1,8 @@
 # Runtime Issue Agent Claim
 
-Status: `implemented_repository_only`
+Status: `implemented_and_deployed_verified`
 
-Deployment status: `production_not_deployed`
+Deployment status: `production_verified_2026-08-01`
 
 This is the current deterministic handoff contract for supervised OfficeFlow
 repair sessions.
@@ -33,3 +33,8 @@ architecture or Product Truth.
 
 The Stage 1 `runtime_issues` intake remains the immutable source observation.
 Only the former V1 delivery method was rejected.
+
+Deployment verification on 2026-08-01 proved that the exact merged `main` SHA
+was running, CLI help exposed `claim` and not `ack`, a temporary-database claim
+completed inside the production image, and the live business database digest
+did not change during that smoke. A pre-deploy SQLite backup was retained.

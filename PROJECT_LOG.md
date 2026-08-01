@@ -1,3 +1,28 @@
+# 2026-08-01 - Agent Claim deployed; invoice-reference continuity diagnosed
+
+- Merged PR #61 and deployed exact merged `main` SHA
+  `465df389c1b0c6ad3281733fe7888f5b49122c1d` through the private server
+  runbook after a verified SQLite online backup.
+- Production verification: clean server repository, running container with
+  zero restarts, expected polling startup markers, CLI `{take-next,claim}`, and
+  no obsolete `ack` command.
+- A production-image claim smoke used only a temporary SQLite database. The
+  live business database SHA-256 was identical before and after the smoke.
+- Reconciled one previously resolved V1 handoff that production redelivered,
+  then accepted the new source issue `IR-20260801-78B6680F2D16` through the
+  deployed stdin-only Agent Claim interface.
+- Diagnosed finding F01: `edit_existing_invoice` asks for a missing invoice
+  number but returns without setting a continuation FSM. A reply such as `05`
+  therefore re-enters idle InfoHelp and is deterministically treated as noise.
+- The exact preceding STT/resolver event was unavailable after container
+  recreation, so finding F02 remains `insufficient_evidence`; no semantic
+  prompt, alias, hint, or routing precedence was changed.
+- Added the `INVOICE_EDIT_REFERENCE_CONTINUATION` Architecture Design Proof
+  with verdict `ready_for_handoff`. Runtime implementation remains blocked
+  until the owner explicitly approves that FSM design.
+- DB schema, migrations, business records, tenant boundaries, environment,
+  dependencies, and Product Truth capability status were not changed.
+
 # 2026-08-01 - Runtime issue Agent Claim reuses the existing handoff schema
 
 - Owner decision: the former V1 GitHub-verified acknowledgment method is

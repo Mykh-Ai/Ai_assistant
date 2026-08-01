@@ -2,9 +2,9 @@
 
 Task ID: `RUNTIME_ISSUE_AGENT_CLAIM`
 
-Verdict: `implemented_repository_only`
+Verdict: `implemented_and_deployed_verified`
 
-Deployment status: `production_not_deployed`
+Deployment status: `production_verified_2026-08-01`
 
 ## 1. Owner decision
 
@@ -151,6 +151,15 @@ repair agent may lease a new issue:
 
 No production database write or deployment is authorized by this document
 alone.
+
+Deployment evidence recorded on 2026-08-01:
+
+- exact merged `main` SHA deployed through the private server runbook;
+- pre-deploy SQLite online backup passed `quick_check`;
+- repository clean and container running with zero restarts;
+- CLI exposed `{take-next,claim}` and no `ack`;
+- production-image claim smoke passed on a temporary SQLite database;
+- live business database SHA-256 was identical before and after that smoke.
 
 ## 10. Explicitly out of scope
 

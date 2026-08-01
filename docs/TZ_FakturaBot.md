@@ -1,6 +1,6 @@
 ## 2026-08-01 Addendum: internal runtime issue Agent Claim
 
-Status: `implemented_repository_only / production_not_deployed`.
+Status: `implemented_and_deployed_verified` as of 2026-08-01.
 
 The supervised repair bridge now has a repository implementation of
 `runtime_issue_handoff claim`. It accepts the lease token only through stdin,
@@ -18,9 +18,10 @@ archived. GitHub publication happens only after diagnosis/repair reaches a
 final local outcome. Stage 1 `runtime_issues` remains the immutable
 administrator observation.
 
-Repository implementation does not prove deployment. Repair sessions must not
-lease new production issues until production CLI help exposes `claim`, the
-exact merged SHA is deployed, and bounded production-image smoke passes.
+Production verification proved the exact merged SHA, a clean running
+container, CLI help exposing `claim` without `ack`, a successful
+temporary-database claim inside the production image, and no live business-DB
+digest change during that smoke. A pre-deploy SQLite backup was retained.
 
 ## 2026-07-31 - Runtime issue prefix routing
 

@@ -7,7 +7,7 @@ description: Use when the user starts a supervised OfficeFlow / FakturaBot repai
 
 Status: `manual_supervised_cli_mode`
 
-Agent Claim status: `implemented_repository_only`; production deployment must still be verified.
+Agent Claim status: `implemented_and_deployed_verified` as of 2026-08-01.
 
 Publication boundary: this repository copy must remain public-safe. Keep server addresses, environment-specific paths, commands, tenant facts, secrets, and raw logs only in the local `FakturaBot_Server_Agent_Context.md`; do not duplicate them here or in public GitHub content.
 
