@@ -1,3 +1,24 @@
+# 2026-07-31 - Repair skill gates and Agent Claim Bridge V2 design
+
+- Updated the interactive repair skill so diagnosis begins with a candidate
+  error class and the active canonical documents, registries, code owners, or
+  tests that define the intended architecture and correct behavior.
+- Required the exact canonical sources used for diagnosis to be recorded in
+  the Workshop log; missing canonical truth blocks intuitive repair.
+- Made `docs/Implementation_Agent_Checklist.md` conditional: it is mandatory
+  before a code repair, but not for final no-code diagnostic outcomes such as
+  expected behavior, external failure, or insufficient evidence.
+- Clarified that repair/workshop commit and push are final publication steps
+  after a complete local outcome, required tests, and final diff inspection;
+  intermediate intake/progress artifacts must not be pushed.
+- Added the `RUNTIME_ISSUE_AGENT_CLAIM_BRIDGE_V2` Architecture Design Proof.
+  The proposed deterministic `claim` transition records
+  `accepted_by_agent` after a bounded local receipt and does not wait for a
+  GitHub commit, PR, merge, or deployment.
+- V2 remains `planned_not_implemented` and migration-sensitive. Runtime code,
+  SQLite schema/data, server state, and production were not changed in this
+  documentation/design step.
+
 # 2026-07-31 - Runtime Issue F02 Prefix Routing Repair
 
 - Classified `IR-20260730-5FA71FDFFCDE-F02` as a confirmed low-risk routing
