@@ -124,15 +124,15 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'gmail_statement_collection': {
         'title': 'Zber bankových výpisov z Gmailu',
-        'summary': 'Pre jeden presne nastavený workspace je čiastočne pripravené bezpečné pripojenie overeného Gmail konta a zber zodpovedajúcich príloh bankových výpisov.',
-        'limitation': 'Integrácia je predvolene vypnutá a vyžaduje správcu, externé Google OAuth credentials, očakávanú Gmail adresu, nasadený callback a zapnutý worker. Používa iba gmail.readonly; nevie posielať emaily ani nežiada Google Drive scope. Výpisy sa iba uložia s parse_status=deferred — neparsujú sa, nepárujú sa s platbami a nevytvárajú cashflow, DPH ani daňové závery.',
-        'safe_next': 'Správca musí dokončiť Google Console nastavenie, zapnúť samostatné Gmail flags, potom použiť /gmail_connect a overiť stav cez /gmail_status.',
+        'summary': 'Zber je podporovaný čiastočne pre jedno presne nastavené Gmail konto a workspace; kontrolovaný produkčný pilot už preukázal pripojenie a uloženie zodpovedajúcej prílohy.',
+        'limitation': 'Integrácia vyžaduje správcu, externé Google OAuth credentials, očakávanú Gmail adresu, nasadený callback a zapnutý worker. Používa iba gmail.readonly; nevie posielať emaily ani nežiada Google Drive scope. Výpisy sa iba uložia s parse_status=deferred — neparsujú sa, nepárujú sa s platbami a nevytvárajú cashflow, DPH ani daňové závery. Stav iného nasadenia alebo účtu sa nesmie odvodiť zo všeobecného Product Truth.',
+        'safe_next': 'Najprv použite /gmail_status. Ak pripojenie nie je connected a zber active, správca dokončí nastavenie a použije /gmail_connect.',
     },
     'google_drive_invoice_storage': {
         'title': 'Ukladanie faktúr na Google Drive',
-        'summary': 'Google Drive archivácia je podporovaná čiastočne v owner OAuth režime pre jedno nakonfigurované vlastnícke Google konto.',
-        'limitation': 'Nie je to per-client OAuth ani všeobecná SaaS synchronizácia. Vyžaduje OAuth client credentials, GOOGLE_TOKEN_CRYPTO_SECRET, jednorazový owner OAuth bootstrap, encrypted refresh token, root folder id v osobnom My Drive a zapnutý worker. Service-account režim nie je podporovaný pre personal My Drive bez Workspace/Shared Drive. Potvrdené bločky a prijaté faktúry sa zaraďujú asynchrónne pod samostatný priečinok vlastníckeho business profilu; lokálne uloženie neznamená úspešný upload, metadata ostávajú lokálne a staré Drive súbory sa automaticky nepresúvajú. PDF faktúr ostáva lokálne v bote.',
-        'safe_next': 'Správca musí nastaviť GOOGLE_DRIVE_ENABLED=1, owner OAuth credentials, GOOGLE_TOKEN_CRYPTO_SECRET, uložiť encrypted refresh token cez bootstrap a nastaviť GOOGLE_DRIVE_ROOT_FOLDER_ID. Potom worker nahráva potvrdené doklady a vybrané faktúry do Drive archívu.',
+        'summary': 'Google Drive archivácia je podporovaná čiastočne v owner OAuth režime pre jedno nakonfigurované vlastnícke Google konto; kontrolovaný produkčný pilot už preukázal stav uploaded.',
+        'limitation': 'Nie je to per-client OAuth ani všeobecná SaaS synchronizácia. Vyžaduje OAuth client credentials, GOOGLE_TOKEN_CRYPTO_SECRET, jednorazový owner OAuth bootstrap, encrypted refresh token, root folder id v osobnom My Drive a zapnutý worker. Service-account režim nie je podporovaný pre personal My Drive bez Workspace/Shared Drive. Potvrdené bločky, prijaté faktúry a podporované bankové výpisy sa zaraďujú asynchrónne pod samostatný priečinok vlastníckeho business profilu; lokálne uloženie neznamená úspešný upload, metadata ostávajú lokálne a staré Drive súbory sa automaticky nepresúvajú. PDF faktúr ostáva lokálne v bote. Stav konkrétneho účtu sa musí overiť stavovým príkazom.',
+        'safe_next': 'Použite /google_drive_status. Ak owner pripojenie nie je connected, správca doplní OAuth credentials, šifrovaný refresh token, root folder a zapnutý worker.',
     },
     'google_drive_invoice_archive_after_due_date': {
         'title': 'Archivácia faktúry na Google Drive po splatnosti',
@@ -845,14 +845,21 @@ def _render_product_truth_payload(payload: Mapping[str, Any]) -> str:
     lines = [
         f'{title}: {_STATUS_LABELS.get(product_status, product_status)}.',
     ]
-    if account_status != 'ready':
+    setup_state_is_runtime_specific = capability_id in {
+        'gmail_statement_collection',
+        'google_drive_invoice_storage',
+        'google_drive_invoice_archive_after_due_date',
+    }
+    if account_status != 'ready' and (payload.get('account_context_observed') or not setup_state_is_runtime_specific):
         lines.append(f'Stav účtu: {_ACCOUNT_STATUS_LABELS.get(account_status, account_status)}.')
     if summary:
         lines.append(summary)
     if limitation:
         lines.append('Obmedzenie: ' + limitation)
-    if payload.get('requires_external_credentials'):
-        lines.append('Vyžadovalo by to externé prístupy alebo samostatnú integráciu; v aktuálnej verzii to nie je nastavené.')
+    if payload.get('account_requires_external_credentials'):
+        lines.append('Pre tento účet chýbajú požadované externé prístupy alebo credentials.')
+    elif payload.get('requires_external_credentials'):
+        lines.append('Táto schopnosť vyžaduje externé prístupy alebo credentials; samotný Product Truth neurčuje stav konkrétneho účtu.')
     if payload.get('dangerous'):
         lines.append('Je to citlivá alebo deštruktívna oblasť, preto musí zostať za deterministickou bezpečnostnou bránou.')
     missing_setup_keys = [str(item) for item in payload.get('missing_setup_keys') or ()]

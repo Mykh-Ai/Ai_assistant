@@ -1,3 +1,24 @@
+# 2026-08-02 - Gmail/Drive Product Truth and InfoHelp synchronized
+
+- `README.md`, `docs/TZ_FakturaBot.md`, Product Truth, InfoHelp, the Gmail
+  setup runbook, canonical architecture proof, and conversation acceptance
+  proof now describe the controlled production pilot as connected/runtime
+  proven while preserving the global `partial` owner-only classification.
+- Fixed a Product Truth rendering mismatch: `requires_external_credentials`
+  describes a capability dependency and no longer becomes the unsupported
+  claim that the current Gmail/Drive account is unconfigured. Without observed
+  account context, static Gmail/Drive InfoHelp omits live account status and
+  directs users to `/gmail_status` or `/google_drive_status`.
+- Runtime scope is read-only guidance only: no OAuth scopes, FSM, tokens, DB
+  schema/data, archive jobs, files, or server configuration changed. AI
+  maturity remains partial Level 2 InfoHelp; no self-learning hook applies.
+- The authoritative Drive archive job/state already reports the controlled
+  statement as `uploaded`. The enqueue-era Gmail import `archive_status`
+  consistency gap remains explicitly out of scope and requires a separate
+  migration-safe audit before any persisted-data repair.
+- Focused Product Truth/InfoHelp suite: 131 passed. Full suite: 2469
+  passed, 7 subtests passed.
+
 # 2026-08-02 - Owner Google Drive reauthorized and Gmail statement archived
 
 - After the deterministic `/google_drive_connect` route was restored, the

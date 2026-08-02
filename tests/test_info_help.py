@@ -104,6 +104,9 @@ def test_gmail_statement_collection_question_is_partial_and_no_parsing_claim() -
     assert 'gmail.readonly' in answer
     assert 'neparsujú sa' in answer
     assert '/gmail_connect' in answer
+    assert '/gmail_status' in answer
+    assert 'v aktuálnej verzii to nie je nastavené' not in answer
+    assert 'Stav účtu:' not in answer
     assert classify_info_help_triage(
         user_input_text='Чи можна збирати банківські виписки з Gmail?'
     ).capability_id == 'gmail_statement_collection'
@@ -120,6 +123,27 @@ def test_google_drive_question_renders_external_limitation() -> None:
     assert 'lokálne uloženie neznamená úspešný upload' in answer
     assert 'staré Drive súbory sa automaticky nepresúvajú' in answer
     assert 'extern' in answer
+    assert '/google_drive_status' in answer
+    assert 'v aktuálnej verzii to nie je nastavené' not in answer
+    assert 'Stav účtu:' not in answer
+
+
+def test_google_drive_question_with_observed_missing_credentials_renders_account_gap() -> None:
+    payload = get_safe_answer_payload(
+        'google_drive_invoice_storage',
+        account_context={
+            'authorized_user': True,
+            'supplier_profile': True,
+            'google_drive_owner_oauth': False,
+            'google_drive_invoice_storage_credentials': False,
+        },
+    )
+
+    answer = info_help._render_product_truth_payload(payload)
+
+    assert 'Stav účtu:' in answer
+    assert 'Pre tento účet chýbajú požadované externé prístupy' in answer
+
 
 def test_invoice_due_date_reminder_question_renders_partial_automatic_status() -> None:
     answer = build_product_truth_guidance(user_input_text='Vies mi pripomenut neuhradene faktury po splatnosti?')

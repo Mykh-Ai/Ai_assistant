@@ -1,5 +1,10 @@
 # Changelog
 
+- Synchronized README, TZ, Product Truth, InfoHelp, the Gmail setup runbook,
+  architecture proof, and acceptance proof with the connected controlled
+  Gmail/Drive pilot. InfoHelp now distinguishes an external-credential
+  dependency from an observed account configuration gap and directs current
+  state checks to `/gmail_status` or `/google_drive_status`.
 - Reauthorized the configured owner Google Drive connection through the existing
   manual bootstrap and proved the queued Gmail bank-statement archive reaches
   `uploaded` while the local original remains stored with deferred parsing.

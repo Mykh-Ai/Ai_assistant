@@ -56,12 +56,15 @@ STT/LLM and persistence.
 
 ## 2026-07-30 Addendum: Gmail OAuth and bank-statement collection V1
 
-The repository contains a partial, disabled-by-default Google identity and
+The repository contains a partial, fail-closed Google identity and
 service-grant foundation for one explicitly configured Gmail account and one
 canonical workspace. An authorized administrator can use `/gmail_connect`,
-`/gmail_status`, and `/gmail_disconnect`; the actual connection still requires
-external Google OAuth credentials, restricted-scope verification, callback
-deployment, an exact expected Google email, and an exact target workspace.
+`/gmail_status`, and `/gmail_disconnect`. The configured controlled production
+pilot has a connected grant and active collection; other deployments still
+require external Google OAuth credentials, restricted-scope verification,
+callback deployment, an exact expected Google email, and an exact target
+workspace. Static Product Truth flags must not be presented as the live account
+state; `/gmail_status` is the deterministic status surface.
 
 The Gmail grant permits only OIDC identity scopes and
 `https://www.googleapis.com/auth/gmail.readonly`. It does not grant Google
@@ -84,8 +87,11 @@ tax conclusions, Gmail send/modify operations, Tatra banka API, Google Sheets,
 and Google Docs are unsupported. Every import remains
 `parse_status=deferred`. Public website indexing remains enabled by explicit
 product decision; Gmail OAuth availability is a separate fail-closed launch
-gate. No production deployment or real mailbox smoke is proven by this
-addendum.
+gate. Controlled production evidence on 2026-08-02 proved the signed callback,
+one connected/active Gmail binding, one stored statement, a no-new-import
+second tick, and a separate owner Drive archive state `uploaded`. This evidence
+does not prove wider rollout, parsing, reconciliation, or unrestricted mailbox
+access.
 
 ---
 
