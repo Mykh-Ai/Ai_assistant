@@ -71,7 +71,22 @@ The callback must:
 - return `Cache-Control: no-store`, a restrictive CSP, no-referrer policy, and
   `X-Robots-Tag: noindex, nofollow`.
 
-Deployment is intentionally outside this implementation session.
+For the controlled Zevs production deployment, Cloudflare Tunnel is the
+private callback transport:
+
+- a remotely managed tunnel publishes `gmail-callback.zevsflow.sk`;
+- the tunnel origin is `http://bot:8081` on the private Compose network;
+- `docker-compose.prod.yml` runs the pinned `cloudflared` image without any
+  published VPS port;
+- the tunnel token is stored only in
+  `/bot/secrets/cloudflared-token` (mode `0600`) and mounted read-only;
+- the public Worker upstream is
+  `https://gmail-callback.zevsflow.sk/internal/oauth/google/integration/callback`;
+- the Worker and backend share the separate callback proxy secret.
+
+The tunnel hostname is not a public business endpoint: requests without the
+proxy header fail closed. Do not configure a direct VPS DNS record or publish
+port `8081`.
 
 ## 3. Backend configuration
 
@@ -89,7 +104,7 @@ GOOGLE_GMAIL_TARGET_WORKSPACE_ID=<canonical-workspace-id>
 GOOGLE_GMAIL_STATEMENT_QUERY=<trusted-admin-query>
 GOOGLE_TOKEN_CRYPTO_SECRET=<fernet-compatible-secret>
 GOOGLE_INTEGRATION_CALLBACK_PROXY_SECRET=<same-random-proxy-secret>
-GOOGLE_INTEGRATION_CALLBACK_HOST=127.0.0.1
+GOOGLE_INTEGRATION_CALLBACK_HOST=0.0.0.0
 GOOGLE_INTEGRATION_CALLBACK_PORT=8081
 ```
 
@@ -123,23 +138,28 @@ credentials while configuring Gmail.
 1. Back up the current SQLite database and storage root.
 2. Start the backend with Gmail still disabled and run the test suite.
 3. Install the complete environment configuration.
-4. Start the backend. Enabled-but-incomplete configuration must fail closed
-   before Telegram polling.
-5. From an authorized administrator account that belongs to the exact target
+4. Create the remotely managed Tunnel, install its token file with mode
+   `0600`, configure its public hostname and the Worker upstream/secret, then
+   validate `docker compose -f docker-compose.prod.yml config`.
+5. Start the backend and Tunnel. Enabled-but-incomplete configuration must fail
+   closed before Telegram polling.
+6. Verify that the callback port is not published by Docker and that a direct
+   tunnel request without the proxy header is rejected.
+7. From an authorized administrator account that belongs to the exact target
    workspace, run `/gmail_connect`.
-6. Complete Google consent using the expected Gmail address.
-7. Run `/gmail_status`. It may report identity and lifecycle status, but must
+8. Complete Google consent using the expected Gmail address.
+9. Run `/gmail_status`. It may report identity and lifecycle status, but must
    not show tokens, scopes as secrets, paths, message IDs, or attachment IDs.
-8. Place one allowlisted test statement attachment in a message matching the
-   trusted Gmail query.
-9. Let one scheduler tick run and verify:
+10. Place one allowlisted test statement attachment in a message matching the
+    trusted Gmail query.
+11. Let one scheduler tick run and verify:
    - one `gmail_statement_imports` record;
    - one tenant-scoped `original.<ext>` and `metadata.json`;
    - `parse_status=deferred`;
    - no duplicate original on a repeated tick;
    - no Drive permission or upload;
    - no parsing or LLM call.
-10. Test `/gmail_disconnect`. Local imported files must remain; the active grant
+12. Test `/gmail_disconnect`. Local imported files must remain; the active grant
     must no longer be usable.
 
 ## 5. Failure and recovery
@@ -159,8 +179,8 @@ credentials while configuring Gmail.
 1. Set `GOOGLE_GMAIL_ENABLED=0` and
    `GOOGLE_INTEGRATION_CALLBACK_ENABLED=0`.
 2. Restart the backend.
-3. Remove or disable the public callback route only as a separate deployment
-   action.
+3. Stop the `cloudflared` service and disable the Tunnel route. Remove or
+   disable the public callback route only as a separate deployment action.
 4. Revoke the Google grant in the Google Account security page if required.
 5. Preserve SQLite rows and stored originals for audit. Do not delete them as
    part of rollback.
