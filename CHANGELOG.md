@@ -1,5 +1,9 @@
 # Changelog
 
+- Recorded controlled production Gmail evidence: real connected readonly grant,
+  one successful workspace-local statement import with deferred parsing, a
+  second tick with no new import, and safe local preservation while the separate
+  owner Drive archive remains `needs_reauth`/`retry_wait`.
 - Fixed Gmail OAuth scope validation to accept Google's canonical OIDC
   `userinfo.email` and `userinfo.profile` aliases while still requiring exact
   `gmail.readonly` and rejecting broader Google API scopes.

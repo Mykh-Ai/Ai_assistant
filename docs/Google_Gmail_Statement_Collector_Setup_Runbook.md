@@ -154,10 +154,24 @@ credentials while configuring Gmail.
    - one tenant-scoped `original.<ext>` and `metadata.json`;
    - `parse_status=deferred`;
    - no duplicate original on a repeated tick;
-   - no Drive permission or upload;
+   - if the separately configured Drive archive is enabled, one idempotent archive job; Drive failure must not fail or delete the local import;
    - no parsing or LLM call.
 12. Test `/gmail_disconnect`. Local imported files must remain; the active grant
     must no longer be usable.
+
+### Controlled production evidence — 2026-08-02
+
+- Public signed callback relay and backend callback are deployed.
+- Real configured-admin consent produced one encrypted connected Gmail grant
+  and one active workspace binding.
+- One manual first tick used the configured bounded query, saw one message,
+  stored one workspace-local original/metadata pair, set
+  `parse_status=deferred`, and reported zero rejected and zero failed.
+- A second tick created no additional import. This does not replace an explicit
+  overlap test that re-sees the same Gmail source.
+- The separate owner Google Drive connection was `needs_reauth`; its archive
+  job entered bounded `retry_wait` with `google_drive_not_configured`, while
+  the local Gmail import remained stored.
 
 ## 5. Failure and recovery
 
