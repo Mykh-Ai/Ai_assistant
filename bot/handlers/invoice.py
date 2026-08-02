@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 import json
 import logging
 from pathlib import Path
@@ -61,6 +61,18 @@ from bot.services.info_help import (
     render_info_help_triage_result,
     resolve_info_help_triage_result_with_llm,
 )
+from bot.services.info_help_action_registry import (
+    find_exact_info_help_action,
+    get_info_help_action,
+)
+from bot.services.info_help_assistant import (
+    INFO_HELP_INTENT_GENUINELY_UNCLEAR,
+    INFO_HELP_SPEECH_CAPABILITY_QUESTION,
+    should_run_contextual_info_help,
+)
+from bot.services.info_help_context import info_help_conversation_context
+from bot.services.info_help_resolver import resolve_info_help_assistant_with_llm
+from bot.services.info_help_rollout import contextual_info_help_v2_enabled
 from bot.services.accounting_document_analytics_answerer import answer_accounting_document_analytics
 from bot.services.accounting_document_analytics_dataset import (
     AccountingDocumentAnalyticsDatasetService,
@@ -97,6 +109,7 @@ from bot.services.pdf_generator import (
     validate_item_detail_render_fit,
 )
 from bot.services.service_alias_service import ServiceAliasService
+from bot.services.product_truth import get_safe_answer_payload
 from bot.services.semantic_action_resolver import (
     resolve_bounded_confirmation_reply,
     resolve_invoice_date_normalization,
@@ -1068,6 +1081,10 @@ class InvoiceStates(StatesGroup):
     waiting_edit_item_numeric_value = State()
     waiting_delete_existing_invoice_confirm = State()
     waiting_mark_existing_invoice_paid_confirm = State()
+
+
+class InvoiceReferenceContinuationStates(StatesGroup):
+    waiting_reference = State()
 
 
 class CustomizationRequestStates(StatesGroup):
@@ -3514,6 +3531,393 @@ async def process_invoice_slot_clarification(
     )
 
 
+_INVOICE_REFERENCE_ACTIONS = {
+    _SHOW_EXISTING_INVOICE_INTENT,
+    _EDIT_EXISTING_INVOICE_INTENT,
+    _DELETE_EXISTING_INVOICE_INTENT,
+    _MARK_EXISTING_INVOICE_PAID_INTENT,
+}
+_INVOICE_REFERENCE_PROMPTS = {
+    _SHOW_EXISTING_INVOICE_INTENT: 'Napíšte číslo faktúry, ktorú chcete zobraziť.',
+    _EDIT_EXISTING_INVOICE_INTENT: 'Napíšte číslo faktúry, ktorú chcete upraviť.',
+    _DELETE_EXISTING_INVOICE_INTENT: 'Napíšte číslo faktúry, ktorú chcete vymazať.',
+    _MARK_EXISTING_INVOICE_PAID_INTENT: 'Napíšte číslo faktúry, ktorú chcete označiť ako uhradenú.',
+}
+
+
+def _message_context_ids(message: Message) -> tuple[int | None, int | None]:
+    actor_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    chat_id = getattr(getattr(message, 'chat', None), 'id', None)
+    return actor_id, chat_id if isinstance(chat_id, int) else actor_id
+
+
+def _workspace_key_for_runtime(runtime: ScopedInvoiceRuntime | None) -> str:
+    context = getattr(runtime, 'context', None)
+    workspace_id = getattr(context, 'workspace_id', None)
+    return str(workspace_id or 'legacy-supplier-scope')
+
+
+def _explicit_reply_context(message: Message) -> dict[str, object] | None:
+    replied = getattr(message, 'reply_to_message', None)
+    if replied is None:
+        return None
+    message_chat_id = getattr(getattr(message, 'chat', None), 'id', None)
+    replied_chat_id = getattr(getattr(replied, 'chat', None), 'id', None)
+    author = getattr(replied, 'from_user', None)
+    if message_chat_id != replied_chat_id or not bool(getattr(author, 'is_bot', False)):
+        return None
+    our_bot_id = getattr(getattr(message, 'bot', None), 'id', None)
+    author_id = getattr(author, 'id', None)
+    if isinstance(our_bot_id, int) and author_id != our_bot_id:
+        return None
+    labels: list[str] = []
+    markup = getattr(replied, 'reply_markup', None)
+    for row in getattr(markup, 'inline_keyboard', ()) or ():
+        for button in row:
+            text = str(getattr(button, 'text', '')).strip()
+            if text:
+                labels.append(text[:80])
+    return {
+        'replied_to_bot_text': ' '.join(str(getattr(replied, 'text', '') or '').split())[:1200],
+        'replied_to_visible_button_labels': labels[:12],
+        'replied_to_message_id': getattr(replied, 'message_id', None),
+        'replied_to_is_our_bot': True,
+    }
+
+
+async def _answer_contextual_info_help(*, message: Message, context_key, text: str) -> None:
+    await message.answer(text)
+    info_help_conversation_context.capture_bot(context_key, text=text)
+
+
+def _format_exact_unsupported(result) -> str:
+    object_labels = {
+        'receipt': 'uložený bloček',
+        'contact': 'kontakt',
+        'incoming_invoice': 'prijatú faktúru',
+        'accounting_document': 'účtovný doklad',
+    }
+    operation_labels = {'delete': 'odstrániť', 'edit': 'upraviť', 'create': 'vytvoriť'}
+    object_label = object_labels.get(result.object_kind, result.object_kind)
+    operation_label = operation_labels.get(result.operation_id, result.operation_id)
+    acknowledgement = result.acknowledgement_sk or f'Rozumiem, chcete {operation_label} {object_label}.'
+    return (
+        f'{acknowledgement}\n'
+        'Túto presnú funkciu momentálne nepodporujem. '
+        'Neponúknem namiesto nej inú deštruktívnu akciu.\n'
+        'Ak chcete, môžem z toho pripraviť požiadavku na kontrolu správcom; uloží sa až po vašom potvrdení.'
+    )
+
+
+async def _apply_contextual_info_help_v2(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    invoice_text: str,
+    input_channel: str,
+    top_level_intent: str,
+    top_level_diagnostics: dict[str, object],
+) -> tuple[bool, str]:
+    actor_id, chat_id = _message_context_ids(message)
+    if actor_id is None or chat_id is None:
+        return True, top_level_intent
+    runtime = None
+    if top_level_intent in _INVOICE_SCOPED_ACTIONS:
+        runtime = _resolve_invoice_scope(config, actor_id)
+    context_key = info_help_conversation_context.key(
+        telegram_user_id=actor_id,
+        chat_id=chat_id,
+        workspace_id=_workspace_key_for_runtime(runtime),
+    )
+    context_channel = 'voice_stt' if input_channel == 'voice' else input_channel
+    info_help_conversation_context.capture_user(
+        context_key, text=invoice_text, channel=context_channel
+    )
+    recent = tuple(turn.as_payload() for turn in info_help_conversation_context.recent(context_key))
+    semantic = get_info_help_action(top_level_intent)
+    explicit_reply = _explicit_reply_context(message)
+    result = await resolve_info_help_assistant_with_llm(
+        current_input_text=invoice_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        input_channel=context_channel,
+        primary_resolver_result=top_level_intent,
+        primary_resolver_diagnostics=top_level_diagnostics,
+        primary_mutation_class=semantic.mutation_class if semantic else 'informational',
+        recent_conversation=recent,
+        explicit_reply=explicit_reply,
+    )
+
+    if result.intent_kind == INFO_HELP_INTENT_GENUINELY_UNCLEAR or result.confidence < 0.70:
+        await _answer_contextual_info_help(
+            message=message,
+            context_key=context_key,
+            text='Tejto správe som nerozumel. Skúste stručne napísať, čo chcete urobiť.',
+        )
+        return True, top_level_intent
+
+    if (
+        result.intent_kind == 'conversational_followup'
+        and result.refers_to_explicit_reply
+        and explicit_reply is not None
+    ):
+        quoted = str(explicit_reply.get('replied_to_bot_text') or '')
+        acknowledgement = result.acknowledgement_sk or 'Rozumiem, pýtate sa na moju citovanú správu.'
+        await _answer_contextual_info_help(
+            message=message,
+            context_key=context_key,
+            text=(
+                f'{acknowledgement}\nCitovaná správa bola: „{quoted[:500]}“\n'
+                'Táto správa opisovala stav v danom kroku; sama nič nevytvorila, nezmenila ani nevymazala.'
+            ),
+        )
+        return True, top_level_intent
+
+    if result.probable_command_target:
+        raw_command = invoice_text.split(maxsplit=1)[0]
+        await _answer_contextual_info_help(
+            message=message,
+            context_key=context_key,
+            text=f'Príkaz `{raw_command}` nepoznám. Pravdepodobne ste mysleli `{result.probable_command_target}`.',
+        )
+        return True, top_level_intent
+
+    exact = find_exact_info_help_action(
+        domain_id=result.domain_id,
+        object_kind=result.object_kind,
+        operation_id=result.operation_id,
+    )
+    capability_question = result.speech_act == INFO_HELP_SPEECH_CAPABILITY_QUESTION
+    if capability_question:
+        if exact is None:
+            await _answer_contextual_info_help(
+                message=message, context_key=context_key, text=_format_exact_unsupported(result)
+            )
+            return True, top_level_intent
+        truth = get_safe_answer_payload(exact.capability_id)
+        summary = str(truth.get('summary_for_user') or 'Táto funkcia je dostupná podľa aktuálneho Product Truth.')
+        limitations = truth.get('current_limitations') or []
+        suffix = f"\nObmedzenie: {limitations[0]}" if limitations else ''
+        await _answer_contextual_info_help(
+            message=message, context_key=context_key, text=f'{summary}{suffix}'
+        )
+        return True, top_level_intent
+
+    if result.intent_kind in {'smalltalk', 'out_of_domain'}:
+        text = (
+            'Som pripravený pomôcť s biznis úlohami vo FakturaBote.'
+            if result.intent_kind == 'smalltalk'
+            else 'Toto je mimo rozsahu OfficeFlow/FakturaBotu.'
+        )
+        await _answer_contextual_info_help(message=message, context_key=context_key, text=text)
+        return True, top_level_intent
+
+    if result.intent_kind == 'probable_command_typo' and not result.probable_command_target:
+        await _answer_contextual_info_help(
+            message=message,
+            context_key=context_key,
+            text='Tento príkaz nepoznám. Skontrolujte ho alebo napíšte, čo chcete urobiť.',
+        )
+        return True, top_level_intent
+
+    if result.intent_kind == 'incomplete_intent' or result.operation_id == 'unknown':
+        question = result.clarification_question_sk or (
+            'Čo presne chcete urobiť s kontaktom?'
+            if result.object_kind == 'contact'
+            else 'Čo presne chcete urobiť?'
+        )
+        await _answer_contextual_info_help(message=message, context_key=context_key, text=question)
+        return True, top_level_intent
+
+    if exact is None:
+        await _answer_contextual_info_help(
+            message=message, context_key=context_key, text=_format_exact_unsupported(result)
+        )
+        return True, top_level_intent
+
+    if (
+        exact.object_kind in result.negated_objects
+        or exact.operation_id in result.negated_operations
+        or result.proposed_action_id != exact.action_id
+        or exact.entry_mode == 'not_infohelp_eligible'
+    ):
+        await _answer_contextual_info_help(
+            message=message,
+            context_key=context_key,
+            text=result.clarification_question_sk or 'Spresnite prosím presný objekt a úkon. Nič som nevykonal.',
+        )
+        return True, top_level_intent
+
+    truth = get_safe_answer_payload(exact.capability_id)
+    if truth.get('product_status') not in {'supported', 'partial'} or not exact.runtime_owner:
+        await _answer_contextual_info_help(
+            message=message, context_key=context_key, text=_format_exact_unsupported(result)
+        )
+        return True, top_level_intent
+    threshold = {'read_only': 0.85, 'mutating': 0.92, 'destructive': 0.98}.get(exact.mutation_class, 0.70)
+    if result.confidence < threshold:
+        await _answer_contextual_info_help(
+            message=message,
+            context_key=context_key,
+            text=result.clarification_question_sk or 'Spresnite prosím, čo presne chcete urobiť. Nič som nevykonal.',
+        )
+        return True, top_level_intent
+    return False, exact.action_id
+
+
+async def _start_invoice_reference_continuation(
+    *,
+    message: Message,
+    state: FSMContext,
+    action_id: str,
+    runtime: ScopedInvoiceRuntime,
+    source_channel: str,
+    original_user_text: str,
+) -> None:
+    if action_id not in _INVOICE_REFERENCE_ACTIONS:
+        await message.answer('Túto akciu neviem bezpečne dokončiť.')
+        return
+    await state.update_data(
+        pending_invoice_reference_action=action_id,
+        pending_workspace_id=_workspace_key_for_runtime(runtime),
+        source_channel=source_channel,
+        invoice_reference_started_at=datetime.now(UTC).isoformat(),
+        original_user_text=' '.join(original_user_text.split())[:500],
+    )
+    await state.set_state(InvoiceReferenceContinuationStates.waiting_reference)
+    await message.answer(_INVOICE_REFERENCE_PROMPTS[action_id])
+
+
+async def _execute_invoice_reference_action(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    action_id: str,
+    invoice_reference: str,
+    runtime: ScopedInvoiceRuntime | None = None,
+) -> None:
+    if action_id not in _INVOICE_REFERENCE_ACTIONS:
+        await state.clear()
+        await message.answer('Rozpracovaná akcia už nie je dostupná.')
+        return
+    scoped_runtime = runtime or await _invoice_runtime_or_recover(
+        message=message, state=state, config=config
+    )
+    if scoped_runtime is None:
+        return
+    data = await state.get_data()
+    pending_workspace_id = data.get('pending_workspace_id')
+    current_workspace_id = _workspace_key_for_runtime(scoped_runtime)
+    if pending_workspace_id is not None and str(pending_workspace_id) != current_workspace_id:
+        await state.clear()
+        await message.answer('Aktívny business profil sa zmenil. Spustite akciu znova.')
+        return
+
+    invoice_matches = scoped_runtime.find_invoices(invoice_reference)
+    if not invoice_matches:
+        await state.update_data(
+            pending_invoice_reference_action=action_id,
+            pending_workspace_id=current_workspace_id,
+        )
+        await state.set_state(InvoiceReferenceContinuationStates.waiting_reference)
+        await message.answer('Faktúru s týmto číslom som nenašiel. Skúste celé číslo faktúry.')
+        return
+    if len(invoice_matches) > 1:
+        await state.update_data(
+            pending_invoice_reference_action=action_id,
+            pending_workspace_id=current_workspace_id,
+        )
+        await state.set_state(InvoiceReferenceContinuationStates.waiting_reference)
+        ambiguity_message = (
+            'Našiel som viac faktúr. Napíšte celé číslo faktúry.'
+            if action_id == _EDIT_EXISTING_INVOICE_INTENT
+            else 'Našiel som viac faktúr. Napíšte viac posledných číslic alebo celé číslo faktúry.'
+        )
+        await message.answer(ambiguity_message)
+        return
+
+    matched_invoice = invoice_matches[0]
+    if action_id == _SHOW_EXISTING_INVOICE_INTENT:
+        await _send_existing_invoice_view(
+            message=message, config=config, runtime=scoped_runtime, invoice=matched_invoice
+        )
+        await state.clear()
+        return
+    if action_id == _EDIT_EXISTING_INVOICE_INTENT:
+        await _send_existing_invoice_view(
+            message=message, config=config, runtime=scoped_runtime, invoice=matched_invoice
+        )
+        await state.update_data(
+            last_invoice_id=matched_invoice.id,
+            last_invoice_number=matched_invoice.invoice_number,
+            edit_invoice_id=matched_invoice.id,
+        )
+        await start_invoice_edit_flow(
+            message=message, state=state, config=config, invoice_id=matched_invoice.id
+        )
+        return
+    if action_id == _MARK_EXISTING_INVOICE_PAID_INTENT:
+        await state.update_data(
+            pending_mark_paid_invoice_id=matched_invoice.id,
+            pending_mark_paid_invoice_number=matched_invoice.invoice_number,
+        )
+        await state.set_state(InvoiceStates.waiting_mark_existing_invoice_paid_confirm)
+        await answer_with_decision_keyboard(
+            message,
+            (
+                f'Chcete označiť faktúru {matched_invoice.invoice_number} ako uhradenú?\n\n'
+                'Ulozim iba stav v bote. Nie je to bankove potvrdenie ani parovanie platby.'
+            ),
+            yes_no_keyboard(
+                yes_label='Označiť ako uhradenú',
+                no_label='Späť do hlavného menu',
+            ),
+        )
+        return
+
+    contact_name = 'Neznámy odberateľ'
+    if matched_invoice.contact_id is not None:
+        contact = scoped_runtime.get_contact_by_id(matched_invoice.contact_id)
+        if contact is not None:
+            contact_name = contact.name
+    matched_items = scoped_runtime.get_items(matched_invoice.id)
+    await message.answer(
+        _format_existing_invoice_summary(
+            invoice_number=matched_invoice.invoice_number,
+            customer_name=contact_name,
+            issue_date=matched_invoice.issue_date,
+            delivery_date=matched_invoice.delivery_date,
+            due_date=matched_invoice.due_date,
+            items=matched_items,
+            total_amount=float(matched_invoice.total_amount),
+            currency=matched_invoice.currency,
+        )
+    )
+    if matched_invoice.pdf_path:
+        pdf_path = Path(matched_invoice.pdf_path)
+        if pdf_path.exists():
+            try:
+                await message.answer_document(
+                    FSInputFile(pdf_path),
+                    caption=f'Aktuálne PDF faktúry {matched_invoice.invoice_number}.',
+                )
+            except Exception:
+                logger.exception('Failed to send existing invoice PDF preview before delete flow')
+    await state.update_data(
+        pending_delete_invoice_id=matched_invoice.id,
+        pending_delete_invoice_number=matched_invoice.invoice_number,
+        pending_delete_pdf_path=matched_invoice.pdf_path,
+    )
+    await state.set_state(InvoiceStates.waiting_delete_existing_invoice_confirm)
+    await answer_with_decision_keyboard(
+        message,
+        f'Naozaj chcete vymazať faktúru {matched_invoice.invoice_number}? Odpovedzte: áno / nie',
+        delete_cancel_keyboard(),
+    )
+
+
 async def process_invoice_text(
     *,
     message: Message,
@@ -3878,6 +4282,30 @@ async def process_invoice_text(
             },
         },
     )
+    effective_input_channel = (
+        'command' if invoice_text.lstrip().startswith('/') else input_channel
+    )
+    if (
+        contextual_info_help_v2_enabled(config, actor_telegram_id)
+        and should_run_contextual_info_help(
+            primary_action=top_level_intent,
+            input_text=invoice_text,
+            input_channel=effective_input_channel,
+            primary_diagnostics=top_level_diagnostics,
+        )
+    ):
+        handled, validated_action = await _apply_contextual_info_help_v2(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=invoice_text,
+            input_channel=effective_input_channel,
+            top_level_intent=top_level_intent,
+            top_level_diagnostics=top_level_diagnostics,
+        )
+        if handled:
+            return
+        top_level_intent = validated_action
     logger.info(
         json.dumps(
             {
@@ -3927,6 +4355,28 @@ async def process_invoice_text(
         )
         if scoped_runtime is None:
             return
+    if top_level_intent in _INVOICE_REFERENCE_ACTIONS:
+        assert scoped_runtime is not None
+        invoice_reference = _extract_invoice_reference(invoice_text)
+        if not invoice_reference:
+            await _start_invoice_reference_continuation(
+                message=message,
+                state=state,
+                action_id=top_level_intent,
+                runtime=scoped_runtime,
+                source_channel=input_channel,
+                original_user_text=invoice_text,
+            )
+            return
+        await _execute_invoice_reference_action(
+            message=message,
+            state=state,
+            config=config,
+            action_id=top_level_intent,
+            invoice_reference=invoice_reference,
+            runtime=scoped_runtime,
+        )
+        return
     if top_level_intent == _START_INTENT:
         await cmd_start(message=message, config=config, state=state)
         return
@@ -3998,27 +4448,6 @@ async def process_invoice_text(
             config=config,
         )
         return
-    if top_level_intent == _SHOW_EXISTING_INVOICE_INTENT:
-        if hasattr(message, 'from_user') and message.from_user is None:
-            await message.answer('Nepodarilo sa identifikovať používateľa.')
-            return
-        invoice_reference = _extract_invoice_reference(invoice_text)
-        if not invoice_reference:
-            await message.answer('Napíšte číslo faktúry, ktorú chcete zobraziť.')
-            return
-        invoice_matches = scoped_runtime.find_invoices(invoice_reference)
-        if not invoice_matches:
-            await message.answer('Faktúru s týmto číslom som nenašiel.')
-            await state.clear()
-            return
-        if len(invoice_matches) > 1:
-            await message.answer('Našiel som viac faktúr. Napíšte viac posledných číslic alebo celé číslo faktúry.')
-            return
-        await _send_existing_invoice_view(
-            message=message, config=config, runtime=scoped_runtime, invoice=invoice_matches[0]
-        )
-        await state.clear()
-        return
     if top_level_intent == _INVOICE_PERIOD_SUMMARY_INTENT:
         scoped_runtime = await _invoice_runtime_or_recover(
             message=message, state=state, config=config
@@ -4079,126 +4508,6 @@ async def process_invoice_text(
             config=config,
             user_question=invoice_text,
             source_channel=input_channel,
-        )
-        return
-    if top_level_intent == _EDIT_EXISTING_INVOICE_INTENT:
-        if hasattr(message, 'from_user') and message.from_user is None:
-            await message.answer('Nepodarilo sa identifikovať používateľa.')
-            return
-        invoice_reference = _extract_invoice_reference(invoice_text)
-        if not invoice_reference:
-            await message.answer('Napíšte číslo faktúry, ktorú chcete upraviť.')
-            return
-        invoice_matches = scoped_runtime.find_invoices(invoice_reference)
-        if not invoice_matches:
-            await message.answer('Faktúru s týmto číslom som nenašiel.')
-            return
-        if len(invoice_matches) > 1:
-            await message.answer('Našiel som viac faktúr. Napíšte celé číslo faktúry.')
-            return
-        matched_invoice = invoice_matches[0]
-        await _send_existing_invoice_view(
-            message=message, config=config, runtime=scoped_runtime, invoice=matched_invoice
-        )
-        await state.update_data(
-            last_invoice_id=matched_invoice.id,
-            last_invoice_number=matched_invoice.invoice_number,
-            edit_invoice_id=matched_invoice.id,
-        )
-        await start_invoice_edit_flow(
-            message=message,
-            state=state,
-            config=config,
-            invoice_id=matched_invoice.id,
-        )
-        return
-    if top_level_intent == _MARK_EXISTING_INVOICE_PAID_INTENT:
-        if hasattr(message, 'from_user') and message.from_user is None:
-            await message.answer('Nepodarilo sa identifikovat pouzivatela.')
-            return
-        invoice_reference = _extract_invoice_reference(invoice_text)
-        if not invoice_reference:
-            await message.answer('Napiste cislo faktury, ktoru chcete oznacit ako uhradenu.')
-            return
-        invoice_matches = scoped_runtime.find_invoices(invoice_reference)
-        if not invoice_matches:
-            await message.answer('Fakturu s tymto cislom som nenasiel.')
-            return
-        if len(invoice_matches) > 1:
-            await message.answer('Nasiel som viac faktur. Napiste viac poslednych cislic alebo cele cislo faktury.')
-            return
-        matched_invoice = invoice_matches[0]
-        await state.update_data(
-            pending_mark_paid_invoice_id=matched_invoice.id,
-            pending_mark_paid_invoice_number=matched_invoice.invoice_number,
-        )
-        await state.set_state(InvoiceStates.waiting_mark_existing_invoice_paid_confirm)
-        await answer_with_decision_keyboard(
-            message,
-            (
-                f'Chcete oznacit fakturu {matched_invoice.invoice_number} ako uhradenu?\n\n'
-                'Ulozim iba stav v bote. Nie je to bankove potvrdenie ani parovanie platby.'
-            ),
-            yes_no_keyboard(
-                yes_label='Označiť ako uhradenú',
-                no_label='Späť do hlavného menu',
-            ),
-        )
-        return
-    if top_level_intent == _DELETE_EXISTING_INVOICE_INTENT:
-        if hasattr(message, 'from_user') and message.from_user is None:
-            await message.answer('Nepodarilo sa identifikovať používateľa.')
-            return
-        invoice_reference = _extract_invoice_reference(invoice_text)
-        if not invoice_reference:
-            await message.answer('Napíšte číslo faktúry, ktorú chcete vymazať.')
-            return
-        invoice_matches = scoped_runtime.find_invoices(invoice_reference)
-        if not invoice_matches:
-            await message.answer('Faktúru s týmto číslom som nenašiel.')
-            return
-        if len(invoice_matches) > 1:
-            await message.answer('Našiel som viac faktúr. Napíšte viac posledných číslic alebo celé číslo faktúry.')
-            return
-        matched_invoice = invoice_matches[0]
-        contact_name = 'Neznámy odberateľ'
-        if matched_invoice.contact_id is not None:
-            contact = scoped_runtime.get_contact_by_id(matched_invoice.contact_id)
-            if contact is not None:
-                contact_name = contact.name
-        matched_items = scoped_runtime.get_items(matched_invoice.id)
-        await message.answer(
-            _format_existing_invoice_summary(
-                invoice_number=matched_invoice.invoice_number,
-                customer_name=contact_name,
-                issue_date=matched_invoice.issue_date,
-                delivery_date=matched_invoice.delivery_date,
-                due_date=matched_invoice.due_date,
-                items=matched_items,
-                total_amount=float(matched_invoice.total_amount),
-                currency=matched_invoice.currency,
-            )
-        )
-        if matched_invoice.pdf_path:
-            pdf_path = Path(matched_invoice.pdf_path)
-            if pdf_path.exists():
-                try:
-                    await message.answer_document(
-                        FSInputFile(pdf_path),
-                        caption=f'Aktuálne PDF faktúry {matched_invoice.invoice_number}.',
-                    )
-                except Exception:
-                    logger.exception('Failed to send existing invoice PDF preview before delete flow')
-        await state.update_data(
-            pending_delete_invoice_id=matched_invoice.id,
-            pending_delete_invoice_number=matched_invoice.invoice_number,
-            pending_delete_pdf_path=matched_invoice.pdf_path,
-        )
-        await state.set_state(InvoiceStates.waiting_delete_existing_invoice_confirm)
-        await answer_with_decision_keyboard(
-            message,
-            f'Naozaj chcete vymazať faktúru {matched_invoice.invoice_number}? Odpovedzte: áno / nie',
-            delete_cancel_keyboard(),
         )
         return
     if top_level_intent == _UNKNOWN_INVOICE_INTENT:
@@ -5127,6 +5436,38 @@ async def start_invoice_edit_flow(
     await message.answer(
         f'Úprava faktúry {invoice.invoice_number}. '
         'Vyberte rozsah úpravy: `faktúra` (číslo/dátum) alebo `položka`.'
+    )
+
+
+@router.message(InvoiceReferenceContinuationStates.waiting_reference)
+async def invoice_reference_continuation(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+) -> None:
+    invoice_reference = (message.text or '').strip()
+    data = await state.get_data()
+    action_id = str(data.get('pending_invoice_reference_action') or '')
+    started_at = str(data.get('invoice_reference_started_at') or '')
+    try:
+        started = datetime.fromisoformat(started_at)
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=UTC)
+    except ValueError:
+        started = datetime.now(UTC)
+    if datetime.now(UTC) - started > timedelta(minutes=10):
+        await state.clear()
+        await message.answer('Rozpracovaná akcia vypršala. Spustite ju prosím znova.')
+        return
+    if not invoice_reference:
+        await message.answer(_INVOICE_REFERENCE_PROMPTS.get(action_id, 'Napíšte číslo faktúry.'))
+        return
+    await _execute_invoice_reference_action(
+        message=message,
+        state=state,
+        config=config,
+        action_id=action_id,
+        invoice_reference=invoice_reference,
     )
 
 
@@ -6606,6 +6947,25 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
             state=state,
             success_text=success_text,
         )
+
+
+@router.message(lambda message: bool((message.text or '').strip()) and (message.text or '').startswith('/'))
+async def unknown_slash_command(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    event_update: Update | None = None,
+) -> None:
+    if await state.get_state() is not None:
+        return
+    await process_invoice_text(
+        message=message,
+        state=state,
+        config=config,
+        invoice_text=message.text or '',
+        input_channel='command',
+        telegram_update_id=getattr(event_update, 'update_id', None),
+    )
 
 
 @router.message(lambda message: bool((message.text or '').strip()) and not (message.text or '').startswith('/'))

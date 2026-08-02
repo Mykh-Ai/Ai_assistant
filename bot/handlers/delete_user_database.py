@@ -8,6 +8,7 @@ from aiogram.types import Message
 
 from bot.config import Config
 from bot.services.authorization import UNAUTHORIZED_MESSAGE, is_authorized_telegram_user
+from bot.services.info_help_context import clear_info_help_context_for_message
 from bot.services.user_data_deletion import UserDataDeletionService
 
 
@@ -77,6 +78,7 @@ async def confirm_delete_user_database(message: Message, state: FSMContext, conf
         return
 
     result = UserDataDeletionService(config.db_path, config.storage_dir).delete_user_database(telegram_id=telegram_id)
+    clear_info_help_context_for_message(message)
     await state.clear()
     if result.filesystem_errors:
         await message.answer(DELETE_USER_DATABASE_PARTIAL_FILES_MESSAGE)

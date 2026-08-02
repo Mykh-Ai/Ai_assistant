@@ -1,0 +1,276 @@
+import asyncio
+from pathlib import Path
+
+from bot.config import Config
+from bot.handlers.invoice import (
+    InvoiceReferenceContinuationStates,
+    process_invoice_text,
+    unknown_slash_command,
+)
+from bot.services.active_fsm_guard import handle_active_fsm_text_update
+from bot.services.db import init_db
+from bot.services.info_help_assistant import InfoHelpAssistantResult
+from bot.services.info_help_rollout import contextual_info_help_v2_enabled
+
+
+class _Message:
+    def __init__(self, text: str, telegram_id: int = 111) -> None:
+        self.text = text
+        self.message_id = 1
+        self.from_user = type('User', (), {'id': telegram_id})()
+        self.chat = type('Chat', (), {'id': telegram_id + 1000})()
+        self.answers: list[str] = []
+        self.answer_kwargs: list[dict] = []
+
+    async def answer(self, text: str, **kwargs) -> None:
+        self.answers.append(text)
+        self.answer_kwargs.append(kwargs)
+
+    async def answer_document(self, *args, **kwargs) -> None:
+        return None
+
+
+class _State:
+    def __init__(self, current_state=None, data=None) -> None:
+        self.current_state = current_state
+        self.data = dict(data or {})
+        self.cleared = False
+
+    async def get_state(self):
+        return self.current_state
+
+    async def set_state(self, value) -> None:
+        self.current_state = getattr(value, 'state', value)
+
+    async def get_data(self):
+        return dict(self.data)
+
+    async def update_data(self, **kwargs) -> None:
+        self.data.update(kwargs)
+
+    async def clear(self) -> None:
+        self.current_state = None
+        self.data.clear()
+        self.cleared = True
+
+
+def _config(tmp_path: Path, *, rollout: str = 'enabled', admins=()) -> Config:
+    return Config(
+        bot_token='token',
+        openai_api_key='sk-test',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'test.db',
+        storage_dir=tmp_path,
+        admin_telegram_user_ids=frozenset(admins),
+        infohelp_contextual_v2_rollout=rollout,
+    )
+
+
+def _result(**overrides) -> InfoHelpAssistantResult:
+    values = {
+        'intent_kind': 'business_action_request',
+        'speech_act': 'execute_request',
+        'domain_id': 'invoices',
+        'object_kind': 'invoice',
+        'operation_id': 'delete',
+        'proposed_action_id': 'delete_existing_invoice',
+        'intent_complete': True,
+        'confidence': 0.99,
+    }
+    values.update(overrides)
+    return InfoHelpAssistantResult(**values)
+
+
+def test_receipt_delete_capability_question_blocks_false_invoice_delete(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _Message('Чи можу я видалити чек?')
+    state = _State()
+
+    async def _primary(**kwargs):
+        return 'delete_existing_invoice'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='capability_question',
+            speech_act='capability_question',
+            domain_id='accounting_documents',
+            object_kind='receipt',
+            operation_id='delete',
+            proposed_action_id=None,
+            confidence=0.98,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    answer = message.answers[-1].casefold()
+    assert 'nepodporujem' in answer
+    assert 'inú deštruktívnu akciu' in answer
+    assert state.current_state is None
+    assert 'číslo faktúry' not in answer
+
+
+def test_correction_negates_invoice_and_blocks_delete_flow(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _Message('Я хочу чек видалити, а не фактуру!')
+    state = _State()
+
+    async def _primary(**kwargs):
+        return 'delete_existing_invoice'
+
+    async def _assistant(**kwargs):
+        return _result(
+            speech_act='correction',
+            domain_id='accounting_documents',
+            object_kind='receipt',
+            operation_id='delete',
+            proposed_action_id=None,
+            is_correction=True,
+            negated_objects=('invoice',),
+            corrected_from_object='invoice',
+            corrected_to_object='receipt',
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert 'nepodporujem' in message.answers[-1].casefold()
+    assert state.current_state is None
+
+
+def test_supported_invoice_delete_without_reference_enters_continuation_after_v2(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _Message('Vymazať faktúru')
+    state = _State()
+
+    async def _primary(**kwargs):
+        return 'delete_existing_invoice'
+
+    async def _assistant(**kwargs):
+        return _result(intent_complete=False, missing_slots=('invoice_reference',))
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state == InvoiceReferenceContinuationStates.waiting_reference.state
+    assert state.data['pending_invoice_reference_action'] == 'delete_existing_invoice'
+
+
+def test_contact_edit_never_becomes_supplier_profile_edit(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _Message('Редагувати контакт')
+    state = _State()
+    supplier_calls: list[str] = []
+
+    async def _primary(**kwargs):
+        return 'edit_supplier'
+
+    async def _assistant(**kwargs):
+        return _result(
+            domain_id='contacts', object_kind='contact', operation_id='edit',
+            proposed_action_id=None, confidence=0.97,
+        )
+
+    async def _supplier(**kwargs):
+        supplier_calls.append('called')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_upravit_profil', _supplier)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert supplier_calls == []
+    assert 'nepodporujem' in message.answers[-1].casefold()
+
+
+def test_vague_delete_is_clarified_without_destructive_route(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    message = _Message('видалити')
+    state = _State()
+
+    async def _primary(**kwargs):
+        return 'delete_user_database'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='incomplete_intent',
+            domain_id='unknown',
+            object_kind='unknown',
+            operation_id='delete',
+            proposed_action_id=None,
+            intent_complete=False,
+            clarification_question_sk='Čo presne chcete vymazať?',
+            confidence=0.96,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert message.answers == ['Čo presne chcete vymazať?']
+    assert state.current_state is None
+
+
+def test_unknown_command_route_is_final_and_uses_command_channel(tmp_path: Path, monkeypatch) -> None:
+    message = _Message('/contat')
+    state = _State()
+    captured: dict[str, object] = {}
+
+    async def _process(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr('bot.handlers.invoice.process_invoice_text', _process)
+    asyncio.run(unknown_slash_command(message, state, _config(tmp_path)))
+
+    assert captured['invoice_text'] == '/contat'
+    assert captured['input_channel'] == 'command'
+
+
+def test_active_fsm_help_keeps_state_and_calls_contextual_assistant_once(tmp_path: Path, monkeypatch) -> None:
+    state_name = 'InvoiceStates:waiting_service_clarification'
+    state = _State(current_state=state_name)
+    message = _Message('Що треба ввести?')
+    calls: list[str] = []
+
+    async def _navigation(**kwargs):
+        return 'describe_expected_input'
+
+    async def _assistant(**kwargs):
+        calls.append(kwargs['current_input_text'])
+        return _result(intent_kind='active_expected_input_question', speech_act='informational_question')
+
+    monkeypatch.setattr('bot.services.active_fsm_guard.resolve_active_fsm_navigation', _navigation)
+    monkeypatch.setattr('bot.services.info_help_resolver.resolve_info_help_assistant_with_llm', _assistant)
+    handled = asyncio.run(
+        handle_active_fsm_text_update(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            text=message.text,
+            input_channel='text',
+        )
+    )
+
+    assert handled is True
+    assert state.current_state == state_name
+    assert calls == [message.text]
+    assert 'stručný opis služby' in message.answers[-1]
+    assert message.answer_kwargs[-1]['reply_markup'] is not None
+
+
+def test_rollout_modes_fail_closed_and_admin_pilot_is_scoped(tmp_path: Path) -> None:
+    assert contextual_info_help_v2_enabled(_config(tmp_path, rollout='disabled'), 111) is False
+    assert contextual_info_help_v2_enabled(_config(tmp_path, rollout='invalid'), 111) is False
+    pilot = _config(tmp_path, rollout='admin_pilot', admins=(111,))
+    assert contextual_info_help_v2_enabled(pilot, 111) is True
+    assert contextual_info_help_v2_enabled(pilot, 222) is False
+    assert contextual_info_help_v2_enabled(_config(tmp_path, rollout='enabled'), 222) is True

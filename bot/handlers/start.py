@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.config import Config
+from bot.services.info_help_context import clear_info_help_context_for_message
 from bot.services.contact_service import ContactService
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierService
@@ -113,6 +114,7 @@ def build_start_status_message(config: Config, telegram_id: int) -> str:
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, config: Config, state: FSMContext | None = None) -> None:
+    clear_info_help_context_for_message(message)
     if state is not None:
         await state.clear()
     if message.from_user is None:
@@ -124,6 +126,7 @@ async def cmd_start(message: Message, config: Config, state: FSMContext | None =
 
 @router.message(lambda message: _command_token(message.text or '') == '/menu')
 async def cmd_menu(message: Message, config: Config, state: FSMContext | None = None) -> None:
+    clear_info_help_context_for_message(message)
     if state is not None:
         await state.clear()
     telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)

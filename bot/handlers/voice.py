@@ -30,8 +30,10 @@ from bot.handlers.contacts import (
 from bot.handlers.delete_user_database import DeleteUserDatabaseStates, VOICE_EXACT_CONFIRMATION_MESSAGE
 from bot.handlers.invoice import (
     CustomizationRequestStates,
+    InvoiceReferenceContinuationStates,
     InvoiceStates,
     customization_request_preview_decision,
+    invoice_reference_continuation,
     invoice_delete_existing_invoice_confirm,
     invoice_mark_existing_invoice_paid_confirm,
     invoice_edit_invoice_action,
@@ -223,6 +225,12 @@ async def handle_voice(
                 state=state,
                 config=config,
                 clarification_text=recognized_text,
+            )
+        elif current_state == InvoiceReferenceContinuationStates.waiting_reference.state:
+            await invoice_reference_continuation(
+                message=text_message,
+                state=state,
+                config=config,
             )
         elif current_state == InvoiceStates.waiting_customer_alias_confirm.state:
             await process_invoice_customer_alias_confirm(

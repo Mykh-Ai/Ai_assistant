@@ -9,6 +9,7 @@ from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKey
 from bot.config import Config
 from bot.handlers.onboarding import start_additional_supplier_profile_onboarding
 from bot.services.decision_resolver import resolve_yes_no
+from bot.services.info_help_context import clear_info_help_context_for_message
 from bot.services.semantic_action_resolver import resolve_semantic_action
 from bot.services.workspace_context import (
     WorkspaceContext,
@@ -215,6 +216,7 @@ async def _activate(
         target.actor_telegram_id,
         target.workspace_id,
     )
+    clear_info_help_context_for_message(message)
     await state.clear()
     await message.answer(
         f'Aktívny firemný profil bol zmenený na {target.workspace_display_name}.',

@@ -77,6 +77,7 @@ class _CallbackMessageAdapter:
         self.from_user = callback.from_user
         source_message = callback.message
         self.message_id = getattr(source_message, 'message_id', None)
+        self.chat = getattr(source_message, 'chat', None)
 
     async def answer(self, text: str, **kwargs) -> None:
         source_message = self._callback.message

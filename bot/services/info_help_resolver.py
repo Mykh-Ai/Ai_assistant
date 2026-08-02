@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from difflib import get_close_matches
 import json
 from typing import Any
 
@@ -14,7 +15,157 @@ from bot.services.info_help import (
     InfoHelpTriageResult,
     parse_info_help_triage_model_output,
 )
+from bot.services.info_help_action_registry import info_help_action_payload
+from bot.services.info_help_assistant import (
+    KNOWN_INFO_HELP_COMMANDS,
+    InfoHelpAssistantResult,
+    build_info_help_product_truth_view,
+    parse_info_help_assistant_model_output,
+)
 from bot.services.product_truth import list_capabilities
+
+
+def build_info_help_assistant_payload(
+    *,
+    current_input_text: str,
+    input_channel: str,
+    primary_resolver_result: str,
+    primary_resolver_diagnostics: dict[str, Any] | None = None,
+    primary_mutation_class: str = 'informational',
+    recent_conversation: tuple[dict[str, object], ...] | list[dict[str, object]] = (),
+    explicit_reply: dict[str, object] | None = None,
+    active_runtime_context: dict[str, object] | None = None,
+    known_command_tokens: tuple[str, ...] | list[str] = KNOWN_INFO_HELP_COMMANDS,
+) -> dict[str, Any]:
+    cleaned = ' '.join(current_input_text.split())[:1200]
+    raw_command = cleaned.split(maxsplit=1)[0] if cleaned.startswith('/') else None
+    return {
+        'context_name': 'info_help_contextual_assistant_v2',
+        'current_input': {
+            'current_input_text': cleaned,
+            'normalized_input_text': cleaned.casefold(),
+            'input_channel': input_channel if input_channel in {'text', 'command', 'voice_stt'} else 'text',
+            'likely_language': _likely_language(cleaned),
+            'raw_slash_command_token': raw_command,
+            'normalized_slash_command_token': raw_command.casefold() if raw_command else None,
+            'nearest_known_command_hints': (
+                get_close_matches(raw_command.casefold(), list(known_command_tokens), n=3, cutoff=0.55)
+                if raw_command else []
+            ),
+            'primary_resolver_result': primary_resolver_result,
+            'primary_resolver_diagnostics': primary_resolver_diagnostics or {},
+            'primary_mutation_class': primary_mutation_class,
+            'appears_noisy_or_malformed': len(cleaned) < 2,
+        },
+        'explicit_telegram_reply': explicit_reply,
+        'recent_conversation': list(recent_conversation)[:6],
+        'active_runtime_context': active_runtime_context or {},
+        'product_and_action_context': {
+            'product_truth': build_info_help_product_truth_view(),
+            'canonical_actions': info_help_action_payload(),
+            'known_command_tokens': list(known_command_tokens),
+            'negative_space': [
+                'receipt/delete is not invoice/delete',
+                'contact/edit is not supplier_profile/edit',
+                'capability questions never execute',
+                'vague destructive requests never execute',
+                'account-wide deletion is never suggested by InfoHelp',
+            ],
+        },
+        'expected_output': {
+            'intent_kind': 'one bounded intent kind',
+            'speech_act': 'one bounded speech act',
+            'domain_id': 'one bounded domain or unknown',
+            'object_kind': 'one bounded object or unknown',
+            'operation_id': 'one bounded operation or unknown',
+            'target_reference': 'bounded string or null',
+            'proposed_action_id': 'provided action or null',
+            'proposed_capability_id': 'provided capability or null',
+            'probable_command_target': 'provided command or null',
+            'intent_complete': 'boolean',
+            'missing_slots': 'bounded slot list',
+            'is_correction': 'boolean',
+            'negated_objects': 'bounded object list',
+            'negated_operations': 'bounded operation list',
+            'corrected_from_object': 'bounded object or null',
+            'corrected_to_object': 'bounded object or null',
+            'refers_to_active_flow': 'boolean',
+            'refers_to_explicit_reply': 'boolean',
+            'confidence': '0..1',
+            'acknowledgement_sk': 'short non-factual Slovak acknowledgement',
+            'clarification_question_sk': 'short Slovak question or empty',
+        },
+    }
+
+
+async def resolve_info_help_assistant_with_llm(
+    *,
+    current_input_text: str,
+    api_key: str | None,
+    model: str,
+    input_channel: str,
+    primary_resolver_result: str,
+    primary_resolver_diagnostics: dict[str, Any] | None = None,
+    primary_mutation_class: str = 'informational',
+    recent_conversation: tuple[dict[str, object], ...] | list[dict[str, object]] = (),
+    explicit_reply: dict[str, object] | None = None,
+    active_runtime_context: dict[str, object] | None = None,
+    timeout_seconds: float = 8.0,
+) -> InfoHelpAssistantResult:
+    """Run exactly one enhanced InfoHelp call; no retries or secondary classifier."""
+    cleaned = current_input_text.strip()
+    if not cleaned or not api_key or not api_key.startswith('sk-'):
+        return InfoHelpAssistantResult()
+    payload = build_info_help_assistant_payload(
+        current_input_text=cleaned,
+        input_channel=input_channel,
+        primary_resolver_result=primary_resolver_result,
+        primary_resolver_diagnostics=primary_resolver_diagnostics,
+        primary_mutation_class=primary_mutation_class,
+        recent_conversation=recent_conversation,
+        explicit_reply=explicit_reply,
+        active_runtime_context=active_runtime_context,
+    )
+    try:
+        client = AsyncOpenAI(api_key=api_key)
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                temperature=0,
+                response_format={'type': 'json_object'},
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': (
+                            'You are the single bounded contextual InfoHelp assistant for OfficeFlow/FakturaBot. '
+                            'Return JSON only in the provided schema. Extract exact domain, object, operation, speech act, '
+                            'correction, negation, references and missing slots. Select only provided IDs. Different business '
+                            'objects are never interchangeable because verbs are similar. Capability questions never execute. '
+                            'Do not return Product Truth status, callback data, side effects, SQL, handler paths, or claims '
+                            'that data changed.'
+                        ),
+                    },
+                    {'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)},
+                ],
+            ),
+            timeout=timeout_seconds,
+        )
+    except Exception:
+        return InfoHelpAssistantResult()
+    return parse_info_help_assistant_model_output(response.choices[0].message.content or '{}')
+
+
+def _likely_language(value: str) -> str:
+    lowered = value.casefold()
+    if any(char in lowered for char in 'іїєґ'):
+        return 'uk'
+    if any(char in lowered for char in 'ыэъё'):
+        return 'ru'
+    if any(char in lowered for char in 'čďľĺňóôŕšťúýžáäéí'):
+        return 'sk'
+    if any('\u0400' <= char <= '\u04ff' for char in lowered):
+        return 'mixed'
+    return 'unknown'
 
 
 _SUPPORTED_LANGUAGES = ('sk', 'uk', 'ru', 'mixed')

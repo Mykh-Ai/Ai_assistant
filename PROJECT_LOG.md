@@ -8815,3 +8815,34 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   open keyboard lifecycle evidence, externally unproven Gmail/Drive/provider
   smoke, PDF visual acceptance, phased cleanup, risks, rollback, and product
   owner questions.
+
+
+## 2026-08-02 - Contextual InfoHelp AI Assistant V2 repository implementation
+
+### Preflight and architecture
+
+- Initially audited current `origin/main` at `3cd85de54015a8bf5b8de01bcd24a5544db7af79` and inspected the existing remote `feat/infohelp-contextual-ai-assistant-v2`; it contained no implementation beyond historical main and required no force-push. During verification, `origin/main` advanced through the Gmail signed-relay evidence merges. Final delivery was refreshed onto exact base `4ab8f5bde30104b817d2cdfeca15d7f89044828b` as one clean V2 commit without force-push or unrelated branch work.
+- Materialized `docs/architecture/INFOHELP_CONTEXTUAL_AI_ASSISTANT_V2_ARCHITECTURE_DESIGN_PROOF.md` with verdict `ready_for_handoff`; final implementation status is `implemented_pending_interactive_acceptance`.
+- Preserved the PR #63/#65 rollback history. No V1 recovery handler/service, synthetic action-label dispatcher, generic callback, nearest-action selector, RAG, vector store, persistent transcript, or log-derived context was restored.
+
+### Implementation decision
+
+- Extended the existing `bot/services/info_help_resolver.py` owner with exactly one context-rich bounded assistant call. Python still owns Product Truth, exact domain/object/operation validation, canonical action eligibility, tenant/workspace scope, FSM, callbacks, confirmations, and effects.
+- Added a compact Product Truth view, a Python-owned existing-action semantic registry, strict result parser, process-memory context limited to three user and three bot turns for ten minutes per user/chat/workspace, same-chat explicit Telegram reply context, active-FSM descriptors, and a shared invoice-reference continuation owner for text/voice.
+- Callback business identity is `callback.from_user`; `callback.message` remains the source chat/message. Capability questions, correction/negation, vague destructive requests, unsupported receipt deletion, unsupported contact editing, and account-delete suggestions fail closed.
+- Added `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`; default and invalid values are `disabled`. Production configuration was not changed.
+
+### Regression-first and verification evidence
+
+- Before production code, `python -m pytest -q tests/test_info_help_contextual_v2.py tests/test_invoice_reference_continuation_v2.py` failed during collection because `INFO_HELP_INTENT_GENUINELY_UNCLEAR` and `InvoiceReferenceContinuationStates` did not yet exist.
+- First green expanded contextual checkpoint: `19 passed in 6.36s`.
+- Final focused InfoHelp/Product Truth/continuation command: `155 passed in 8.13s`.
+- Adjacent invoice/Product Truth compatibility command: `254 passed in 41.98s`.
+- Consolidated adjacent invoice/voice/FSM/contact/profile/callback/access/workspace/state/customization command: `502 passed, 7 subtests passed in 173.70s`.
+- Final full suite on refreshed base: `python -m pytest -q` -> `2463 passed, 7 subtests passed in 751.20s`; no skipped tests reported.
+- `python -m compileall -q bot` passed. `git diff --check` passed with only Git line-ending conversion warnings.
+
+### Scope and rollout
+
+- Repository implementation, tests, docs, commit, pushed branch, and PR only. No merge, deployment, restart, server access, production data access, DB migration, schema/storage write, or production configuration change.
+- AI maturity remains `partial Level 2`; interactive 20-journey Telegram acceptance under an explicitly enabled `admin_pilot` remains pending before any production acceptance claim.
