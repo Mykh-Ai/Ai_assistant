@@ -78,6 +78,10 @@ The next throttled batch proved cases 1-10 and then found that the model could o
 
 On merge SHA `59d52e7`, combined server batches passed cases 1-20 with zero DB writes and zero Telegram business effects; DB integrity/counts stayed unchanged. A qualitative audit then rejected the result as final because the quoted-message journey would still hit generic unclear copy and the vague-delete assertion did not prove primary/exact mismatch safety. The pilot returned to `disabled`; targeted handler repairs and acceptance tests now own those two gaps. Real Telegram interactive acceptance remains pending.
 
+Final repair PR #79 deployed at `4de87cb` disabled-first. Targeted production handler smoke then proved useful quoted-message explanation and no continuation/dispatch for vague destructive input; rollout was restored only to `admin_pilot`. Combined server evidence covers cases 1-20 with no DB write or Telegram business effect, and the final DB guard remained `quick_check=ok` with unchanged supplier/invoice counts. Repository verification ended at `162 passed` focused and `2473 passed, 7 subtests passed` full.
+
+This closes the server harness acceptance for the controlled admin pilot, not real Telegram UI/transport acceptance. No human Telegram message was sent by the harness, and the production pilot must not be described as generally enabled.
+
 ## Pending interactive acceptance
 
 After review and a deliberate `admin_pilot` configuration change, an authorized administrator must run the 20 journeys in real Telegram, with special attention to Ukrainian/Russian/mixed STT quality, old quoted-message behavior, visible keyboard lifecycle, invoice ambiguity/not-found retries and callback actor/workspace identity. Production acceptance must not be claimed before that pilot passes.
