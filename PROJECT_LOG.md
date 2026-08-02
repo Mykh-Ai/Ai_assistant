@@ -1,3 +1,26 @@
+# 2026-08-02 - Gmail signed callback relay merged and production-smoked
+
+- Backend PR #68 merged to main at 27d7367 and was fast-forwarded to
+  /bot/repo. Companion zevsflow-site PR #9 merged at 9eba5f3; GitHub CI
+  completed successfully.
+- Before backend deployment, a SQLite online backup was created at the scoped
+  production backup path with size matching the live database and mode 0600.
+- Rebuilt/recreated only the FakturaBot backend. FakturaBot and the pinned
+  cloudflared sidecar remained running with no published callback port.
+- In-container transport smoke: a correctly signed dummy relay reached the
+  callback and returned 400 only for invalid OAuth state; an invalid signature
+  returned 401 before OAuth/DB work. Safe browser headers were present.
+- Public end-to-end smoke on the registered zevsflow.sk callback followed
+  exactly one 302 relay and returned 400 for the dummy state. Worker and
+  backend responses both returned no-store, no-referrer, and noindex headers.
+  The former production 502 is resolved.
+- No real OAuth state, grant, Gmail call, mailbox mutation, imported document,
+  Drive upload, parser, LLM call, or business-data write was created by the
+  smoke.
+- Infrastructure status is production-ready for controlled consent. Product
+  status remains partial and requires_external_credentials until the configured
+  Zevs s.r.o administrator completes /gmail_connect with the expected account
+  and one deduplicated statement import is verified.
 # 2026-08-02 - Gmail callback HMAC signed relay variance
 
 - Docs/contracts read: active Gmail architecture proof, setup runbook, callback
