@@ -72,6 +72,8 @@ PR #70 was deployed disabled-first and enabled for `admin_pilot` after a verifie
 
 Focused repair verification: `156 passed in 7.14s`; this is repository evidence, not replacement for interactive Telegram acceptance.
 
+A subsequent server batch proved cases 1-4 and then failed closed when the model dropped explicit numeric reference `10`; rollout again returned to `disabled` with the database unchanged. The follow-up contract adds paired absent/present invoice-reference examples. This remains pending evidence until the complete repaired batch passes.
+
 ## Pending interactive acceptance
 
 After review and a deliberate `admin_pilot` configuration change, an authorized administrator must run the 20 journeys in real Telegram, with special attention to Ukrainian/Russian/mixed STT quality, old quoted-message behavior, visible keyboard lifecycle, invoice ambiguity/not-found retries and callback actor/workspace identity. Production acceptance must not be claimed before that pilot passes.
