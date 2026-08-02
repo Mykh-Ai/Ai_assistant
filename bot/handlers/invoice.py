@@ -3649,18 +3649,10 @@ async def _apply_contextual_info_help_v2(
         explicit_reply=explicit_reply,
     )
 
-    if result.intent_kind == INFO_HELP_INTENT_GENUINELY_UNCLEAR or result.confidence < 0.70:
-        await _answer_contextual_info_help(
-            message=message,
-            context_key=context_key,
-            text='Tejto správe som nerozumel. Skúste stručne napísať, čo chcete urobiť.',
-        )
-        return True, top_level_intent
-
     if (
-        result.intent_kind == 'conversational_followup'
-        and result.refers_to_explicit_reply
+        result.refers_to_explicit_reply
         and explicit_reply is not None
+        and result.intent_kind in {'conversational_followup', INFO_HELP_INTENT_GENUINELY_UNCLEAR}
     ):
         quoted = str(explicit_reply.get('replied_to_bot_text') or '')
         acknowledgement = result.acknowledgement_sk or 'Rozumiem, pýtate sa na moju citovanú správu.'
@@ -3671,6 +3663,14 @@ async def _apply_contextual_info_help_v2(
                 f'{acknowledgement}\nCitovaná správa bola: „{quoted[:500]}“\n'
                 'Táto správa opisovala stav v danom kroku; sama nič nevytvorila, nezmenila ani nevymazala.'
             ),
+        )
+        return True, top_level_intent
+
+    if result.intent_kind == INFO_HELP_INTENT_GENUINELY_UNCLEAR or result.confidence < 0.70:
+        await _answer_contextual_info_help(
+            message=message,
+            context_key=context_key,
+            text='Tejto správe som nerozumel. Skúste stručne napísať, čo chcete urobiť.',
         )
         return True, top_level_intent
 
@@ -3740,6 +3740,7 @@ async def _apply_contextual_info_help_v2(
         exact.object_kind in result.negated_objects
         or exact.operation_id in result.negated_operations
         or result.proposed_action_id != exact.action_id
+        or (semantic is not None and semantic.action_id != exact.action_id and not result.is_correction)
         or exact.entry_mode == 'not_infohelp_eligible'
     ):
         await _answer_contextual_info_help(

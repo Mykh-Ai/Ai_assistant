@@ -954,6 +954,8 @@ An explicit reference token is copied as bounded text, including a numeric invoi
 
 Same-chat/same-bot Telegram reply ownership and an active FSM help descriptor are Python-proven context facts. After bounded model parsing, Python may preserve those booleans as true when the validated inbound route already proved them; the model may add semantic interpretation but cannot erase deterministic ownership/state evidence or create it for an unproven reply/state.
 
+A proven quoted-message relationship is handled before the generic unclear fallback, so safe explanatory recovery survives an otherwise unclear semantic result. When the primary resolver and the exact bounded action disagree, InfoHelp does not dispatch the replacement action unless the bounded result explicitly identifies a correction; it asks for the exact object/action instead.
+
 Recent context is process memory only: at most three user and three visible bot turns, same user/chat/workspace, ten-minute TTL, lost on restart. It excludes unauthorized input, files, logs, DB rows, secrets and background sends. A same-chat reply to this bot is part of the current request independent of TTL. Context clears on `/start`, `/menu`, `/cancel`, workspace switch and completed user-data deletion.
 
 The old broad catalogue is retained only for an explicit overview. Invalid model output and genuinely unclear input receive a short narrow fallback with no button or effect. Rollout is `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`; invalid/missing values are `disabled`.

@@ -90,6 +90,14 @@
   unchanged. Python now preserves proven same-bot reply ownership and a proven
   `active_fsm_help` descriptor in the validated result instead of asking the
   model to rediscover those transport/runtime facts.
+- The combined final-SHA server batch then passed cases 1-20 with no DB write
+  or Telegram business effect. A post-smoke qualitative audit found two weak
+  assertions: a proven reply could still be hidden by the generic unclear
+  branch, and a vague destructive word could inherit a different exact action
+  from the model. The final safety repair handles proven quoted replies before
+  generic unclear fallback and rejects a primary/exact action mismatch unless
+  the bounded result explicitly marks a correction. The pilot was disabled
+  again before this repair deployment.
 - Touched scopes: Contextual InfoHelp LLM payload/prompt, focused tests,
   orchestration/InfoHelp/evaluation docs, project log, deployment rollout.
   No schema, migration, storage layout, access, PDF, STT/LMM, self-learning, or

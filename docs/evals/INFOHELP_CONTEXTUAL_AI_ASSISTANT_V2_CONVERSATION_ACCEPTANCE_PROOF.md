@@ -76,6 +76,8 @@ A subsequent server batch proved cases 1-4 and then failed closed when the model
 
 The next throttled batch proved cases 1-10 and then found that the model could omit an already proven explicit-reply boolean. Python now preserves validated same-bot reply ownership and `active_fsm_help` state context after parsing. The attempt rolled back to `disabled` with the database unchanged; full repaired batch evidence remains pending.
 
+On merge SHA `59d52e7`, combined server batches passed cases 1-20 with zero DB writes and zero Telegram business effects; DB integrity/counts stayed unchanged. A qualitative audit then rejected the result as final because the quoted-message journey would still hit generic unclear copy and the vague-delete assertion did not prove primary/exact mismatch safety. The pilot returned to `disabled`; targeted handler repairs and acceptance tests now own those two gaps. Real Telegram interactive acceptance remains pending.
+
 ## Pending interactive acceptance
 
 After review and a deliberate `admin_pilot` configuration change, an authorized administrator must run the 20 journeys in real Telegram, with special attention to Ukrainian/Russian/mixed STT quality, old quoted-message behavior, visible keyboard lifecycle, invoice ambiguity/not-found retries and callback actor/workspace identity. Production acceptance must not be claimed before that pilot passes.
