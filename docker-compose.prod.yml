@@ -15,3 +15,18 @@ services:
       - /bot/secrets:/bot/secrets:ro
     working_dir: /app
     command: python -m bot.main
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.2
+    container_name: fakturabot-cloudflared
+    restart: unless-stopped
+    depends_on:
+      - bot
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token-file
+      - /run/secrets/cloudflared-token
+    volumes:
+      - /bot/secrets/cloudflared-token:/run/secrets/cloudflared-token:ro

@@ -1,3 +1,31 @@
+# 2026-08-02 - Gmail callback private Tunnel deployment foundation
+
+- Docs/contracts read: Gmail collector setup runbook and architecture proof,
+  server agent context, current Compose definition, current callback runner,
+  and callback/config tests.
+- Constraints: no public VPS callback port; remotely managed outbound-only
+  Cloudflare Tunnel; exact Zevs workspace; Gmail read-only; file-backed Tunnel
+  token; separate Worker proxy secret; no secrets in git/logs/chat.
+- Touched scopes: production Compose, server/callback deployment documentation,
+  focused infrastructure regression. No Telegram routing, FSM, LLM/STT/LMM,
+  DB schema, persisted business data, access model, or PDF/layout change.
+- Status: callback transport `requires_setup` until the Cloudflare Tunnel,
+  hostname and Worker variables are configured and runtime-smoked. Gmail
+  collection remains disabled until that gate passes.
+- Maturity: deterministic external-integration setup only; the Gmail product
+  capability remains `partial` and `requires_external_credentials`.
+- Added a pinned `cloudflare/cloudflared:2026.7.2` service. It connects to
+  `http://bot:8081` over the private Compose network, mounts
+  `/bot/secrets/cloudflared-token` read-only, and publishes no host port.
+- Product proof: the public callback must traverse Worker -> authenticated
+  Tunnel hostname -> private callback; an unauthenticated direct Tunnel request
+  must fail closed. Real consent and one deduplicated statement import remain
+  separate acceptance gates.
+- Self-learning hooks: none; OAuth, callback transport and document collection
+  must not learn semantic aliases or bypass deterministic validation.
+- Rollback: disable both Gmail flags, restart the bot, stop the Tunnel service,
+  and disable its route. Preserve DB/storage and imported originals for audit.
+
 # 2026-08-02 - Separate Gmail OAuth credentials from owner Drive OAuth
 
 - Production preflight found that the active owner Drive OAuth integration

@@ -1,5 +1,9 @@
 # Changelog
 
+- Added a pinned, outbound-only Cloudflare Tunnel service for the private Gmail
+  OAuth callback. The Tunnel reads a file-backed token and publishes no VPS
+  port; activation still requires Cloudflare hostname/Worker configuration and
+  a controlled OAuth smoke.
 - Separated Gmail OAuth client credentials into GOOGLE_GMAIL_OAUTH_CLIENT_ID
   and GOOGLE_GMAIL_OAUTH_CLIENT_SECRET so Gmail setup cannot overwrite the
   existing Google Drive owner OAuth client.
