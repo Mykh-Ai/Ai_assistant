@@ -114,6 +114,32 @@ def build_info_help_assistant_payload(
                         'corrected_to_object': 'receipt',
                     },
                 },
+                {
+                    'input': 'Видалити фактуру',
+                    'result': {
+                        'intent_kind': 'business_action_request',
+                        'speech_act': 'execute_request',
+                        'domain_id': 'invoices',
+                        'object_kind': 'invoice',
+                        'operation_id': 'delete',
+                        'target_reference': None,
+                        'intent_complete': False,
+                        'missing_slots': ['invoice_reference'],
+                    },
+                },
+                {
+                    'input': 'Видалити фактуру 10',
+                    'result': {
+                        'intent_kind': 'business_action_request',
+                        'speech_act': 'execute_request',
+                        'domain_id': 'invoices',
+                        'object_kind': 'invoice',
+                        'operation_id': 'delete',
+                        'target_reference': '10',
+                        'intent_complete': True,
+                        'missing_slots': [],
+                    },
+                },
             ],
         },
         'expected_output': {
@@ -198,6 +224,9 @@ async def resolve_info_help_assistant_with_llm(
                             'Capability questions never execute. Every enum field must be copied exactly from its allowed_values; '
                             'never copy descriptions, field labels, or placeholder prose as values. Follow critical_semantic_examples '
                             'when they match the exact object, operation, speech act, correction, or negation. '
+                            'Copy an explicit invoice number or other exact reference token from current_input_text into '
+                            'target_reference as a string. A numeric token such as 10 after the named invoice is the reference '
+                            'and must not be discarded or reported as a missing invoice_reference. '
                             'Do not return Product Truth status, callback data, side effects, SQL, handler paths, or claims '
                             'that data changed.'
                         ),

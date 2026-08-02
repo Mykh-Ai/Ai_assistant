@@ -197,6 +197,10 @@ def test_payload_exposes_exact_enum_values_and_receipt_negative_space_example() 
     example = payload['product_and_action_context']['critical_semantic_examples'][0]['result']
     assert (example['domain_id'], example['object_kind'], example['operation_id']) == ('accounting_documents', 'receipt', 'delete')
     assert payload['product_and_action_context']['primary_resolver_is_untrusted_diagnostic'] is True
+    reference_example = payload['product_and_action_context']['critical_semantic_examples'][-1]['result']
+    assert reference_example['target_reference'] == '10'
+    assert reference_example['intent_complete'] is True
+    assert reference_example['missing_slots'] == []
 
 
 def test_pre_execution_gate_covers_unknown_destructive_correction_and_command() -> None:

@@ -54,6 +54,13 @@
   receipt/invoice negative-space examples. Python validation, Product Truth,
   action eligibility, tenant/FSM/confirmation gates, and fail-closed behavior
   remain authoritative.
+- The first repaired batch proved receipt capability/action/correction and the
+  incomplete invoice-delete case, then failed closed because the model dropped
+  an explicit numeric invoice reference (`10`). Each attempt restored rollout
+  to `disabled`; database integrity and row counts remained unchanged.
+- The follow-up contract makes exact reference-token copying explicit and adds
+  paired missing-reference/present-reference examples. Python still validates
+  and owns the continuation/action boundary; no reference is invented.
 - Touched scopes: Contextual InfoHelp LLM payload/prompt, focused tests,
   orchestration/InfoHelp/evaluation docs, project log, deployment rollout.
   No schema, migration, storage layout, access, PDF, STT/LMM, self-learning, or
