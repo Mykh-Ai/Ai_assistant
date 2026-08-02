@@ -1,5 +1,8 @@
 # Changelog
 
+- Fixed Gmail OAuth scope validation to accept Google's canonical OIDC
+  `userinfo.email` and `userinfo.profile` aliases while still requiring exact
+  `gmail.readonly` and rejecting broader Google API scopes.
 - Replaced the unreliable Worker-to-Tunnel Gmail callback subrequest with a
   five-minute HMAC-SHA256 signed browser relay. The outbound-only Tunnel still
   publishes no VPS port; the backend verifies signature and age before OAuth

@@ -506,6 +506,13 @@ messages and settings. The trusted query limits application behavior, not the
 OAuth permission. Policy/consent material must say this accurately. A matching
 query/sender/subject does not authenticate an email or attachment.
 
+Google may report the requested OIDC `email` and `profile` grants using their
+canonical `https://www.googleapis.com/auth/userinfo.email` and
+`https://www.googleapis.com/auth/userinfo.profile` aliases. Deterministic scope
+validation treats only those pairs as equivalent, persists the actual granted
+values, still requires the exact `gmail.readonly` grant, and rejects broader
+Google API scopes.
+
 ## 11. Storage, Deduplication, Recovery, Archive, And Responses
 
 Approved local path:

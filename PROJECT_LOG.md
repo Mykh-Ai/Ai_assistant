@@ -1,3 +1,23 @@
+# 2026-08-02 - Gmail OAuth canonical OIDC scope alias repair
+
+- A controlled real `/gmail_connect` callback reached the production backend,
+  consumed its one-time state, and failed before grant persistence with the safe
+  code `oauth_scope_missing`; no grant, binding, Gmail call, import, or mailbox
+  mutation was created.
+- Root cause: the Gmail integration required literal `email` and `profile`
+  values even though Google may return their canonical `userinfo.email` and
+  `userinfo.profile` scope aliases. The older Drive token boundary already
+  handled these official equivalents.
+- Scope validation now accepts only those two official OIDC aliases, persists
+  the actual provider-returned scope values, still requires exact
+  `gmail.readonly`, and continues to reject broader Google API scopes.
+- Touched scopes: deterministic OAuth grant validation, focused regression
+  tests, Gmail architecture proof, project log, and changelog. No schema,
+  migration, storage layout, LLM/STT/LMM/FSM, Product Truth claim, collector,
+  Gmail mutation, or existing persisted business data changes.
+- Status remains `partial`, `requires_admin`, and
+  `requires_external_credentials` until a new production consent completes and
+  one bounded statement import is verified.
 # 2026-08-02 - Gmail signed callback relay merged and production-smoked
 
 - Backend PR #68 merged to main at 27d7367 and was fast-forwarded to

@@ -7,6 +7,7 @@ import sqlite3
 import pytest
 
 from bot.services.google_integration_service import (
+    GMAIL_READONLY_SCOPE,
     GMAIL_SCOPES,
     GoogleIntegrationError,
     GoogleIntegrationService,
@@ -141,6 +142,62 @@ def test_verified_binding_encrypts_tokens_and_requires_nonce(tmp_path):
     assert b"access-secret" not in payload
     assert b"refresh-secret" not in payload
     assert tuple(json.loads(scopes)) == GMAIL_SCOPES
+
+
+def test_verified_binding_accepts_google_canonical_oidc_scope_aliases(tmp_path):
+    target = service(tmp_path)
+    created = prepare(target)
+    state = target.consume_state(created.raw_state_token)
+    canonical_scopes = (
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        GMAIL_READONLY_SCOPE,
+    )
+
+    status = target.save_verified_binding(
+        state=state,
+        identity=VerifiedGoogleIdentity(
+            subject="subject-1",
+            email="office@example.com",
+            nonce=created.raw_oidc_nonce,
+        ),
+        token=GoogleTokenEnvelope(
+            access_token="access", refresh_token="refresh", scopes=canonical_scopes
+        ),
+    )
+
+    assert status.binding_status == "active"
+    with sqlite3.connect(target._db_path) as connection:  # noqa: SLF001
+        stored_scopes = connection.execute(
+            "SELECT granted_scopes_json FROM google_oauth_grants"
+        ).fetchone()[0]
+    assert tuple(json.loads(stored_scopes)) == canonical_scopes
+
+
+def test_verified_binding_still_requires_gmail_readonly_scope(tmp_path):
+    target = service(tmp_path)
+    created = prepare(target)
+    state = target.consume_state(created.raw_state_token)
+
+    with pytest.raises(GoogleIntegrationError, match="oauth_scope_missing"):
+        target.save_verified_binding(
+            state=state,
+            identity=VerifiedGoogleIdentity(
+                subject="subject-1",
+                email="office@example.com",
+                nonce=created.raw_oidc_nonce,
+            ),
+            token=GoogleTokenEnvelope(
+                access_token="access",
+                refresh_token="refresh",
+                scopes=(
+                    "openid",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                    "https://www.googleapis.com/auth/userinfo.profile",
+                ),
+            ),
+        )
 
 
 def test_wrong_email_and_disallowed_scope_fail_closed(tmp_path):
