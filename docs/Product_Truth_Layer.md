@@ -1,7 +1,7 @@
 # Product Truth Layer
 ## InfoHelp contextual recovery truth (2026-08-02)
 
-The `info_help` capability remains `partial`. Local runtime now supports bounded contextual recovery for primary unknowns, unmatched slash commands, and active-FSM help, but this is not complete arbitrary capability Q&A and is not production-accepted until a deployed Telegram smoke is authorized and completed.
+The `info_help` capability remains `partial`. Production now runs bounded contextual recovery for primary unknowns, unmatched slash commands, and active-FSM help. Production process/polling, in-container bounded-runtime, and configured live-LLM smoke passed on merge SHA `ec7c5696ec6b73b6e0a90c38ce3a1a1a5f8bae89`; this is still not complete arbitrary capability Q&A, and interactive authorized Telegram text/voice/callback acceptance remains pending.
 
 The LLM receives capability metadata for classification only. It cannot set support status or author capability claims. Python revalidates Product Truth before rendering or dispatch. Unsupported/planned/unknown selections do not execute; existing Product Truth wording and customization-preview ownership remain authoritative.
 

@@ -1,8 +1,8 @@
 # INFOHELP_CONTEXTUAL_RECOVERY_V1 Conversation Acceptance Proof
 
-Status: `automated_local_acceptance_passed`
+Status: `automated_local_and_deployed_runtime_smoke_passed`
 
-Runtime acceptance: `pending_deployed_telegram_smoke`
+Runtime acceptance: `interactive_telegram_journey_pending`
 
 Date: 2026-08-02
 
@@ -42,6 +42,19 @@ Python rejects unknown enums/IDs, cross-domain candidates, more than four candid
 - `python -m compileall -q bot`: passed.
 - `git diff --check`: passed (Git emitted only an LF-to-CRLF working-copy warning for this Windows worktree).
 
+## Deployed runtime verification
+
+- PR `#63` merged at `ec7c5696ec6b73b6e0a90c38ce3a1a1a5f8bae89`; `/bot/repo` was clean and synchronized to that exact SHA before deployment.
+- The production compose build and recreate completed successfully; `fakturabot` reported `running` and restart count `0`.
+- Startup logs showed FakturaBot startup, scheduler startup, Telegram polling startup, and polling for `@officeflow_sk_bot`, with no polling conflict or startup exception in the observed window.
+- Production-image compile smoke: `python -m compileall -q bot` passed.
+- In-container bounded runtime smoke: `infohelp_runtime_smoke=ok`.
+- The runtime smoke checked final-router placement, 3-user/3-bot context bounds, workspace metadata isolation, active-flow descriptor plus `Hlavné menu`, sanitized payload exclusion of workspace ID, and strict parsing of a bounded known action.
+- Configured live-LLM smoke: `infohelp_live_llm_smoke=ok outcome=clarify_candidates` for synthetic `/invoce` input with no recent turns and no business side effect.
+- The slim production image does not install `pytest`; the complete pre-merge suite above is therefore the automated regression evidence rather than an in-container rerun.
+- Temporary smoke scripts were removed from both host and container after the checks.
+- No DB/schema migration, storage rewrite, or production business-data mutation occurred.
+
 ## Remaining acceptance boundary
 
-No server was accessed. No deployment, restart, migration, DB schema write, production data change, or production Telegram smoke was performed. The feature remains partial Level 2 and `implemented_locally_pending_runtime_acceptance` until a separately authorized deployed Telegram smoke validates real message, STT, callback, and keyboard behavior.
+The feature remains partial Level 2. Production process/polling, bounded runtime, and configured live-LLM smoke passed, but no real authorized user update was fabricated. A real Telegram text message, voice/STT update, recovery-button click, and terminal keyboard lifecycle still require interactive acceptance before the feature can be described as fully production-accepted.
