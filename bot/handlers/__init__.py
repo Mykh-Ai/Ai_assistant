@@ -41,7 +41,7 @@ routers: list[Router] = [
     contacts_router,
     contracts_router,
     work_time_router,
-    invoice_router,
     gmail_settings_router,
     settings_router,
+    invoice_router,
 ]

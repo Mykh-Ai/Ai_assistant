@@ -1,5 +1,8 @@
 # Changelog
 
+- Restored deterministic `/google_drive_*` and `/gmail_*` command routing by
+  placing their settings routers before the invoice unknown-slash fallback;
+  known commands no longer invoke LLM/InfoHelp.
 - Hardened Contextual InfoHelp V2 after a fail-closed production pilot smoke:
   all bounded output fields now carry literal allowed values, the primary
   resolver is explicitly untrusted diagnostic context, and receipt/invoice

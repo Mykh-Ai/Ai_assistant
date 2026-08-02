@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from bot.config import Config
+from bot.handlers import routers
 from bot.handlers import settings
 from bot.handlers.settings import (
     GOOGLE_DRIVE_ADMIN_ONLY_MESSAGE,
@@ -134,6 +135,13 @@ def _assert_no_status_internals(answer: str) -> None:
 
     lowered = answer.lower()
     assert not any(value in lowered for value in forbidden)
+
+
+def test_google_settings_command_routers_precede_invoice_slash_fallback() -> None:
+    router_names = [router.name for router in routers]
+
+    assert router_names.index('gmail_settings') < router_names.index('invoice')
+    assert router_names.index('settings') < router_names.index('invoice')
 
 
 def test_admin_connect_creates_oauth_state_and_returns_safe_authorization_url(tmp_path: Path) -> None:
