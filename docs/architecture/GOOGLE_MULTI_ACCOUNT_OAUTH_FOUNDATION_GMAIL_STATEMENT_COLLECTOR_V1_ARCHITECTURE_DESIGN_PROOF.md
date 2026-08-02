@@ -1,17 +1,24 @@
 # Google Multi-Account OAuth Foundation And Gmail Statement Collector V1
 
-Verdict: `ready_for_handoff`
+Verdict: `partial_runtime_proven` for the configured controlled pilot
 
-Runtime implementation status: `partial` locally; `runtime_not_proven` externally
+Runtime implementation status: `partial`; public callback, real configured-admin
+OAuth consent, encrypted connected grant, and first bounded statement import
+are proven in production.
 
-Current Product Truth after local implementation: `partial`,
-`requires_setup`, `requires_admin`, `requires_external_credentials`
+Current Product Truth: `partial`, `requires_setup`, `requires_admin`,
+`requires_external_credentials` outside the configured pilot.
 
-Implementation verification: focused backend and gateway tests passed; full website suite and real Google/deployment smoke remain pending
+Implementation verification: full backend suite, website CI/build/tests, signed
+callback relay smoke, real OAuth callback, one successful Gmail collection tick,
+one stored workspace-local statement with `parse_status=deferred`, and a second
+tick with no new import passed. The separate owner Google Drive connection is
+currently `needs_reauth`; its queued archive job is safely `retry_wait` and the
+local Gmail import remains authoritative.
 
-This is an architecture and implementation-handoff proof. It does not prove
-that Gmail is connected, Google verification is complete, the callback is
-deployed, credentials exist, or a real statement has been collected.
+This proof does not claim Google restricted-scope verification/security review,
+overlap-based source redownload dedup, revoked-token/disconnect recovery, Drive
+upload success, statement parsing, reconciliation, or broader rollout.
 
 ## 1. Task Identity And Product Need
 
@@ -505,6 +512,13 @@ OCR, parsing, macro/archive handling, or authenticity claim.
 messages and settings. The trusted query limits application behavior, not the
 OAuth permission. Policy/consent material must say this accurately. A matching
 query/sender/subject does not authenticate an email or attachment.
+
+Google may report the requested OIDC `email` and `profile` grants using their
+canonical `https://www.googleapis.com/auth/userinfo.email` and
+`https://www.googleapis.com/auth/userinfo.profile` aliases. Deterministic scope
+validation treats only those pairs as equivalent, persists the actual granted
+values, still requires the exact `gmail.readonly` grant, and rejects broader
+Google API scopes.
 
 ## 11. Storage, Deduplication, Recovery, Archive, And Responses
 

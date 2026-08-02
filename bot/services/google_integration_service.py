@@ -18,6 +18,17 @@ from bot.services.token_crypto import EncryptedToken, TokenCryptoProvider
 GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GMAIL_SCOPES = ("openid", "email", "profile", GMAIL_READONLY_SCOPE)
+GOOGLE_OIDC_SCOPE_ALIASES = {
+    "email": frozenset({"https://www.googleapis.com/auth/userinfo.email"}),
+    "profile": frozenset({"https://www.googleapis.com/auth/userinfo.profile"}),
+}
+GMAIL_ALLOWED_GOOGLE_API_SCOPES = frozenset(
+    {
+        GMAIL_READONLY_SCOPE,
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+    }
+)
 EXECUTABLE_GOOGLE_SERVICES = frozenset({"gmail"})
 GOOGLE_GRANT_STATUSES = frozenset(
     {"connected", "disconnected", "needs_reauth", "revoked", "error"}
@@ -646,16 +657,23 @@ def _validate_service(value: str) -> str:
 
 def _validate_scopes(scopes: tuple[str, ...], service: str) -> tuple[str, ...]:
     normalized = tuple(dict.fromkeys(_required_text(v, "scope") for v in scopes))
-    required = set(GMAIL_SCOPES if service == "gmail" else ())
-    if not required.issubset(normalized):
+    required = GMAIL_SCOPES if service == "gmail" else ()
+    if any(not _scope_is_granted(scope, normalized) for scope in required):
         raise GoogleIntegrationError("oauth_scope_missing")
     if service == "gmail" and any(
         scope.startswith("https://www.googleapis.com/auth/")
-        and scope not in {GMAIL_READONLY_SCOPE}
+        and scope not in GMAIL_ALLOWED_GOOGLE_API_SCOPES
         for scope in normalized
     ):
         raise GoogleIntegrationError("oauth_scope_not_allowed")
     return normalized
+
+
+def _scope_is_granted(required_scope: str, granted_scopes: tuple[str, ...]) -> bool:
+    granted = set(granted_scopes)
+    if required_scope in granted:
+        return True
+    return bool(GOOGLE_OIDC_SCOPE_ALIASES.get(required_scope, frozenset()) & granted)
 
 
 def _token_hash(value: str) -> str:

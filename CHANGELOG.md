@@ -1,6 +1,13 @@
 # Changelog
 
 - Added a disabled-by-default Contextual InfoHelp AI Assistant V2 inside the existing InfoHelp owner: one bounded context-rich LLM interpretation call, Python-owned Product Truth and exact object-operation validation, correction/negation and explicit-reply context, active-FSM help, and shared invoice-reference continuation. No database migration, persistent transcript, deployment, or production configuration change.
+- Recorded controlled production Gmail evidence: real connected readonly grant,
+  one successful workspace-local statement import with deferred parsing, a
+  second tick with no new import, and safe local preservation while the separate
+  owner Drive archive remains `needs_reauth`/`retry_wait`.
+- Fixed Gmail OAuth scope validation to accept Google's canonical OIDC
+  `userinfo.email` and `userinfo.profile` aliases while still requiring exact
+  `gmail.readonly` and rejecting broader Google API scopes.
 - Replaced the unreliable Worker-to-Tunnel Gmail callback subrequest with a
   five-minute HMAC-SHA256 signed browser relay. The outbound-only Tunnel still
   publishes no VPS port; the backend verifies signature and age before OAuth
