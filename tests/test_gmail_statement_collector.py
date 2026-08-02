@@ -12,6 +12,7 @@ from bot.services.gmail_readonly_adapter import (
 )
 from bot.services.gmail_statement_collector import (
     GmailStatementCollector,
+    GmailStatementCollectorError,
     GmailStatementPolicy,
     GmailStatementStore,
 )
@@ -114,6 +115,40 @@ def test_nested_mime_attachment_and_inline_are_bounded():
     assert adapter.download(candidates[0], maximum=1024) == b"statement-one"
     assert adapter.download(candidates[1], maximum=1024) == b"a,b\n1,2"
 
+
+def test_octet_stream_pdf_requires_pdf_signature(tmp_path):
+    payload = message_payload()
+    payload["payload"]["parts"][1]["mimeType"] = "application/octet-stream"
+    adapter = GmailReadonlyAdapter(
+        Transport(payload), trusted_query="has:attachment filename:pdf", batch_size=10
+    )
+    candidate = adapter.attachment_candidates("message-1")[0]
+    octet_stream_policy = GmailStatementPolicy(
+        maximum_bytes=1024,
+        allowed_mime_types=frozenset({"application/octet-stream"}),
+        allowed_extensions=frozenset({".pdf"}),
+    )
+    store = GmailStatementStore(tmp_path / "db.sqlite", tmp_path / "storage")
+
+    with pytest.raises(
+        GmailStatementCollectorError, match="gmail_attachment_signature_invalid"
+    ):
+        store.store(
+            workspace=workspace(),
+            connection_id="connection",
+            candidate=candidate,
+            content=b"not-a-pdf",
+            policy=octet_stream_policy,
+        )
+
+    result = store.store(
+        workspace=workspace(),
+        connection_id="connection",
+        candidate=candidate,
+        content=b"%PDF-1.7\nstatement",
+        policy=octet_stream_policy,
+    )
+    assert result.status == "stored"
 
 def test_atomic_store_source_and_content_dedup(tmp_path):
     store = GmailStatementStore(tmp_path / "db.sqlite", tmp_path / "storage")

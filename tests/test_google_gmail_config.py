@@ -29,8 +29,8 @@ def test_enabled_gmail_accepts_only_complete_bounded_config(monkeypatch):
         "GOOGLE_INTEGRATION_CALLBACK_PROXY_SECRET": "s" * 32,
         "GOOGLE_INTEGRATION_PUBLIC_REDIRECT_URI":
             "https://zevsflow.sk/oauth/google/integration/callback",
-        "GOOGLE_OAUTH_CLIENT_ID": "client",
-        "GOOGLE_OAUTH_CLIENT_SECRET": "secret",
+        "GOOGLE_GMAIL_OAUTH_CLIENT_ID": "client",
+        "GOOGLE_GMAIL_OAUTH_CLIENT_SECRET": "secret",
         "GOOGLE_TOKEN_CRYPTO_SECRET": "crypto",
         "GOOGLE_GMAIL_TARGET_WORKSPACE_ID": "workspace-zevs",
         "GOOGLE_GMAIL_EXPECTED_EMAIL": "office@example.com",
@@ -43,6 +43,30 @@ def test_enabled_gmail_accepts_only_complete_bounded_config(monkeypatch):
     assert config.target_workspace_id == "workspace-zevs"
     assert "secret" not in repr(config)
     assert "has:attachment" not in repr(config)
+
+
+def test_gmail_credentials_do_not_fall_back_to_owner_drive_oauth(monkeypatch):
+    values = {
+        "GOOGLE_GMAIL_ENABLED": "true",
+        "GOOGLE_INTEGRATION_CALLBACK_ENABLED": "true",
+        "GOOGLE_INTEGRATION_CALLBACK_PROXY_SECRET": "s" * 32,
+        "GOOGLE_INTEGRATION_PUBLIC_REDIRECT_URI":
+            "https://zevsflow.sk/oauth/google/integration/callback",
+        "GOOGLE_OAUTH_CLIENT_ID": "owner-drive-client",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "owner-drive-secret",
+        "GOOGLE_TOKEN_CRYPTO_SECRET": "crypto",
+        "GOOGLE_GMAIL_TARGET_WORKSPACE_ID": "workspace-zevs",
+        "GOOGLE_GMAIL_EXPECTED_EMAIL": "office@example.com",
+        "GOOGLE_GMAIL_STATEMENT_QUERY": "has:attachment newer_than:30d",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("GOOGLE_GMAIL_OAUTH_CLIENT_ID", raising=False)
+    monkeypatch.delenv("GOOGLE_GMAIL_OAUTH_CLIENT_SECRET", raising=False)
+
+    with pytest.raises(RuntimeError, match="GOOGLE_GMAIL_OAUTH_CLIENT_ID"):
+        load_google_gmail_config()
+
 
 def test_callback_cannot_start_when_gmail_integration_is_disabled(monkeypatch):
     monkeypatch.setenv("GOOGLE_INTEGRATION_CALLBACK_ENABLED", "1")

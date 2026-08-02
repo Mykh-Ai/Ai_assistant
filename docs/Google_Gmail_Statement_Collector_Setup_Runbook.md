@@ -81,8 +81,8 @@ When ready, provide:
 ```dotenv
 GOOGLE_GMAIL_ENABLED=1
 GOOGLE_INTEGRATION_CALLBACK_ENABLED=1
-GOOGLE_OAUTH_CLIENT_ID=<secret>
-GOOGLE_OAUTH_CLIENT_SECRET=<secret>
+GOOGLE_GMAIL_OAUTH_CLIENT_ID=<secret>
+GOOGLE_GMAIL_OAUTH_CLIENT_SECRET=<secret>
 GOOGLE_INTEGRATION_PUBLIC_REDIRECT_URI=https://zevsflow.sk/oauth/google/integration/callback
 GOOGLE_GMAIL_EXPECTED_EMAIL=<exact-google-account-email>
 GOOGLE_GMAIL_TARGET_WORKSPACE_ID=<canonical-workspace-id>
@@ -101,13 +101,22 @@ GOOGLE_GMAIL_INITIAL_LOOKBACK_DAYS=30
 GOOGLE_GMAIL_OVERLAP_HOURS=24
 GOOGLE_GMAIL_BATCH_SIZE=25
 GOOGLE_GMAIL_MAX_ATTACHMENT_BYTES=15728640
-GOOGLE_GMAIL_ALLOWED_MIME_TYPES=application/pdf,text/csv,application/csv
-GOOGLE_GMAIL_ALLOWED_EXTENSIONS=.pdf,.csv
+GOOGLE_GMAIL_ALLOWED_MIME_TYPES=application/pdf,application/octet-stream
+GOOGLE_GMAIL_ALLOWED_EXTENSIONS=.pdf
 GOOGLE_GMAIL_NOTIFICATION_COOLDOWN_SECONDS=86400
 ```
 
+Tatra banka currently labels its statement PDF as `application/octet-stream`.
+That MIME type is accepted only for a `.pdf` filename whose downloaded bytes
+start with the PDF signature `%PDF-`; other octet-stream files fail closed.
+
 Do not put secrets in git, logs, screenshots, task documents, browser URLs, or
 Telegram messages.
+
+The Gmail client variables are intentionally separate from
+`GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`, which remain owned by
+the existing Google Drive owner OAuth integration. Never replace the Drive
+credentials while configuring Gmail.
 
 ## 4. Activation and verification
 
