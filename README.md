@@ -394,6 +394,15 @@ Production-like owner-run baseline:
 - `scripts/update_repo.sh`
 - `scripts/deploy_owner_run.sh`
 
+Gmail bank-statement collector V1:
+- partial, fail-closed runtime for one exact Gmail account and canonical workspace in the controlled pilot;
+- commands: `/gmail_connect`, `/gmail_status`, and `/gmail_disconnect`; exact setup state must come from `/gmail_status`, not from static InfoHelp flags;
+- uses only OIDC identity scopes plus `gmail.readonly`; it does not send, modify, label, archive, or delete Gmail messages and does not grant Drive access;
+- stores bounded matching attachments and metadata in workspace-local storage with `parse_status=deferred`; no parsing, reconciliation, cashflow, VAT, tax, or accounting conclusion is implemented;
+- the separately configured owner Drive archive may enqueue a stored statement without making Drive part of the Gmail OAuth grant;
+- controlled production evidence on 2026-08-02 proved one connected/active grant, one stored statement, a no-new-import second tick, and a separate Drive archive state `uploaded`;
+- setup and operational evidence are documented in `docs/Google_Gmail_Statement_Collector_Setup_Runbook.md` and `docs/architecture/GOOGLE_MULTI_ACCOUNT_OAUTH_FOUNDATION_GMAIL_STATEMENT_COLLECTOR_V1_ARCHITECTURE_DESIGN_PROOF.md`.
+
 Google Drive owner OAuth archive:
 - partial runtime integration for one owner Google account, not per-client OAuth and not SaaS Drive sync;
 - enabled only with `GOOGLE_DRIVE_ENABLED=1` and `GOOGLE_DRIVE_MODE=owner_oauth`;
@@ -407,7 +416,8 @@ Google Drive owner OAuth archive:
 - receipt/incoming originals may be deleted only after upload success and DB state `uploaded`; metadata JSON stays local;
 - service-account mode is unsupported for personal My Drive unless a future Google Workspace/Shared Drive setup is explicitly configured;
 - setup details are in `docs/Google_Drive_Service_Account_Owner_Run_MVP.md` (current owner OAuth MVP doc), `docs/Google_Drive_Invoice_Archive_After_Due_Date_Spec.md`, and `docs/Google_Drive_Token_Crypto_Operations.md`;
-- live smoke on 2026-07-01 confirmed invoice `20260006` mark-paid -> `invoice_pdf` archive job -> Google Drive `uploaded` state.
+- live smoke on 2026-07-01 confirmed an invoice mark-paid -> `invoice_pdf` archive job -> Google Drive `uploaded` state;
+- controlled production evidence on 2026-08-02 reauthorized the owner connection and proved one Gmail bank-statement archive job/state reached `uploaded`; use `/google_drive_status` for the current configured connection state.
 
 Google Drive OAuth callback skeleton:
 - separate process, not `bot/main.py` polling;
@@ -415,8 +425,8 @@ Google Drive OAuth callback skeleton:
 - owner archive uses the manual/local bootstrap command today;
 - domain/web callback UX remains a later production improvement;
 - command: `python -m bot.google_drive_oauth_callback_app`;
-- `GOOGLE_OAUTH_CLIENT_SECRET` is a placeholder for future token exchange; do not commit a real value.
-- `GOOGLE_TOKEN_CRYPTO_SECRET` is a placeholder for future encrypted token storage; do not commit a real value.
+- `GOOGLE_OAUTH_CLIENT_SECRET` is required by the current owner OAuth exchange; never commit its real value.
+- `GOOGLE_TOKEN_CRYPTO_SECRET` is required by current encrypted token storage; never commit its real value.
 - Token crypto operations are documented in `docs/Google_Drive_Token_Crypto_Operations.md`.
 
 Before server-side work, read the private local runbook if present:

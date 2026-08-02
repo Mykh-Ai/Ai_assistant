@@ -371,7 +371,22 @@ def test_google_drive_invoice_storage_product_truth_is_partial_owner_oauth() -> 
     assert result.capability is not None
     assert result.capability.status == ProductTruthStatus.PARTIAL
     assert result.capability.runtime_owner is not None
+    assert result.capability.last_verified_at == '2026-08-02'
     assert answer is not None
+
+
+def test_safe_answer_distinguishes_capability_dependency_from_observed_account_gap() -> None:
+    static_payload = product_truth.get_safe_answer_payload('google_drive_invoice_storage')
+    observed_payload = product_truth.get_safe_answer_payload(
+        'google_drive_invoice_storage',
+        account_context={'google_drive_invoice_storage_credentials': False},
+    )
+
+    assert static_payload['account_context_observed'] is False
+    assert static_payload['requires_external_credentials'] is True
+    assert static_payload['account_requires_external_credentials'] is False
+    assert observed_payload['account_context_observed'] is True
+    assert observed_payload['account_requires_external_credentials'] is True
 
 
 def test_create_invoice_returns_supported_with_account_setup_requirement() -> None:

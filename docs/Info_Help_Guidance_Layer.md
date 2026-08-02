@@ -694,11 +694,13 @@ Expected target answer:
 
 ```text
 Ciastocne. Jedno nakonfigurovane owner OAuth konto moze cez worker archivovat
-potvrdene doklady. Nove blocky a prijate faktury pouziju samostatny priecinok
-vlastniaceho business profilu. Lokalne ulozenie este neznamena uspesny upload;
+potvrdene doklady a podporovane bankove vypisy. Kontrolovany produkcny pilot
+uz preukazal stav uploaded, ale stav konkretneho uctu sa overuje cez
+/google_drive_status. Lokalne ulozenie este neznamena uspesny upload;
 metadata ostavaju lokalne a stare Drive subory sa automaticky nepresuvaju.
-Nastavenie vyzaduje spravcu, OAuth credentials, sifrovany refresh token,
-root folder id a zapnuty worker.
+Nie je to per-client OAuth ani SaaS synchronizacia. Ak pripojenie nie je
+connected, nastavenie vyzaduje spravcu, OAuth credentials, sifrovany refresh
+token, root folder id a zapnuty worker.
 ```
 
 ### SMS
@@ -857,7 +859,7 @@ Do not:
 - bypass active FSM ownership;
 - trigger AI calls for unauthorized users.
 
-### Google Drive Owner OAuth Partial Runtime - 2026-07-01
+### Google Drive Owner OAuth Partial Runtime - 2026-08-02
 
 InfoHelp must answer Google Drive questions from Product Truth as `partial` when
 referring to the current owner OAuth archive slice.
@@ -873,7 +875,14 @@ Required wording boundaries:
 - say service-account mode is unsupported for personal My Drive unless Workspace/Shared Drive is explicitly configured later;
 - say invoice PDFs remain local in this MVP;
 - say upload success must not be claimed until the worker records `uploaded`;
-- when Drive is disabled/not configured, keep the local stub/no-upload wording.
+- when Drive is disabled/not configured, keep the local stub/no-upload wording;
+- direct the user to `/google_drive_status` for the deterministic current
+  connection state;
+- treat `requires_external_credentials` as a capability dependency, not as
+  proof that the current account is unconfigured;
+- do not render Gmail/Drive account status when no account context was supplied;
+- controlled production evidence may be described as one proven pilot upload,
+  never as per-user or general SaaS availability.
 
 Questions about marking an invoice paid must still emphasize bot-local payment
 state only: no bank confirmation and no bank matching.

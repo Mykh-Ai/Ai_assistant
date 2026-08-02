@@ -39,7 +39,8 @@ The separate owner Drive reauthorization and queued statement upload succeeded.
 | One malformed attachment among valid messages | Failure isolated; scheduler continues | collector implementation | local unit coverage partial |
 | `/gmail_status` | Bounded lifecycle summary; no token/path/message identifiers | handler implementation plus controlled production output | passed |
 | `/gmail_disconnect` | Grant unusable; collected files preserved | integration service test | passed |
-| User asks whether Gmail statements are parsed | Product Truth says collection is partial and parsing/reconciliation is absent | Product Truth/InfoHelp tests | added |
+| User asks whether Gmail statements are parsed | Product Truth says collection is partial and parsing/reconciliation is absent; static guidance does not invent live account state | Product Truth/InfoHelp regression tests | passed |
+| User asks whether Drive archive is configured | Product Truth remains partial and directs to `/google_drive_status`; external-credential dependency is not rendered as a false unconfigured-account claim | Product Truth/InfoHelp regression tests | passed |
 | Existing Google Drive archive | Separate grant/job path; Gmail local import survives Drive failure | production owner OAuth reauthorization plus bank-statement job/archive state `uploaded` | passed for controlled statement |
 | Public site indexing | Remains enabled; OAuth has independent launch gate | user decision and site config unchanged | verified by diff review |
 

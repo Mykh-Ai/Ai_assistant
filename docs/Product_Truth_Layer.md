@@ -672,13 +672,16 @@ Do not:
 - update Product Truth without evidence and log entry;
 - let learned aliases bypass Product Truth.
 
-### Current Google Drive Product Truth - 2026-07-01
+### Current Google Drive Product Truth - 2026-08-02
 
 `google_drive_invoice_storage` and
 `google_drive_invoice_archive_after_due_date` are `partial`, not fully
 `supported`.
 
-The implemented slice is owner OAuth archive:
+The implemented slice is owner OAuth archive. The controlled production pilot
+was reauthorized on 2026-08-02 and one queued bank-statement job plus its
+authoritative archive state reached `uploaded`. This is deployment evidence,
+not a static claim that every account or deployment is connected.
 
 - requires admin/server setup and external Google OAuth credentials;
 - uses one owner Google account, one encrypted refresh token, and one configured personal My Drive root folder;
@@ -704,6 +707,17 @@ Forbidden claims now include:
 - invoice PDFs are deleted after upload;
 - upload succeeded before the worker state is `uploaded`;
 - marking paid means bank-confirmed settlement.
+
+InfoHelp rendering rule:
+
+- `requires_external_credentials=true` describes a capability dependency; it
+  must not be rendered as "this account is not configured" without observed
+  account context;
+- static Gmail/Drive InfoHelp must not invent `requires_admin` or other live
+  integration state when no account context was supplied;
+- current connection state is read through `/google_drive_status` or
+  `/gmail_status`; generic capability guidance remains `partial` and keeps all
+  owner-only, asynchronous, and no-SaaS limitations.
 
 ### Current OfficeFlow Work-Time Product Truth - 2026-07-02
 

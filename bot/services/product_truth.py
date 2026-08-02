@@ -86,6 +86,9 @@ class ProductTruthResult:
                 'safe_next_steps': list(self.capability.safe_next_steps),
                 'customization_allowed': self.capability.customization_allowed,
                 'dangerous': self.capability.dangerous,
+                'account_requires_setup': self.account_requires_setup,
+                'account_requires_admin': self.account_requires_admin,
+                'account_requires_external_credentials': self.account_requires_external_credentials,
                 'requires_setup': self.capability.requires_setup or self.account_requires_setup,
                 'requires_admin': self.capability.requires_admin or self.account_requires_admin,
                 'requires_external_credentials': (
@@ -438,7 +441,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'Only the restricted gmail.readonly scope is allowed; Google Drive permissions are not requested and the existing owner Drive integration remains separate.',
             'The collector accepts only bounded configured MIME types and extensions, stores originals and metadata atomically, and deduplicates by Gmail source and workspace-local content hash.',
             'Imported statements have parse_status=deferred: no bank parsing, transaction matching, cashflow, VAT, tax analysis, or accounting conclusions are implemented.',
-            'The public OAuth callback and internal callback service require deployment and Google Console verification before a real account connection can be claimed.',
+            'The public OAuth callback and internal callback service require deployment and Google Console verification. The controlled production pilot proved one connected grant and one bounded import on 2026-08-02; wider rollout still requires retained verification evidence.',
         ),
         commands=('gmail_connect', 'gmail_status', 'gmail_disconnect'),
         runtime_owner='bot/handlers/gmail_settings.py, bot/services/google_integration_service.py, bot/services/gmail_statement_scheduler.py and bot/services/gmail_statement_collector.py',
@@ -457,7 +460,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'tests/test_gmail_statement_scheduler.py',
             'tests/test_gmail_statement_archive.py',
         ),
-        safe_next_steps=('An administrator must complete the external Google setup, enable the separate Gmail flags, connect the expected account with /gmail_connect, and verify /gmail_status before collection is expected.',),
+        safe_next_steps=('Use /gmail_status to inspect the configured binding. If it is not connected and active, an administrator must complete the external Google setup and connect the expected account with /gmail_connect.',),
         customization_allowed=True,
         requires_setup=True,
         requires_admin=True,
@@ -470,6 +473,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'A collected statement was parsed or reconciled.',
             'The OAuth callback is live before deployment and external verification.',
         ),
+        last_verified_at='2026-08-02',
     ),
     _capability(
         capability_id='google_drive_invoice_storage',
@@ -490,7 +494,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         linked_handlers=('bot/handlers/invoice.py', 'bot/handlers/invoice_followup.py', 'bot/services/archive_worker.py'),
         truth_source_refs=('docs/Product_Truth_Layer.md', 'docs/TZ_FakturaBot.md', 'README.md'),
         test_refs=('tests/test_google_drive_service_account_archive.py', 'tests/test_archive_worker.py', 'tests/test_product_truth.py', 'tests/test_info_help.py'),
-        safe_next_steps=('Configure GOOGLE_DRIVE_ENABLED=1, owner OAuth client credentials, GOOGLE_TOKEN_CRYPTO_SECRET, an encrypted owner refresh token, and GOOGLE_DRIVE_ROOT_FOLDER_ID before expecting uploads.',),
+        safe_next_steps=('Use /google_drive_status to inspect the configured owner connection. If it is not connected, an administrator must configure the owner OAuth credentials, encrypted refresh token, root folder, and worker before expecting uploads.',),
         customization_allowed=True,
         requires_setup=True,
         requires_admin=True,
@@ -505,6 +509,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'Service-account mode works with personal My Drive.',
             'I deleted the local invoice PDF after upload.',
         ),
+        last_verified_at='2026-08-02',
     ),
     _capability(
         capability_id='google_drive_invoice_archive_after_due_date',
@@ -1273,7 +1278,9 @@ def get_safe_answer_payload(
     capability_id: str,
     account_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return get_capability(capability_id, account_context=account_context).to_payload()['safe_answer_payload']
+    payload = get_capability(capability_id, account_context=account_context).to_payload()['safe_answer_payload']
+    payload['account_context_observed'] = account_context is not None
+    return payload
 
 
 def search_capabilities(

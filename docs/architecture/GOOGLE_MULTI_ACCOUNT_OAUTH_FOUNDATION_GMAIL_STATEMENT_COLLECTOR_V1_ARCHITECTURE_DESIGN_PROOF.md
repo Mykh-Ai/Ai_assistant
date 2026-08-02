@@ -47,7 +47,7 @@ Current Product Truth:
 
 - owner-run Google Drive archive: `partial`;
 - generic multi-account Google OAuth: `partial` local foundation;
-- Gmail statement collection: `partial`, disabled until external setup;
+- Gmail statement collection: `partial`, connected/active for the configured controlled pilot and setup-gated elsewhere;
 - parsing, transaction import, reconciliation, and Tatra banka API:
   `unsupported`.
 

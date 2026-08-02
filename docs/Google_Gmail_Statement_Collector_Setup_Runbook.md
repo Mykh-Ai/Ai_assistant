@@ -174,6 +174,14 @@ credentials while configuring Gmail.
   archive state reached `uploaded`; the local Gmail import remained stored with
   `parse_status=deferred`.
 
+Operational status source:
+
+- use `/gmail_status` for the current Gmail binding/collector state and
+  `/google_drive_status` for the current owner Drive connection;
+- Product Truth flags such as `requires_external_credentials` describe setup
+  dependencies and must not be presented as proof that this configured pilot
+  is disconnected or unconfigured.
+
 ## 5. Failure and recovery
 
 - `401`/`403` from Gmail transitions the binding and grant to
