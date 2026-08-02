@@ -169,9 +169,10 @@ credentials while configuring Gmail.
   `parse_status=deferred`, and reported zero rejected and zero failed.
 - A second tick created no additional import. This does not replace an explicit
   overlap test that re-sees the same Gmail source.
-- The separate owner Google Drive connection was `needs_reauth`; its archive
-  job entered bounded `retry_wait` with `google_drive_not_configured`, while
-  the local Gmail import remained stored.
+- The separate owner Google Drive connection was reauthorized through the
+  existing manual owner OAuth bootstrap. The queued bank-statement job and its
+  archive state reached `uploaded`; the local Gmail import remained stored with
+  `parse_status=deferred`.
 
 ## 5. Failure and recovery
 

@@ -1,5 +1,8 @@
 # Changelog
 
+- Reauthorized the configured owner Google Drive connection through the existing
+  manual bootstrap and proved the queued Gmail bank-statement archive reaches
+  `uploaded` while the local original remains stored with deferred parsing.
 - Restored deterministic `/google_drive_*` and `/gmail_*` command routing by
   placing their settings routers before the invoice unknown-slash fallback;
   known commands no longer invoke LLM/InfoHelp.

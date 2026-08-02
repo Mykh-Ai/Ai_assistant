@@ -9,8 +9,8 @@ Reason: the production callback, real Google consent, connected grant, one
 bounded Gmail query, one atomic workspace-local statement import, and a second
 tick with no new import have succeeded. Broader launch evidence remains
 incomplete: Google restricted-scope verification evidence, source-repeat
-redownload dedup under an overlapping query, revoke/disconnect recovery, and
-the separate Google Drive owner connection still require completion.
+redownload dedup under an overlapping query, and revoke/disconnect recovery.
+The separate owner Drive reauthorization and queued statement upload succeeded.
 
 ## Maturity
 
@@ -40,7 +40,7 @@ the separate Google Drive owner connection still require completion.
 | `/gmail_status` | Bounded lifecycle summary; no token/path/message identifiers | handler implementation plus controlled production output | passed |
 | `/gmail_disconnect` | Grant unusable; collected files preserved | integration service test | passed |
 | User asks whether Gmail statements are parsed | Product Truth says collection is partial and parsing/reconciliation is absent | Product Truth/InfoHelp tests | added |
-| Existing Google Drive archive | Separate grant/job path; Gmail local import survives Drive failure | separate services plus production `needs_reauth`/`retry_wait` evidence | isolation passed; upload pending reauth |
+| Existing Google Drive archive | Separate grant/job path; Gmail local import survives Drive failure | production owner OAuth reauthorization plus bank-statement job/archive state `uploaded` | passed for controlled statement |
 | Public site indexing | Remains enabled; OAuth has independent launch gate | user decision and site config unchanged | verified by diff review |
 
 ## Remaining real-environment smoke before wider launch
@@ -52,8 +52,9 @@ Completed in the controlled pilot:
 3. one bounded Gmail query with one stored workspace-local original and
    metadata, `parse_status=deferred`, zero rejected, and zero failed;
 4. a second tick with no additional import;
-5. backup and fail-closed Drive evidence: local import preserved while the
-   separate owner Drive connection is `needs_reauth`.
+5. backup, owner Drive reauthorization, encrypted connected grant, and
+   queued bank-statement job/archive state reaching `uploaded` while the local
+   import remains preserved.
 
 Still required:
 
@@ -63,9 +64,7 @@ Still required:
    source and proves no second download/store;
 3. exercise revoked-token and `/gmail_disconnect` recovery while preserving
    the imported original;
-4. reauthorize the separate owner Google Drive connection and verify the
-   queued bank-statement job reaches `uploaded`;
-5. verify restart/integrity and rollback procedures against the controlled
+4. verify restart/integrity and rollback procedures against the controlled
    imported record.
 
 Capability status remains `partial`, `requires_setup`, `requires_admin`, and

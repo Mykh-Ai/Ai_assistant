@@ -1,3 +1,25 @@
+# 2026-08-02 - Owner Google Drive reauthorized and Gmail statement archived
+
+- After the deterministic `/google_drive_connect` route was restored, the
+  configured administrator completed the existing manual owner OAuth bootstrap
+  through the registered localhost callback on the desktop computer.
+- Before the token write, an online SQLite backup passed `PRAGMA quick_check` and
+  was retained with mode `0600`. The one-time OAuth state became `consumed`; the
+  refresh token was encrypted with the configured token crypto provider, and the
+  owner connection became `connected` with its configured root folder.
+- The existing `bank_statement_original` job completed on its scheduled final
+  retry. Both `archive_jobs` and `accounting_document_archive_state` report one
+  `uploaded` bank-statement record; the workspace-local Gmail original remains
+  authoritative with `parse_status=deferred`.
+- The collector's enqueue-era `gmail_statement_imports.archive_status` remains
+  `archive_pending`; completed Drive state is currently owned by the archive job
+  and accounting archive-state tables. This stale summary field is an explicit
+  follow-up consistency gap, not evidence that upload is still pending.
+- OAuth code/state capture and all temporary audit/helper files were deleted from
+  the desktop, VPS `/tmp`, and container after the successful exchange. No token,
+  account address, provider identifier, Drive file id, or folder id was recorded
+  in repository documentation.
+
 # 2026-08-02 - Google settings commands restored ahead of slash fallback
 
 - Production evidence showed exact `/google_drive_connect` was consumed by the
