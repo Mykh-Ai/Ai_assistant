@@ -1,9 +1,4 @@
 # Product UX Eval Artifacts
-## Contextual InfoHelp recovery V1 artifact (2026-08-02)
-
-The automated Conversation Acceptance Proof is `docs/evals/INFOHELP_CONTEXTUAL_RECOVERY_V1_CONVERSATION_ACCEPTANCE_PROOF.md`. It covers text primary-unknown recovery, post-STT voice convergence, unmatched command recovery, validated recovery-button convergence, active-FSM help/state preservation, unsupported-feature honesty, narrow unclear fallback, context privacy/lifetime, and absence of hidden side effects.
-
-Maturity remains partial Level 2. Deployed Telegram UX acceptance is intentionally pending.
 
 ## Purpose
 

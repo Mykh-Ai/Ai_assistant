@@ -78,11 +78,7 @@ async def confirm_delete_user_database(message: Message, state: FSMContext, conf
 
     result = UserDataDeletionService(config.db_path, config.storage_dir).delete_user_database(telegram_id=telegram_id)
     await state.clear()
-    from bot.services.conversation_context import conversation_context_service
-
     if result.filesystem_errors:
         await message.answer(DELETE_USER_DATABASE_PARTIAL_FILES_MESSAGE)
-        conversation_context_service.clear_user(int(telegram_id))
         return
     await message.answer(DELETE_USER_DATABASE_DONE_MESSAGE)
-    conversation_context_service.clear_user(int(telegram_id))

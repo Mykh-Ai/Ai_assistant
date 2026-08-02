@@ -10,10 +10,6 @@ from bot.config import load_config
 from bot.handlers import routers
 from bot.services.active_fsm_guard import ActiveFsmMessageMiddleware
 from bot.services.authorization import TelegramUserAuthorizationMiddleware
-from bot.services.conversation_context import (
-    ConversationContextMiddleware,
-    OutgoingConversationContextMiddleware,
-)
 from bot.services.db import init_db
 from bot.services.google_drive_archive_scheduler import run_google_drive_archive_scheduler
 from bot.services.google_gmail_config import load_google_gmail_config
@@ -41,11 +37,8 @@ async def main() -> None:
     )
     dp = Dispatcher()
     dp.message.outer_middleware(TelegramUserAuthorizationMiddleware())
-    dp.message.outer_middleware(ConversationContextMiddleware())
     dp.message.outer_middleware(ActiveFsmMessageMiddleware())
     dp.callback_query.outer_middleware(TelegramUserAuthorizationMiddleware())
-    dp.callback_query.outer_middleware(ConversationContextMiddleware())
-    bot.session.middleware(OutgoingConversationContextMiddleware())
 
     for router in routers:
         dp.include_router(router)

@@ -11,11 +11,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.config import Config
-from bot.services.active_fsm_state_descriptors import (
-    ActiveFsmStateDescriptor,
-    describe_active_fsm_state,
-    render_active_fsm_help,
-)
 from bot.services.decision_resolver import (
     resolve_active_fsm_navigation,
     resolve_approve_edit_cancel,
@@ -81,19 +76,6 @@ _MUTATING_REPLY_EXACT_TEXT = {
     'delete',
 }
 
-_KNOWN_COMMANDS = {
-    '/start', '/menu', '/cancel', '/issue', '/invoice', '/moj_profil',
-    '/upravit_profil', '/onboarding', '/supplier', '/service', '/alias',
-    '/sluzbu', '/contact', '/contact_add', '/add_kontakt', '/doklad',
-    '/expense', '/intake', '/add_blocek', '/dodat_blocek', '/blocky',
-    '/blocek', '/profily', '/dochadzka', '/vymazat_databazu',
-    '/access_requests', '/customization_requests', '/customization_request',
-    '/customization_request_accept', '/customization_request_reject',
-    '/customization_request_reply', '/approve', '/reject', '/block', '/users',
-    '/gmail_connect', '/gmail_status', '/gmail_disconnect',
-    '/google_drive_connect', '/google_drive_status', '/google_drive_disconnect',
-}
-
 logger = logging.getLogger(__name__)
 
 
@@ -132,7 +114,7 @@ class ActiveFsmMessageMiddleware(BaseMiddleware):
                 state=state,
                 config=config,
                 text=text,
-                input_channel='command' if text.startswith('/') else 'text',
+                input_channel='text',
                 telegram_update_id=getattr(event_update, 'update_id', None),
             )
             if handled:
@@ -245,16 +227,12 @@ async def handle_active_fsm_text_update(
                 telegram_update_id=telegram_update_id,
             )
 
-    if command and command in _KNOWN_COMMANDS:
-        return False
-    navigation_decision = 'contextual_recovery' if command else (
-        await _resolve_navigation_for_update(
-            text=text,
-            current_state=current_state,
-            config=config,
-            input_channel=input_channel,
-            request_id=request_id,
-        )
+    navigation_decision = await _resolve_navigation_for_update(
+        text=text,
+        current_state=current_state,
+        config=config,
+        input_channel=input_channel,
+        request_id=request_id,
     )
     if navigation_decision in {'cancel_current_flow', 'show_main_menu', 'resume_start_status'}:
         await _execute_navigation(
@@ -275,8 +253,6 @@ async def handle_active_fsm_text_update(
             return True
         await clear_current_state_safely(state=state, config=config)
         await message.answer(ACTIVE_FSM_STALE_MESSAGE)
-        from bot.services.conversation_context import clear_conversation_for_message
-        clear_conversation_for_message(message)
         await _route_through_idle_top_level(
             message=message,
             state=state,
@@ -295,8 +271,6 @@ async def handle_active_fsm_text_update(
         if await _looks_like_top_level_request(text=text, config=config, current_state=current_state):
             await clear_current_state_safely(state=state, config=config)
             await message.answer(ACTIVE_FSM_STALE_MESSAGE)
-            from bot.services.conversation_context import clear_conversation_for_message
-            clear_conversation_for_message(message)
             await _route_through_idle_top_level(
                 message=message,
                 state=state,
@@ -307,27 +281,6 @@ async def handle_active_fsm_text_update(
             )
             await touch_active_fsm_activity(state)
             return True
-
-    if navigation_decision in {'describe_active_flow', 'describe_expected_input'}:
-        help_text, keyboard = render_active_fsm_help(
-            current_state,
-            expected_only=navigation_decision == 'describe_expected_input',
-        )
-        await message.answer(help_text, reply_markup=keyboard)
-        await touch_active_fsm_activity(state)
-        return True
-
-    if navigation_decision == 'contextual_recovery':
-        await handle_contextual_info_help_recovery(
-            message=message,
-            state=state,
-            config=config,
-            text=text,
-            input_channel=input_channel,
-            active_state_descriptor=describe_active_fsm_state(current_state),
-        )
-        await touch_active_fsm_activity(state)
-        return True
 
     return False
 
@@ -370,8 +323,6 @@ async def touch_active_fsm_activity(state: FSMContext, *, now: datetime | None =
 async def expire_active_fsm_state(*, message: Message, state: FSMContext, config: Config) -> None:
     await clear_current_state_safely(state=state, config=config)
     await message.answer(ACTIVE_FSM_EXPIRED_MESSAGE)
-    from bot.services.conversation_context import clear_conversation_for_message
-    clear_conversation_for_message(message)
 
 
 async def clear_current_state_safely(*, state: FSMContext, config: Config) -> None:
@@ -484,61 +435,6 @@ async def _route_through_idle_top_level(
         request_id=request_id,
         input_channel=input_channel,
     )
-
-
-async def handle_contextual_info_help_recovery(
-    *,
-    message: Message,
-    state: FSMContext,
-    config: Config,
-    text: str,
-    input_channel: str,
-    active_state_descriptor: ActiveFsmStateDescriptor,
-) -> None:
-    from bot.services.contextual_info_help_recovery import (
-        action_label,
-        default_recovery_action_ids,
-        default_recovery_capability_ids,
-        resolve_contextual_recovery,
-    )
-    from bot.services.conversation_context import (
-        conversation_context_service,
-        current_active_conversation_turn,
-    )
-
-    actor_id = int(getattr(getattr(message, 'from_user', None), 'id', 0))
-    chat_id = int(getattr(getattr(message, 'chat', None), 'id', 0))
-    active_turn = current_active_conversation_turn()
-    workspace_id = active_turn.workspace_id if active_turn is not None else None
-    recent_turns = [
-        turn.to_prompt_dict()
-        for turn in conversation_context_service.recent_turns(actor_id, chat_id, workspace_id)
-    ] if actor_id and chat_id else []
-    result = await resolve_contextual_recovery(
-        user_input=text,
-        input_channel=input_channel,
-        recent_turns=recent_turns,
-        active_state_descriptor=active_state_descriptor,
-        action_ids=default_recovery_action_ids(),
-        capability_ids=default_recovery_capability_ids(),
-        api_key=config.openai_api_key,
-        model=config.openai_llm_model,
-    )
-    help_text, keyboard = render_active_fsm_help(
-        active_state_descriptor.state_name or '',
-        expected_only=result.outcome == 'describe_expected_input',
-    )
-    if result.outcome == 'genuinely_unclear':
-        help_text = 'Tejto odpovedi som nerozumel.\n' + help_text
-    elif result.outcome not in {'describe_active_flow', 'describe_expected_input'}:
-        alternative = result.action_id or (
-            result.candidate_action_ids[0] if result.candidate_action_ids else None
-        )
-        if alternative:
-            help_text = f'Vyzerá to však, že sa pýtate na: {action_label(alternative)}.\n' + help_text
-        else:
-            help_text = 'Táto správa nezodpovedá očakávanému vstupu aktuálneho kroku.\n' + help_text
-    await message.answer(help_text, reply_markup=keyboard)
 
 
 async def _looks_like_top_level_request(*, text: str, config: Config, current_state: str) -> bool:

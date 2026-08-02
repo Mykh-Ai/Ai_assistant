@@ -980,9 +980,8 @@ def test_voice_idle_unknown_gets_info_help_guidance(monkeypatch, tmp_path: Path)
     message = _DummyMessage()
     asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), _DummyState(None)))
 
-    assert message.answers[-1] == (
-        'Tejto správe som nerozumel.\nSkúste prosím stručne napísať, čo chcete urobiť.'
-    )
+    assert 'Nerozumiem, čo chcete spraviť.' in message.answers[-1]
+    assert 'vytvoriť faktúru' in message.answers[-1]
 
 
 @pytest.mark.parametrize(
@@ -990,7 +989,7 @@ def test_voice_idle_unknown_gets_info_help_guidance(monkeypatch, tmp_path: Path)
     [
         ('Ak\u00e9 bude po\u010dasie zajtra?', 'mimo rozsahu OfficeFlow'),
         ('Ako sa m\u00e1\u0161?', 'biznis \u00falohami'),
-        ('urob mi to', 'Tejto spr\u00e1ve som nerozumel.'),
+        ('urob mi to', 'Nie je jasn\u00e9'),
     ],
 )
 def test_voice_idle_transcript_uses_safe_info_help_triage(
@@ -1187,9 +1186,11 @@ def test_voice_idle_transcript_can_use_llm_info_help_triage_without_side_effects
     asyncio.run(handle_voice(message, _DummyBot(), config, state))
 
     assert state.current_state is None
-    assert 'Tejto spr\u00e1ve som nerozumel.' in message.answers[-1]
+    assert 'mimo rozsahu OfficeFlow' in message.answers[-1]
     assert 'Free-form answer must not render' not in message.answers[-1]
-    assert _VoiceInfoHelpOpenAIFake.last_payload is None
+    assert _VoiceInfoHelpOpenAIFake.last_payload is not None
+    assert _VoiceInfoHelpOpenAIFake.last_payload['input_channel'] == 'voice'
+    assert 'answer_text' not in _VoiceInfoHelpOpenAIFake.last_payload
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 

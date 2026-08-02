@@ -1,3 +1,17 @@
+# 2026-08-02 - Emergency rollback of Contextual InfoHelp Recovery V1
+
+- Confirmed four production regression classes after PR `#63`: unrelated destructive suggestions for receipt deletion wording; recovery callbacks dispatching with the bot-authored `callback.message`; synthetic action-label dispatch into an invoice owner without continuation FSM state; and missing Telegram quoted-message context.
+- Audited latest `origin/main` at `1bea21028ff41abd1848e6637b255914e9b85d90`; PR `#63` merge `ec7c5696ec6b73b6e0a90c38ce3a1a1a5f8bae89` is a two-parent merge and PR `#64` is docs-only.
+- Applied a mainline-parent revert of PR `#63` on `hotfix/revert-contextual-infohelp-v1`, preserving all unrelated commits and retaining PR `#64` historical evidence as rolled-back/superseded.
+- Removed the contextual recovery classifier/store, conversation-context middleware/capture, recovery router/callback dispatch, active-FSM contextual descriptors/outcomes, unknown-command recovery route, and feature-only voice/context hooks.
+- Restored pre-PR63 unknown-input, InfoHelp, active-FSM navigation/stale recovery, DecisionResolver callback, Product Truth, and customization-request behavior.
+- Added rollback containment tests that reject `infohelp:*`, `navigation:show_main_menu`, `dispatch_recovery_action`, feature middleware/capture, destructive recovery buttons, and callback-message actor dispatch.
+- Verification: rollback-only `5 passed in 2.84s`; focused InfoHelp/routing/callback/FSM `400 passed in 53.83s`; adjacent voice/invoice/workspace/contact/state-control `264 passed in 118.99s`; full suite `2429 passed, 7 subtests passed in 488.94s (0:08:08)`; compileall and staged diff check passed.
+- No database schema, migration, persisted context, storage path, or business-data write is introduced by the rollback.
+- Product status: Contextual InfoHelp Recovery V1 is `rolled_back_after_interactive_regression`; the underlying pre-existing `info_help` capability remains `partial`.
+- V2 is explicitly out of scope and requires a revised Architecture Design Proof plus owner approval before implementation.
+- Production deployment, backup path, final merge SHA, post-deploy integrity/hash, and runtime smoke are recorded operationally after the rollback PR merges; they are not preclaimed here.
+
 # 2026-08-02 - Contextual InfoHelp Recovery V1 merged, deployed, and runtime-smoked
 
 - PR `#63` was made ready and merged to `main`; merge SHA: `ec7c5696ec6b73b6e0a90c38ce3a1a1a5f8bae89`.
@@ -11,16 +25,6 @@
 - Rollback anchor before this deployment: `465df389c1b0c6ad3281733fe7888f5b49122c1d`.
 
 # 2026-08-01 - Runtime issue Agent Claim reuses the existing handoff schema
-## 2026-08-02 — Contextual InfoHelp Recovery V1 implemented locally
-
-- Audited and branched from exact `origin/main` SHA `465df389c1b0c6ad3281733fe7888f5b49122c1d`; approved architecture materialized in `docs/architecture/INFOHELP_CONTEXTUAL_RECOVERY_V1_ARCHITECTURE_DESIGN_PROOF.md`.
-- Added authorized, workspace-isolated process-memory conversation context with 3 user + 3 bot turn limits, ten-minute TTL, centralized inbound/outbound capture, single post-STT capture, and required lifecycle clearing. No schema or persistent history was added.
-- Extended the shared active-FSM bounded resolver with `describe_active_flow`, `describe_expected_input`, and `contextual_recovery`; Python state descriptors render help and the allowlisted `Hlavné menu` callback preserves state until clicked.
-- Added a separate one-call/no-retry contextual recovery classifier with exact validated `recovery_outcome` / `failure_cause` contract, sanitized recent visible turns, Product Truth metadata, domain-local candidate filtering, narrow Python responses, and safe timeout/failure fallback.
-- Added the last-router unmatched slash-command catcher and actor/chat/workspace/TTL/index-bound ephemeral recovery callbacks. Candidate clicks revalidate Product Truth and converge on existing Python owners; existing confirmation gates remain authoritative.
-- Product Truth remains `partial` Level 2. No new public canonical business action, self-learning hook, RAG, log-derived context, automatic fresh-FSM switch, DB/storage migration, server action, deployment, restart, or production write was introduced.
-- Automated verification: focused `43 passed in 4.10s`; adjacent `508 passed in 66.29s (0:01:06)`; full suite `2467 passed, 7 subtests passed in 503.47s (0:08:23)`; compileall passed; diff check passed.
-- Conversation Acceptance Proof: `docs/evals/INFOHELP_CONTEXTUAL_RECOVERY_V1_CONVERSATION_ACCEPTANCE_PROOF.md`. Deployed Telegram runtime acceptance remains pending separate authorization.
 
 - Owner decision: the former V1 GitHub-verified acknowledgment method is
   obsolete. Receiving an issue must be recorded by the deterministic handoff
