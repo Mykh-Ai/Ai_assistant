@@ -175,8 +175,8 @@ credentials.
 | `/gmail_connect` | authorized configured admin, feature/config, canonical workspace | settings -> generic state service | one URL; no Gmail/binding effect |
 | `/gmail_status` | authorized admin and target workspace | settings -> status services | redacted read-only status |
 | `/gmail_disconnect` | authorized admin and target workspace | settings -> binding/grant service | local binding disabled |
-| public callback GET | bounded query and gateway config | ZevsFlow server route | bounded server-to-server forwarding |
-| internal callback POST | proxy/state/auth/workspace/identity/scopes | generic callback service | transactional account/grant/binding or failure |
+| public callback GET | bounded query and gateway config | ZevsFlow Worker route | short-lived HMAC-signed browser relay |
+| callback relay GET / legacy internal POST | HMAC or proxy secret, then state/auth/workspace/identity/scopes | generic callback service | transactional account/grant/binding or failure |
 | scheduler tick | feature/workspace/binding/grant/lease | Gmail collector | readonly discovery/import |
 | capability question | normal Product Truth routing | Product Truth/InfoHelp | honest no-effect answer |
 
@@ -186,16 +186,21 @@ Public route:
 GET https://zevsflow.sk/oauth/google/integration/callback
 ```
 
-Private backend route:
+Backend relay route:
 
-```text
-POST /internal/oauth/google/integration/callback
-```
+GET /internal/oauth/google/integration/callback?payload=...&signature=...
 
-The ZevsFlow gateway must be server-side. The implementation agent must first
-prove current Vinext/Cloudflare server-route and secret-bound upstream support.
-Otherwise report `material_design_variance`; never put token exchange or
-secrets into browser JavaScript or invent another host.
+The existing secret-header JSON POST route remains fail-closed for internal
+compatibility, but the production Worker uses the signed GET relay.
+
+The ZevsFlow gateway remains server-side and never exchanges Google tokens.
+Production evidence showed a material Cloudflare routing variance: a normal
+Worker subrequest to the public Tunnel hostname failed even though the Tunnel
+and backend were healthy. The approved transport therefore signs the bounded
+relay payload with HMAC-SHA256 and returns a no-store browser redirect to the
+outbound-only Tunnel hostname. The proxy secret never enters the URL or browser
+JavaScript. The backend verifies the signature and five-minute issuance window
+before OAuth state, database, or provider work.
 
 The gateway accepts at most one `state`, `code`, and `error`. Repeated allowed
 parameters, missing state, oversized values, or oversized total query fail
@@ -254,14 +259,15 @@ Gmail/callback config, canonical target workspace, current setup authority,
 expected email, exact redirect URI, and enabled callback runtime are required.
 Connect creates state/nonce only and never switches active workspace.
 
-The gateway enforces bounded input, HTTPS server forwarding, and sanitized
-Slovak HTML. It never forwards browser cookies or intentionally logs raw
-query, state, code, provider description, body, secret, or upstream response.
+The gateway enforces bounded input, a short-lived HMAC-SHA256 relay, no-store
+browser redirect, and sanitized failure HTML. It never forwards browser
+cookies or intentionally logs raw query, state, code, provider description,
+secret, or relay URL.
 
 The backend:
 
-1. checks the proxy secret in constant time before DB work;
-2. accepts a bounded structured body;
+1. verifies the relay HMAC or legacy proxy secret in constant time before DB work;
+2. accepts only a bounded structured payload within the relay TTL;
 3. recovers all authority only from persisted OAuth state;
 4. atomically consumes one pending unexpired state;
 5. revalidates actor/admin/workspace/membership/service;
@@ -632,9 +638,9 @@ Required scenario groups:
 
 1. unauthorized/non-admin/invalid-workspace connect with no effect;
 2. valid state plus nonce hashes and authorization URL;
-3. gateway success, missing/duplicate/oversized input, timeout/5xx, sanitized
+3. signed-relay success, missing/duplicate/oversized input, invalid HMAC,
    output, and no secret exposure;
-4. invalid proxy secret before DB work;
+4. invalid relay signature or legacy proxy secret before DB work;
 5. valid callback and wrong email, unverified email, invalid signature/issuer,
    wrong audience, expired token, missing subject, nonce mismatch, missing
    scope, first missing refresh token, safe same-subject refresh reuse,

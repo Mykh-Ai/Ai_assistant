@@ -1,5 +1,10 @@
 # Changelog
 
+- Replaced the unreliable Worker-to-Tunnel Gmail callback subrequest with a
+  five-minute HMAC-SHA256 signed browser relay. The outbound-only Tunnel still
+  publishes no VPS port; the backend verifies signature and age before OAuth
+  state, database, or Google work. OAuth state/nonce, admin/workspace gates,
+  Gmail readonly scope, token storage, and collector behavior are unchanged.
 - Added a pinned, outbound-only Cloudflare Tunnel service for the private Gmail
   OAuth callback. The Tunnel reads a file-backed token and publishes no VPS
   port; activation still requires Cloudflare hostname/Worker configuration and

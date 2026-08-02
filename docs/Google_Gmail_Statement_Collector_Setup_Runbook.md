@@ -2,7 +2,7 @@
 
 Status: `requires_setup`, `requires_admin`, `requires_external_credentials`.
 
-Last verified: 2026-07-30.
+Last verified: 2026-08-02.
 
 This runbook activates the bounded Gmail OAuth and bank-statement attachment
 collector implemented in OfficeFlow/FakturaBot. It does not activate Google
@@ -21,8 +21,9 @@ VAT, tax, or accounting conclusions.
   only as SHA-256 hashes.
 - Refresh/access tokens are encrypted at rest with
   `GOOGLE_TOKEN_CRYPTO_SECRET`.
-- The public callback forwards only `state`, `code`, or `error` to the internal
-  callback. Business context never comes from browser query parameters.
+- The public callback keeps only state plus code or error, signs a five-minute
+  relay with HMAC-SHA256, and redirects through the browser to the Tunnel
+  endpoint. Business context never comes from browser query parameters.
 - Imported files remain workspace-scoped and have `parse_status=deferred`.
 
 ## 1. Google Cloud Console
@@ -50,43 +51,39 @@ Official references:
 - <https://developers.google.com/identity/openid-connect/openid-connect>
 - <https://developers.google.com/workspace/gmail/api/auth/scopes>
 
-## 2. Public callback gateway (`zevsflow-site`)
+## 2. Public callback gateway (zevsflow-site)
 
-The repository contains the callback route in
-`worker/google-oauth-gateway.ts`. Configure these runtime variables in the
-hosting environment:
-
-- `GOOGLE_INTEGRATION_CALLBACK_UPSTREAM_URL`: HTTPS URL of the private callback
-  service endpoint.
-- `GOOGLE_INTEGRATION_CALLBACK_PROXY_SECRET`: random value of at least 32 characters,
-  identical to the backend value.
+The Worker route is implemented in worker/google-oauth-gateway.ts. Configure
+the HTTPS Tunnel relay URL and the same random callback proxy secret in Worker
+and backend secret storage.
 
 The callback must:
 
-- accept only `GET /oauth/google/integration/callback`;
-- reject duplicate, unknown, oversized, or malformed query parameters;
-- send a bounded JSON `POST` to the internal callback;
-- never render provider diagnostics, authorization codes, tokens, state, email,
-  workspace IDs, or internal URLs;
-- return `Cache-Control: no-store`, a restrictive CSP, no-referrer policy, and
-  `X-Robots-Tag: noindex, nofollow`.
+- accept only GET /oauth/google/integration/callback;
+- reject duplicate, unknown, oversized, or malformed Google parameters;
+- keep only state plus exactly one of code or error;
+- add an issuance timestamp, base64url-encode the bounded payload, and
+  authenticate it with HMAC-SHA256;
+- return a no-store 302 to the configured Tunnel relay endpoint;
+- never render or log provider diagnostics, authorization codes, tokens, state,
+  email, workspace IDs, secret values, or relay URLs.
 
-For the controlled Zevs production deployment, Cloudflare Tunnel is the
-private callback transport:
+For the controlled Zevs production deployment:
 
-- a remotely managed tunnel publishes `gmail-callback.zevsflow.sk`;
-- the tunnel origin is `http://bot:8081` on the private Compose network;
-- `docker-compose.prod.yml` runs the pinned `cloudflared` image without any
-  published VPS port;
-- the tunnel token is stored only in
-  `/bot/secrets/cloudflared-token` (mode `0600`) and mounted read-only;
-- the public Worker upstream is
-  `https://gmail-callback.zevsflow.sk/internal/oauth/google/integration/callback`;
-- the Worker and backend share the separate callback proxy secret.
+- the remotely managed Tunnel publishes gmail-callback.zevsflow.eu;
+- the Tunnel origin is http://bot:8081 on the private Compose network;
+- Docker runs the pinned cloudflared image with no published VPS port;
+- the file-backed Tunnel token is mounted read-only;
+- Worker upstream is the relay route at
+  https://gmail-callback.zevsflow.eu/internal/oauth/google/integration/callback;
+- the Worker signs the payload and the backend verifies that signature in
+  constant time before OAuth state or database work;
+- relay age is limited to five minutes with bounded future clock skew;
+- one-time OAuth state and nonce still prevent callback replay.
 
-The tunnel hostname is not a public business endpoint: requests without the
-proxy header fail closed. Do not configure a direct VPS DNS record or publish
-port `8081`.
+The Tunnel hostname is not a public business API. Requests without a valid
+signed, short-lived relay fail closed. Do not publish port 8081 or configure a
+direct VPS DNS record.
 
 ## 3. Backend configuration
 
