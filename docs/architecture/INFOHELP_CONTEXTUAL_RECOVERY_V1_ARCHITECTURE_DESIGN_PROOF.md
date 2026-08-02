@@ -2,13 +2,13 @@
 
 Verdict: approved_ready_for_handoff
 
-Status: implemented_locally_pending_runtime_acceptance
+Status: deployed_runtime_smoke_passed_interactive_acceptance_pending
 
 ## Scope and baseline
 
 - Baseline: `origin/main` at `465df389c1b0c6ad3281733fe7888f5b49122c1d`.
 - Product need: recover honestly from ambiguous authorized text, unknown slash commands, and confusion inside an active FSM without bypassing deterministic Python owners.
-- Current status: bounded short conversation context, contextual recovery, active-flow help, and terminal unknown-command recovery are implemented locally as a partial Level 2 extension; deployed Telegram acceptance remains pending.
+- Current status: bounded short conversation context, contextual recovery, active-flow help, and terminal unknown-command recovery are deployed as a partial Level 2 extension. Production process, polling, bounded runtime, and live configured-LLM smoke passed; an interactive authorized Telegram text/voice/callback journey remains pending.
 - Target maturity: a bounded extension of Level 2 capability-aware guidance. This change does not implement broad conversational memory, a new business capability, autonomous action execution, or Level 3 customization storage beyond reuse of the existing confirmed customization-request preview.
 - User journey: an authorized user can ask what is happening in an active flow, recover from a plausible typo or ambiguous request through bounded buttons, or receive a short honest fallback while the existing FSM and side-effect gates remain authoritative.
 
@@ -90,4 +90,16 @@ Inside an active FSM, contextual recovery preserves the FSM and explains the cur
 
 No new canonical top-level action, persistence table, broad memory, retry loop, phrase whitelist for help, AI-authored capability truth, automatic business write, fresh-FSM switching, server write, deploy, or merge is in scope. Exact-value voice restrictions, DecisionResolver confirmations, authorization, tenant isolation, current command owners, and keyboard cleanup remain unchanged.
 
-Regression proof covers context bounds/TTL/isolation/clears/capture, active-flow descriptors and no-mutation behavior, deterministic known commands, terminal unknown slash recovery, recovery-result validation/fail-closed behavior, actor/chat/workspace/TTL/index callback guards, Product Truth rendering, existing-owner convergence, customization preview reuse, no unauthorized AI/STT/context capture, and unchanged normal FSM journeys. Focused, adjacent, full-suite, compile, and diff checks are required before publication. Runtime/server acceptance remains pending after the local implementation.
+Regression proof covers context bounds/TTL/isolation/clears/capture, active-flow descriptors and no-mutation behavior, deterministic known commands, terminal unknown slash recovery, recovery-result validation/fail-closed behavior, actor/chat/workspace/TTL/index callback guards, Product Truth rendering, existing-owner convergence, customization preview reuse, no unauthorized AI/STT/context capture, and unchanged normal FSM journeys. Focused, adjacent, full-suite, compile, and diff checks passed before publication.
+
+## Deployment acceptance update (2026-08-02)
+
+- PR `#63` was merged to `main` as `ec7c5696ec6b73b6e0a90c38ce3a1a1a5f8bae89` and deployed to `/bot/repo`.
+- `docker compose ... up -d --build` rebuilt and recreated `fakturabot`; the process remained `running` with restart count `0`.
+- Startup evidence showed scheduler startup, Telegram polling startup, and polling for `@officeflow_sk_bot` without a polling conflict or startup exception.
+- Production-image `python -m compileall -q bot` passed.
+- A bounded in-container runtime smoke passed router ordering, context bounds, workspace isolation, state descriptor/navigation rendering, payload sanitization, and strict result parsing.
+- One configured live OpenAI call with synthetic unknown input returned the valid bounded outcome `clarify_candidates`; no business side effect or persisted-data write was exercised.
+- The production image intentionally lacks the development-only `pytest` package, so the complete automated suite remains the pre-merge evidence recorded in the conversation acceptance proof.
+- No schema, migration, storage rewrite, or production business-data mutation occurred.
+- Interactive acceptance is still pending for a real authorized Telegram text message, voice/STT update, recovery-button click, and resulting keyboard lifecycle. Those actions were not simulated or attributed to a user.

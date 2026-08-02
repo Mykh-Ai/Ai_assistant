@@ -1,3 +1,15 @@
+# 2026-08-02 - Contextual InfoHelp Recovery V1 merged, deployed, and runtime-smoked
+
+- PR `#63` was made ready and merged to `main`; merge SHA: `ec7c5696ec6b73b6e0a90c38ce3a1a1a5f8bae89`.
+- Production `/bot/repo` fast-forwarded from `465df389c1b0c6ad3281733fe7888f5b49122c1d` to the exact merge SHA and remained clean against `origin/main`.
+- Production compose build/recreate succeeded. `fakturabot` started polling as `@officeflow_sk_bot`, remained `running`, and had restart count `0`; no polling conflict or startup exception was observed.
+- Production-image compile smoke passed. Bounded in-container runtime smoke returned `infohelp_runtime_smoke=ok` and validated router priority, context limits/isolation, active-flow navigation, payload sanitization, and strict bounded parsing.
+- A configured live OpenAI call with synthetic `/invoce` input returned `infohelp_live_llm_smoke=ok outcome=clarify_candidates`. It executed no business side effect and wrote no persisted business data.
+- The slim production image has no `pytest`; complete regression evidence remains the pre-merge `2467 passed, 7 subtests passed` run, plus the deployed compile/runtime/live-LLM checks.
+- Temporary host/container smoke files were removed. No DB/schema migration, storage rewrite, or production business-data mutation occurred.
+- Capability maturity remains partial Level 2. Deployed runtime smoke passed, but interactive acceptance still requires a real authorized Telegram text message, voice/STT update, recovery-button click, and keyboard lifecycle observation; no user update was fabricated.
+- Rollback anchor before this deployment: `465df389c1b0c6ad3281733fe7888f5b49122c1d`.
+
 # 2026-08-01 - Runtime issue Agent Claim reuses the existing handoff schema
 ## 2026-08-02 — Contextual InfoHelp Recovery V1 implemented locally
 
