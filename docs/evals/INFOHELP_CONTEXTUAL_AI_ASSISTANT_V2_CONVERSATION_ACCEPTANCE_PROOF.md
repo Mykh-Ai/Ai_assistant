@@ -74,6 +74,8 @@ Focused repair verification: `156 passed in 7.14s`; this is repository evidence,
 
 A subsequent server batch proved cases 1-4 and then failed closed when the model dropped explicit numeric reference `10`; rollout again returned to `disabled` with the database unchanged. The follow-up contract adds paired absent/present invoice-reference examples. This remains pending evidence until the complete repaired batch passes.
 
+The next throttled batch proved cases 1-10 and then found that the model could omit an already proven explicit-reply boolean. Python now preserves validated same-bot reply ownership and `active_fsm_help` state context after parsing. The attempt rolled back to `disabled` with the database unchanged; full repaired batch evidence remains pending.
+
 ## Pending interactive acceptance
 
 After review and a deliberate `admin_pilot` configuration change, an authorized administrator must run the 20 journeys in real Telegram, with special attention to Ukrainian/Russian/mixed STT quality, old quoted-message behavior, visible keyboard lifecycle, invoice ambiguity/not-found retries and callback actor/workspace identity. Production acceptance must not be claimed before that pilot passes.

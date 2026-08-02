@@ -82,6 +82,13 @@
 - The follow-up contract makes exact reference-token copying explicit and adds
   paired missing-reference/present-reference examples. Python still validates
   and owns the continuation/action boundary; no reference is invented.
+- The next throttled server batch proved cases 1-10, including the numeric
+  invoice reference and canonical `/contact` create semantics, then failed
+  closed because the LLM did not echo an already Python-proven Telegram reply
+  relationship. Rollout again returned to `disabled`; DB integrity/counts were
+  unchanged. Python now preserves proven same-bot reply ownership and a proven
+  `active_fsm_help` descriptor in the validated result instead of asking the
+  model to rediscover those transport/runtime facts.
 - Touched scopes: Contextual InfoHelp LLM payload/prompt, focused tests,
   orchestration/InfoHelp/evaluation docs, project log, deployment rollout.
   No schema, migration, storage layout, access, PDF, STT/LMM, self-learning, or

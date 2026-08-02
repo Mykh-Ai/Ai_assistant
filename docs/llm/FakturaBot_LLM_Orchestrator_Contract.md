@@ -584,4 +584,6 @@ The enhanced InfoHelp call receives current normalized input/channel/language/co
 
 The payload must enumerate literal allowed values for every bounded field. Primary-resolver output is untrusted diagnostic evidence: it may trigger the call but cannot replace the exact object/operation/speech act in the current input. Schema descriptions and placeholder prose are not output values. Any out-of-bound value fails closed without retry or execution.
 
+Transport/runtime facts already validated by Python are not delegated back to the model. In particular, proven same-chat/same-bot explicit-reply ownership and a proven `active_fsm_help` descriptor are preserved after model parsing; unproven reply/state context cannot be created by this normalization.
+
 There is exactly one enhanced InfoHelp call per assisted update: no retry cascade, second recovery LLM, nearest-action LLM, RAG or persistent transcript. The same call acts as the conditional pre-execution validator for mutating/destructive, corrective/negative, capability, missing-slot and object-conflict cases. The model never owns Product Truth, action eligibility, FSM, callback identity, tenant scope, confirmation or side effects. In Telegram callbacks the human actor is `callback.from_user`; `callback.message.from_user` is normally the bot author.
