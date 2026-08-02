@@ -1,3 +1,30 @@
+# 2026-08-02 - Gmail callback HMAC signed relay variance
+
+- Docs/contracts read: active Gmail architecture proof, setup runbook, callback
+  app/runner/service, current gateway contract, and focused callback tests.
+- Production evidence: Worker server-to-server fetch returned 502 while direct
+  Tunnel POST reached the private callback and correctly returned 401 without
+  the proxy secret. Cloudflare compatibility flags did not make that
+  subrequest path reliable.
+- Approved variance: the Worker now keeps only bounded state plus code or
+  error, adds an issuance timestamp, base64url-encodes the payload, and signs
+  that exact value with HMAC-SHA256. The browser follows a no-store redirect to
+  the outbound-only Tunnel; the secret is never placed in the URL.
+- Backend verification is constant-time and occurs before OAuth state, DB, or
+  Google work. Missing/invalid signatures, payload tampering, relays older than
+  five minutes, excessive future skew, duplicate parameters, and invalid
+  payload shapes fail closed.
+- Existing one-time OAuth state/nonce, admin/workspace authority, exact redirect
+  URI, Google identity/scopes, token encryption, DB schema, storage, collector,
+  and Gmail read-only boundaries are unchanged.
+- Touched scopes: callback transport, gateway, transport tests, architecture,
+  runbook, project log, changelog. No LLM/STT/LMM/FSM, Product Truth behavior,
+  self-learning, PDF/layout, DB migration, or business-data mutation.
+- Status remains partial, requires_admin, and requires_external_credentials
+  until a real configured administrator completes Google consent and a
+  deduplicated statement import is proved.
+- Rollback: disable both Gmail flags, stop the callback/Tunnel service, and
+  redeploy the prior Worker/backend commits. Preserve DB/storage for audit.
 # 2026-08-02 - Gmail callback private Tunnel deployment foundation
 
 - Docs/contracts read: Gmail collector setup runbook and architecture proof,
