@@ -16,8 +16,9 @@
   statement as `uploaded`. The enqueue-era Gmail import `archive_status`
   consistency gap remains explicitly out of scope and requires a separate
   migration-safe audit before any persisted-data repair.
-- Focused Product Truth/InfoHelp suite: 131 passed. Full suite: 2469
-  passed, 7 subtests passed.
+- Before integrating concurrent main PR #77, focused Product Truth/InfoHelp:
+  131 passed; full suite: 2469 passed, 7 subtests passed. After integration,
+  Product Truth, InfoHelp, and Contextual InfoHelp V2: 145 passed.
 
 # 2026-08-02 - Owner Google Drive reauthorized and Gmail statement archived
 
