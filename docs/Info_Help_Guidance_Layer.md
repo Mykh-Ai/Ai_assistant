@@ -943,6 +943,8 @@ Every bounded enum/list is sent with literal allowed values. The primary resolve
 
 An explicit reference token is copied as bounded text, including a numeric invoice reference such as `10`. It is never discarded merely because it is numeric, and it is never invented when absent. Python remains responsible for lookup, ambiguity/not-found handling, continuation state, confirmation, and execution.
 
+Same-chat/same-bot Telegram reply ownership and an active FSM help descriptor are Python-proven context facts. After bounded model parsing, Python may preserve those booleans as true when the validated inbound route already proved them; the model may add semantic interpretation but cannot erase deterministic ownership/state evidence or create it for an unproven reply/state.
+
 Recent context is process memory only: at most three user and three visible bot turns, same user/chat/workspace, ten-minute TTL, lost on restart. It excludes unauthorized input, files, logs, DB rows, secrets and background sends. A same-chat reply to this bot is part of the current request independent of TTL. Context clears on `/start`, `/menu`, `/cancel`, workspace switch and completed user-data deletion.
 
 The old broad catalogue is retained only for an explicit overview. Invalid model output and genuinely unclear input receive a short narrow fallback with no button or effect. Rollout is `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`; invalid/missing values are `disabled`.
