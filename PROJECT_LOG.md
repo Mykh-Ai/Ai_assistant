@@ -1,3 +1,29 @@
+# 2026-08-02 - Controlled Gmail consent and first statement import proven
+
+- A real configured-admin `/gmail_connect` completed after PR #71 and the
+  production backend accepted Google canonical OIDC scope aliases while still
+  requiring exact `gmail.readonly`. One encrypted grant is `connected` and one
+  workspace Gmail binding is `active`; no provider identifiers or secrets were
+  recorded in docs.
+- Before the first collection write, a SQLite online backup passed
+  `PRAGMA quick_check` and was retained with mode `0600`.
+- The controlled first manual scheduler tick used the configured bounded query,
+  saw one message, stored one workspace-local original/metadata pair, set
+  `parse_status=deferred`, and reported `rejected=0` and `failed=0`. A second
+  tick produced no new import; explicit overlap-based source redownload dedup
+  remains a separate acceptance gate.
+- The Gmail binding now has a successful check timestamp and no error. No Gmail
+  mutation, body retention, parsing, OCR, LLM call, reconciliation, accounting
+  row, or automatic invoice state change occurred.
+- The separate owner Google Drive connection is `needs_reauth`. The idempotent
+  bank-statement archive job entered `retry_wait` with the safe
+  `google_drive_not_configured` code; the local Gmail import remains stored and
+  authoritative. Drive reauthorization and uploaded-state evidence remain open.
+- Product status advances from external `runtime_not_proven` to controlled
+  `partial_runtime_proven` for the configured pilot. It remains `partial`,
+  `requires_setup`, `requires_admin`, and `requires_external_credentials`
+  outside that pilot.
+
 # 2026-08-02 - Gmail OAuth canonical OIDC scope alias repair
 
 - A controlled real `/gmail_connect` callback reached the production backend,
