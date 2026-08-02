@@ -570,6 +570,11 @@ def _validate_attachment(
     ):
         raise GmailStatementCollectorError("gmail_filename_invalid")
     extension = Path(name).suffix.lower()
+    if (
+        candidate.mime_type.lower() == "application/octet-stream"
+        and (extension != ".pdf" or not content.startswith(b"%PDF-"))
+    ):
+        raise GmailStatementCollectorError("gmail_attachment_signature_invalid")
     safe = re.sub(r"[^A-Za-z0-9._ -]+", "_", name).strip(" .")
     if not safe:
         safe = f"statement{extension}"

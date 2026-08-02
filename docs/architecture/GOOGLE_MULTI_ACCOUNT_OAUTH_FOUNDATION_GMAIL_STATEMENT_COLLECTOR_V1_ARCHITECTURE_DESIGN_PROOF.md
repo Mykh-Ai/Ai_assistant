@@ -158,12 +158,15 @@ GOOGLE_INTEGRATION_CALLBACK_HOST=
 GOOGLE_INTEGRATION_CALLBACK_PORT=
 GOOGLE_INTEGRATION_CALLBACK_PROXY_SECRET=
 GOOGLE_INTEGRATION_PUBLIC_REDIRECT_URI=
-GOOGLE_OAUTH_CLIENT_ID=
-GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_GMAIL_OAUTH_CLIENT_ID=
+GOOGLE_GMAIL_OAUTH_CLIENT_SECRET=
 GOOGLE_TOKEN_CRYPTO_SECRET=
 ```
 
 The pilot email belongs in deployment config, never source code.
+The Gmail OAuth client variables are separate from the existing owner Drive
+OAuth client variables; neither integration may overwrite the other's client
+credentials.
 
 ## 6. Public Route And Convergence Map
 
@@ -511,7 +514,8 @@ storage/workspaces/<workspace.storage_key>/
 Year/month comes from validated Gmail internal date, not attachment contents.
 Validate workspace, source ids, filename, MIME/extension mapping, non-empty
 bytes, maximum size, SHA-256, containment, control characters, traversal, and
-symlink escape.
+symlink escape. An `application/octet-stream` candidate is accepted only for a
+`.pdf` filename whose downloaded bytes begin with the `%PDF-` signature.
 
 Atomic procedure:
 

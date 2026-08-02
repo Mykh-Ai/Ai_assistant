@@ -24,7 +24,7 @@ class GoogleGmailConfig:
     batch_size: int = 50
     max_attachment_bytes: int = 20 * 1024 * 1024
     allowed_mime_types: frozenset[str] = frozenset(
-        {"application/pdf", "text/csv", "application/xml", "text/xml"}
+        {"application/pdf", "application/octet-stream", "text/csv", "application/xml", "text/xml"}
     )
     allowed_extensions: frozenset[str] = frozenset(
         {".pdf", ".csv", ".xml"}
@@ -43,8 +43,8 @@ class GoogleGmailConfig:
             "GOOGLE_GMAIL_EXPECTED_EMAIL": self.expected_email,
             "GOOGLE_GMAIL_STATEMENT_QUERY": self.statement_query,
             "GOOGLE_INTEGRATION_PUBLIC_REDIRECT_URI": self.public_redirect_uri,
-            "GOOGLE_OAUTH_CLIENT_ID": self.client_id,
-            "GOOGLE_OAUTH_CLIENT_SECRET": self.client_secret,
+            "GOOGLE_GMAIL_OAUTH_CLIENT_ID": self.client_id,
+            "GOOGLE_GMAIL_OAUTH_CLIENT_SECRET": self.client_secret,
             "GOOGLE_TOKEN_CRYPTO_SECRET": self.token_crypto_secret,
             "GOOGLE_INTEGRATION_CALLBACK_PROXY_SECRET": self.callback_proxy_secret,
         }
@@ -78,8 +78,8 @@ def load_google_gmail_config() -> GoogleGmailConfig:
             "GOOGLE_INTEGRATION_CALLBACK_PROXY_SECRET"
         ),
         public_redirect_uri=_text("GOOGLE_INTEGRATION_PUBLIC_REDIRECT_URI"),
-        client_id=_text("GOOGLE_OAUTH_CLIENT_ID"),
-        client_secret=_text("GOOGLE_OAUTH_CLIENT_SECRET"),
+        client_id=_text("GOOGLE_GMAIL_OAUTH_CLIENT_ID"),
+        client_secret=_text("GOOGLE_GMAIL_OAUTH_CLIENT_SECRET"),
         token_crypto_secret=_text("GOOGLE_TOKEN_CRYPTO_SECRET"),
         target_workspace_id=_text("GOOGLE_GMAIL_TARGET_WORKSPACE_ID"),
         expected_email=_text("GOOGLE_GMAIL_EXPECTED_EMAIL"),
@@ -104,7 +104,7 @@ def load_google_gmail_config() -> GoogleGmailConfig:
         ),
         allowed_mime_types=_set(
             "GOOGLE_GMAIL_ALLOWED_MIME_TYPES",
-            {"application/pdf", "text/csv", "application/xml", "text/xml"},
+            {"application/pdf", "application/octet-stream", "text/csv", "application/xml", "text/xml"},
         ),
         allowed_extensions=_extensions(
             "GOOGLE_GMAIL_ALLOWED_EXTENSIONS", {".pdf", ".csv", ".xml"}

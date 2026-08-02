@@ -1,5 +1,11 @@
 # Changelog
 
+- Separated Gmail OAuth client credentials into GOOGLE_GMAIL_OAUTH_CLIENT_ID
+  and GOOGLE_GMAIL_OAUTH_CLIENT_SECRET so Gmail setup cannot overwrite the
+  existing Google Drive owner OAuth client.
+- Added guarded Tatra banka PDF support for `application/octet-stream`:
+  only `.pdf` attachments with a `%PDF-` byte signature are accepted.
+
 ## 2026-08-02 - Contextual InfoHelp Recovery V1 emergency rollback
 
 - Rolled back the runtime behavior introduced by PR #63 after interactive production regressions: unsafe destructive suggestions, bot-authored callback dispatch, missing continuation state after a synthetic invoice-edit dispatch, and absent quoted-message context.

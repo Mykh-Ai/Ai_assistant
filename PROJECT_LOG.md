@@ -1,3 +1,16 @@
+# 2026-08-02 - Separate Gmail OAuth credentials from owner Drive OAuth
+
+- Production preflight found that the active owner Drive OAuth integration
+  already uses GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET.
+- Gmail configuration now requires dedicated GOOGLE_GMAIL_OAUTH_CLIENT_ID and
+  GOOGLE_GMAIL_OAUTH_CLIENT_SECRET values.
+- The approved mailbox sample identified Tatra banka statement PDFs with MIME
+  `application/octet-stream`; the collector now requires `.pdf` plus `%PDF-`
+  signature validation before storage.
+- No production secret was written, rotated, logged, or committed. Gmail stays
+  disabled pending callback deployment, exact query approval, and controlled
+  runtime smoke.
+
 # 2026-08-02 - Emergency rollback of Contextual InfoHelp Recovery V1
 
 - Confirmed four production regression classes after PR `#63`: unrelated destructive suggestions for receipt deletion wording; recovery callbacks dispatching with the bot-authored `callback.message`; synthetic action-label dispatch into an invoice owner without continuation FSM state; and missing Telegram quoted-message context.
