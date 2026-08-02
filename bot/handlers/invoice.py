@@ -47,7 +47,6 @@ from bot.keyboards.decision import (
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.customization_requests import (
     CustomizationRequestService,
-    REQUEST_STARTING_TRIAGE_CLASSES,
     STATUS_CONFIRMED_PENDING_REVIEW,
     hash_raw_text,
     redact_customization_request_text,
@@ -57,9 +56,6 @@ from bot.services.info_help import (
     TRIAGE_ADMIN_REVIEW_CANDIDATE,
     TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
     build_product_truth_guidance,
-    build_top_level_unknown_guidance,
-    render_info_help_triage_result,
-    resolve_info_help_triage_result_with_llm,
 )
 from bot.services.accounting_document_analytics_answerer import answer_accounting_document_analytics
 from bot.services.accounting_document_analytics_dataset import (
@@ -4202,47 +4198,15 @@ async def process_invoice_text(
         )
         return
     if top_level_intent == _UNKNOWN_INVOICE_INTENT:
-        triage_result = await resolve_info_help_triage_result_with_llm(
-            user_input_text=invoice_text,
-            api_key=config.openai_api_key,
-            model=config.openai_llm_model,
+        from bot.handlers.info_help_recovery import handle_idle_contextual_recovery
+
+        await handle_idle_contextual_recovery(
+            message=message,
+            state=state,
+            config=config,
+            text=invoice_text,
             input_channel=input_channel,
         )
-        if (
-            triage_result.triage_class in REQUEST_STARTING_TRIAGE_CLASSES
-            and triage_result.business_need != 'invoice_period_summary'
-        ):
-            telegram_id = _message_supplier_telegram_id(message)
-            if telegram_id is None:
-                await message.answer('Nepodarilo sa identifikova\u0165 pou\u017e\u00edvate\u013ea. Po\u017eiadavku som neulo\u017eil.')
-                await state.clear()
-                return
-            await _start_customization_request_preview(
-                message=message,
-                state=state,
-                requester_telegram_id=telegram_id,
-                user_input_text=invoice_text,
-                source_channel=input_channel,
-                triage_class=triage_result.triage_class,
-                capability_id=triage_result.capability_id,
-                topic_id=triage_result.topic_id,
-                confidence=triage_result.confidence,
-                business_need=triage_result.business_need,
-                detected_domain=triage_result.detected_domain,
-                expected_outcome=triage_result.expected_outcome,
-                clarification_questions=triage_result.clarification_questions,
-                proposed_title=triage_result.proposed_title,
-                proposed_description=triage_result.proposed_description,
-                risk_level=triage_result.risk_level,
-            )
-            return
-        triage_guidance = render_info_help_triage_result(triage_result)
-        if triage_guidance is not None:
-            await message.answer(triage_guidance)
-            await state.clear()
-            return
-        await message.answer(build_top_level_unknown_guidance(user_input_text=invoice_text))
-        await state.clear()
         return
     if top_level_intent in {_EDIT_INVOICE_INTENT, _SEND_INVOICE_INTENT}:
         await message.answer(

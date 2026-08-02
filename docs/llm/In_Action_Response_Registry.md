@@ -1,4 +1,11 @@
 # In-Action Response Registry (Audit Repair)
+## Contextual active-FSM help controls (2026-08-02)
+
+The shared active-FSM resolver is bounded to `cancel_current_flow`, `show_main_menu`, `resume_start_status`, `describe_active_flow`, `describe_expected_input`, `contextual_recovery`, and `pass_through`. Invalid, low-confidence, missing, failed, or timed-out output remains `pass_through`.
+
+`describe_active_flow` and `describe_expected_input` are rendered from the Python state-descriptor registry; the LLM never writes the answer or exposes internal state names. Help preserves the current FSM and includes the allowlisted `navigation:show_main_menu` button. Only a valid click clears through the existing safe state owner and calls `bot.handlers.start.cmd_menu`.
+
+`contextual_recovery` preserves the active FSM, describes the active action/step and expected input, and may explain a mismatch without starting another business flow. Exact `/cancel`, `/menu`, `/start`, runtime-issue ownership, stale-state handling, and ordinary state values retain priority.
 
 Purpose: evidence-based registry of bounded in-workflow responses and state-scoped clarifications.
 

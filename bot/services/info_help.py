@@ -530,6 +530,15 @@ def build_product_truth_guidance(
     return _render_product_truth_payload(payload)
 
 
+def build_product_truth_guidance_for_capability(
+    capability_id: str,
+    *,
+    account_context: Mapping[str, Any] | None = None,
+) -> str:
+    payload = get_safe_answer_payload(capability_id, account_context=account_context)
+    return _render_product_truth_payload(payload)
+
+
 def classify_info_help_triage(*, user_input_text: str | None) -> InfoHelpTriageResult:
     """Classify unresolved InfoHelp input into Python-owned safe triage classes."""
     capability_id = classify_info_help_capability(user_input_text=user_input_text)

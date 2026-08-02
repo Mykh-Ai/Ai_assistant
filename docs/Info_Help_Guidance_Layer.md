@@ -1,4 +1,13 @@
 # InfoHelp Guidance Layer
+## Contextual recovery V1 status (2026-08-02)
+
+Status: `partial` Level 2, implemented locally and pending deployed Telegram acceptance.
+
+After a primary idle `unknown`, or for the final unmatched slash-command route, InfoHelp may make one bounded contextual classification call and then render only Python-owned Product Truth, a narrow set of at most four registered action buttons, the existing customization-request preview, or the short final fallback. It does not append the former broad global catalogue when a narrower recovery is available.
+
+Short context is process memory only: maximum three user plus three bot turns, ten-minute TTL, isolated by user/chat/workspace, and cleared on completed start/menu/cancel, workspace switch, stale recovery, and full data deletion. It is never rebuilt from logs and is not persistent chat history.
+
+Active-FSM questions use the shared bounded control resolver and Python descriptor registry. Recovery cannot switch directly into another fresh FSM. Unknown-command routing is registered last, so known commands keep their existing deterministic owners.
 
 ## Purpose
 

@@ -143,16 +143,18 @@ def test_info_help_record_matches_partial_product_truth_runtime() -> None:
     entry = _registry_by_id()['info_help']
 
     assert entry.status == ProductTruthStatus.PARTIAL
-    assert 'bounded Unknown / Discovery / Triage v1' in entry.summary_for_user
+    assert 'bounded contextual recovery' in entry.summary_for_user
     assert 'partial Level 2 foundation' in entry.current_limitations[0]
-    assert 'bounded triage v1' in entry.current_limitations[0]
-    assert 'broader bounded InfoHelp resolver coverage' in entry.current_limitations[1]
-    assert 'voice/STT parity' in entry.current_limitations[1]
-    assert 'account-context-aware runtime evidence' in entry.current_limitations[1]
-    assert 'does not itself save requests' in entry.current_limitations[2]
-    assert 'build_product_truth_guidance' in (entry.runtime_owner or '')
-    assert 'build_info_help_triage_guidance' in (entry.runtime_owner or '')
+    assert 'one no-retry contextual recovery call' in entry.current_limitations[0]
+    assert 'process memory only' in entry.current_limitations[1]
+    assert 'ten-minute TTL' in entry.current_limitations[1]
+    assert 'Python validates IDs' in entry.current_limitations[2]
+    assert 'never switches directly' in entry.current_limitations[3]
+    assert 'deployed multilingual/noisy Telegram acceptance' in entry.current_limitations[4]
+    assert 'contextual_info_help_recovery.py' in (entry.runtime_owner or '')
     assert 'tests/test_info_help.py' in entry.test_refs
+    assert 'tests/test_contextual_info_help_recovery.py' in entry.test_refs
+    assert entry.last_verified_at == '2026-08-02'
     assert 'I answered from Product Truth in the live bot.' not in entry.forbidden_claims
     assert 'InfoHelp Level 2 is complete.' in entry.forbidden_claims
     assert 'I can answer any product capability question.' in entry.forbidden_claims
