@@ -2,13 +2,13 @@
 
 Verdict: approved_ready_for_handoff
 
-Status: deployed_runtime_smoke_passed_interactive_acceptance_pending
+Status: rolled_back_after_interactive_regression
 
 ## Scope and baseline
 
 - Baseline: `origin/main` at `465df389c1b0c6ad3281733fe7888f5b49122c1d`.
 - Product need: recover honestly from ambiguous authorized text, unknown slash commands, and confusion inside an active FSM without bypassing deterministic Python owners.
-- Current status: bounded short conversation context, contextual recovery, active-flow help, and terminal unknown-command recovery are deployed as a partial Level 2 extension. Production process, polling, bounded runtime, and live configured-LLM smoke passed; an interactive authorized Telegram text/voice/callback journey remains pending.
+- Current status: the V1 implementation was deployed and later rolled back after confirmed interactive production regressions. This artifact is retained as historical design evidence and is superseded for any future implementation.
 - Target maturity: a bounded extension of Level 2 capability-aware guidance. This change does not implement broad conversational memory, a new business capability, autonomous action execution, or Level 3 customization storage beyond reuse of the existing confirmed customization-request preview.
 - User journey: an authorized user can ask what is happening in an active flow, recover from a plausible typo or ambiguous request through bounded buttons, or receive a short honest fallback while the existing FSM and side-effect gates remain authoritative.
 
@@ -103,3 +103,16 @@ Regression proof covers context bounds/TTL/isolation/clears/capture, active-flow
 - The production image intentionally lacks the development-only `pytest` package, so the complete automated suite remains the pre-merge evidence recorded in the conversation acceptance proof.
 - No schema, migration, storage rewrite, or production business-data mutation occurred.
 - Interactive acceptance is still pending for a real authorized Telegram text message, voice/STT update, recovery-button click, and resulting keyboard lifecycle. Those actions were not simulated or attributed to a user.
+
+## Superseding rollback decision (2026-08-02)
+
+Interactive production use confirmed that the V1 architecture was unsafe despite its automated and bounded deployment smoke:
+
+1. Receipt-deletion wording could produce unrelated destructive suggestions for invoice deletion and complete user-database deletion.
+2. Recovery callbacks passed the bot-authored `callback.message` to business handlers as though it were the human actor, producing false workspace/profile failures.
+3. The invoice-edit recovery path dispatched a synthetic Slovak action label into `process_invoice_text()`; it prompted for an invoice number without establishing a continuation FSM state, so the reply returned to idle routing.
+4. Telegram `reply_to_message` / quoted-message context was not captured even though the feature relied on recent context.
+
+The runtime introduced by PR `#63` is therefore rolled back to the pre-PR63 owners. This document remains historical evidence only and must not be used to claim that Contextual InfoHelp Recovery V1 is active or safe.
+
+A V2 is out of scope. It requires a revised Architecture Design Proof, explicit owner approval, corrected actor/callback modeling, complete continuation-state and quoted-message contracts, regression-first tests using real Telegram callback semantics, and interactive acceptance before implementation can be considered.

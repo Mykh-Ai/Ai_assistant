@@ -1,11 +1,11 @@
 # Product Truth Layer
-## InfoHelp contextual recovery truth (2026-08-02)
+## InfoHelp contextual recovery rollback truth (2026-08-02)
 
-The `info_help` capability remains `partial`. Production now runs bounded contextual recovery for primary unknowns, unmatched slash commands, and active-FSM help. Production process/polling, in-container bounded-runtime, and configured live-LLM smoke passed on merge SHA `ec7c5696ec6b73b6e0a90c38ce3a1a1a5f8bae89`; this is still not complete arbitrary capability Q&A, and interactive authorized Telegram text/voice/callback acceptance remains pending.
+The `info_help` capability remains `partial` because the older deterministic Product Truth and bounded Unknown / Discovery / Triage foundation remains. Contextual InfoHelp Recovery V1 from PR `#63` is rolled back after confirmed interactive production regressions and must not be described as active.
 
-The LLM receives capability metadata for classification only. It cannot set support status or author capability claims. Python revalidates Product Truth before rendering or dispatch. Unsupported/planned/unknown selections do not execute; existing Product Truth wording and customization-preview ownership remain authoritative.
+The rollback removes the PR `#63` contextual recovery classifier, recent-turn context, unmatched-command recovery router, suggestion callbacks, generic recovery action dispatcher, active-FSM contextual descriptors/help, and feature-only voice/context capture. The prior unknown-input and InfoHelp behavior is authoritative again.
 
-Recent dialogue is ephemeral process memory (3 user + 3 bot turns, TTL 10 minutes), not persistent history. No logs, files, raw callbacks, tokens, database rows, or cross-workspace context are used.
+V2 is not implemented or planned by this rollback. Any replacement requires a revised Architecture Design Proof, explicit owner approval, real callback actor modeling, continuation-state proof, quoted-message context design, and interactive Telegram acceptance.
 
 ## Purpose
 

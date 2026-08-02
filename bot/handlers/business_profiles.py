@@ -220,8 +220,6 @@ async def _activate(
         f'Aktívny firemný profil bol zmenený na {target.workspace_display_name}.',
         reply_markup=_remove_keyboard(),
     )
-    from bot.services.conversation_context import clear_conversation_for_message
-    clear_conversation_for_message(message)
 
 
 @router.message(BusinessProfileStates.waiting_selection)

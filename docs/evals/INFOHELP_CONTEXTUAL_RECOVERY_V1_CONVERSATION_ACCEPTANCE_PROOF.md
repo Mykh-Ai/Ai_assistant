@@ -1,8 +1,8 @@
 # INFOHELP_CONTEXTUAL_RECOVERY_V1 Conversation Acceptance Proof
 
-Status: `automated_local_and_deployed_runtime_smoke_passed`
+Status: `interactive_acceptance_failed_and_runtime_rolled_back`
 
-Runtime acceptance: `interactive_telegram_journey_pending`
+Runtime acceptance: `failed_with_confirmed_production_regressions`
 
 Date: 2026-08-02
 
@@ -57,4 +57,25 @@ Python rejects unknown enums/IDs, cross-domain candidates, more than four candid
 
 ## Remaining acceptance boundary
 
-The feature remains partial Level 2. Production process/polling, bounded runtime, and configured live-LLM smoke passed, but no real authorized user update was fabricated. A real Telegram text message, voice/STT update, recovery-button click, and terminal keyboard lifecycle still require interactive acceptance before the feature can be described as fully production-accepted.
+The historical automated suite and deployed runtime smoke did not prove real Telegram behavior. Interactive acceptance subsequently failed, and the V1 runtime is rolled back. This artifact is retained as failed/superseded evidence and cannot support an active-production claim.
+
+## Confirmed interactive failure classes and containment
+
+1. Receipt-deletion wording surfaced unrelated destructive invoice-deletion and complete-database-deletion suggestions.
+2. Callback tests modeled `callback.message.from_user` as the human, while Telegram makes that message author the bot; the runtime then passed the bot-authored message to business owners.
+3. Synthetic invoice action-label dispatch prompted for an invoice number without creating a continuation FSM state, so the next value was consumed by idle routing.
+4. Quoted/replied Telegram context was absent from recent context capture.
+
+Rollback containment restores the pre-PR63 route and removes contextual suggestion buttons, `infohelp:*` callbacks, the generic recovery dispatcher, unmatched-command recovery, recent-turn middleware/capture, and feature-only active-FSM contextual behavior. Existing known commands, active-FSM navigation/stale recovery, DecisionResolver callbacks, Product Truth, and customization requests remain under their prior owners.
+
+## Rollback verification results
+
+- Rollback-only containment tests: `5 passed in 2.84s`.
+- Focused InfoHelp/routing/callback/FSM tests: `400 passed in 53.83s`.
+- Adjacent voice/invoice/workspace/contact/state-control tests: `264 passed in 118.99s (0:01:58)`.
+- Complete Python suite: `2429 passed, 7 subtests passed in 488.94s (0:08:08)`.
+- `python -m compileall -q bot`: passed.
+- `git diff --cached --check`: passed.
+- Runtime owners changed by PR `#63` match the recorded pre-PR63 baseline after the rollback; only the retained historical artifacts and the new containment proof intentionally differ.
+
+No schema, migration, storage rewrite, or business-data mutation is required. V2 is not part of this task and requires a revised Architecture Design Proof plus explicit owner approval.

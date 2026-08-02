@@ -62,8 +62,6 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
     if current_state is None:
         await state.clear()
         await _answer_and_remove_keyboard(message, IDLE_CANCEL_MESSAGE)
-        from bot.services.conversation_context import clear_conversation_for_message
-        clear_conversation_for_message(message)
         return
 
     data = await state.get_data()
@@ -75,21 +73,15 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
             config=config,
             decision_text='zrušiť',
         )
-        from bot.services.conversation_context import clear_conversation_for_message
-        clear_conversation_for_message(message)
         return
 
     if current_state == InvoiceStates.waiting_pdf_decision.state and data.get('edit_stage') == 'persisted':
         await state.clear()
         await _answer_and_remove_keyboard(message, PERSISTED_EDIT_CANCELLED_MESSAGE)
-        from bot.services.conversation_context import clear_conversation_for_message
-        clear_conversation_for_message(message)
         return
 
     await clear_current_state_safely(state=state, config=config)
     await _answer_and_remove_keyboard(message, STATE_CANCELLED_MESSAGE)
-    from bot.services.conversation_context import clear_conversation_for_message
-    clear_conversation_for_message(message)
 
 
 async def clear_current_state_safely(*, state: FSMContext, config: Config) -> None:

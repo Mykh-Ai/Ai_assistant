@@ -1,11 +1,4 @@
 # FakturaBot LLM Orchestrator Contract
-## Contextual InfoHelp recovery V1 — local implementation (2026-08-02)
-
-This separate bounded classifier runs only after authorization and after the primary or state route yields an approved recovery condition. It receives the current input, normalized channel, up to three recent user and three recent bot turns from ten-minute process memory, an active-state descriptor when present, canonical action metadata, neighboring actions, and Product Truth metadata.
-
-The model must return JSON only with `recovery_outcome`, `failure_cause`, `action_id`, `candidate_action_ids`, `capability_id`, `object_domain`, `operation`, `refers_to_active_flow`, `confidence`, and `needs_clarification`. Every enum and ID is Python-validated. There is at most one contextual recovery call per inbound update, with a timeout and no recursive retry.
-
-The model cannot write user-facing text, execute an action, mutate FSM/DB/storage, establish Product Truth, or dispatch a callback. Python owns rendering, current-state descriptions, authorization/workspace checks, callback records, confirmations, and side effects. No transcript persistence or log reconstruction exists.
 
 **Document role:** source-of-truth AI orchestration contract for FakturaBot.
 

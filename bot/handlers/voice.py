@@ -77,10 +77,6 @@ from bot.handlers.work_time import (
 )
 from bot.handlers.supplier import ServiceAliasStates
 from bot.services.active_fsm_guard import handle_active_fsm_text_update, touch_active_fsm_activity
-from bot.services.conversation_context import (
-    current_active_conversation_turn,
-    remember_voice_transcript,
-)
 from bot.services.speech_to_text import transcribe_audio
 
 router = Router(name='voice')
@@ -170,17 +166,6 @@ async def handle_voice(
         if not recognized_text.strip():
             await message.answer('Nepodarilo sa rozpoznať obsah hlasovej správy. Skúste znova.')
             return
-
-        actor_id = getattr(getattr(message, 'from_user', None), 'id', None)
-        chat_id = getattr(getattr(message, 'chat', None), 'id', None)
-        active_turn = current_active_conversation_turn()
-        if actor_id is not None and chat_id is not None:
-            remember_voice_transcript(
-                user_id=int(actor_id),
-                chat_id=int(chat_id),
-                workspace_id=active_turn.workspace_id if active_turn is not None else None,
-                text=recognized_text,
-            )
 
         if current_state is not None:
             handled_by_active_guard = await handle_active_fsm_text_update(
