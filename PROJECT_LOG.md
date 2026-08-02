@@ -98,6 +98,22 @@
   generic unclear fallback and rejects a primary/exact action mismatch unless
   the bounded result explicitly marks a correction. The pilot was disabled
   again before this repair deployment.
+- Final repair PR #79 merged at `4de87cb` and was deployed disabled-first as
+  image `sha256:a50580724bd243d6a5fa9d2806fdef30a1474aebe7d11d0602da9977b385cfc6`.
+  Startup/polling logs were healthy before `admin_pilot` was restored.
+- Combined throttled server evidence covers all 20 planned bounded-LLM and
+  deterministic cases. After the qualitative repairs, targeted real-handler
+  smoke additionally proved that a quoted bot reply produces a useful no-effect
+  explanation and vague `видалити` creates no invoice continuation or dispatch.
+  The smoke executed no Telegram business effect and no DB write.
+- Final repository verification was `162 passed` focused and `2473 passed, 7
+  subtests passed` full, with compileall and diff checks green. Production DB
+  remained `quick_check=ok`, with three suppliers and eleven invoices; the bot
+  and cloudflared containers are running. Rollout remains scoped to
+  `admin_pilot`, not general availability.
+- Real Telegram transport/UI interaction by the configured administrator is
+  still a separate acceptance item; server harness evidence must not be called
+  a human Telegram journey.
 - Touched scopes: Contextual InfoHelp LLM payload/prompt, focused tests,
   orchestration/InfoHelp/evaluation docs, project log, deployment rollout.
   No schema, migration, storage layout, access, PDF, STT/LMM, self-learning, or
