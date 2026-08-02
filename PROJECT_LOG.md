@@ -1,14 +1,41 @@
 # 2026-08-02 - Google settings commands restored ahead of slash fallback
 
-- Production evidence showed exact /google_drive_connect was consumed by the
+- Production evidence showed exact `/google_drive_connect` was consumed by the
   invoice router's unknown-slash catch-all, which triggered the LLM/InfoHelp path
   instead of the existing deterministic admin command handler.
-- Router order now places gmail_settings and settings before invoice, so
+- Router order now places `gmail_settings` and `settings` before `invoice`, so
   known Google setup/status commands reach their Python owners while genuinely
   unknown slash commands still retain the bounded fallback.
 - Added a regression assertion for both Google settings routers. Focused Drive
   and Gmail settings tests passed. No FSM, DB schema/data, OAuth scope, token,
   Product Truth, self-learning, or capability-maturity change was made.
+
+# 2026-08-02 - Contextual InfoHelp V2 production fail-closed smoke repair
+
+- PR #70 was merged at `e9b94b4`, deployed disabled-first, and then enabled
+  only for the configured administrator with
+  `INFOHELP_CONTEXTUAL_V2_ROLLOUT=admin_pilot`.
+- Before deployment, the production SQLite database and environment file were
+  backed up under a mode-0600 scoped backup. Database `PRAGMA quick_check`
+  remained `ok`, with three suppliers and eleven invoices before and after the
+  deploy and smoke attempt.
+- The first live bounded-LLM smoke case, a Ukrainian receipt-deletion
+  capability question, failed closed to `unknown`: the model copied prose from
+  the output description into an enum and followed an incorrect primary
+  invoice diagnostic. No Telegram action, business handler, database write,
+  file write, callback, or other business side effect was executed.
+- The rollout was immediately restored to `disabled` and the bot was recreated
+  healthy. This is a smoke-detected contract defect, not accepted production
+  behavior.
+- The repair supplies literal allowed values for every bounded enum/list,
+  labels the primary resolver result as untrusted diagnostic context, and adds
+  receipt/invoice negative-space examples. Python validation, Product Truth,
+  action eligibility, tenant/FSM/confirmation gates, and fail-closed behavior
+  remain authoritative.
+- Touched scopes: Contextual InfoHelp LLM payload/prompt, focused tests,
+  orchestration/InfoHelp/evaluation docs, project log, deployment rollout.
+  No schema, migration, storage layout, access, PDF, STT/LMM, self-learning, or
+  persisted business-data change.
 
 # 2026-08-02 - Controlled Gmail consent and first statement import proven
 

@@ -66,6 +66,12 @@ Text and voice use the same `process_invoice_text` and invoice-reference owner. 
 - `receipt/delete`, `contact/edit`, capability questions, negated objects/operations, vague destructive input and account deletion offers fail closed.
 - No PR #63 recovery handler/service, generic callback, action-label dispatch, RAG, vector store, log reconstruction or DB chat-history schema exists.
 
+## Production pilot evidence and fail-closed repair
+
+PR #70 was deployed disabled-first and enabled for `admin_pilot` after a verified backup. The first server live-LLM case failed closed because an enum description was copied as a value and an untrusted primary invoice diagnostic displaced the exact receipt object. Rollout returned immediately to `disabled`; the bot and database remained healthy and no business side effect occurred. The contract repair replaces prose placeholders with literal allowed values and explicitly makes the primary result diagnostic-only. Production acceptance remains pending until the repaired server suite and real Telegram journeys pass.
+
+Focused repair verification: `156 passed in 7.14s`; this is repository evidence, not replacement for interactive Telegram acceptance.
+
 ## Pending interactive acceptance
 
 After review and a deliberate `admin_pilot` configuration change, an authorized administrator must run the 20 journeys in real Telegram, with special attention to Ukrainian/Russian/mixed STT quality, old quoted-message behavior, visible keyboard lifecycle, invoice ambiguity/not-found retries and callback actor/workspace identity. Production acceptance must not be claimed before that pilot passes.
