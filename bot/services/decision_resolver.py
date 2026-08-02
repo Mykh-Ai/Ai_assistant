@@ -37,6 +37,9 @@ _ACTIVE_FSM_NAVIGATION_OUTPUTS = [
     'cancel_current_flow',
     'show_main_menu',
     'resume_start_status',
+    'describe_active_flow',
+    'describe_expected_input',
+    'contextual_info_help',
     'pass_through',
 ]
 _WORK_TIME_OPEN_CONFLICT_OUTPUTS = ['close_day', 'fill_time', 'skip_day', 'cancel', 'unknown']
@@ -276,6 +279,21 @@ async def resolve_active_fsm_navigation(
             'resume_start_status': {
                 'meaning': 'the user wants to restart from the existing /start staged setup/status router',
                 'not_this': ['approve current preview, edit current draft, enter a date/time/value'],
+            },
+            'describe_active_flow': {
+                'meaning': 'the user asks which business action or workflow is currently active and where they are',
+                'not_this': ['ordinary value, confirmation, date, number, name, amount, service description'],
+            },
+            'describe_expected_input': {
+                'meaning': 'the user asks what exact kind of input the current active step expects',
+                'not_this': ['the requested value itself, yes/no, approval, invoice reference, date, amount'],
+            },
+            'contextual_info_help': {
+                'meaning': (
+                    'the user asks a contextual why/how question about the current active step that needs '
+                    'state-aware InfoHelp while preserving the active FSM'
+                ),
+                'not_this': ['ordinary state-owned value or a request to start another fresh business flow'],
             },
             'pass_through': {
                 'meaning': (

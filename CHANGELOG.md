@@ -1,5 +1,6 @@
 # Changelog
 
+- Added a disabled-by-default Contextual InfoHelp AI Assistant V2 inside the existing InfoHelp owner: one bounded context-rich LLM interpretation call, Python-owned Product Truth and exact object-operation validation, correction/negation and explicit-reply context, active-FSM help, and shared invoice-reference continuation. No database migration, persistent transcript, deployment, or production configuration change.
 - Replaced the unreliable Worker-to-Tunnel Gmail callback subrequest with a
   five-minute HMAC-SHA256 signed browser relay. The outbound-only Tunnel still
   publishes no VPS port; the backend verifies signature and age before OAuth

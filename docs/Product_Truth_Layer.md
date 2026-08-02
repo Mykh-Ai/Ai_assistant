@@ -789,3 +789,9 @@ For an authorized non-admin user while idle, the same prefix opens the
 existing confirmation-gated admin-review request preview. This does not create
 an administrator runtime issue, notify an administrator, or persist anything
 before confirmation. Active non-admin FSM ownership is not interrupted.
+
+## Exact InfoHelp Semantic Validation - 2026-08-02
+
+Contextual InfoHelp receives a compact safe view derived from the existing Product Truth registry. The model is never the authority: Python performs the final capability lookup and validates runtime-owner presence after parsing the model output.
+
+Support for one business object does not transfer to another object with the same verb. An executable/offerable action requires an exact registered `domain_id + object_kind + operation_id` match, applicable `supported` or `partial` Product Truth, a real Python owner, actor/workspace validation, required slots or a real continuation FSM, and all existing confirmation gates. No exact match is `unsupported` or a new feature; it is never a nearest-action substitution. Capability questions are answer-only and account-wide deletion is never suggested by InfoHelp.

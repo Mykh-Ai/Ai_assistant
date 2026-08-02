@@ -11,6 +11,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.config import Config
+from bot.services.active_fsm_descriptors import (
+    active_fsm_main_menu_keyboard,
+    get_active_fsm_descriptor,
+    render_active_expected_input,
+    render_active_fsm_description,
+)
+from bot.services.info_help_rollout import contextual_info_help_v2_enabled
 from bot.services.decision_resolver import (
     resolve_active_fsm_navigation,
     resolve_approve_edit_cancel,
@@ -234,6 +241,45 @@ async def handle_active_fsm_text_update(
         input_channel=input_channel,
         request_id=request_id,
     )
+    if navigation_decision in {
+        'describe_active_flow',
+        'describe_expected_input',
+        'contextual_info_help',
+    }:
+        if not contextual_info_help_v2_enabled(config, actor_id):
+            return False
+        state_data = await state.get_data()
+        descriptor = get_active_fsm_descriptor(current_state, state_data)
+        from bot.services.info_help_resolver import (
+            resolve_info_help_assistant_with_llm,
+        )
+
+        await resolve_info_help_assistant_with_llm(
+            current_input_text=text,
+            api_key=config.openai_api_key,
+            model=config.openai_llm_model,
+            input_channel='voice_stt' if input_channel == 'voice' else 'text',
+            primary_resolver_result='active_fsm_help',
+            active_runtime_context={
+                'current_fsm_state_descriptor': current_state,
+                'active_action_id': descriptor.action_id,
+                'active_action_label': descriptor.action_label_sk,
+                'current_step': descriptor.step_label_sk,
+                'expected_input_kind': descriptor.expected_input_kind,
+                'expected_input_description': descriptor.expected_input_sk,
+                'prior_bot_prompt': str(state_data.get('prior_bot_prompt') or '')[:500],
+            },
+        )
+        response = (
+            render_active_expected_input(descriptor)
+            if navigation_decision == 'describe_expected_input'
+            else render_active_fsm_description(descriptor)
+        )
+        await message.answer(
+            response,
+            reply_markup=active_fsm_main_menu_keyboard(),
+        )
+        return True
     if navigation_decision in {'cancel_current_flow', 'show_main_menu', 'resume_start_status'}:
         await _execute_navigation(
             decision=navigation_decision,

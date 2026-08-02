@@ -7,6 +7,15 @@ import unicodedata
 from typing import Any, Mapping
 
 from bot.services.product_truth import get_safe_answer_payload, list_capabilities
+from bot.services.info_help_assistant import (
+    INFO_HELP_INTENT_GENUINELY_UNCLEAR,
+    INFO_HELP_SPEECH_CAPABILITY_QUESTION,
+    InfoHelpAssistantResult,
+    build_info_help_product_truth_view,
+    parse_info_help_assistant_model_output,
+    should_run_contextual_info_help,
+)
+
 
 
 _PRODUCT_TRUTH_OVERVIEW_IDS = (

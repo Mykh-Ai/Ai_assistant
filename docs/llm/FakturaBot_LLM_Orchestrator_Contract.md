@@ -577,3 +577,9 @@ Rules:
 
 This is a project-wide contract, not invoice-only. The same behavior applies to existing and future structured flows.
 
+
+## Contextual InfoHelp V2 orchestration - 2026-08-02
+
+The enhanced InfoHelp call receives current normalized input/channel/language/command hints, primary resolver result and diagnostics, same-chat explicit reply to this bot, bounded recent process-memory turns, safe active-state descriptors, compact Product Truth and the Python-owned action semantic registry. It returns JSON only; Python validates all enums, IDs, confidence and free text.
+
+There is exactly one enhanced InfoHelp call per assisted update: no retry cascade, second recovery LLM, nearest-action LLM, RAG or persistent transcript. The same call acts as the conditional pre-execution validator for mutating/destructive, corrective/negative, capability, missing-slot and object-conflict cases. The model never owns Product Truth, action eligibility, FSM, callback identity, tenant scope, confirmation or side effects. In Telegram callbacks the human actor is `callback.from_user`; `callback.message.from_user` is normally the bot author.

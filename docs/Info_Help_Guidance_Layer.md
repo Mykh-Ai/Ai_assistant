@@ -932,3 +932,13 @@ For administrators, the complete text/voice report enters the existing
 prefix starts the existing confirmation-gated admin-review request preview;
 no request row exists until approval. Unauthorized users still do not reach
 STT/LLM or either persistence path. Active non-admin FSM ownership is unchanged.
+
+## Contextual InfoHelp Assistant V2 - 2026-08-02
+
+Contextual V2 extends the existing InfoHelp owner; it is not a parallel recovery layer. One inbound update may cause exactly one enhanced InfoHelp call after the primary resolver when the primary result is unknown, mutating/destructive, missing a required slot, capability-like, corrective/negative, an unknown command, an explicit reply follow-up, or an active-flow help question.
+
+The bounded JSON distinguishes speech act, domain, exact business object, operation, reference, missing slots, correction/negation, explicit reply, active flow, registered action/capability/command and confidence. Python validates every field, repeats Product Truth lookup, requires exact `domain + object + operation`, and retains FSM, callback, tenant, confirmation and side-effect authority. A receipt delete never becomes invoice/account deletion; contact edit never becomes supplier-profile edit.
+
+Recent context is process memory only: at most three user and three visible bot turns, same user/chat/workspace, ten-minute TTL, lost on restart. It excludes unauthorized input, files, logs, DB rows, secrets and background sends. A same-chat reply to this bot is part of the current request independent of TTL. Context clears on `/start`, `/menu`, `/cancel`, workspace switch and completed user-data deletion.
+
+The old broad catalogue is retained only for an explicit overview. Invalid model output and genuinely unclear input receive a short narrow fallback with no button or effect. Rollout is `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`; invalid/missing values are `disabled`.

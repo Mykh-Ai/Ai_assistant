@@ -506,3 +506,9 @@ Do not treat these as current runtime:
 - real SMTP/email sending flow for invoices;
 - complex role system;
 - setup/billing UI.
+
+### Contextual InfoHelp V2 rollout
+
+The existing InfoHelp layer has an optional context-aware V2 validator. It understands bounded speech acts, exact business object/operation, correction/negation, unknown command hints, explicit Telegram replies, recent process-memory context and active-FSM help. Python remains the authority for Product Truth, action owners, slots, workspace scope, confirmations and effects.
+
+Set `INFOHELP_CONTEXTUAL_V2_ROLLOUT` to `disabled` (default), `admin_pilot`, or `enabled`. Invalid values are treated as `disabled`. `admin_pilot` enables V2 only for IDs already present in `ADMIN_TELEGRAM_USER_IDS`. Context is not persisted and is lost on restart. This repository change does not enable the flag in production.

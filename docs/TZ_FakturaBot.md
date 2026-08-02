@@ -1695,3 +1695,15 @@ Two additive tables store per-contact check state and bounded confirmation propo
 A detected official name, legal-address, DIČ, or IČ DPH difference is notification-only until the owner chooses `Aktualizovať kontakt`. Approval revalidates actor, workspace, TTL, IČO, contact version/old values, and conflicts in one transaction. Decline, replay, expiry, unauthorized actor, stale contact, ambiguity, and conflicts fail closed.
 
 The monitor never updates invoice/invoice-item rows, regenerates PDFs, changes `pdf_path`, or changes contact email, IBAN, person, or contract path. User-data deletion removes monitor/proposal rows before contact/workspace deletion. Rollout is backup-first, disabled deploy, schema validation, no-write dry-run, then controlled enablement.
+
+## 2026-08-02 Addendum: Contextual InfoHelp Assistant V2
+
+The existing InfoHelp owner has a rollout-gated contextual V2 contract. It runs one bounded assistant call when the primary resolver is unknown or potentially unsafe/incomplete, then Python validates Product Truth, exact domain/object/operation, runtime owner, required slots, FSM, callback actor, tenant scope, confirmation and side effects. V2 adds no public business action and no generic nearest-action dispatcher.
+
+Recent context is process-memory only, scoped by Telegram user/chat/workspace, limited to three user and three visible bot turns for ten minutes, and lost on restart. Explicit same-chat replies to this bot are part of the current request independently of TTL. No logs, DB rows, files, secrets or persistent transcript are used.
+
+Existing invoice actions that require a reference share `InvoiceReferenceContinuationStates.waiting_reference`; the next text/voice reference is state-owned and converges on the same scoped lookup/preview owner as a direct reference. Delete and mark-paid remain confirmation-gated.
+
+Active-FSM informational controls can describe the active action or expected input without changing state. Unknown slash commands reach the same single V2 assistant only after known command routers.
+
+Configuration: `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`, default/fail-closed `disabled`. Interactive Telegram admin-pilot acceptance is pending; no deployment or production mode change is part of the implementation PR.

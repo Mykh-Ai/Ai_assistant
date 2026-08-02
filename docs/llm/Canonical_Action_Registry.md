@@ -78,3 +78,9 @@ Previous audit was incomplete because it omitted an already implemented manual u
 - `add_service_alias` via `/sluzbu` (two-step alias setup; `/service` and `/alias` remain legacy aliases) is implemented and persisted in DB.
 
 This flow is command-driven rather than semantic top-level resolver-driven, so it must be classified as **implemented-manual top-level user action**, not as absent.
+
+## InfoHelp V2 semantic and continuation metadata - 2026-08-02
+
+No public canonical action was added. `show_existing_invoice`, `edit_existing_invoice`, `delete_existing_invoice`, and `mark_existing_invoice_paid` now share `InvoiceReferenceContinuationStates.waiting_reference` when `invoice_reference` is absent. Direct reference, continuation text and continuation voice converge on `_execute_invoice_reference_action`; delete and mark-paid retain their existing `yes_no` confirmations.
+
+The Python-owned InfoHelp semantic registry records capability, domain, object, operation, mutation class, owner, commands, required slots, entry mode, continuation and confirmation metadata. Exact object/operation matching is mandatory. `delete_user_database` is explicitly `not_infohelp_eligible`; no contextual-recovery/assistant action, generic dispatcher or synthetic action-label route exists.

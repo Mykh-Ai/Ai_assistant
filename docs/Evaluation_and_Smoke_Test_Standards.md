@@ -271,3 +271,9 @@ Do not:
 - ignore visual review for layout changes;
 - ignore migration/server checks when persisted data or deployment is touched;
 - create another standalone Conversation Acceptance Proof contract.
+
+## Contextual InfoHelp V2 acceptance additions - 2026-08-02
+
+Tests must use real Telegram callback semantics: `callback.from_user` is the human and `callback.message.from_user` is the bot. Multi-turn evidence must cover same user/chat/workspace 3+3 context, ten-minute TTL, restart loss, explicit reply outside TTL, voice transcript captured once, correction/negation, exact object-operation mismatch, active-FSM help/pass-through, invoice-reference continuation, stale/forged callbacks and exactly one enhanced InfoHelp call.
+
+False-green tests that route a human-readable action label back through `process_invoice_text`, equate the callback message author with the human, accept nearest destructive substitutes, or prove only isolated parser branches are invalid. Repository acceptance uses the disabled-by-default rollout; live acceptance starts with `admin_pilot` only after review.

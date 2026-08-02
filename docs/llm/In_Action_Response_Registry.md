@@ -122,3 +122,7 @@ The tax note under the detail preview is field- and source-aware. A validated Fi
 ## Contact registry background proposal - 2026-07-29
 
 `contact_registry_monitor_proposal` is a deterministic asynchronous in-action decision with bounded callback values `yes` and `no`. It reuses the canonical `yes_no` vocabulary but stores proposal context by opaque UUID rather than FSM state. Button callbacks only are supported in V1; free text and voice do not resolve this background proposal. Python revalidates actor, workspace, TTL, contact version, identity, and conflicts before any update.
+
+## Active-FSM contextual help - 2026-08-02
+
+The bounded active-FSM control family includes `describe_active_flow`, `describe_expected_input`, `contextual_info_help`, existing navigation outcomes and `pass_through`. Python maps the current state to an action label, step, expected input kind/description and controls. Informational help keeps the FSM unchanged and shows `Hlavné menu`; ordinary invoice references, values, dates, times, names, descriptions, amounts and confirmation decisions pass through to the state owner. Exact `/cancel`, `/menu`, `/start` and `/issue` retain deterministic priority.

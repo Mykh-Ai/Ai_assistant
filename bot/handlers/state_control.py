@@ -20,6 +20,7 @@ from bot.services.accounting_document_storage import (
     cleanup_temp_staging_path,
 )
 from bot.services.decision_resolver import is_global_cancel_text
+from bot.services.info_help_context import clear_info_help_context_for_message
 from bot.services.officeflow_attachment_storage import (
     OfficeFlowAttachmentStorageError,
     cleanup_staged_attachment,
@@ -58,6 +59,7 @@ async def cancel_alias(message: Message, state: FSMContext, config: Config) -> N
 
 
 async def cancel_current_state(*, message: Message, state: FSMContext, config: Config) -> None:
+    clear_info_help_context_for_message(message)
     current_state = await state.get_state()
     if current_state is None:
         await state.clear()

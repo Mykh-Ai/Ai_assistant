@@ -58,6 +58,7 @@ class Config:
     contact_tax_lookup_enabled: bool = False
     financna_sprava_api_key: str | None = field(default=None, repr=False)
     financna_sprava_timeout_seconds: int = 5
+    infohelp_contextual_v2_rollout: str = 'disabled'
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -239,6 +240,9 @@ def load_config() -> Config:
         contact_tax_lookup_enabled=contact_tax_lookup_enabled,
         financna_sprava_api_key=financna_sprava_api_key,
         financna_sprava_timeout_seconds=financna_sprava_timeout_seconds,
+        infohelp_contextual_v2_rollout=_parse_infohelp_contextual_v2_rollout(
+            os.getenv('INFOHELP_CONTEXTUAL_V2_ROLLOUT', 'disabled')
+        ),
     )
 
 
@@ -288,3 +292,10 @@ def _parse_optional_path(raw_value: str) -> Path | None:
     if not text:
         return None
     return Path(text).resolve()
+
+
+def _parse_infohelp_contextual_v2_rollout(raw_value: str) -> str:
+    value = raw_value.strip().casefold()
+    if value not in {'disabled', 'admin_pilot', 'enabled'}:
+        return 'disabled'
+    return value
