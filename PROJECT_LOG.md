@@ -1,3 +1,30 @@
+# 2026-08-02 - Contextual InfoHelp V2 production fail-closed smoke repair
+
+- PR #70 was merged at `e9b94b4`, deployed disabled-first, and then enabled
+  only for the configured administrator with
+  `INFOHELP_CONTEXTUAL_V2_ROLLOUT=admin_pilot`.
+- Before deployment, the production SQLite database and environment file were
+  backed up under a mode-0600 scoped backup. Database `PRAGMA quick_check`
+  remained `ok`, with three suppliers and eleven invoices before and after the
+  deploy and smoke attempt.
+- The first live bounded-LLM smoke case, a Ukrainian receipt-deletion
+  capability question, failed closed to `unknown`: the model copied prose from
+  the output description into an enum and followed an incorrect primary
+  invoice diagnostic. No Telegram action, business handler, database write,
+  file write, callback, or other business side effect was executed.
+- The rollout was immediately restored to `disabled` and the bot was recreated
+  healthy. This is a smoke-detected contract defect, not accepted production
+  behavior.
+- The repair supplies literal allowed values for every bounded enum/list,
+  labels the primary resolver result as untrusted diagnostic context, and adds
+  receipt/invoice negative-space examples. Python validation, Product Truth,
+  action eligibility, tenant/FSM/confirmation gates, and fail-closed behavior
+  remain authoritative.
+- Touched scopes: Contextual InfoHelp LLM payload/prompt, focused tests,
+  orchestration/InfoHelp/evaluation docs, project log, deployment rollout.
+  No schema, migration, storage layout, access, PDF, STT/LMM, self-learning, or
+  persisted business-data change.
+
 # 2026-08-02 - Controlled Gmail consent and first statement import proven
 
 - A real configured-admin `/gmail_connect` completed after PR #71 and the
