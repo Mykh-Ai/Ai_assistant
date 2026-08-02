@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from difflib import get_close_matches
 import json
 from typing import Any
@@ -238,7 +239,23 @@ async def resolve_info_help_assistant_with_llm(
         )
     except Exception:
         return InfoHelpAssistantResult()
-    return parse_info_help_assistant_model_output(response.choices[0].message.content or '{}')
+    result = parse_info_help_assistant_model_output(response.choices[0].message.content or '{}')
+    proven_explicit_reply = bool(explicit_reply and explicit_reply.get('replied_to_is_our_bot') is True)
+    proven_active_flow = bool(
+        primary_resolver_result == 'active_fsm_help'
+        and active_runtime_context
+        and active_runtime_context.get('current_fsm_state_descriptor')
+    )
+    if (
+        result.refers_to_explicit_reply != proven_explicit_reply
+        or result.refers_to_active_flow != proven_active_flow
+    ):
+        result = replace(
+            result,
+            refers_to_explicit_reply=proven_explicit_reply,
+            refers_to_active_flow=proven_active_flow,
+        )
+    return result
 
 
 def _likely_language(value: str) -> str:

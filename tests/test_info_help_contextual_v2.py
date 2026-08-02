@@ -245,3 +245,58 @@ def test_resolver_makes_exactly_one_enhanced_infohelp_call(monkeypatch) -> None:
 
     assert result.proposed_action_id == 'delete_existing_invoice'
     assert _Completions.calls == 1
+
+
+def test_resolver_preserves_python_proven_reply_and_active_flow_context(monkeypatch) -> None:
+    _Completions.calls = 0
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _Client)
+
+    result = asyncio.run(
+        resolve_info_help_assistant_with_llm(
+            current_input_text='Чому ти це кажеш?',
+            api_key='sk-test',
+            model='gpt-4o',
+            input_channel='text',
+            primary_resolver_result='active_fsm_help',
+            explicit_reply={
+                'replied_to_bot_text': 'safe bounded bot reply',
+                'replied_to_is_our_bot': True,
+            },
+            active_runtime_context={
+                'current_fsm_state_descriptor': 'InvoiceStates:waiting_service_clarification',
+                'active_action_id': 'create_invoice',
+            },
+        )
+    )
+
+    assert result.refers_to_explicit_reply is True
+    assert result.refers_to_active_flow is True
+    assert result.proposed_action_id == 'delete_existing_invoice'
+    assert _Completions.calls == 1
+
+
+def test_resolver_rejects_unproven_model_reply_and_active_flow_flags(monkeypatch) -> None:
+    class UnprovenCompletions:
+        async def create(self, **kwargs):
+            payload = json.loads(_assistant_json())
+            payload['refers_to_explicit_reply'] = True
+            payload['refers_to_active_flow'] = True
+            return _Completion(json.dumps(payload))
+
+    class UnprovenClient:
+        def __init__(self, **kwargs) -> None:
+            self.chat = SimpleNamespace(completions=UnprovenCompletions())
+
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', UnprovenClient)
+    result = asyncio.run(
+        resolve_info_help_assistant_with_llm(
+            current_input_text='delete invoice 10',
+            api_key='sk-test',
+            model='gpt-4o',
+            input_channel='text',
+            primary_resolver_result='delete_existing_invoice',
+        )
+    )
+
+    assert result.refers_to_explicit_reply is False
+    assert result.refers_to_active_flow is False
