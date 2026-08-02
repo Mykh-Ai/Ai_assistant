@@ -12,13 +12,14 @@ Current Product Truth: `partial`, `requires_setup`, `requires_admin`,
 Implementation verification: full backend suite, website CI/build/tests, signed
 callback relay smoke, real OAuth callback, one successful Gmail collection tick,
 one stored workspace-local statement with `parse_status=deferred`, and a second
-tick with no new import passed. The separate owner Google Drive connection is
-currently `needs_reauth`; its queued archive job is safely `retry_wait` and the
-local Gmail import remains authoritative.
+tick with no new import passed. The separate owner Google Drive connection was
+reauthorized through its existing manual bootstrap; the queued bank-statement
+job and archive state reached `uploaded`, while the local Gmail import remains
+authoritative with `parse_status=deferred`.
 
 This proof does not claim Google restricted-scope verification/security review,
-overlap-based source redownload dedup, revoked-token/disconnect recovery, Drive
-upload success, statement parsing, reconciliation, or broader rollout.
+overlap-based source redownload dedup, revoked-token/disconnect recovery,
+statement parsing, reconciliation, or broader rollout.
 
 ## 1. Task Identity And Product Need
 
