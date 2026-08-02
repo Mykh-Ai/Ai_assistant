@@ -220,6 +220,78 @@ def test_vague_delete_is_clarified_without_destructive_route(tmp_path: Path, mon
     assert state.current_state is None
 
 
+def test_vague_delete_cannot_replace_conflicting_primary_destructive_action(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    message = _Message('видалити')
+    state = _State()
+
+    async def _primary(**kwargs):
+        return 'delete_user_database'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='business_action_request',
+            domain_id='invoices',
+            object_kind='invoice',
+            operation_id='delete',
+            proposed_action_id='delete_existing_invoice',
+            intent_complete=False,
+            missing_slots=('invoice_reference',),
+            confidence=0.99,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert state.current_state is None
+    assert message.answers[-1] == 'Spresnite prosím presný objekt a úkon. Nič som nevykonal.'
+
+
+def test_explicit_reply_unclear_result_explains_proven_quoted_bot_message(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    message = _Message('Чому ти це кажеш?')
+    message.bot = type('Bot', (), {'id': 999})()
+    message.reply_to_message = type(
+        'Reply',
+        (),
+        {
+            'chat': message.chat,
+            'from_user': type('BotUser', (), {'id': 999, 'is_bot': True})(),
+            'message_id': 77,
+            'text': 'Aktívny business profil nie je dostupný alebo nie je vybraný.',
+            'reply_markup': None,
+        },
+    )()
+    state = _State()
+
+    async def _primary(**kwargs):
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='genuinely_unclear',
+            speech_act='unknown',
+            domain_id='unknown',
+            object_kind='unknown',
+            operation_id='unknown',
+            proposed_action_id=None,
+            intent_complete=False,
+            refers_to_explicit_reply=True,
+            confidence=0.0,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert 'Citovaná správa bola' in message.answers[-1]
+    assert 'Aktívny business profil' in message.answers[-1]
+    assert 'sama nič nevytvorila, nezmenila ani nevymazala' in message.answers[-1]
+    assert 'nerozumel' not in message.answers[-1]
+    assert state.current_state is None
+
+
 def test_unknown_command_route_is_final_and_uses_command_channel(tmp_path: Path, monkeypatch) -> None:
     message = _Message('/contat')
     state = _State()
