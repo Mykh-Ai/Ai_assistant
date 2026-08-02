@@ -1,3 +1,15 @@
+# 2026-08-02 - Google settings commands restored ahead of slash fallback
+
+- Production evidence showed exact /google_drive_connect was consumed by the
+  invoice router's unknown-slash catch-all, which triggered the LLM/InfoHelp path
+  instead of the existing deterministic admin command handler.
+- Router order now places gmail_settings and settings before invoice, so
+  known Google setup/status commands reach their Python owners while genuinely
+  unknown slash commands still retain the bounded fallback.
+- Added a regression assertion for both Google settings routers. Focused Drive
+  and Gmail settings tests passed. No FSM, DB schema/data, OAuth scope, token,
+  Product Truth, self-learning, or capability-maturity change was made.
+
 # 2026-08-02 - Controlled Gmail consent and first statement import proven
 
 - A real configured-admin `/gmail_connect` completed after PR #71 and the
