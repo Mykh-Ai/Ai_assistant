@@ -1,4 +1,11 @@
 ## 2026-08-01 Addendum: internal runtime issue Agent Claim
+## Contextual InfoHelp Recovery V1 — local runtime status (2026-08-02)
+
+The authorized Telegram runtime now has process-local short conversation context (maximum three user and three bot visible turns, TTL ten minutes), bounded primary-unknown and unmatched-command recovery, and Python-rendered active-FSM help. Voice contributes recognized text once after successful STT and then follows the same active/idle recovery owners.
+
+The recovery LLM returns classification metadata only and receives no execution authority. Python validates canonical actions and Product Truth, owns callbacks/FSM/confirmations, and preserves active flows until explicit navigation. Recovery records are process-local, user/chat/workspace-bound, single-use, and expire within ten minutes.
+
+Status is partial Level 2 and `implemented_locally_pending_runtime_acceptance`. There is no DB/schema change, persistent chat history, log-based context, migration, server access, deployment, restart, or production data modification.
 
 Status: `implemented_repository_only / production_not_deployed`.
 

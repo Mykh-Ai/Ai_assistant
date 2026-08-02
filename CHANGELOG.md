@@ -1,4 +1,18 @@
 # Changelog
+## 2026-08-02 — Contextual InfoHelp recovery and active-FSM help
+
+### Added
+
+- Bounded short conversation context for authorized Telegram turns: up to three user and three bot messages, ten-minute TTL, process memory only.
+- Narrow contextual recovery after primary unknowns and unmatched slash commands, with validated relevant-action buttons and short fail-closed fallback.
+- Python-rendered active-FSM action/step/expected-input help with a state-preserving `Hlavné menu` button.
+- Strict one-call/no-retry recovery model transport and actor/chat/workspace/expiry-bound callback records.
+
+### Safety and scope
+
+- Python continues to own Product Truth, user-facing wording, callbacks, FSM, confirmations, and side effects.
+- No persistent transcript, DB schema change, log-derived context, automatic fresh-FSM switching, deployment, restart, or production data modification.
+- Capability maturity remains partial Level 2; deployed Telegram acceptance is pending.
 
 - Enabled the existing official Slovak RPO contact lookup and configured Financial Administration tax enrichment for every authorized production user with an active workspace/profile by clearing the pilot workspace scope; fail-closed provider handling, manual fallback, tenant isolation, and final confirmation remain unchanged.
 - Fixed the registry detail tax note so validated official DIČ is acknowledged, missing IČ DPH is described without a non-VAT claim, and manual DIČ guidance appears only when DIČ is actually absent.

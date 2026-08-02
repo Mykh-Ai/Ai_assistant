@@ -1,4 +1,14 @@
 # 2026-08-01 - Runtime issue Agent Claim reuses the existing handoff schema
+## 2026-08-02 — Contextual InfoHelp Recovery V1 implemented locally
+
+- Audited and branched from exact `origin/main` SHA `465df389c1b0c6ad3281733fe7888f5b49122c1d`; approved architecture materialized in `docs/architecture/INFOHELP_CONTEXTUAL_RECOVERY_V1_ARCHITECTURE_DESIGN_PROOF.md`.
+- Added authorized, workspace-isolated process-memory conversation context with 3 user + 3 bot turn limits, ten-minute TTL, centralized inbound/outbound capture, single post-STT capture, and required lifecycle clearing. No schema or persistent history was added.
+- Extended the shared active-FSM bounded resolver with `describe_active_flow`, `describe_expected_input`, and `contextual_recovery`; Python state descriptors render help and the allowlisted `Hlavné menu` callback preserves state until clicked.
+- Added a separate one-call/no-retry contextual recovery classifier with exact validated `recovery_outcome` / `failure_cause` contract, sanitized recent visible turns, Product Truth metadata, domain-local candidate filtering, narrow Python responses, and safe timeout/failure fallback.
+- Added the last-router unmatched slash-command catcher and actor/chat/workspace/TTL/index-bound ephemeral recovery callbacks. Candidate clicks revalidate Product Truth and converge on existing Python owners; existing confirmation gates remain authoritative.
+- Product Truth remains `partial` Level 2. No new public canonical business action, self-learning hook, RAG, log-derived context, automatic fresh-FSM switch, DB/storage migration, server action, deployment, restart, or production write was introduced.
+- Automated verification: focused `43 passed in 4.10s`; adjacent `508 passed in 66.29s (0:01:06)`; full suite `2467 passed, 7 subtests passed in 503.47s (0:08:23)`; compileall passed; diff check passed.
+- Conversation Acceptance Proof: `docs/evals/INFOHELP_CONTEXTUAL_RECOVERY_V1_CONVERSATION_ACCEPTANCE_PROOF.md`. Deployed Telegram runtime acceptance remains pending separate authorization.
 
 - Owner decision: the former V1 GitHub-verified acknowledgment method is
   obsolete. Receiving an issue must be recorded by the deterministic handoff

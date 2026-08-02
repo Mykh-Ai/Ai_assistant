@@ -1,4 +1,11 @@
 # Evaluation And Smoke Test Standards
+## Contextual InfoHelp recovery V1 acceptance gate (2026-08-02)
+
+Local acceptance requires automated evidence for: authorized-only context capture; 3+3 bounds, TTL, user/chat/workspace isolation and lifecycle clears; same-chat outgoing capture without background capture; single post-STT capture; known-command priority and terminal unknown-command routing; active-FSM multilingual/noisy help tokens, state preservation and stale-state precedence; strict recovery JSON validation; domain-local candidates capped at four; one no-retry contextual call; safe timeout/failure; actor/chat/workspace/TTL/index callback validation; Product Truth revalidation; existing-owner convergence; and unchanged confirmation/keyboard cleanup.
+
+Run focused tests, adjacent routing/FSM/voice/InfoHelp/Product Truth/callback/access tests, then `python -m pytest -q`, `python -m compileall -q bot`, and `git diff --check`. The automated Conversation Acceptance Proof records text, voice/STT, command, callback, and active-FSM evidence.
+
+Automated local evidence does not equal production acceptance. A real deployed Telegram smoke remains pending and requires separate server authorization; this task performs no deployment, restart, migration, or production write.
 
 ## Purpose
 

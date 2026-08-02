@@ -23,6 +23,7 @@ from bot.handlers.invoice import (
 )
 from bot.handlers.work_time import WorkTimeStates
 from bot.services.customization_requests import CustomizationRequestService
+from bot.services.contextual_info_help_recovery import ContextualRecoveryResult
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.product_truth import list_capabilities
 from bot.services.info_help import InfoHelpTriageResult, build_top_level_unknown_guidance
@@ -1761,11 +1762,10 @@ def test_unknown_top_level_gets_info_help_guidance(tmp_path: Path) -> None:
     state = _DummyState()
     asyncio.run(process_invoice_text(message=message, state=state, config=_config(tmp_path), invoice_text='blabla'))
     assert state.cleared is True
-    assert 'Nerozumiem, čo chcete spraviť.' in message.answers[-1]
-    assert 'vytvoriť faktúru' in message.answers[-1]
-    assert 'spočítať súhrn vystavených faktúr za kalendárny rok' in message.answers[-1]
-    assert 'súhrn faktúr za 2026' in message.answers[-1]
-    assert 'pridaj bloček' in message.answers[-1]
+    assert message.answers[-1] == (
+        'Tejto správe som nerozumel.\n'
+        'Skúste prosím stručne napísať, čo chcete urobiť.'
+    )
 
 
 GENERAL_INVOICE_ANALYTICS_INPUTS = [
@@ -2343,7 +2343,7 @@ def test_known_reserved_send_invoice_action_uses_product_truth_and_does_not_exec
         ('Ak\u00e9 bude po\u010dasie zajtra?', 'mimo rozsahu OfficeFlow'),
         ('@@@ #### !!!', 'Tomuto vstupu nerozumiem'),
         ('Ako sa m\u00e1\u0161?', 'biznis \u00falohami'),
-        ('urob mi to', 'Nie je jasn\u00e9'),
+        ('urob mi to', 'Tejto spr\u00e1ve som nerozumel.'),
     ],
 )
 def test_process_invoice_text_uses_bounded_info_help_triage_without_side_effects(
@@ -2402,7 +2402,7 @@ def test_all_eligible_triage_classes_create_preview_only(
     async def _resolver(**kwargs) -> str:
         return 'unknown'
 
-    async def _triage(**kwargs) -> InfoHelpTriageResult:
+    def _triage(**kwargs) -> InfoHelpTriageResult:
         return InfoHelpTriageResult(
             capability_id='unknown',
             topic_id='new_business_feature',
@@ -2411,7 +2411,7 @@ def test_all_eligible_triage_classes_create_preview_only(
         )
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
-    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_triage_result_with_llm', _triage)
+    monkeypatch.setattr('bot.services.info_help.classify_info_help_triage', _triage)
     config = _config(tmp_path)
     init_db(config.db_path)
     message = _authorized_message('Potrebujem nov\u00fd firemn\u00fd workflow.')
@@ -2827,13 +2827,11 @@ def test_process_invoice_text_unknown_can_use_llm_info_help_triage_without_side_
         )
     )
 
-    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
-    assert 'N\u00e1vrh po\u017eiadavky' in message.answers[-1]
-    assert 'Nestane sa: ni\u010d neimplementujem' in message.answers[-1]
-    assert _InfoHelpTriageOpenAIFake.last_payload is not None
-    assert _InfoHelpTriageOpenAIFake.last_payload['input_channel'] == 'text'
-    assert 'request_draft' not in _InfoHelpTriageOpenAIFake.last_payload
-    assert 'admin_message' not in _InfoHelpTriageOpenAIFake.last_payload
+    assert state.current_state is None
+    assert 'Tejto spr\u00e1ve som nerozumel.' in message.answers[-1]
+    assert _InfoHelpTriageOpenAIFake.last_payload is None
+    assert 'request_draft' not in message.answers[-1]
+    assert 'admin_message' not in message.answers[-1]
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 
@@ -2880,9 +2878,9 @@ def test_process_invoice_text_llm_unknown_falls_back_to_generic_guidance_without
     )
 
     assert state.cleared is True
-    assert 'Nerozumiem, \u010do chcete spravi\u0165.' in message.answers[-1]
-    assert 'vytvori\u0165 fakt\u00faru' in message.answers[-1]
-    assert _InfoHelpTriageOpenAIFake.last_payload is not None
+    assert 'Tejto spr\u00e1ve som nerozumel.' in message.answers[-1]
+    assert 'vytvori\u0165 fakt\u00faru' not in message.answers[-1]
+    assert _InfoHelpTriageOpenAIFake.last_payload is None
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 
@@ -2929,11 +2927,10 @@ def test_process_invoice_text_llm_possible_product_truth_candidate_asks_clarific
         )
     )
 
-    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
-    assert 'N\u00e1vrh po\u017eiadavky' in message.answers[-1]
+    assert state.current_state is None
+    assert 'Tejto spr\u00e1ve som nerozumel.' in message.answers[-1]
     assert 'supported' not in message.answers[-1]
-    assert _InfoHelpTriageOpenAIFake.last_payload is not None
-    assert 'primary_status' not in _InfoHelpTriageOpenAIFake.last_payload
+    assert _InfoHelpTriageOpenAIFake.last_payload is None
     assert not config.db_path.exists()
     assert not (tmp_path / 'invoices').exists()
 

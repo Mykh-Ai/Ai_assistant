@@ -120,6 +120,8 @@ async def cmd_start(message: Message, config: Config, state: FSMContext | None =
         return
 
     await message.answer(build_start_status_message(config, message.from_user.id))
+    from bot.services.conversation_context import clear_conversation_for_message
+    clear_conversation_for_message(message)
 
 
 @router.message(lambda message: _command_token(message.text or '') == '/menu')
@@ -135,6 +137,8 @@ async def cmd_menu(message: Message, config: Config, state: FSMContext | None = 
             context,
         )
     await message.answer(menu)
+    from bot.services.conversation_context import clear_conversation_for_message
+    clear_conversation_for_message(message)
 
 
 @router.message(lambda message: _is_case_variant_command(message.text or '', '/start'))
