@@ -47,26 +47,30 @@
       "architecture_branch": "codex/invoice-reference-continuation-design",
       "architecture_commit": "72598445148d2636dd3f1da7052fbcb85752319d",
       "architecture_pr": "https://github.com/Mykh-Ai/Ai_assistant/pull/62",
-      "next_action": "owner_approve_ready_for_handoff_design",
-      "outcome": "diagnosed_design_published",
+      "closed_at": "2026-08-02T08:39:12.5373273+02:00",
+      "closure_reason": "owner_marked_source_issue_not_current_because_required_prior_stt_evidence_is_unavailable_after_container_recreation",
+      "next_action": "none_unless_a_new_issue_is_reported_with_preserved_stt_and_routing_evidence",
+      "outcome": "closed_not_current_without_implementation",
       "owner_scope": "routing_fsm_invoice_edit",
       "parent_issue_id": "IR-20260801-78B6680F2D16",
       "production_changed": false,
-      "status": "waiting_owner_approval",
-      "updated_at": "2026-08-01T19:09:31.3873032Z"
+      "status": "closed_not_current",
+      "updated_at": "2026-08-02T08:39:12.5373273+02:00"
     },
     {
       "classification": "insufficient_evidence",
       "code_changed": false,
       "finding_id": "IR-20260801-78B6680F2D16-F02",
       "log_ref": "ARL-20260801-009",
-      "next_action": "preserve_exact_stt_and_response_evidence_on_reproduction",
-      "outcome": "exact_prior_stt_unavailable_after_container_recreate",
+      "closed_at": "2026-08-02T08:39:12.5373273+02:00",
+      "closure_reason": "owner_marked_source_issue_not_current_because_required_prior_stt_evidence_is_unavailable_after_container_recreation",
+      "next_action": "none_unless_a_new_issue_is_reported_with_preserved_stt_and_routing_evidence",
+      "outcome": "closed_not_current_exact_prior_stt_unavailable_after_container_recreate",
       "owner_scope": "top_level_routing",
       "parent_issue_id": "IR-20260801-78B6680F2D16",
       "production_changed": false,
-      "status": "insufficient_evidence",
-      "updated_at": "2026-08-01T19:09:31.3873032Z"
+      "status": "closed_not_current",
+      "updated_at": "2026-08-02T08:39:12.5373273+02:00"
     }
   ],
   "schema_version": "autorepair-workshop-v1",
@@ -100,12 +104,15 @@
       "manifest_digest": "sha256:178037449f5875bfc6d83d923bd6857e204d1f9a5264fe3eb6a2410047bf23e1",
       "delivery_state": "accepted_by_agent",
       "acknowledged_at": "2026-08-01T19:04:11.620147Z",
+      "closed_at": "2026-08-02T08:39:12.5373273+02:00",
+      "closure_log_ref": "ARL-20260802-011",
+      "closure_reason": "owner_marked_issue_not_current_because_required_prior_stt_evidence_is_unavailable_after_container_recreation",
       "production_changed": false,
       "received_at": "2026-08-01T19:03:10.817879Z",
       "repository_main_sha": "465df389c1b0c6ad3281733fe7888f5b49122c1d",
-      "status": "diagnosed_waiting_owner_approval"
+      "status": "not_current"
     }
   ],
-  "updated_at": "2026-08-01T19:16:20.0000000Z",
+  "updated_at": "2026-08-02T08:39:12.5373273+02:00",
   "workshop_branch": "maintenance/runtime-issue-workshop"
 }

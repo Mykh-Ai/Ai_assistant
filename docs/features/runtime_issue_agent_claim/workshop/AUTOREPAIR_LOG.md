@@ -475,3 +475,22 @@ Prepare a task-specific Architecture Design Proof for F01 with verdict
 - Validation: documentation diff check and `python -m compileall -q bot` passed.
 - Production Agent Claim deployment was verified; no production business data
   was changed by diagnosis or design work.
+
+## ARL-20260802-011 - Source issue closed as not current
+
+- Source issue: `IR-20260801-78B6680F2D16`.
+- Owner decision: mark the source issue and both findings as not current.
+- Reason: the report explicitly depended on the exact preceding STT, but that
+  evidence is no longer available after the production container recreation.
+- `IR-20260801-78B6680F2D16-F01`: closed as `closed_not_current`; the published
+  design remains historical evidence only and will not be implemented from
+  this source issue.
+- `IR-20260801-78B6680F2D16-F02`: closed as `closed_not_current`; the missing
+  STT and resolver event are not reconstructed or guessed.
+- Draft PR #62 was closed without merge at `2026-08-02T06:45:32Z` because
+  its implementation handoff is no longer requested.
+- If the behavior happens again, it must enter the Workshop as a new source
+  issue with preserved STT and routing evidence.
+- Code changed: no.
+- Production changed: no.
+- Production business data changed: no.
