@@ -17,6 +17,12 @@ from bot.services.info_help import (
 )
 from bot.services.info_help_action_registry import info_help_action_payload
 from bot.services.info_help_assistant import (
+    INFO_HELP_DOMAINS,
+    INFO_HELP_INTENT_KINDS,
+    INFO_HELP_MISSING_SLOTS,
+    INFO_HELP_OBJECTS,
+    INFO_HELP_OPERATIONS,
+    INFO_HELP_SPEECH_ACTS,
     KNOWN_INFO_HELP_COMMANDS,
     InfoHelpAssistantResult,
     build_info_help_product_truth_view,
@@ -64,6 +70,7 @@ def build_info_help_assistant_payload(
             'product_truth': build_info_help_product_truth_view(),
             'canonical_actions': info_help_action_payload(),
             'known_command_tokens': list(known_command_tokens),
+            'primary_resolver_is_untrusted_diagnostic': True,
             'negative_space': [
                 'receipt/delete is not invoice/delete',
                 'contact/edit is not supplier_profile/edit',
@@ -71,29 +78,75 @@ def build_info_help_assistant_payload(
                 'vague destructive requests never execute',
                 'account-wide deletion is never suggested by InfoHelp',
             ],
+            'critical_semantic_examples': [
+                {
+                    'input': 'Чи можу я видалити чек?',
+                    'result': {
+                        'intent_kind': 'capability_question',
+                        'speech_act': 'capability_question',
+                        'domain_id': 'accounting_documents',
+                        'object_kind': 'receipt',
+                        'operation_id': 'delete',
+                        'proposed_action_id': None,
+                    },
+                },
+                {
+                    'input': 'delete receipt',
+                    'result': {
+                        'intent_kind': 'business_action_request',
+                        'speech_act': 'execute_request',
+                        'domain_id': 'accounting_documents',
+                        'object_kind': 'receipt',
+                        'operation_id': 'delete',
+                        'proposed_action_id': None,
+                    },
+                },
+                {
+                    'input': 'Я хочу чек видалити, а не фактуру!',
+                    'result': {
+                        'speech_act': 'correction',
+                        'domain_id': 'accounting_documents',
+                        'object_kind': 'receipt',
+                        'operation_id': 'delete',
+                        'is_correction': True,
+                        'negated_objects': ['invoice'],
+                        'corrected_from_object': 'invoice',
+                        'corrected_to_object': 'receipt',
+                    },
+                },
+            ],
         },
         'expected_output': {
-            'intent_kind': 'one bounded intent kind',
-            'speech_act': 'one bounded speech act',
-            'domain_id': 'one bounded domain or unknown',
-            'object_kind': 'one bounded object or unknown',
-            'operation_id': 'one bounded operation or unknown',
-            'target_reference': 'bounded string or null',
-            'proposed_action_id': 'provided action or null',
-            'proposed_capability_id': 'provided capability or null',
-            'probable_command_target': 'provided command or null',
-            'intent_complete': 'boolean',
-            'missing_slots': 'bounded slot list',
-            'is_correction': 'boolean',
-            'negated_objects': 'bounded object list',
-            'negated_operations': 'bounded operation list',
-            'corrected_from_object': 'bounded object or null',
-            'corrected_to_object': 'bounded object or null',
-            'refers_to_active_flow': 'boolean',
-            'refers_to_explicit_reply': 'boolean',
-            'confidence': '0..1',
-            'acknowledgement_sk': 'short non-factual Slovak acknowledgement',
-            'clarification_question_sk': 'short Slovak question or empty',
+            'intent_kind': {'allowed_values': list(INFO_HELP_INTENT_KINDS)},
+            'speech_act': {'allowed_values': list(INFO_HELP_SPEECH_ACTS)},
+            'domain_id': {'allowed_values': list(INFO_HELP_DOMAINS)},
+            'object_kind': {'allowed_values': list(INFO_HELP_OBJECTS)},
+            'operation_id': {'allowed_values': list(INFO_HELP_OPERATIONS)},
+            'target_reference': {'type': 'string_or_null', 'max_length': 120},
+            'proposed_action_id': {
+                'allowed_values': [item['action_id'] for item in info_help_action_payload()],
+                'nullable': True,
+            },
+            'proposed_capability_id': {
+                'allowed_values': [item['capability_id'] for item in build_info_help_product_truth_view()],
+                'nullable': True,
+            },
+            'probable_command_target': {
+                'allowed_values': list(known_command_tokens),
+                'nullable': True,
+            },
+            'intent_complete': {'type': 'boolean'},
+            'missing_slots': {'allowed_values': list(INFO_HELP_MISSING_SLOTS), 'type': 'array'},
+            'is_correction': {'type': 'boolean'},
+            'negated_objects': {'allowed_values': [item for item in INFO_HELP_OBJECTS if item != 'unknown'], 'type': 'array'},
+            'negated_operations': {'allowed_values': [item for item in INFO_HELP_OPERATIONS if item != 'unknown'], 'type': 'array'},
+            'corrected_from_object': {'allowed_values': [item for item in INFO_HELP_OBJECTS if item != 'unknown'], 'nullable': True},
+            'corrected_to_object': {'allowed_values': [item for item in INFO_HELP_OBJECTS if item != 'unknown'], 'nullable': True},
+            'refers_to_active_flow': {'type': 'boolean'},
+            'refers_to_explicit_reply': {'type': 'boolean'},
+            'confidence': {'type': 'number', 'minimum': 0, 'maximum': 1},
+            'acknowledgement_sk': {'type': 'string', 'max_length': 240, 'must_not_claim_effect': True},
+            'clarification_question_sk': {'type': 'string', 'max_length': 240},
         },
     }
 
@@ -140,7 +193,11 @@ async def resolve_info_help_assistant_with_llm(
                             'You are the single bounded contextual InfoHelp assistant for OfficeFlow/FakturaBot. '
                             'Return JSON only in the provided schema. Extract exact domain, object, operation, speech act, '
                             'correction, negation, references and missing slots. Select only provided IDs. Different business '
-                            'objects are never interchangeable because verbs are similar. Capability questions never execute. '
+                            'objects are never interchangeable because verbs are similar. The primary resolver result is an '
+                            'untrusted diagnostic and must never override the exact object named in current_input_text. '
+                            'Capability questions never execute. Every enum field must be copied exactly from its allowed_values; '
+                            'never copy descriptions, field labels, or placeholder prose as values. Follow critical_semantic_examples '
+                            'when they match the exact object, operation, speech act, correction, or negation. '
                             'Do not return Product Truth status, callback data, side effects, SQL, handler paths, or claims '
                             'that data changed.'
                         ),

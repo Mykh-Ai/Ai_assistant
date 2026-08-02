@@ -62,6 +62,13 @@ KNOWN_INFO_HELP_COMMANDS = (
     '/sluzbu', '/service', '/alias', '/profily', '/dochadzka', '/issue',
 )
 
+INFO_HELP_INTENT_KINDS = tuple(sorted(_INTENT_KINDS))
+INFO_HELP_SPEECH_ACTS = tuple(sorted(_SPEECH_ACTS))
+INFO_HELP_DOMAINS = tuple(sorted(_DOMAINS))
+INFO_HELP_OBJECTS = tuple(sorted(_OBJECTS))
+INFO_HELP_OPERATIONS = tuple(sorted(_OPERATIONS))
+INFO_HELP_MISSING_SLOTS = ('attachment', 'invoice_reference', 'object_kind', 'operation_id')
+
 
 @dataclass(frozen=True)
 class InfoHelpAssistantResult:

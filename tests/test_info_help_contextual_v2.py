@@ -184,6 +184,21 @@ def test_payload_contains_context_product_truth_actions_and_reply() -> None:
     assert payload['product_and_action_context']['canonical_actions']
 
 
+def test_payload_exposes_exact_enum_values_and_receipt_negative_space_example() -> None:
+    payload = build_info_help_assistant_payload(
+        current_input_text='Чи можу я видалити чек?',
+        input_channel='text',
+        primary_resolver_result='delete_existing_invoice',
+        primary_mutation_class='destructive',
+    )
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert 'one bounded intent kind' not in serialized
+    assert 'capability_question' in payload['expected_output']['intent_kind']['allowed_values']
+    example = payload['product_and_action_context']['critical_semantic_examples'][0]['result']
+    assert (example['domain_id'], example['object_kind'], example['operation_id']) == ('accounting_documents', 'receipt', 'delete')
+    assert payload['product_and_action_context']['primary_resolver_is_untrusted_diagnostic'] is True
+
+
 def test_pre_execution_gate_covers_unknown_destructive_correction_and_command() -> None:
     assert should_run_contextual_info_help(primary_action='unknown', input_text='x')
     assert should_run_contextual_info_help(primary_action='delete_existing_invoice', input_text='vymaž faktúru')

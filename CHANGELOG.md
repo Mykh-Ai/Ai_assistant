@@ -1,5 +1,9 @@
 # Changelog
 
+- Hardened Contextual InfoHelp V2 after a fail-closed production pilot smoke:
+  all bounded output fields now carry literal allowed values, the primary
+  resolver is explicitly untrusted diagnostic context, and receipt/invoice
+  negative-space examples prevent cross-object destructive suggestions.
 - Added a disabled-by-default Contextual InfoHelp AI Assistant V2 inside the existing InfoHelp owner: one bounded context-rich LLM interpretation call, Python-owned Product Truth and exact object-operation validation, correction/negation and explicit-reply context, active-FSM help, and shared invoice-reference continuation. No database migration, persistent transcript, deployment, or production configuration change.
 - Recorded controlled production Gmail evidence: real connected readonly grant,
   one successful workspace-local statement import with deferred parsing, a
