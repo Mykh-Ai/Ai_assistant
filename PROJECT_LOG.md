@@ -8967,3 +8967,27 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 
 - Repository implementation, tests, docs, commit, pushed branch, and PR only. No merge, deployment, restart, server access, production data access, DB migration, schema/storage write, or production configuration change.
 - AI maturity remains `partial Level 2`; interactive 20-journey Telegram acceptance under an explicitly enabled `admin_pilot` remains pending before any production acceptance claim.
+
+# 2026-08-03 - One-time labelled Gmail statement import
+
+- The configured user applied the dedicated `FakturaBot-import` Gmail label to
+  one recent message containing one PDF statement that had been sent from a
+  personal mailbox and therefore could not match the permanent bank-sender
+  query.
+- A read-only label probe found exactly one message, one attachment candidate,
+  and one PDF. Before import, an online SQLite backup passed
+  `PRAGMA quick_check`, was stored under the FakturaBot backup root, and was
+  restricted to mode `0600`.
+- One isolated collector process used a temporary label-only query without
+  changing `.env` or the running scheduler query. It stored one new
+  workspace-scoped original with `parse_status=deferred`; there were no
+  rejects, failures, source duplicates, or content duplicates.
+- The resulting `bank_statement_original` archive job and authoritative
+  accounting archive state both reached `uploaded` with no error. The
+  permanent query still contains the trusted bank `from:` filter and does not
+  contain the temporary label override.
+- This is operational recovery evidence, not a new general capability:
+  forwarded statements are not automatically accepted, statement content is
+  not parsed, and per-client or broad mailbox synchronization remains out of
+  scope. No OAuth scope, token, bot process, product code, or production
+  configuration changed.
