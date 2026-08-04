@@ -532,7 +532,12 @@ storage/workspaces/<workspace.storage_key>/
     metadata.json
 ```
 
-Year/month comes from validated Gmail internal date, not attachment contents.
+This original V1 design expected local year/month from the validated Gmail
+internal date. Runtime implementation used ingestion time instead. For newly
+collected PDFs, Drive routing is superseded by the deterministic statement-period
+contract in
+`docs/architecture/GMAIL_PROTECTED_STATEMENT_PERIOD_ROUTING_V1_ARCHITECTURE_DESIGN_PROOF.md`;
+local storage remains an immutable ingestion location and is not moved.
 Validate workspace, source ids, filename, MIME/extension mapping, non-empty
 bytes, maximum size, SHA-256, containment, control characters, traversal, and
 symlink escape. An `application/octet-stream` candidate is accepted only for a

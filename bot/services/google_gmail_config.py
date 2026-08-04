@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import os
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class GoogleGmailConfig:
     target_workspace_id: str | None = None
     expected_email: str | None = None
     statement_query: str | None = field(default=None, repr=False)
+    statement_pdf_open_password_file: str | None = field(default=None, repr=False)
     check_interval_seconds: int = 86400
     initial_lookback_days: int = 30
     overlap_hours: int = 24
@@ -84,6 +86,9 @@ def load_google_gmail_config() -> GoogleGmailConfig:
         target_workspace_id=_text("GOOGLE_GMAIL_TARGET_WORKSPACE_ID"),
         expected_email=_text("GOOGLE_GMAIL_EXPECTED_EMAIL"),
         statement_query=_text("GOOGLE_GMAIL_STATEMENT_QUERY"),
+        statement_pdf_open_password_file=_text(
+            "GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE"
+        ),
         check_interval_seconds=_integer(
             "GOOGLE_GMAIL_CHECK_INTERVAL_SECONDS", 86400, minimum=60, maximum=604800
         ),
@@ -118,6 +123,39 @@ def load_google_gmail_config() -> GoogleGmailConfig:
     )
     config.validate_enabled()
     return config
+
+
+def load_statement_pdf_open_password(config: GoogleGmailConfig) -> str | None:
+    """Load an optional opening password without exposing it in config/logs."""
+    raw_path = config.statement_pdf_open_password_file
+    if raw_path is None:
+        return None
+    path = Path(raw_path)
+    if not path.is_absolute():
+        raise RuntimeError(
+            "GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE must be an absolute path"
+        )
+    try:
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(
+                "GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE must name a regular file"
+            )
+        if path.stat().st_size > 1024:
+            raise RuntimeError(
+                "GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE is too large"
+            )
+        value = path.read_text(encoding="utf-8").rstrip("\r\n")
+    except RuntimeError:
+        raise
+    except (OSError, UnicodeError):
+        raise RuntimeError(
+            "GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE cannot be read"
+        ) from None
+    if not value or len(value) > 256 or any(c in value for c in "\r\n\x00"):
+        raise RuntimeError(
+            "GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE contains an invalid password"
+        )
+    return value
 
 
 def _text(name: str) -> str | None:

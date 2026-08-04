@@ -124,9 +124,9 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'gmail_statement_collection': {
         'title': 'Zber bankových výpisov z Gmailu',
-        'summary': 'Zber je podporovaný čiastočne pre jedno presne nastavené Gmail konto a workspace; kontrolovaný produkčný pilot už preukázal pripojenie a uloženie zodpovedajúcej prílohy.',
-        'limitation': 'Integrácia vyžaduje správcu, externé Google OAuth credentials, očakávanú Gmail adresu, nasadený callback a zapnutý worker. Používa iba gmail.readonly; nevie posielať emaily ani nežiada Google Drive scope. Výpisy sa iba uložia s parse_status=deferred — neparsujú sa, nepárujú sa s platbami a nevytvárajú cashflow, DPH ani daňové závery. Stav iného nasadenia alebo účtu sa nesmie odvodiť zo všeobecného Product Truth.',
-        'safe_next': 'Najprv použite /gmail_status. Ak pripojenie nie je connected a zber active, správca dokončí nastavenie a použije /gmail_connect.',
+        'summary': 'Zber je podporovaný čiastočne pre jedno presne nastavené Gmail konto a workspace. Pri podporovanom PDF vie bot bezpečne určiť obdobie výpisu a zaradiť nový Drive archív podľa mesiaca s najväčším počtom pokrytých dní.',
+        'limitation': 'Integrácia vyžaduje správcu, externé Google OAuth credentials, očakávanú Gmail adresu, nasadený callback a zapnutý worker. Používa iba gmail.readonly; nevie posielať ani meniť emaily a Gmail grant neobsahuje Drive scope. Pre zaheslované PDF musí správca nastaviť súbor so vstupným heslom; heslo na úpravu sa nepoužíva a dešifrovaná kópia sa neukladá. Pri chýbajúcom alebo nesprávnom hesle či nejednoznačnom období sa Drive archivácia pozastaví, nie odhadne podľa mesiaca importu. Výpis zostáva s parse_status=deferred — neparsujú sa transakcie, nič sa nepáruje a nevytvárajú sa cashflow, DPH ani daňové závery.',
+        'safe_next': 'Najprv použite /gmail_status. Ak pripojenie nie je connected a zber active, správca dokončí nastavenie a použije /gmail_connect; pri chránených PDF musí mimo Telegramu nainštalovať opening-password secret file.',
     },
     'google_drive_invoice_storage': {
         'title': 'Ukladanie faktúr na Google Drive',

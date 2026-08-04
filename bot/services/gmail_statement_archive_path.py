@@ -78,16 +78,42 @@ def derive_gmail_statement_drive_target_path(
     metadata_path: str | Path | None,
     workspace_storage_key: str,
     workspace_drive_folder_name: str,
+    statement_period_year: int | str | None = None,
+    statement_period_month: int | str | None = None,
 ) -> str:
     parts = validate_gmail_statement_archive_paths(
         local_file_path=local_file_path,
         metadata_path=metadata_path,
         workspace_storage_key=workspace_storage_key,
     )
+    year, month = _archive_period_parts(
+        parts,
+        statement_period_year=statement_period_year,
+        statement_period_month=statement_period_month,
+    )
     folder = validate_workspace_drive_folder_name(workspace_drive_folder_name)
     return normalize_relative_drive_target_path(
-        f"{folder}/{parts.year}/bankove_vypisy/{parts.year}-{parts.month}"
+        f"{folder}/{year}/bankove_vypisy/{year}-{month}"
     )
+
+
+def _archive_period_parts(
+    path_parts: GmailStatementArchivePathParts,
+    *,
+    statement_period_year: int | str | None,
+    statement_period_month: int | str | None,
+) -> tuple[str, str]:
+    if statement_period_year is None and statement_period_month is None:
+        return path_parts.year, path_parts.month
+    if statement_period_year is None or statement_period_month is None:
+        raise AccountingDocumentArchivePathError("statement_period_incomplete")
+    year = str(statement_period_year).strip()
+    month_raw = str(statement_period_month).strip()
+    if not re.fullmatch(r"\d{4}", year):
+        raise AccountingDocumentArchivePathError("statement_period_invalid")
+    if not month_raw.isdigit() or not 1 <= int(month_raw) <= 12:
+        raise AccountingDocumentArchivePathError("statement_period_invalid")
+    return year, f"{int(month_raw):02d}"
 
 
 def _has_control_character(value: str) -> bool:

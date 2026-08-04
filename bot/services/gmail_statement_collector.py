@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 import hashlib
 import json
 import os
@@ -18,6 +18,11 @@ from bot.services.gmail_readonly_adapter import (
     GmailReadonlyAdapter,
     GmailReadonlyError,
     GmailReadonlyNeedsReauth,
+)
+from bot.services.gmail_statement_period import (
+    GmailStatementPeriodResult,
+    STATEMENT_PERIOD_NOT_PDF,
+    detect_gmail_statement_period,
 )
 from bot.services.workspace_context import WorkspaceContext
 
@@ -45,6 +50,13 @@ CREATE TABLE IF NOT EXISTS gmail_statement_imports (
     local_metadata_path TEXT,
     collection_status TEXT NOT NULL,
     parse_status TEXT NOT NULL,
+    statement_period_status TEXT NOT NULL DEFAULT 'not_checked',
+    statement_period_start TEXT,
+    statement_period_end TEXT,
+    statement_period_year INTEGER,
+    statement_period_month INTEGER,
+    statement_period_source TEXT,
+    statement_period_error_code TEXT,
     duplicate_of_import_id TEXT,
     archive_status TEXT NOT NULL,
     archive_job_id TEXT,
@@ -84,6 +96,13 @@ class GmailStatementImportResult:
     local_metadata_path: str | None = None
     safe_display_filename: str | None = None
     size_bytes: int | None = None
+    statement_period_status: str = "not_checked"
+    statement_period_start: str | None = None
+    statement_period_end: str | None = None
+    statement_period_year: int | None = None
+    statement_period_month: int | None = None
+    statement_period_source: str | None = None
+    statement_period_error_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +119,24 @@ class GmailCollectorRunResult:
 
 def ensure_gmail_statement_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(GMAIL_STATEMENT_IMPORT_SCHEMA)
+    columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(gmail_statement_imports)")
+    }
+    additions = {
+        "statement_period_status": "TEXT NOT NULL DEFAULT 'not_checked'",
+        "statement_period_start": "TEXT",
+        "statement_period_end": "TEXT",
+        "statement_period_year": "INTEGER",
+        "statement_period_month": "INTEGER",
+        "statement_period_source": "TEXT",
+        "statement_period_error_code": "TEXT",
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            connection.execute(
+                f"ALTER TABLE gmail_statement_imports ADD COLUMN {name} {definition}"
+            )
 
 
 class GmailStatementStore:
@@ -153,6 +190,20 @@ class GmailStatementStore:
             )
             connection.commit()
 
+    def mark_archive_withheld(
+        self, import_id: str, error_code: str, *, now: datetime | None = None
+    ) -> None:
+        timestamp = _utc_now(now).isoformat()
+        with managed_connection(self._db_path) as connection:
+            ensure_gmail_statement_schema(connection)
+            connection.execute(
+                "UPDATE gmail_statement_imports "
+                "SET archive_status='period_review_required', last_error_code=?, "
+                "updated_at=? WHERE import_id=? AND collection_status='stored'",
+                (error_code[:128], timestamp, import_id),
+            )
+            connection.commit()
+
     def mark_notified(self, import_id: str, *, now: datetime | None = None) -> None:
         timestamp = _utc_now(now).isoformat()
         with managed_connection(self._db_path) as connection:
@@ -172,12 +223,19 @@ class GmailStatementStore:
         candidate: GmailAttachmentCandidate,
         content: bytes,
         policy: GmailStatementPolicy,
+        statement_period: GmailStatementPeriodResult | None = None,
         now: datetime | None = None,
     ) -> GmailStatementImportResult:
+        # Commit any additive legacy-schema upgrade before the explicit storage
+        # transaction begins; ALTER TABLE must never be left implicit here.
+        self.ensure_schema()
         _validate_workspace(workspace)
         connection_id = _required(connection_id, "connection_id", 128)
         safe_name, extension = _validate_attachment(candidate, content, policy)
         timestamp = _utc_now(now)
+        period = statement_period or GmailStatementPeriodResult(
+            status="not_checked", error_code="not_checked"
+        )
         import_id = str(uuid4())
         with managed_connection(self._db_path) as connection:
             ensure_gmail_statement_schema(connection)
@@ -186,7 +244,12 @@ class GmailStatementStore:
             existing = connection.execute(
                 """
                 SELECT import_id, collection_status, duplicate_of_import_id,
-                       local_original_path, local_metadata_path
+                       local_original_path, local_metadata_path,
+                       safe_display_filename, size_bytes,
+                       statement_period_status, statement_period_start,
+                       statement_period_end, statement_period_year,
+                       statement_period_month, statement_period_source,
+                       statement_period_error_code
                 FROM gmail_statement_imports
                 WHERE workspace_id=? AND gmail_message_id=?
                       AND source_attachment_key=?
@@ -205,6 +268,17 @@ class GmailStatementStore:
                     duplicate_of_import_id=existing["duplicate_of_import_id"],
                     local_original_path=existing["local_original_path"],
                     local_metadata_path=existing["local_metadata_path"],
+                    safe_display_filename=existing["safe_display_filename"],
+                    size_bytes=existing["size_bytes"],
+                    statement_period_status=str(existing["statement_period_status"]),
+                    statement_period_start=existing["statement_period_start"],
+                    statement_period_end=existing["statement_period_end"],
+                    statement_period_year=existing["statement_period_year"],
+                    statement_period_month=existing["statement_period_month"],
+                    statement_period_source=existing["statement_period_source"],
+                    statement_period_error_code=existing[
+                        "statement_period_error_code"
+                    ],
                 )
             if existing is not None:
                 import_id = str(existing["import_id"])
@@ -273,6 +347,7 @@ class GmailStatementStore:
                     canonical_import_id=str(duplicate["import_id"]),
                     canonical_path=str(duplicate["local_original_path"]),
                     timestamp=timestamp,
+                    statement_period=period,
                 )
                 original_path = str(duplicate["local_original_path"])
                 status = "duplicate_content"
@@ -286,6 +361,7 @@ class GmailStatementStore:
                     content=content,
                     digest=digest,
                     timestamp=timestamp,
+                    statement_period=period,
                 )
                 status = "stored"
                 duplicate_id = None
@@ -300,7 +376,10 @@ class GmailStatementStore:
                 SET size_bytes=?, sha256=?, local_original_path=?,
                     local_metadata_path=?, collection_status='stored',
                     duplicate_of_import_id=?, updated_at=?, stored_at=?,
-                    last_error_code=NULL
+                    statement_period_status=?, statement_period_start=?,
+                    statement_period_end=?, statement_period_year=?,
+                    statement_period_month=?, statement_period_source=?,
+                    statement_period_error_code=?, last_error_code=NULL
                 WHERE import_id=? AND collection_status='downloading'
                 """,
                 (
@@ -311,6 +390,13 @@ class GmailStatementStore:
                     duplicate_id,
                     timestamp.isoformat(),
                     timestamp.isoformat(),
+                    period.status,
+                    _date_iso(period.start_date),
+                    _date_iso(period.end_date),
+                    period.period_year,
+                    period.period_month,
+                    period.source,
+                    period.error_code,
                     import_id,
                 ),
             )
@@ -323,6 +409,13 @@ class GmailStatementStore:
             local_metadata_path=metadata_path,
             safe_display_filename=safe_name,
             size_bytes=len(content),
+            statement_period_status=period.status,
+            statement_period_start=_date_iso(period.start_date),
+            statement_period_end=_date_iso(period.end_date),
+            statement_period_year=period.period_year,
+            statement_period_month=period.period_month,
+            statement_period_source=period.source,
+            statement_period_error_code=period.error_code,
         )
 
     def _write_original_atomically(
@@ -335,6 +428,7 @@ class GmailStatementStore:
         content: bytes,
         digest: str,
         timestamp: datetime,
+        statement_period: GmailStatementPeriodResult,
     ) -> tuple[str, str]:
         month_root = self._month_root(workspace, timestamp)
         final_dir = month_root / import_id
@@ -363,7 +457,13 @@ class GmailStatementStore:
                 os.fsync(handle.fileno())
             metadata = temp_dir / "metadata.json"
             model = _metadata_model(
-                workspace, import_id, candidate, digest, len(content), timestamp
+                workspace,
+                import_id,
+                candidate,
+                digest,
+                len(content),
+                timestamp,
+                statement_period=statement_period,
             )
             _write_json(metadata, model)
             temp_dir.replace(final_dir)
@@ -388,6 +488,7 @@ class GmailStatementStore:
         canonical_import_id: str,
         canonical_path: str,
         timestamp: datetime,
+        statement_period: GmailStatementPeriodResult,
     ) -> str:
         canonical = Path(canonical_path).resolve()
         self._assert_contained(canonical)
@@ -415,6 +516,7 @@ class GmailStatementStore:
                 digest,
                 size,
                 timestamp,
+                statement_period=statement_period,
                 duplicate_of_import_id=canonical_import_id,
                 canonical_original_path=canonical_path,
             )
@@ -478,6 +580,7 @@ class GmailStatementCollector:
         workspace_id: str,
         connection_id: str,
         policy: GmailStatementPolicy,
+        pdf_open_password: str | None = None,
     ) -> None:
         self._adapter = adapter
         self._store = store
@@ -485,6 +588,7 @@ class GmailStatementCollector:
         self._workspace_id = _required(workspace_id, "workspace_id", 128)
         self._connection_id = _required(connection_id, "connection_id", 128)
         self._policy = policy
+        self._pdf_open_password = pdf_open_password
         self._running = False
 
     def run_once(self) -> GmailCollectorRunResult:
@@ -531,12 +635,22 @@ class GmailStatementCollector:
                         content = self._adapter.download(
                             candidate, maximum=self._policy.maximum_bytes
                         )
+                        if Path(candidate.filename).suffix.lower() == ".pdf":
+                            statement_period = detect_gmail_statement_period(
+                                content, open_password=self._pdf_open_password
+                            )
+                        else:
+                            statement_period = GmailStatementPeriodResult(
+                                status=STATEMENT_PERIOD_NOT_PDF,
+                                error_code=STATEMENT_PERIOD_NOT_PDF,
+                            )
                         result = self._store.store(
                             workspace=workspace,
                             connection_id=self._connection_id,
                             candidate=candidate,
                             content=content,
                             policy=self._policy,
+                            statement_period=statement_period,
                         )
                         counts[result.status] += 1
                         if result.status == "stored":
@@ -606,11 +720,12 @@ def _metadata_model(
     size: int,
     timestamp: datetime,
     *,
+    statement_period: GmailStatementPeriodResult,
     duplicate_of_import_id: str | None = None,
     canonical_original_path: str | None = None,
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "import_id": import_id,
         "workspace_id": workspace.workspace_id,
         "workspace_storage_key": workspace.storage_key,
@@ -627,6 +742,13 @@ def _metadata_model(
         "sha256": digest,
         "collection_status": "stored",
         "parse_status": "deferred",
+        "statement_period_status": statement_period.status,
+        "statement_period_start": _date_iso(statement_period.start_date),
+        "statement_period_end": _date_iso(statement_period.end_date),
+        "statement_period_year": statement_period.period_year,
+        "statement_period_month": statement_period.period_month,
+        "statement_period_source": statement_period.source,
+        "statement_period_error_code": statement_period.error_code,
         "archive_status": "not_configured",
         "duplicate_of_import_id": duplicate_of_import_id,
         "canonical_original_path": canonical_original_path,
@@ -652,6 +774,10 @@ def _write_json(path: Path, value: dict[str, object]) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     temporary.replace(path)
+
+
+def _date_iso(value: date | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 def _required(value: object, field: str, maximum: int = 4096) -> str:

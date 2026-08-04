@@ -23,7 +23,11 @@ from bot.services.google_api_gmail_transport import GoogleAPIGmailReadonlyTransp
 from bot.services.gmail_statement_archive_path import (
     DOCUMENT_TYPE_BANK_STATEMENT_ORIGINAL,
 )
-from bot.services.google_gmail_config import load_google_gmail_config
+from bot.services.gmail_statement_period import STATEMENT_PERIOD_DETECTED
+from bot.services.google_gmail_config import (
+    load_google_gmail_config,
+    load_statement_pdf_open_password,
+)
 from bot.services.google_gmail_runtime import GoogleGmailRuntimeService
 from bot.services.token_crypto import FernetTokenCryptoProvider
 from bot.services.workspace_context import WorkspaceContextService
@@ -92,6 +96,7 @@ async def run_gmail_statement_scheduler(*, bot: Bot, config: Config) -> None:
 
 def _run_tick(config: Config):
     gmail = load_google_gmail_config()
+    pdf_open_password = load_statement_pdf_open_password(gmail)
     workspace_id = gmail.target_workspace_id or ""
     workspace_service = WorkspaceContextService(config.db_path)
     workspace = workspace_service.resolve_for_background_workspace(workspace_id)
@@ -131,6 +136,7 @@ def _run_tick(config: Config):
             allowed_mime_types=gmail.allowed_mime_types,
             allowed_extensions=gmail.allowed_extensions,
         ),
+        pdf_open_password=pdf_open_password,
     )
     try:
         result = collector.run_once()
@@ -145,6 +151,22 @@ def _run_tick(config: Config):
         store = GmailStatementStore(config.db_path, config.storage_dir)
         archive = AccountingDocumentArchiveService(config.db_path)
         for imported in result.new_imports:
+            if (
+                imported.statement_period_status != STATEMENT_PERIOD_DETECTED
+                or imported.statement_period_year is None
+                or imported.statement_period_month is None
+            ):
+                store.mark_archive_withheld(
+                    imported.import_id,
+                    "gmail_statement_period_"
+                    + imported.statement_period_status[:96],
+                )
+                logger.warning(
+                    "gmail_statement_archive_withheld import_id=%s period_status=%s",
+                    imported.import_id,
+                    imported.statement_period_status,
+                )
+                continue
             if not imported.local_original_path or not imported.local_metadata_path:
                 store.mark_archive_failed(imported.import_id, "gmail_archive_path_missing")
                 continue
@@ -158,6 +180,8 @@ def _run_tick(config: Config):
                     metadata_path=imported.local_metadata_path,
                     workspace_storage_key=workspace.storage_key,
                     workspace_drive_folder_name=workspace.drive_folder_name,
+                    statement_period_year=imported.statement_period_year,
+                    statement_period_month=imported.statement_period_month,
                 )
             except Exception:
                 store.mark_archive_failed(imported.import_id, "gmail_archive_enqueue_failed")
@@ -186,10 +210,22 @@ def _notification_text(imported) -> str:
         imported.safe_display_filename or "bankový výpis", quote=False
     )
     size = imported.size_bytes or 0
+    if imported.statement_period_status == STATEMENT_PERIOD_DETECTED:
+        period_line = (
+            "Obdobie archívu: "
+            f"{imported.statement_period_year:04d}-"
+            f"{imported.statement_period_month:02d}.\n"
+        )
+    else:
+        period_line = (
+            "Obdobie sa nepodarilo bezpečne určiť; archivácia na Drive "
+            "bola pozastavená na kontrolu.\n"
+        )
     return (
         "Nový bankový výpis bol bezpečne uložený.\n"
         f"Súbor: {filename}\n"
         f"Veľkosť: {size} B\n"
+        f"{period_line}"
         "Spracovanie obsahu: odložené; výpis ešte nebol parsovaný ani spárovaný."
     )
 

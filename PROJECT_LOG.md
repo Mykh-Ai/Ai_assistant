@@ -9147,3 +9147,37 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   not parsed, and per-client or broad mailbox synchronization remains out of
   scope. No OAuth scope, token, bot process, product code, or production
   configuration changed.
+
+# 2026-08-04 - Protected Gmail statement period routing V1
+
+- Recorded the task-specific architecture proof after identifying a live
+  contract/runtime variance: the original Gmail proof expected Gmail internal
+  date routing, while runtime Drive targeting inherited the local ingestion
+  month. The approved behavior now uses the validated statement interval only
+  for new Drive targets and leaves local ingestion paths unchanged.
+- Added a bounded deterministic PDF detector. It may open encrypted PDFs in
+  memory with an administrator-managed opening-password secret file, never
+  requests the owner/edit password, persists neither the password nor
+  decrypted page text, and never writes a decrypted copy.
+- Added inclusive interval resolution from an explicit range or a unique
+  previous/current statement-date pair. The month with the greatest covered-day
+  count wins; an equal count selects the interval-end month. Transaction dates
+  are not used.
+- Added fail-closed period states and additive SQLite columns. Missing/wrong
+  password, unreadable text, and ambiguous periods preserve the immutable local
+  original but withhold a new Drive job as `period_review_required`. Existing
+  rows default to `not_checked`; no backfill, path rewrite, Drive move, delete,
+  server write, or production configuration change was performed.
+- Extended the existing archive path validators and outbox enqueue contract so
+  a validated period can override the ingestion month without weakening
+  workspace/path validation or legacy job idempotency.
+- Updated Product Truth, InfoHelp, TZ, README, environment example, setup
+  runbook, changelog, architecture truth, and conversation acceptance evidence.
+  The capability remains `partial`, deterministic, and `parse_status=deferred`;
+  no canonical action, FSM, DecisionResolver, LLM/STT/LMM, transaction parser,
+  reconciliation, or self-learning behavior changed.
+- Focused period/config/collector/archive/scheduler regression suite:
+  `69 passed` before final truth/docs synchronization. Final full suite:
+  `2518 passed, 7 subtests passed in 482.43s`. `python -m compileall -q bot`
+  and `git diff --check` also passed; only expected Windows line-ending
+  warnings were reported.

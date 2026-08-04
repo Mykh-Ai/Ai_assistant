@@ -1,5 +1,11 @@
 # Changelog
 
+- Added fail-closed period routing for supported Gmail bank-statement PDFs:
+  encrypted files are opened only in memory with an administrator-managed
+  opening-password file, the calendar month with the most covered statement
+  days determines the new Drive target, and unknown periods are withheld rather
+  than archived under the ingestion month. Originals remain unchanged and
+  transaction parsing is still deferred.
 - Fixed grouped periodic contact updates for duplicate company contacts owned by the same authorized actor: formatting-equivalent IČO values now revalidate canonically, identical official target snapshots receive one card, and one confirmation updates every explicitly grouped workspace row atomically. Different actors remain isolated, any stale/conflicting group member prevents partial writes, and issued invoices/PDFs remain unchanged.
 - Routed already-resolved Product-Truth-supported canonical actions directly to
   their registered Python owners instead of invoking Contextual InfoHelp solely
