@@ -37,6 +37,10 @@ _DESCRIPTORS = {
         'mark_existing_invoice_paid', 'Označenie faktúry ako uhradenej', 'potvrdenie zmeny',
         'yes_no', 'jednoznačné potvrdenie alebo návrat do menu',
     ),
+    'CustomizationRequestStates:waiting_admin_offer_decision': ActiveFsmDescriptor(
+        'request_customization_review', 'Požiadavka správcovi', 'výber ďalšieho kroku',
+        'bounded_choice', 'tlačidlo Požiadať správcu alebo Hlavné menu',
+    ),
 }
 
 _PENDING_ACTION_LABELS = {

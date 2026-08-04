@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from bot.config import Config
+from bot.handlers.invoice import CustomizationRequestStates
 from bot.handlers.work_time import WorkTimeStates
 from bot.services.active_fsm_guard import (
     ACTIVE_FSM_EXPIRED_MESSAGE,
@@ -102,6 +103,77 @@ def test_active_text_show_main_menu_clears_state_and_uses_existing_menu(tmp_path
     assert state.current_state is None
     assert state.cleared is True
     assert 'Všetky používateľské možnosti' in message.answers[-1]
+
+
+def test_info_help_offer_menu_control_removes_owned_inline_keyboard(tmp_path: Path) -> None:
+    class _Bot:
+        def __init__(self) -> None:
+            self.edits: list[tuple[int, int, object | None]] = []
+
+        async def edit_message_reply_markup(self, *, chat_id, message_id, reply_markup=None) -> None:
+            self.edits.append((chat_id, message_id, reply_markup))
+
+    message = _DummyMessage('/menu')
+    message.chat = type('Chat', (), {'id': USER_ID + 1000})()
+    message.bot = _Bot()
+    state = _DummyState(
+        CustomizationRequestStates.waiting_admin_offer_decision.state,
+        {
+            **_fresh_data(),
+            'info_help_offer_message_id': 501,
+            'info_help_offer_chat_id': USER_ID + 1000,
+        },
+    )
+
+    handled = asyncio.run(
+        handle_active_fsm_text_update(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            text=message.text,
+            input_channel='text',
+        )
+    )
+
+    assert handled is True
+    assert state.cleared is True
+    assert message.bot.edits == [(USER_ID + 1000, 501, None)]
+    assert 'Všetky používateľské možnosti' in message.answers[-1]
+
+
+def test_info_help_offer_keyboard_cleanup_failure_does_not_block_menu(
+    tmp_path: Path, caplog
+) -> None:
+    class _FailingBot:
+        async def edit_message_reply_markup(self, **kwargs) -> None:
+            raise RuntimeError('cleanup failed')
+
+    message = _DummyMessage('/menu')
+    message.chat = type('Chat', (), {'id': USER_ID + 1000})()
+    message.bot = _FailingBot()
+    state = _DummyState(
+        CustomizationRequestStates.waiting_admin_offer_decision.state,
+        {
+            **_fresh_data(),
+            'info_help_offer_message_id': 502,
+            'info_help_offer_chat_id': USER_ID + 1000,
+        },
+    )
+
+    handled = asyncio.run(
+        handle_active_fsm_text_update(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            text=message.text,
+            input_channel='text',
+        )
+    )
+
+    assert handled is True
+    assert state.cleared is True
+    assert 'Všetky používateľské možnosti' in message.answers[-1]
+    assert 'Failed to clear InfoHelp admin-offer inline keyboard' in caplog.text
 
 
 def test_active_text_resume_start_status_clears_state_and_uses_start_router(tmp_path: Path, monkeypatch) -> None:

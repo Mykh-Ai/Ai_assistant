@@ -1,18 +1,15 @@
 # Conversation Acceptance Proof: Supported Action Direct Routing
 
-Verdict: `safe_to_commit`
+Verdict: `merged_deployed_live_verified`
 
 Date: 2026-08-04
 
 Approved design:
 `docs/architecture/info_help_supported_action_direct_routing_architecture_design_proof.md`
 
-Working state: branch `codex/supported-action-direct-routing`, based on
-`9e9e9022c2fe274c01a0c46a1624a096c0d41e03`; commit SHA is assigned after this
-proof is reviewed. Environment is local Windows/Python with isolated SQLite
-fixtures. LLM, STT transport, Telegram transport, and deletion are mocked or
-isolated as stated. Server deployment and human Telegram smoke are post-merge
-evidence and are not claimed by this pre-commit verdict.
+Delivered commit: `2d5967b1036adb47f0089bc21351ee8d497c0dbb`.
+PR: `#82`. Merge/deployed main SHA:
+`fd1e60ac7e185733d0c01957e579ccae0e27b47a`.
 
 ## Public-Entry Traces
 
@@ -65,8 +62,11 @@ evidence and are not claimed by this pre-commit verdict.
 
 - Input: `Чи можу я видалити чек?` with an arranged false primary invoice-delete
   diagnostic.
-- Result: Contextual InfoHelp/Product Truth answers the unsupported exact
-  receipt operation; no invoice owner, state, or effect.
+- Result at delivery: Contextual InfoHelp/Product Truth answers the unsupported
+  exact receipt operation; no invoice owner or invoice effect. A later
+  2026-08-04 follow-up adds a temporary admin-offer FSM after that truthful
+  answer; it does not change this direct-routing invariant or perform a DB
+  write before separate customization-request approval.
 - Evidence:
   `test_receipt_delete_capability_question_blocks_false_invoice_delete`.
 - Result: pass.
@@ -146,9 +146,23 @@ No material deviation from the approved design is recorded.
 - Corrected narrow suite: `26 passed in 5.89s`.
 - Expanded focused suite: `1086 passed in 87.99s`.
 - Full `python -m pytest -q`: `2476 passed, 7 subtests passed in 457.79s`.
-- Server deployment and live Telegram negative smoke: intentionally pending
-  until merge; they must be appended before the overall task is called fully
-  verified.
+- PR #82 merge, server deployment, and live Telegram evidence are recorded
+  below.
 
-Decision: repository behavior is `safe_to_commit`; this is not merge,
-deployment, or live-production acceptance.
+## Post-Merge Production And Live Evidence
+
+- Production was deployed at exact remote-main SHA
+  `fd1e60ac7e185733d0c01957e579ccae0e27b47a`; the container was running with
+  restart count `0`, Telegram polling active, and no polling conflict.
+- Live `Видалити фактуру 10` produced the existing confirmation for invoice
+  `20260010`, proving supported-action routing. The invoice was later deleted
+  after an affirmative user choice, so this journey is not used as
+  no-deletion proof.
+- Live `Видалити фактуру`, followed by `9`, produced the existing confirmation
+  for invoice `20260009`. The user selected the negative decision and the bot
+  answered `Vymazanie faktúry bolo zrušené.` A subsequent read-only production
+  DB check proved `20260009` remained present.
+
+Decision: the supported-action routing repair is merged, deployed, and live
+verified. The affirmative deletion of `20260010` is recorded honestly and the
+separate negative journey for `20260009` is the no-deletion proof.

@@ -22,6 +22,10 @@ As of Admin Response to User MVP:
   `CustomizationRequestService`;
 - eligible idle InfoHelp/Triage candidates can show a user-facing preview and
   save one confirmed pending-review request only after explicit approval;
+- exact unsupported Contextual InfoHelp results can first show a bounded
+  `Požiadať správcu` / `Hlavné menu` offer. The first choice opens the same
+  existing preview; it does not save or notify anyone. The second choice uses
+  the existing main-menu owner and saves nothing;
 - the user-facing preview is compact, Slovak-only, and addressed to the user in
   second person; it shows the request title, short summary, optional expected
   outcome, and confirmation consequences;
@@ -183,13 +187,16 @@ Current implemented flow:
 2. Resolve direct supported actions first when the user clearly wants action
    execution.
 3. For capability/customization questions, check Product Truth.
-4. If no known capability/topic matches, run Unknown / Discovery / Triage.
-5. Detect business need and domain only for safe business/admin/customization
+4. If Product Truth proves an exact unsupported operation, explain that status
+   and offer the bounded admin-review/menu choice. Choosing admin review opens
+   the existing draft preview; choosing the menu ends the offer without save.
+5. If no known capability/topic matches, run Unknown / Discovery / Triage.
+6. Detect business need and domain only for safe business/admin/customization
    candidates.
-6. Draft a structured request.
-7. Show the draft to the user.
-8. Ask explicit confirmation.
-9. Save a pending request only after confirmation.
+7. Draft a structured request.
+8. Show the draft to the user.
+9. Ask explicit confirmation.
+10. Save a pending request only after confirmation.
 
 The user preview is not the admin analysis card. It must not expose domain,
 risk level, internal clarification questions, raw Product Truth/debug wording, or

@@ -14,10 +14,34 @@ DECISION_FILL_TIME = 'fill_time'
 DECISION_SKIP_DAY = 'skip_day'
 DECISION_FILL = 'fill'
 DECISION_SKIP = 'skip'
+INFO_HELP_OFFER_CALLBACK_PREFIX = 'info_help_offer:'
+INFO_HELP_OFFER_REQUEST_ADMIN = 'request_admin'
+INFO_HELP_OFFER_MAIN_MENU = 'main_menu'
 
 
 def decision_callback_data(token: str) -> str:
     return f'{DECISION_CALLBACK_PREFIX}{token}'
+
+
+def info_help_offer_callback_data(token: str) -> str:
+    return f'{INFO_HELP_OFFER_CALLBACK_PREFIX}{token}'
+
+
+def info_help_admin_offer_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text='Požiadať správcu',
+                    callback_data=info_help_offer_callback_data(INFO_HELP_OFFER_REQUEST_ADMIN),
+                ),
+                InlineKeyboardButton(
+                    text='Hlavné menu',
+                    callback_data=info_help_offer_callback_data(INFO_HELP_OFFER_MAIN_MENU),
+                ),
+            ]
+        ]
+    )
 
 
 def work_time_open_conflict_keyboard() -> InlineKeyboardMarkup:
@@ -83,10 +107,10 @@ def delete_cancel_keyboard(*, delete_label: str = 'Vymazať', cancel_label: str 
     return yes_no_keyboard(yes_label=delete_label, no_label=cancel_label)
 
 
-async def answer_with_decision_keyboard(message, text: str, reply_markup: InlineKeyboardMarkup) -> None:
+async def answer_with_decision_keyboard(message, text: str, reply_markup: InlineKeyboardMarkup):
     try:
-        await message.answer(text, reply_markup=reply_markup)
+        return await message.answer(text, reply_markup=reply_markup)
     except TypeError as exc:
         if 'reply_markup' not in str(exc) and 'unexpected keyword' not in str(exc):
             raise
-        await message.answer(text)
+        return await message.answer(text)

@@ -21,6 +21,7 @@ from bot.handlers.invoice import (
     CustomizationRequestStates,
     InvoiceStates,
     customization_request_preview_decision,
+    info_help_admin_offer_decision,
     invoice_delete_existing_invoice_confirm,
     invoice_mark_existing_invoice_paid_confirm,
     process_invoice_customer_alias_confirm,
@@ -60,6 +61,9 @@ from bot.keyboards.decision import (
     DECISION_SKIP,
     DECISION_SKIP_DAY,
     DECISION_YES,
+    INFO_HELP_OFFER_CALLBACK_PREFIX,
+    INFO_HELP_OFFER_MAIN_MENU,
+    INFO_HELP_OFFER_REQUEST_ADMIN,
 )
 
 
@@ -68,6 +72,52 @@ logger = logging.getLogger(__name__)
 
 
 _STALE_DECISION_MESSAGE = 'Toto rozhodnutie už nie je dostupné. Pokračujte aktuálnym krokom v chate.'
+
+
+@router.callback_query(F.data.startswith(INFO_HELP_OFFER_CALLBACK_PREFIX))
+async def info_help_offer_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    config: Config,
+) -> None:
+    token = _parse_info_help_offer_token(callback.data)
+    current_state = _state_name(await state.get_state())
+    expected_state = CustomizationRequestStates.waiting_admin_offer_decision.state
+    if token is None or current_state != expected_state:
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+        return
+    state_data = await state.get_data()
+    source_message = callback.message
+    source_message_id = getattr(source_message, 'message_id', None)
+    source_chat_id = getattr(getattr(source_message, 'chat', None), 'id', None)
+    if (
+        state_data.get('info_help_offer_message_id') != source_message_id
+        or state_data.get('info_help_offer_chat_id') != source_chat_id
+    ):
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+        return
+    if await is_active_fsm_callback_stale_or_legacy(state=state, current_state=current_state):
+        await clear_current_state_safely(state=state, config=config)
+        await callback.answer(ACTIVE_FSM_EXPIRED_MESSAGE, show_alert=True)
+        await _clear_inline_keyboard(callback)
+        return
+
+    await info_help_admin_offer_decision(
+        message=_CallbackMessageAdapter(callback),
+        state=state,
+        config=config,
+        canonical_decision=token,
+    )
+    await _clear_inline_keyboard(callback)
+    await callback.answer()
+    await touch_active_fsm_activity(state)
+
+
+def _parse_info_help_offer_token(data: str | None) -> str | None:
+    if not data or not data.startswith(INFO_HELP_OFFER_CALLBACK_PREFIX):
+        return None
+    token = data[len(INFO_HELP_OFFER_CALLBACK_PREFIX) :]
+    return token if token in {INFO_HELP_OFFER_REQUEST_ADMIN, INFO_HELP_OFFER_MAIN_MENU} else None
 
 
 class _CallbackMessageAdapter:
