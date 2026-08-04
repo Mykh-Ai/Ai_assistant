@@ -99,8 +99,23 @@ class WorkspaceContextService:
                 return context
         raise WorkspaceSelectionRequired('active_workspace_selection_required')
 
-    def resolve_for_background_workspace(self, workspace_id: str) -> WorkspaceContext:
+    def resolve_for_background_workspace(
+        self, workspace_id: str, *, include_inactive: bool = False
+    ) -> WorkspaceContext:
         normalized_workspace_id = str(workspace_id).strip()
+        status_filter = (
+            '' if include_inactive else ' AND w.status = ? AND m.status = ?'
+        )
+        parameters: tuple[object, ...] = (
+            (normalized_workspace_id, AUTHORIZED_STATUS_ACTIVE)
+            if include_inactive
+            else (
+                normalized_workspace_id,
+                AUTHORIZED_STATUS_ACTIVE,
+                WORKSPACE_STATUS_ACTIVE,
+                MEMBERSHIP_STATUS_ACTIVE,
+            )
+        )
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
@@ -114,15 +129,10 @@ class WorkspaceContextService:
                     'ON m.workspace_id = w.workspace_id '
                     'AND m.telegram_id = s.telegram_id '
                     'JOIN authorized_users a ON a.telegram_id = s.telegram_id '
-                    'WHERE w.workspace_id = ? AND w.status = ? '
-                    'AND m.status = ? AND a.status = ?'
+                    'WHERE w.workspace_id = ? AND a.status = ?'
+                    + status_filter
                 ),
-                (
-                    normalized_workspace_id,
-                    WORKSPACE_STATUS_ACTIVE,
-                    MEMBERSHIP_STATUS_ACTIVE,
-                    AUTHORIZED_STATUS_ACTIVE,
-                ),
+                parameters,
             ).fetchone()
         if row is None:
             raise WorkspaceMembershipRequired(

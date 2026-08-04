@@ -508,6 +508,44 @@ def test_exact_registry_result_requires_typed_dic_optionals_and_final_confirmati
         'registry',
     )
 
+
+def test_registry_confirmation_persists_official_name_not_search_shorthand(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _config(tmp_path, enabled=True)
+    _setup(config)
+    candidate = _candidate('10', 'MPBAU s. r. o.', '87654321', 'Bratislava')
+    fake = _FakeRegistry(
+        candidates=[candidate],
+        details={'10': _details('10', candidate.name, candidate.ico, dic='0987654321')},
+    )
+    monkeypatch.setattr(contacts, '_registry_client', lambda _config: fake)
+    state = _State()
+    message = _Message()
+
+    asyncio.run(start_add_contact_intake(message=message, state=state, config=config))
+    message.text = 'МПБАУ'
+    asyncio.run(contact_name_hint(message, state, config))
+    assert state.data['contact_registry_draft']['official_name'] == 'MPBAU s. r. o.'
+
+    # Defend the official identity even if a later preview/UI path rewrites
+    # the display field with the original user query.
+    state.data['contact_registry_draft']['name'] = 'МПБАУ'
+    nonce = state.data['contact_registry_session']['nonce']
+    save = _Callback(f'contact_registry_action:{nonce}:save', message)
+    asyncio.run(contact_registry_action_callback(save, state, config))
+    assert 'Názov: MPBAU s. r. o.' in message.answers[-1]
+    assert 'Názov: МПБАУ' not in message.answers[-1]
+    asyncio.run(contact_registry_final_confirm(
+        message, state, config, canonical_decision='yes',
+    ))
+
+    with sqlite3.connect(config.db_path) as connection:
+        saved_name = connection.execute('SELECT name FROM contact').fetchone()[0]
+    assert saved_name == 'MPBAU s. r. o.'
+
+
 def test_exact_zevs_search_suppresses_noise_and_opens_detail_without_write(
     tmp_path: Path, monkeypatch,
 ) -> None:

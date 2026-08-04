@@ -122,7 +122,7 @@ The tax note under the detail preview is field- and source-aware. A validated Fi
 
 ## Contact registry background proposal - 2026-07-29
 
-`contact_registry_monitor_proposal` is a deterministic asynchronous in-action decision with bounded callback values `yes` and `no`. It reuses the canonical `yes_no` vocabulary but stores proposal context by opaque UUID rather than FSM state. Button callbacks only are supported in V1; free text and voice do not resolve this background proposal. Python revalidates actor, workspace, TTL, contact version, identity, and conflicts before any update.
+`contact_registry_monitor_proposal` is a deterministic asynchronous in-action decision with bounded callback values `yes` and `no`. It reuses the canonical `yes_no` vocabulary but stores each proposal context by an independent opaque UUID rather than FSM state. Button callbacks only are supported in V1; free text and voice do not resolve this background proposal. Python revalidates actor, workspace, TTL, contact version, identity, and conflicts before any update. Applying one contact proposal must not invalidate another contact's proposal. Handled success/decline and owned stale/expired/conflict outcomes remove only their own markup; missing/forbidden outcomes retain markup because ownership is unproven. Cleanup failure is logged without reversing a committed contact update.
 
 ## Active-FSM contextual help - 2026-08-02
 

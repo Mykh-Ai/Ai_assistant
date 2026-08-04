@@ -64,7 +64,8 @@ Eligibility requires:
 - globally enabled contact registry lookup and monitor flags;
 - a valid eight-digit contact IČO;
 - non-null workspace;
-- active workspace, owner membership, supplier, and authorized user;
+- persisted workspace ownership/supplier and authorized user; the workspace or
+  membership may be inactive so dormant profile contacts are not left stale;
 - due calendar slot and no live pending proposal.
 
 The official RPO query is exact by IČO and may include inactive entities for
@@ -77,16 +78,28 @@ saved DIČ/IČ DPH. Normalized equality prevents formatting-only notifications.
 Raw provider responses are neither logged nor persisted.
 
 When a real difference exists, Python persists one pending proposal and sends
-the active workspace owner a Telegram message showing old/new values with
+the authorized workspace owner a Telegram message identifying the contact and
+IČO and showing old/new values with
 `Update contact` and `Leave unchanged` buttons. The callback contains only an
 opaque proposal UUID and canonical `yes`/`no`.
 
-Approval revalidates callback actor, active workspace membership, pending
+Each proposal UUID remains independently bound to one contact snapshot. Applying
+one contact proposal does not invalidate a different contact proposal. If a
+proposal itself expired, its contact changed, or its resulting identity conflicts
+with another saved contact, Python returns that exact bounded outcome instead of
+presenting every case as a missing proposal.
+
+Approval revalidates callback actor, authorized workspace ownership, pending
 status, expiry, contact workspace/IČO/version/old values, and name/IČO
 conflicts in one immediate transaction. It updates only the four monitored
 contact columns and marks the proposal applied. Replays, wrong actors, stale
 contacts, expired proposals, conflicts, and malformed callbacks fail closed.
 The asynchronous callback does not alter FSM state.
+
+Handled `applied`, `dismissed`, owned `stale`, `expired`, and `conflict` outcomes
+remove their inline markup. `missing` and `forbidden` do not edit markup because
+message ownership is unproven. Cleanup failures are logged without reversing an
+already committed contact effect.
 
 ## 5. Invoice immutability
 

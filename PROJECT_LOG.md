@@ -9030,6 +9030,35 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   owner questions.
 
 
+## 2026-08-04 - Contact registry monitor deployment hardening
+
+### Incident and decision
+
+- A real Telegram journey reported that after approving one of two contact-change cards, the second card returned the generic unavailable response. Service-level reproduction proves that two distinct contact/proposal UUIDs remain independently applicable; the old handler nevertheless collapsed already-resolved, contact-version, expiry, authorization, and identity-conflict outcomes into one message and left owned stale/expired markup behind.
+- The existing `contacts` capability remains `partial`, `requires_setup`, and `requires_external_credentials`. This is a deterministic Python callback/maintenance repair; AI maturity, canonical actions, LLM/STT/LMM authority, and self-learning do not change.
+
+### Runtime and truth repair
+
+- Every monitor card now identifies the saved contact and IČO. Two real handler callbacks for different proposal UUIDs are tested sequentially and update only their own bound contact.
+- Resolution now keeps bounded diagnostic reasons and distinguishes identity conflict from stale/expired/missing/forbidden outcomes. Owned stale, expired, and conflict cards remove their own markup and explain that no write happened; missing/forbidden cards retain markup because ownership is unproven. Cleanup failures are logged without rolling back a committed contact update.
+- Registry-assisted contact creation now previews and persists the same official registry name even if a later draft/display value contains the user's search shorthand.
+- Background monitoring remains independent of active-profile selection and may include a persisted inactive workspace/membership only while its supplier owner is actively authorized. It does not reactivate or expose the profile. Blocked/non-active authorization is excluded before provider work.
+- Product Truth, InfoHelp, TZ, access, architecture, in-action, acceptance, changelog, and tests were synchronized with the actual periodic monitor behavior.
+
+### Persisted-data and rollout boundary
+
+- No schema, migration, storage-path, invoice/PDF, canonical action, or deployment configuration change. Existing proposal rows accept the new bounded `conflict` status because the additive table has no status `CHECK`; no backfill is required.
+- Production deployment, restart, server access, external-provider smoke, and production data writes were not performed in this repository session.
+
+### Verification
+
+- Expanded focused contact/workspace/background-consumer suite: `60 passed in 30.93s`.
+- Post-rebase focused contact suite on current `origin/main`: `37 passed in 19.72s`.
+- Product Truth/InfoHelp contact subset: `4 passed, 130 deselected in 0.42s`.
+- `python -m compileall -q bot` - passed.
+- Post-rebase `python -m pytest -q` - `2500 passed, 7 subtests passed in 474.98s`.
+- `git diff --check` - passed; Git reported only expected LF-to-CRLF working-copy warnings.
+
 ## 2026-08-02 - Contextual InfoHelp AI Assistant V2 repository implementation
 
 ### Preflight and architecture
