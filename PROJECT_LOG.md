@@ -9049,7 +9049,10 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 - Focused monitor/service/handler/Product Truth/workspace suite: `48 passed in 25.88s`.
 - `python -m compileall -q bot` and `git diff --check`: passed.
 - Full suite: `2506 passed, 7 subtests passed in 479.73s`.
-- GitHub publication, backup-first production deployment, forced monitor run, and real callback smoke: pending.
+- GitHub PR `#87` was merged to `main` as `5ebbd3fb899da05da69acfb46e80b6481e0249bf` and deployed from `/bot/repo`. Before rebuild, the live SQLite database was copied consistently to `/bot/backups/contact-registry-grouped-pr87-pre-20260804T120534Z/fakturabot.db`; both source and 512000-byte backup returned `PRAGMA quick_check = ok`.
+- Production rebuilt image `sha256:ce99f54e92dfb0617f692828b186e50a527a7428efa9f14a9006c6648fcdb626`; startup/polling and the 14-day registry monitor started normally. The container remained `running` with restart count `0`.
+- The explicitly requested forced post-deploy run checked all 4 eligible contacts, created and delivered 1 proposal, recorded 3 unchanged contacts, and returned zero lookup, persistence, notification, or unexpected failures.
+- Real Telegram callback smoke passed for proposal `b3487e73-2658-4c4b-b3ef-30cb3c264b60`: handler logged `status=applied`, `reason=None`, `affected_contacts=1`. The live contact with stored formatted IČO `47 983 973` matched canonical registry IČO `47983973`; both proposed fields (`name`, `address`) matched the official target afterward, no pending group member remained, and the live database still returned `PRAGMA quick_check = ok`.
 
 ## 2026-08-04 - Forced production contact registry monitor run
 
