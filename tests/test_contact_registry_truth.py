@@ -40,6 +40,9 @@ def test_contacts_product_truth_matches_gated_registry_behavior() -> None:
     assert 'Financial Administration enrichment uses an audited official mapping' in limitations
     assert 'commercial-registry scraping' in limitations
     assert '14-day registry monitor' in entry.summary_for_user
+    assert "same owner's duplicate company contacts" in entry.summary_for_user
+    assert 'canonical IČO' in limitations
+    assert 'atomically' in limitations
     assert 'explicit proposal-button confirmation' in limitations
     assert 'issued invoices or PDFs' in limitations
 
@@ -58,3 +61,5 @@ def test_info_help_explains_registry_contact_support_and_limits() -> None:
     assert 'explicitným potvrdením' in answer
     assert '14 dní' in answer
     assert 'nemení automaticky' in answer
+    assert 'zoskupiť duplikáty' in answer
+    assert 'iný vlastník sa nikdy nepripojí' in answer

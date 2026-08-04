@@ -1,5 +1,6 @@
 # Changelog
 
+- Fixed grouped periodic contact updates for duplicate company contacts owned by the same authorized actor: formatting-equivalent IČO values now revalidate canonically, identical official target snapshots receive one card, and one confirmation updates every explicitly grouped workspace row atomically. Different actors remain isolated, any stale/conflicting group member prevents partial writes, and issued invoices/PDFs remain unchanged.
 - Routed already-resolved Product-Truth-supported canonical actions directly to
   their registered Python owners instead of invoking Contextual InfoHelp solely
   for a mutating/destructive class or an owner-handled missing slot. Existing

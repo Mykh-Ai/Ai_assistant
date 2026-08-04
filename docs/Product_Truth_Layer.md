@@ -787,6 +787,8 @@ Automatic maintenance and autorepair remain unavailable.
 
 `contacts` remains `partial`, `requires_setup`, and `requires_external_credentials`. A disabled-by-default deterministic monitor can check eligible workspace-owned contacts with an exact eight-digit IČO every 14 days at 03:00 `Europe/Bratislava`. Active owner authorization is mandatory. The monitor is independent of active-profile selection and may maintain a persisted inactive workspace/membership without reactivating it or exposing it to interactive flows. It compares official name, legal address, DIČ, and IČ DPH, then notifies the workspace owner and asks whether to update the saved contact. No contact field changes before explicit button confirmation.
 
+When the same authorized owner saved the same company in several workspaces, formatting-equivalent IČO values are canonicalized. Pending proposals with the same owner, canonical IČO, and identical official target snapshot are shown as one group and one confirmation applies all explicitly grouped contact rows atomically. A different actor is never grouped, and any stale, unauthorized, expired, or conflicting group member prevents every contact write in that group.
+
 Missing or failed tax data never clears saved DIČ/IČ DPH. Email, IBAN, contact person, contract data, invoice rows, invoice items, `pdf_path`, and existing PDF files are outside the update. Already issued invoices are never rewritten by this monitor.
 
 Forbidden claims: monitoring is active merely because code exists; registry data is always current; every contact can be checked without valid IČO; updates happen automatically; declining changes invoices; or approved contact updates rewrite previously issued invoices/PDFs.

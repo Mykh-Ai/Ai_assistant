@@ -11,6 +11,7 @@ from bot.services.contact_registry_monitor import (
     ContactRegistryMonitorService,
     MonitoredContact,
     format_change_notification,
+    format_grouped_change_notification,
     next_monitor_slot,
     proposal_keyboard,
     send_contact_registry_monitor_once,
@@ -103,6 +104,57 @@ def _seed(config: Config, *, pdf_path: Path | None = None) -> MonitoredContact:
     )
 
 
+def _seed_duplicate_workspace(
+    config: Config,
+    *,
+    ico: str = '87 654 321',
+    name: str = 'Tech Company, s. r. o.',
+    address: str = 'Second old address',
+) -> MonitoredContact:
+    with sqlite3.connect(config.db_path) as connection:
+        connection.execute(
+            "INSERT INTO workspace "
+            "(workspace_id, display_name, storage_key, drive_folder_name, status, "
+            "created_at, updated_at) VALUES "
+            "('ws-2', 'Second profile', 'ws-2', 'Second profile', 'active', ?, ?)",
+            ('2026-08-01T00:00:00+00:00', '2026-08-01T00:00:00+00:00'),
+        )
+        connection.execute(
+            "INSERT INTO workspace_membership "
+            "(workspace_id, telegram_id, role, status, created_at, updated_at) "
+            "VALUES ('ws-2', 111, 'owner', 'active', ?, ?)",
+            ('2026-08-01T00:00:00+00:00', '2026-08-01T00:00:00+00:00'),
+        )
+        connection.execute(
+            "INSERT INTO supplier "
+            "(workspace_id, telegram_id, name, ico, dic, address, iban, swift, "
+            "email, days_due) VALUES "
+            "('ws-2', 111, 'Second supplier', '11223344', '1234567890', 'Old', "
+            "'SK000', 'TEST', 'second@example.test', 14)"
+        )
+        cursor = connection.execute(
+            "INSERT INTO contact "
+            "(workspace_id, supplier_telegram_id, name, ico, dic, ic_dph, address, "
+            "email, source_type, updated_at) VALUES "
+            "('ws-2', 111, ?, ?, '2020202020', 'SK2020202020', ?, "
+            "'second-contact@example.test', 'manual', ?)",
+            (name, ico, address, '2026-08-01T10:00:00+00:00'),
+        )
+        contact_id = int(cursor.lastrowid)
+        connection.commit()
+    return MonitoredContact(
+        contact_id=contact_id,
+        workspace_id='ws-2',
+        actor_telegram_id=111,
+        name=name,
+        ico='87654321',
+        dic='2020202020',
+        ic_dph='SK2020202020',
+        address=address,
+        updated_at='2026-08-01T10:00:00+00:00',
+    )
+
+
 def _details(*, dic: str | None = '2020202020') -> RegistryCompanyDetails:
     return RegistryCompanyDetails(
         subject_id='42',
@@ -187,6 +239,206 @@ def test_approval_updates_contact_but_not_invoice_or_pdf(tmp_path: Path) -> None
         decision='yes',
         now=datetime(2026, 8, 3, 1, 6, tzinfo=timezone.utc),
     ).status == 'stale'
+
+
+def test_formatted_saved_ico_matches_canonical_proposal_identity(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    contact = _seed(config)
+    with sqlite3.connect(config.db_path) as connection:
+        connection.execute(
+            "UPDATE contact SET ico='87 654 321' WHERE id=?",
+            (contact.contact_id,),
+        )
+        connection.commit()
+    service = ContactRegistryMonitorService(config.db_path, config)
+    context = __import__(
+        'bot.services.workspace_context', fromlist=['WorkspaceContextService']
+    ).WorkspaceContextService(config.db_path).resolve_for_background_workspace('ws-1')
+    proposal = service.create_proposal(context, contact, now=NOW, details=_details())
+    assert proposal is not None
+
+    result = service.resolve(
+        proposal_id=proposal.proposal_id,
+        actor_telegram_id=111,
+        decision='yes',
+        now=NOW,
+    )
+
+    assert result.status == 'applied'
+    assert result.reason is None
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute(
+            'SELECT ico, address FROM contact WHERE id=?', (contact.contact_id,)
+        ).fetchone() == ('87 654 321', 'New legal address')
+
+
+def test_same_owner_same_ico_proposals_apply_atomically_across_workspaces(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    first_contact = _seed(config)
+    second_contact = _seed_duplicate_workspace(config)
+    service = ContactRegistryMonitorService(config.db_path, config)
+    context_service = __import__(
+        'bot.services.workspace_context', fromlist=['WorkspaceContextService']
+    ).WorkspaceContextService(config.db_path)
+    first = service.create_proposal(
+        context_service.resolve_for_background_workspace('ws-1'),
+        first_contact,
+        now=NOW,
+        details=_details(),
+    )
+    second = service.create_proposal(
+        context_service.resolve_for_background_workspace('ws-2'),
+        second_contact,
+        now=NOW,
+        details=_details(),
+    )
+    assert first is not None and second is not None
+
+    result = service.resolve(
+        proposal_id=first.proposal_id,
+        actor_telegram_id=111,
+        decision='yes',
+        now=NOW,
+    )
+
+    assert result.status == 'applied'
+    assert result.affected_contacts == 2
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute(
+            'SELECT workspace_id, name, address FROM contact ORDER BY workspace_id'
+        ).fetchall() == [
+            ('ws-1', 'Tech Company s.r.o.', 'New legal address'),
+            ('ws-2', 'Tech Company s.r.o.', 'New legal address'),
+        ]
+        assert connection.execute(
+            'SELECT status, COUNT(*) FROM contact_registry_change_proposal '
+            'GROUP BY status'
+        ).fetchall() == [('applied', 2)]
+
+
+def test_grouped_apply_is_all_or_nothing_when_one_duplicate_is_stale(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    first_contact = _seed(config)
+    second_contact = _seed_duplicate_workspace(config)
+    service = ContactRegistryMonitorService(config.db_path, config)
+    context_service = __import__(
+        'bot.services.workspace_context', fromlist=['WorkspaceContextService']
+    ).WorkspaceContextService(config.db_path)
+    first = service.create_proposal(
+        context_service.resolve_for_background_workspace('ws-1'),
+        first_contact,
+        now=NOW,
+        details=_details(),
+    )
+    second = service.create_proposal(
+        context_service.resolve_for_background_workspace('ws-2'),
+        second_contact,
+        now=NOW,
+        details=_details(),
+    )
+    assert first is not None and second is not None
+    with sqlite3.connect(config.db_path) as connection:
+        connection.execute(
+            "UPDATE contact SET address='Manual correction', updated_at=? WHERE id=?",
+            ('2026-08-03T01:01:00+00:00', second_contact.contact_id),
+        )
+        connection.commit()
+
+    result = service.resolve(
+        proposal_id=first.proposal_id,
+        actor_telegram_id=111,
+        decision='yes',
+        now=NOW,
+    )
+
+    assert result.status == 'stale'
+    assert result.affected_contacts == 2
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute(
+            'SELECT workspace_id, address FROM contact ORDER BY workspace_id'
+        ).fetchall() == [
+            ('ws-1', 'Old address'),
+            ('ws-2', 'Manual correction'),
+        ]
+        assert connection.execute(
+            'SELECT status, COUNT(*) FROM contact_registry_change_proposal '
+            'GROUP BY status'
+        ).fetchall() == [('stale', 2)]
+
+
+def test_same_ico_for_another_actor_is_never_grouped(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    first_contact = _seed(config)
+    second_contact = _seed_duplicate_workspace(config)
+    with sqlite3.connect(config.db_path) as connection:
+        connection.execute(
+            "INSERT INTO authorized_users "
+            "(telegram_id, role, status, created_at) VALUES "
+            "(222, 'user', 'active', '2026-08-01T00:00:00+00:00')"
+        )
+        connection.execute(
+            "UPDATE workspace_membership SET telegram_id=222 WHERE workspace_id='ws-2'"
+        )
+        connection.execute(
+            "UPDATE supplier SET telegram_id=222 WHERE workspace_id='ws-2'"
+        )
+        connection.execute(
+            "UPDATE contact SET supplier_telegram_id=222 WHERE workspace_id='ws-2'"
+        )
+        connection.commit()
+    second_contact = MonitoredContact(
+        contact_id=second_contact.contact_id,
+        workspace_id=second_contact.workspace_id,
+        actor_telegram_id=222,
+        name=second_contact.name,
+        ico=second_contact.ico,
+        dic=second_contact.dic,
+        ic_dph=second_contact.ic_dph,
+        address=second_contact.address,
+        updated_at=second_contact.updated_at,
+    )
+    service = ContactRegistryMonitorService(config.db_path, config)
+    context_service = __import__(
+        'bot.services.workspace_context', fromlist=['WorkspaceContextService']
+    ).WorkspaceContextService(config.db_path)
+    first = service.create_proposal(
+        context_service.resolve_for_background_workspace('ws-1'),
+        first_contact,
+        now=NOW,
+        details=_details(),
+    )
+    second = service.create_proposal(
+        context_service.resolve_for_background_workspace('ws-2'),
+        second_contact,
+        now=NOW,
+        details=_details(),
+    )
+    assert first is not None and second is not None
+
+    result = service.resolve(
+        proposal_id=first.proposal_id,
+        actor_telegram_id=111,
+        decision='yes',
+        now=NOW,
+    )
+
+    assert result.status == 'applied'
+    assert result.affected_contacts == 1
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute(
+            'SELECT workspace_id, address FROM contact ORDER BY workspace_id'
+        ).fetchall() == [
+            ('ws-1', 'New legal address'),
+            ('ws-2', 'Second old address'),
+        ]
+        assert connection.execute(
+            'SELECT actor_telegram_id, status FROM contact_registry_change_proposal '
+            'ORDER BY actor_telegram_id'
+        ).fetchall() == [(111, 'applied'), (222, 'pending')]
 
 
 def test_each_pending_proposal_is_independently_actionable(tmp_path: Path) -> None:
@@ -469,6 +721,14 @@ class _Details:
         return _details()
 
 
+class _Bot:
+    def __init__(self) -> None:
+        self.messages: list[tuple[int, str, object]] = []
+
+    async def send_message(self, actor_id: int, text: str, *, reply_markup) -> None:
+        self.messages.append((actor_id, text, reply_markup))
+
+
 def test_read_only_dry_run_detects_change_without_writes(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _seed(config)
@@ -495,6 +755,39 @@ def test_read_only_dry_run_detects_change_without_writes(tmp_path: Path) -> None
         assert connection.execute(
             'SELECT count(*) FROM contact_registry_monitor_state'
         ).fetchone()[0] == 0
+
+
+def test_same_owner_same_ico_duplicates_receive_one_grouped_notification(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    _seed(config)
+    _seed_duplicate_workspace(config)
+    bot = _Bot()
+
+    result = asyncio.run(
+        send_contact_registry_monitor_once(
+            bot=bot,
+            config=config,
+            now=NOW,
+            persist=True,
+            search_provider=_Search(),
+            details_provider=_Details(),
+        )
+    )
+
+    assert result.proposals_created == 2
+    assert result.notifications_sent == 1
+    assert result.failed_notifications == 0
+    assert len(bot.messages) == 1
+    assert bot.messages[0][0] == 111
+    assert '2 uložených firemných profilov' in bot.messages[0][1]
+    assert 'Jedným potvrdením' in bot.messages[0][1]
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM contact_registry_change_proposal "
+            "WHERE status='pending' AND notified_at IS NOT NULL"
+        ).fetchone()[0] == 2
 
 
 def test_callback_payload_is_bounded() -> None:
@@ -534,6 +827,10 @@ def test_notification_identifies_contact_and_ico_for_multiple_cards() -> None:
 
     assert 'Kontakt: Tech Company s.r.o.' in text
     assert 'IČO: 87654321' in text
+
+    grouped = format_grouped_change_notification((proposal, proposal))
+    assert '2 uložených firemných profilov' in grouped
+    assert 'Jedným potvrdením' in grouped
 
 
 def test_dry_run_can_audit_before_first_schedule_without_persistence(tmp_path: Path) -> None:

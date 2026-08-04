@@ -52,24 +52,42 @@ async def contact_registry_monitor_callback(
         now=datetime.now(timezone.utc),
     )
     logger.info(
-        'Contact registry proposal resolved proposal_id=%s actor_id=%s status=%s reason=%s',
+        'Contact registry proposal resolved proposal_id=%s actor_id=%s '
+        'status=%s reason=%s affected_contacts=%s',
         match.group('proposal'),
         actor_id,
         resolution.status,
         resolution.reason,
+        resolution.affected_contacts,
     )
     if resolution.status == 'applied':
         await _clear_keyboard(callback, proposal_id=match.group('proposal'))
+        if resolution.affected_contacts > 1:
+            applied_text = (
+                f'Aktualizované kontakty: {resolution.affected_contacts} pre firmu '
+                f'„{resolution.contact_name}“. Už vystavené faktúry a PDF zostali '
+                'bez zmeny.'
+            )
+        else:
+            applied_text = (
+                f'Kontakt „{resolution.contact_name}“ bol aktualizovaný. '
+                'Už vystavené faktúry a PDF zostali bez zmeny.'
+            )
         await _answer_message(
             callback,
-            f'Kontakt „{resolution.contact_name}“ bol aktualizovaný. '
-            'Už vystavené faktúry a PDF zostali bez zmeny.',
+            applied_text,
         )
         await callback.answer()
         return
     if resolution.status == 'dismissed':
         await _clear_keyboard(callback, proposal_id=match.group('proposal'))
-        await _answer_message(callback, 'Kontakt zostal bez zmeny.')
+        if resolution.affected_contacts > 1:
+            dismissed_text = (
+                f'Kontakty zostali bez zmeny ({resolution.affected_contacts} profilov).'
+            )
+        else:
+            dismissed_text = 'Kontakt zostal bez zmeny.'
+        await _answer_message(callback, dismissed_text)
         await callback.answer()
         return
     if resolution.status in {'stale', 'expired', 'conflict'}:

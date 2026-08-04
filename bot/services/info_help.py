@@ -208,8 +208,8 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'contacts': {
         'title': 'Kontakty',
-        'summary': 'Kontakt môžete pridať manuálne alebo z dokumentu; pri zapnutom pilote môžete slovenskú firmu vyhľadať podľa názvu alebo IČO. Voliteľný monitor môže každých 14 dní porovnať uložené exact-IČO kontakty s oficiálnymi zdrojmi a vždy si vyžiada potvrdenie pred zmenou.',
-        'limitation': 'Vyhľadávanie RPO aj periodický monitor sú predvolene vypnuté a vyžadujú nastavenie. Monitor kontroluje iba kontakty s platným osemmiestnym IČO, ktorých vlastník zostáva autorizovaný; môže pokryť aj jeho neaktívny profil, ale profil nereaktivuje. DIČ/IČ DPH závisia od samostatného oficiálneho API kľúča, IČ DPH sa nikdy nevytvára z DIČ, kontakt sa nemení automaticky a už vystavené faktúry/PDF sa neprepisujú.',
+        'summary': 'Kontakt môžete pridať manuálne alebo z dokumentu; pri zapnutom pilote môžete slovenskú firmu vyhľadať podľa názvu alebo IČO. Voliteľný monitor môže každých 14 dní porovnať uložené exact-IČO kontakty s oficiálnymi zdrojmi, zoskupiť duplikáty tej istej firmy jedného vlastníka a vždy si vyžiadať potvrdenie pred zmenou.',
+        'limitation': 'Vyhľadávanie RPO aj periodický monitor sú predvolene vypnuté a vyžadujú nastavenie. Monitor kontroluje iba kontakty s platným osemmiestnym IČO, ktorých vlastník zostáva autorizovaný; môže pokryť aj jeho neaktívny profil, ale profil nereaktivuje. Skupinové potvrdenie zahŕňa iba kontakty rovnakého autorizovaného vlastníka, rovnakého kanonického IČO a rovnakého oficiálneho cieľového náhľadu; iný vlastník sa nikdy nepripojí. DIČ/IČ DPH závisia od samostatného oficiálneho API kľúča, IČ DPH sa nikdy nevytvára z DIČ, kontakt sa nemení automaticky a už vystavené faktúry/PDF sa neprepisujú.',
         'safe_next': 'Použite /contact, /contact_add alebo /add_kontakt, skontrolujte náhľad a kontakt uložte až explicitným potvrdením.',
     },
     'service_aliases': {
