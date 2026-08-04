@@ -9181,3 +9181,34 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   `2518 passed, 7 subtests passed in 482.43s`. `python -m compileall -q bot`
   and `git diff --check` also passed; only expected Windows line-ending
   warnings were reported.
+
+## Controlled production rollout evidence
+
+- Published implementation commit `967d17a` through GitHub App PR #89 and
+  merged it as `c1e56d5`. No `gh` CLI was used.
+- Read the opening password from the one exact user-authorized Gmail message
+  without displaying its body. A pre-deployment copy of the live storage and
+  `.env` was created under the dedicated `/bot/backups` root with closed
+  permissions; both the live and backup SQLite databases passed
+  `PRAGMA quick_check` before migration.
+- Installed the password only in
+  `/bot/secrets/gmail-statement-pdf-open-password` with mode `0600`; server
+  `.env` contains only `GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE` pointing
+  to the read-only container mount. No password value was committed, logged,
+  added to metadata, or returned in chat.
+- The initial live detector smoke opened both stored PDFs, including the
+  encrypted source, but returned `period_ambiguous`. Bounded header diagnostics
+  proved that Tatra/pypdf emitted `Poslednývýpis` without a space. The runtime
+  correctly withheld a guess.
+- Added the narrow observed-layout regression in commit `3ee0a1d`, published it
+  through GitHub App PR #90, and merged it as `8f1be47`. Focused period,
+  collector, archive, and scheduler verification passed: `22 passed`.
+- Redeployed `main` at `8f1be47`. The repeated smoke read two existing PDFs and
+  returned `detected` for both: one period `2026-06` and one `2026-07`. The
+  additive columns were present, the post-migration live database returned
+  `quick_check=ok`, FakturaBot and cloudflared were `Up`, and Telegram polling
+  started without a matching bounded-log error.
+- This deployment did not backfill historical period columns, enqueue a new job
+  for an existing import, move/delete an existing Drive file, parse transactions,
+  or change accounting/invoice state. Historical June Drive repair requires a
+  separate read-only mapping, dry run, and explicit write approval.
