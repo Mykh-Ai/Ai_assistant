@@ -41,8 +41,18 @@
   Product Truth, voice routing, invoice pre-routing, and invoice-analytics
   regression: `501 passed`. The complete repository regression on current
   `origin/main` `8c4d49b` passed: `2521 passed, 7 subtests passed in 500.80s`.
-  Deployment and the live repeated-question smoke remain pending; no server
-  write was performed.
+  The verified head `6fd807521655dfb9f7118adb6c3ecdd1f45f06b3` was published
+  through PR `#93`; GitHub reported no configured commit statuses and merged
+  it into `main` as `eec2be38656845e9de383ee2e4241b18618a3a80`.
+- Production `/bot/repo` was clean before deployment and fast-forwarded from
+  `8c4d49b` to exact merge SHA `eec2be3`. The production compose image rebuilt
+  successfully; `fakturabot` and `fakturabot-cloudflared` are `Up`, bot restart
+  count is `0`, in-container `compileall` passed, startup schedulers loaded,
+  and Telegram polling is active. `.env`, DB/storage, and unrelated server
+  projects were not changed.
+- Deployment status is `deployed_pending_live_smoke`. The administrator can now
+  repeat the yearly invoice analytics question while the new request-correlated
+  events are observed.
 
 # 2026-08-04 - Exact unsupported InfoHelp admin-review buttons
 
