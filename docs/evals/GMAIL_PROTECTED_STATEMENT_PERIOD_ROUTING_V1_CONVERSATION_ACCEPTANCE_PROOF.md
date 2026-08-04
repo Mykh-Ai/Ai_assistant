@@ -79,6 +79,25 @@ in 482.43 seconds.
   `Up`, Telegram polling started, and no matching traceback/scheduler/archive
   error appeared in the bounded startup log review.
 
+### Approved historical Drive repair — 2026-08-04
+
+- A fresh online SQLite backup and full storage snapshot were created under the
+  dedicated `/bot/backups` root; the backup database passed `quick_check` before
+  the repair transaction.
+- Drive metadata proved the June file had already been manually moved to
+  `2026-06`, while the July file still had the `2026-08` parent. The repair
+  therefore created only the missing `2026-07` folder and moved only the July
+  file. It did not duplicate or re-upload either PDF.
+- Connector readback found exactly one `original.pdf` in `2026-06`, exactly one
+  in `2026-07`, and none in the old `2026-08` folder.
+- One bounded SQLite transaction synchronized both historical imports, archive
+  jobs, archive state rows, folder-cache entries, and metadata sidecars with the
+  detected periods and actual Drive folder IDs. Final readback reported both
+  rows `detected`/`uploaded`, matching DB/metadata periods, agreeing folder IDs,
+  and `quick_check=ok`.
+- No original bytes, Gmail source, invoice/accounting business state, or PDF
+  transaction content was changed.
+
 ## Forbidden claims checked
 
 - no arbitrary bank-layout or OCR support;
