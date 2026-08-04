@@ -57,6 +57,21 @@ def test_notification_is_bounded_and_does_not_claim_parsing() -> None:
     assert "message" not in text.lower()
     assert "token" not in text.lower()
 
+
+def test_notification_reports_detected_archive_period() -> None:
+    text = _notification_text(
+        GmailStatementImportResult(
+            import_id="import-1",
+            status="stored",
+            statement_period_status="detected",
+            statement_period_year=2026,
+            statement_period_month=6,
+        )
+    )
+
+    assert "2026-06" in text
+    assert "nebol parsovaný ani spárovaný" in text
+
 def test_reauth_notification_is_cooldown_protected(tmp_path) -> None:
     db_path = tmp_path / "db.sqlite"
     assert _reauth_notification_due(

@@ -2,7 +2,8 @@
 
 Status: `requires_setup`, `requires_admin`, `requires_external_credentials`.
 
-Last verified: 2026-08-02.
+Last production verified: 2026-08-02. Protected-period repository behavior
+verified: 2026-08-04; production rollout remains pending.
 
 This runbook activates the bounded Gmail OAuth and bank-statement attachment
 collector implemented in OfficeFlow/FakturaBot. It does not activate Google
@@ -99,6 +100,7 @@ GOOGLE_INTEGRATION_PUBLIC_REDIRECT_URI=https://zevsflow.sk/oauth/google/integrat
 GOOGLE_GMAIL_EXPECTED_EMAIL=<exact-google-account-email>
 GOOGLE_GMAIL_TARGET_WORKSPACE_ID=<canonical-workspace-id>
 GOOGLE_GMAIL_STATEMENT_QUERY=<trusted-admin-query>
+GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE=/bot/secrets/gmail-statement-pdf-open-password
 GOOGLE_TOKEN_CRYPTO_SECRET=<fernet-compatible-secret>
 GOOGLE_INTEGRATION_CALLBACK_PROXY_SECRET=<same-random-proxy-secret>
 GOOGLE_INTEGRATION_CALLBACK_HOST=0.0.0.0
@@ -121,6 +123,15 @@ GOOGLE_GMAIL_NOTIFICATION_COOLDOWN_SECONDS=86400
 Tatra banka currently labels its statement PDF as `application/octet-stream`.
 That MIME type is accepted only for a `.pdf` filename whose downloaded bytes
 start with the PDF signature `%PDF-`; other octet-stream files fail closed.
+
+For password-protected statements, create
+`/bot/secrets/gmail-statement-pdf-open-password` on the host, put only the
+opening/user password in it, restrict it to the service administrator, and use
+the absolute container path above. `docker-compose.prod.yml` already mounts
+`/bot/secrets` read-only into the bot. Do not provide or try to recover the
+owner/edit password. The file is optional for unencrypted statements; an
+encrypted statement without a valid configured opening password is stored
+unchanged but withheld from Drive for review.
 
 Do not put secrets in git, logs, screenshots, task documents, browser URLs, or
 Telegram messages.
@@ -153,8 +164,15 @@ credentials while configuring Gmail.
    - one `gmail_statement_imports` record;
    - one tenant-scoped `original.<ext>` and `metadata.json`;
    - `parse_status=deferred`;
+   - for a supported PDF, `statement_period_status=detected` and the expected
+     inclusive start/end and selected year/month;
+   - the stored `original.pdf` is byte-for-byte identical to the Gmail
+     attachment and no decrypted file exists;
    - no duplicate original on a repeated tick;
-   - if the separately configured Drive archive is enabled, one idempotent archive job; Drive failure must not fail or delete the local import;
+   - if the separately configured Drive archive is enabled, one idempotent
+     archive job targets the month with the most covered interval days; a
+     missing/wrong password or ambiguous period produces
+     `period_review_required` and no new Drive job;
    - no parsing or LLM call.
 12. Test `/gmail_disconnect`. Local imported files must remain; the active grant
     must no longer be usable.

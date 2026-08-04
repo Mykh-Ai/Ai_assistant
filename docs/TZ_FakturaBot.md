@@ -82,7 +82,18 @@ source of truth and are never deleted by this flow. The workspace owner receives
 one bounded notification per newly stored canonical statement; reauthorization
 notifications are cooldown-protected.
 
-Statement content parsing, transaction import, reconciliation, cashflow, VAT,
+For supported PDF statement layouts, the collector may open an encrypted PDF
+in memory with one administrator-managed file-backed opening password and read
+bounded header text only to determine the statement interval. The owner/edit
+password is not requested. The archive month is the calendar month containing
+the greatest number of inclusive interval days; a tie selects the interval-end
+month. The encrypted original remains unchanged, no decrypted copy or password
+is persisted, and a missing/wrong password or ambiguous interval withholds the
+new Drive enqueue for review instead of falling back to the ingestion month.
+Existing local paths, rows, archive jobs, and Drive files are not automatically
+rewritten or moved.
+
+Statement transaction parsing, transaction import, reconciliation, cashflow, VAT,
 tax conclusions, Gmail send/modify operations, Tatra banka API, Google Sheets,
 and Google Docs are unsupported. Every import remains
 `parse_status=deferred`. Public website indexing remains enabled by explicit

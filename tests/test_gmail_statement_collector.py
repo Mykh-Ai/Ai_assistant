@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import date
 import json
 import sqlite3
 
@@ -11,11 +12,14 @@ from bot.services.gmail_readonly_adapter import (
     GmailReadonlyNeedsReauth,
 )
 from bot.services.gmail_statement_collector import (
+    GMAIL_STATEMENT_IMPORT_SCHEMA,
     GmailStatementCollector,
     GmailStatementCollectorError,
     GmailStatementPolicy,
     GmailStatementStore,
+    ensure_gmail_statement_schema,
 )
+from bot.services.gmail_statement_period import GmailStatementPeriodResult
 from bot.services.workspace_context import WorkspaceContext
 
 
@@ -261,3 +265,77 @@ def test_crash_after_atomic_promote_recovers_same_import_without_rewrite(tmp_pat
             (first.import_id,),
         ).fetchone()
     assert (status, attempts) == ("stored", 2)
+
+
+def test_schema_upgrade_adds_period_columns_without_rewriting_legacy_row() -> None:
+    legacy_schema = GMAIL_STATEMENT_IMPORT_SCHEMA
+    for line in (
+        "    statement_period_status TEXT NOT NULL DEFAULT 'not_checked',\n",
+        "    statement_period_start TEXT,\n",
+        "    statement_period_end TEXT,\n",
+        "    statement_period_year INTEGER,\n",
+        "    statement_period_month INTEGER,\n",
+        "    statement_period_source TEXT,\n",
+        "    statement_period_error_code TEXT,\n",
+    ):
+        legacy_schema = legacy_schema.replace(line, "")
+    connection = sqlite3.connect(":memory:")
+    connection.executescript(legacy_schema)
+    connection.execute(
+        "INSERT INTO gmail_statement_imports "
+        "(import_id, workspace_id, connection_id, source_type, gmail_message_id, "
+        "source_attachment_key, original_filename, safe_display_filename, "
+        "mime_type, collection_status, parse_status, archive_status, "
+        "created_at, updated_at) VALUES "
+        "('legacy-1', 'workspace-zevs', 'connection', 'gmail', 'message-1', "
+        "'part-1', 'original.pdf', 'original.pdf', 'application/pdf', "
+        "'stored', 'deferred', 'not_configured', '2026-08-01', '2026-08-01')"
+    )
+
+    ensure_gmail_statement_schema(connection)
+
+    row = connection.execute(
+        "SELECT import_id, collection_status, statement_period_status, "
+        "statement_period_year FROM gmail_statement_imports"
+    ).fetchone()
+    assert row == ("legacy-1", "stored", "not_checked", None)
+
+
+def test_period_metadata_keeps_original_bytes_and_never_writes_password(
+    tmp_path,
+) -> None:
+    store = GmailStatementStore(tmp_path / "db.sqlite", tmp_path / "storage")
+    adapter = GmailReadonlyAdapter(
+        Transport(message_payload()), trusted_query="has:attachment", batch_size=10
+    )
+    candidate = adapter.attachment_candidates("message-1")[0]
+    encrypted_source = b"%PDF-1.7\nopaque-encrypted-source-bytes"
+
+    result = store.store(
+        workspace=workspace(),
+        connection_id="connection",
+        candidate=candidate,
+        content=encrypted_source,
+        policy=policy(),
+        statement_period=GmailStatementPeriodResult(
+            status="detected",
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 30),
+            period_year=2026,
+            period_month=6,
+            source="previous_statement_and_statement_date",
+        ),
+    )
+
+    original = tmp_path / "storage"
+    original = next(original.rglob("original.pdf"))
+    metadata_path = next((tmp_path / "storage").rglob("metadata.json"))
+    assert original.read_bytes() == encrypted_source
+    assert sorted(path.name for path in original.parent.iterdir()) == [
+        "metadata.json",
+        "original.pdf",
+    ]
+    metadata_text = metadata_path.read_text(encoding="utf-8")
+    assert "password" not in metadata_text.lower()
+    assert json.loads(metadata_text)["statement_period_month"] == 6
+    assert result.statement_period_month == 6

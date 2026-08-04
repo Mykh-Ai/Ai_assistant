@@ -1,6 +1,9 @@
 import pytest
 
-from bot.services.google_gmail_config import load_google_gmail_config
+from bot.services.google_gmail_config import (
+    load_google_gmail_config,
+    load_statement_pdf_open_password,
+)
 
 
 def test_gmail_disabled_by_default(monkeypatch):
@@ -73,3 +76,27 @@ def test_callback_cannot_start_when_gmail_integration_is_disabled(monkeypatch):
 
     with pytest.raises(RuntimeError, match="requires GOOGLE_GMAIL_ENABLED"):
         load_google_gmail_config()
+
+
+def test_statement_pdf_password_is_loaded_only_from_absolute_secret_file(
+    monkeypatch, tmp_path
+):
+    secret = tmp_path / "gmail-statement-password"
+    secret.write_text("stable-opening-password\n", encoding="utf-8")
+    monkeypatch.setenv(
+        "GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE", str(secret.resolve())
+    )
+
+    config = load_google_gmail_config()
+
+    assert load_statement_pdf_open_password(config) == "stable-opening-password"
+    assert "stable-opening-password" not in repr(config)
+
+
+def test_statement_pdf_password_rejects_relative_or_missing_secret(monkeypatch):
+    monkeypatch.setenv(
+        "GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE", "relative-secret"
+    )
+    config = load_google_gmail_config()
+    with pytest.raises(RuntimeError, match="absolute path"):
+        load_statement_pdf_open_password(config)

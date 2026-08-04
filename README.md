@@ -398,8 +398,8 @@ Gmail bank-statement collector V1:
 - partial, fail-closed runtime for one exact Gmail account and canonical workspace in the controlled pilot;
 - commands: `/gmail_connect`, `/gmail_status`, and `/gmail_disconnect`; exact setup state must come from `/gmail_status`, not from static InfoHelp flags;
 - uses only OIDC identity scopes plus `gmail.readonly`; it does not send, modify, label, archive, or delete Gmail messages and does not grant Drive access;
-- stores bounded matching attachments and metadata in workspace-local storage with `parse_status=deferred`; no parsing, reconciliation, cashflow, VAT, tax, or accounting conclusion is implemented;
-- the separately configured owner Drive archive may enqueue a stored statement without making Drive part of the Gmail OAuth grant;
+- stores bounded matching attachments and metadata in workspace-local storage with `parse_status=deferred`; a supported PDF may be opened in memory with an administrator-managed opening-password secret only to determine its statement period, but no transaction parsing, reconciliation, cashflow, VAT, tax, or accounting conclusion is implemented;
+- the separately configured owner Drive archive may enqueue a stored statement under the calendar month covering the greatest number of days in its validated statement interval; an unknown/ambiguous period is withheld from Drive rather than guessed, and Drive remains separate from the Gmail OAuth grant;
 - controlled production evidence on 2026-08-02 proved one connected/active grant, one stored statement, a no-new-import second tick, and a separate Drive archive state `uploaded`;
 - setup and operational evidence are documented in `docs/Google_Gmail_Statement_Collector_Setup_Runbook.md` and `docs/architecture/GOOGLE_MULTI_ACCOUNT_OAUTH_FOUNDATION_GMAIL_STATEMENT_COLLECTOR_V1_ARCHITECTURE_DESIGN_PROOF.md`.
 

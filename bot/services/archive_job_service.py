@@ -95,6 +95,8 @@ class ArchiveJobService:
         invoice_storage_key: str | None = None,
         accounting_storage_key: str | None = None,
         accounting_drive_folder_name: str | None = None,
+        statement_period_year: int | None = None,
+        statement_period_month: int | None = None,
         max_attempts: int = 5,
         now: datetime | None = None,
     ) -> ArchiveJobRecord:
@@ -135,6 +137,8 @@ class ArchiveJobService:
                         metadata_path=metadata_path_text,
                         workspace_storage_key=storage_key,
                         workspace_drive_folder_name=accounting_drive_folder_name,
+                        statement_period_year=statement_period_year,
+                        statement_period_month=statement_period_month,
                     )
                     if target_folder_path is None:
                         raise AccountingDocumentArchivePathError('target_folder_path_required')

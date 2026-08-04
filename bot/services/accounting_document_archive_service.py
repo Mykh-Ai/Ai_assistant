@@ -87,6 +87,8 @@ class AccountingDocumentArchiveService:
         target_folder_path: str | None = None,
         workspace_storage_key: str | None = None,
         workspace_drive_folder_name: str | None = None,
+        statement_period_year: int | None = None,
+        statement_period_month: int | None = None,
         now: datetime | None = None,
     ) -> AccountingDocumentArchiveEnqueueResult:
         workspace_id = _required_text(workspace_id, 'workspace_id')
@@ -112,6 +114,8 @@ class AccountingDocumentArchiveService:
                         metadata_path=metadata_path_text,
                         workspace_storage_key=workspace_storage_key,
                         workspace_drive_folder_name=workspace_drive_folder_name,
+                        statement_period_year=statement_period_year,
+                        statement_period_month=statement_period_month,
                     )
                 else:
                     expected_target = derive_accounting_document_drive_target_path(
@@ -137,6 +141,8 @@ class AccountingDocumentArchiveService:
             target_folder_path=target_folder_path,
             accounting_storage_key=workspace_storage_key,
             accounting_drive_folder_name=workspace_drive_folder_name,
+            statement_period_year=statement_period_year,
+            statement_period_month=statement_period_month,
             now=now,
         )
         state = self._upsert_state_for_job(

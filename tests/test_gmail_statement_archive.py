@@ -81,3 +81,43 @@ def test_bank_statement_archive_rejects_workspace_mismatch(tmp_path: Path) -> No
             workspace_storage_key="another-workspace",
             workspace_drive_folder_name="Zevs sro",
         )
+
+
+def test_detected_period_overrides_ingestion_month_for_drive_target(
+    tmp_path: Path,
+) -> None:
+    original, metadata = _paths(tmp_path)
+
+    service = AccountingDocumentArchiveService(tmp_path / "db.sqlite")
+    result = service.enqueue_confirmed_document(
+        workspace_id="workspace-zevs",
+        telegram_id=42,
+        document_id="import-period-june",
+        document_type=DOCUMENT_TYPE_BANK_STATEMENT_ORIGINAL,
+        local_file_path=original,
+        metadata_path=metadata,
+        workspace_storage_key="zevs",
+        workspace_drive_folder_name="Zevs sro",
+        statement_period_year=2026,
+        statement_period_month=6,
+    )
+
+    assert result.job.target_folder_path == (
+        "Zevs sro/2026/bankove_vypisy/2026-06"
+    )
+    assert "/2026/07/" in original.as_posix()
+
+
+def test_explicit_statement_period_requires_complete_valid_year_and_month(
+    tmp_path: Path,
+) -> None:
+    original, metadata = _paths(tmp_path)
+
+    with pytest.raises(ValueError, match="statement_period_incomplete"):
+        derive_gmail_statement_drive_target_path(
+            local_file_path=original,
+            metadata_path=metadata,
+            workspace_storage_key="zevs",
+            workspace_drive_folder_name="Zevs sro",
+            statement_period_year=2026,
+        )
