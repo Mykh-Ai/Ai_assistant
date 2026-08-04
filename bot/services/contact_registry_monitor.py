@@ -138,8 +138,11 @@ class ContactMonitorRunResult:
 
 @dataclass(frozen=True)
 class ProposalResolution:
-    status: Literal['applied', 'dismissed', 'stale', 'expired', 'forbidden', 'missing']
+    status: Literal[
+        'applied', 'dismissed', 'stale', 'expired', 'conflict', 'forbidden', 'missing'
+    ]
     contact_name: str | None = None
+    reason: str | None = None
 
 
 class RegistrySearchProvider(Protocol):
@@ -226,9 +229,18 @@ class ContactRegistryMonitorService:
                 SELECT c.id, c.workspace_id, c.supplier_telegram_id, c.name, c.ico,
                        c.dic, c.ic_dph, c.address, c.updated_at
                 FROM contact c
-                LEFT JOIN contact_registry_monitor_state s ON s.contact_id = c.id
+                JOIN workspace w ON w.workspace_id = c.workspace_id
+                JOIN workspace_membership m
+                  ON m.workspace_id = c.workspace_id
+                 AND m.telegram_id = c.supplier_telegram_id
+                JOIN authorized_users a ON a.telegram_id = c.supplier_telegram_id
+                JOIN supplier s
+                  ON s.workspace_id = c.workspace_id
+                 AND s.telegram_id = c.supplier_telegram_id
+                LEFT JOIN contact_registry_monitor_state cms ON cms.contact_id = c.id
                 WHERE c.workspace_id IS NOT NULL
-                  AND (? = 1 OR s.contact_id IS NULL OR s.next_check_at <= ?)
+                  AND a.status = 'active'
+                  AND (? = 1 OR cms.contact_id IS NULL OR cms.next_check_at <= ?)
                   AND NOT EXISTS (
                     SELECT 1 FROM contact_registry_change_proposal p
                     WHERE p.contact_id = c.id AND p.workspace_id = c.workspace_id
@@ -414,13 +426,23 @@ class ContactRegistryMonitorService:
             ).fetchone()
             if row is None:
                 connection.rollback()
-                return ProposalResolution('missing')
+                return ProposalResolution('missing', reason='proposal_missing')
             if int(row['actor_telegram_id']) != actor_telegram_id:
                 connection.rollback()
-                return ProposalResolution('forbidden')
-            if str(row['status']) != 'pending':
+                return ProposalResolution('forbidden', reason='actor_mismatch')
+            prior_status = str(row['status'])
+            if prior_status != 'pending':
                 connection.rollback()
-                return ProposalResolution('stale')
+                if prior_status == 'expired':
+                    return ProposalResolution('expired', reason='proposal_already_expired')
+                if prior_status == 'conflict':
+                    return ProposalResolution('conflict', reason='proposal_already_conflict')
+                reason = (
+                    f'proposal_already_{prior_status}'
+                    if prior_status in {'applied', 'dismissed', 'stale'}
+                    else 'proposal_status_invalid'
+                )
+                return ProposalResolution('stale', reason=reason)
             if str(row['expires_at']) <= _iso(now):
                 connection.execute(
                     "UPDATE contact_registry_change_proposal SET status='expired', "
@@ -428,14 +450,14 @@ class ContactRegistryMonitorService:
                     (_iso(now), _iso(now), proposal_id),
                 )
                 connection.commit()
-                return ProposalResolution('expired')
-            if not _active_actor_workspace(
+                return ProposalResolution('expired', reason='proposal_expired')
+            if not _authorized_actor_workspace_owner(
                 connection,
                 actor_telegram_id=actor_telegram_id,
                 workspace_id=str(row['workspace_id']),
             ):
                 connection.rollback()
-                return ProposalResolution('forbidden')
+                return ProposalResolution('forbidden', reason='workspace_not_authorized')
             if decision == DECISION_NO:
                 connection.execute(
                     "UPDATE contact_registry_change_proposal SET status='dismissed', "
@@ -446,7 +468,7 @@ class ContactRegistryMonitorService:
                 return ProposalResolution('dismissed')
             if decision != DECISION_YES:
                 connection.rollback()
-                return ProposalResolution('stale')
+                return ProposalResolution('stale', reason='decision_invalid')
 
             contact = connection.execute(
                 'SELECT * FROM contact WHERE id=? AND workspace_id=?',
@@ -454,26 +476,37 @@ class ContactRegistryMonitorService:
             ).fetchone()
             old_values = json.loads(str(row['old_values_json']))
             new_values = json.loads(str(row['new_values_json']))
-            if (
-                contact is None
-                or str(contact['ico']) != str(row['ico'])
-                or str(contact['updated_at']) != str(row['contact_updated_at'])
-                or any(contact[field] != old_values[field] for field in _MONITORED_FIELDS)
-                or _contact_conflict(
-                    connection,
-                    workspace_id=str(row['workspace_id']),
-                    contact_id=int(row['contact_id']),
-                    name=str(new_values['name']),
-                    ico=str(row['ico']),
-                )
-            ):
+            stale_reason: str | None = None
+            if contact is None:
+                stale_reason = 'contact_missing'
+            elif str(contact['ico']) != str(row['ico']):
+                stale_reason = 'contact_ico_changed'
+            elif str(contact['updated_at']) != str(row['contact_updated_at']):
+                stale_reason = 'contact_version_changed'
+            elif any(contact[field] != old_values[field] for field in _MONITORED_FIELDS):
+                stale_reason = 'contact_values_changed'
+            if stale_reason is not None:
                 connection.execute(
                     "UPDATE contact_registry_change_proposal SET status='stale', "
                     'resolved_at=?, updated_at=? WHERE proposal_id=?',
                     (_iso(now), _iso(now), proposal_id),
                 )
                 connection.commit()
-                return ProposalResolution('stale')
+                return ProposalResolution('stale', reason=stale_reason)
+            if _contact_conflict(
+                connection,
+                workspace_id=str(row['workspace_id']),
+                contact_id=int(row['contact_id']),
+                name=str(new_values['name']),
+                ico=str(row['ico']),
+            ):
+                connection.execute(
+                    "UPDATE contact_registry_change_proposal SET status='conflict', "
+                    'resolved_at=?, updated_at=? WHERE proposal_id=?',
+                    (_iso(now), _iso(now), proposal_id),
+                )
+                connection.commit()
+                return ProposalResolution('conflict', reason='contact_identity_conflict')
             connection.execute(
                 """
                 UPDATE contact SET name=?, address=?, dic=?, ic_dph=?,
@@ -571,7 +604,7 @@ class ContactRegistryMonitorService:
         )
 
 
-def _active_actor_workspace(
+def _authorized_actor_workspace_owner(
     connection: sqlite3.Connection, *, actor_telegram_id: int, workspace_id: str
 ) -> bool:
     return connection.execute(
@@ -580,8 +613,7 @@ def _active_actor_workspace(
         JOIN workspace_membership m ON m.workspace_id=w.workspace_id
         JOIN authorized_users a ON a.telegram_id=m.telegram_id
         JOIN supplier s ON s.workspace_id=w.workspace_id AND s.telegram_id=m.telegram_id
-        WHERE w.workspace_id=? AND m.telegram_id=?
-          AND w.status='active' AND m.status='active' AND a.status='active'
+        WHERE w.workspace_id=? AND m.telegram_id=? AND a.status='active'
         """,
         (workspace_id, actor_telegram_id),
     ).fetchone() is not None
@@ -672,7 +704,11 @@ def proposal_keyboard(proposal_id: str) -> InlineKeyboardMarkup:
 
 def format_change_notification(proposal: ContactRegistryChangeProposal) -> str:
     labels = {'name': 'Názov', 'address': 'Sídlo', 'dic': 'DIČ', 'ic_dph': 'IČ DPH'}
-    lines = ['V oficiálnom registri som našiel zmenu kontaktu:']
+    lines = [
+        'V oficiálnom registri som našiel zmenu kontaktu:',
+        f'Kontakt: {proposal.old_values["name"] or "—"}',
+        f'IČO: {proposal.ico}',
+    ]
     for field in proposal.changed_fields:
         old = proposal.old_values[field] or '—'
         new = proposal.new_values[field] or '—'
@@ -726,7 +762,9 @@ async def send_contact_registry_monitor_once(
     }
     for contact in contacts:
         try:
-            context = context_service.resolve_for_background_workspace(contact.workspace_id)
+            context = context_service.resolve_for_background_workspace(
+                contact.workspace_id, include_inactive=True
+            )
             if context.actor_telegram_id != contact.actor_telegram_id:
                 raise WorkspaceContextError('contact_monitor_actor_mismatch')
         except WorkspaceContextError:

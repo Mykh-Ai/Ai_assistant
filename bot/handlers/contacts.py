@@ -459,6 +459,9 @@ def _registry_fallback_keyboard(nonce: str) -> InlineKeyboardMarkup:
 
 def _registry_details_data(details: RegistryCompanyDetails) -> dict[str, object]:
     return {
+        # Keep the registry identity separate from the editable preview field.
+        # The final registry save must never fall back to the user's search text.
+        'official_name': details.name,
         'subject_id': details.subject_id,
         'name': details.name,
         'ico': details.ico,
@@ -475,6 +478,10 @@ def _registry_details_data(details: RegistryCompanyDetails) -> dict[str, object]
         'iban_supplied': False,
         'contact_person_supplied': False,
     }
+
+
+def _registry_canonical_name(draft: dict[str, object]) -> str:
+    return str(draft.get('official_name') or draft.get('name') or '').strip()
 
 
 def _registry_tax_preview_note(draft: dict[str, object]) -> str:
@@ -503,7 +510,7 @@ def _registry_preview_text(draft: dict[str, object]) -> str:
     sources = ' + '.join(str(value) for value in draft.get('provider_sources') or []) or 'slovak_rpo'
     return (
         'Údaje z oficiálneho registra\n\n'
-        f'Názov: {draft.get("name") or "-"}\n'
+        f'Názov: {_registry_canonical_name(draft) or "-"}\n'
         f'IČO: {draft.get("ico") or "-"}\n'
         f'DIČ: {draft.get("dic") or "-"}\n'
         f'IČ DPH: {draft.get("ic_dph") or "-"}\n'
@@ -519,7 +526,7 @@ def _registry_preview_text(draft: dict[str, object]) -> str:
 
 def _registry_required_complete(draft: dict[str, object]) -> bool:
     return (
-        bool(str(draft.get('name') or '').strip())
+        bool(_registry_canonical_name(draft))
         and validate_ico(str(draft.get('ico') or ''))
         and validate_dic(str(draft.get('dic') or ''))
         and validate_contact_address(str(draft.get('address') or ''))
@@ -644,7 +651,7 @@ async def _start_registry_search(
 def _registry_contact_draft(data: dict[str, object]) -> RegistryContactDraft:
     draft = dict(data.get('contact_registry_draft') or {})
     return RegistryContactDraft(
-        name=str(draft.get('name') or '').strip(),
+        name=_registry_canonical_name(draft),
         ico=str(draft.get('ico') or '').strip(),
         dic=str(draft.get('dic') or '').strip(),
         ic_dph=str(draft.get('ic_dph') or '').strip() or None,

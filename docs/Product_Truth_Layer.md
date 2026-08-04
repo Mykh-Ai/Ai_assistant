@@ -767,7 +767,7 @@ Forbidden claims:
 - absence from an unavailable or unverified VAT response proves non-VAT status;
 - either official source is guaranteed real-time or always available.
 
-Limitations and forbidden claims: official source availability and freshness are external; source fields may be absent; email, IBAN, and contact person are normally manual; IČ DPH is not inferred; no commercial-registry scraping, automatic contact creation from idle attachments, email/IBAN/person discovery, background synchronization, foreign registry, or automatic invoice creation is supported. A shown registry preview is not a saved contact. Registry import never silently overwrites a same-name/different-IČO row.
+Limitations and forbidden claims: official source availability and freshness are external; source fields may be absent; email, IBAN, and contact person are normally manual; IČ DPH is not inferred; no commercial-registry scraping, automatic contact creation from idle attachments, email/IBAN/person discovery, foreign registry, or automatic invoice creation is supported. Interactive registry search never auto-saves. The separately gated periodic monitor is the only supported background contact check and still requires explicit proposal-button confirmation before a contact update. A shown registry preview is not a saved contact. Registry import never silently overwrites a same-name/different-IČO row.
 
 ### Runtime issue intake - 2026-07-28
 
@@ -785,7 +785,7 @@ Automatic maintenance and autorepair remain unavailable.
 
 ### Contacts: periodic official-registry monitoring - 2026-07-29
 
-`contacts` remains `partial`, `requires_setup`, and `requires_external_credentials`. A disabled-by-default deterministic monitor can check eligible active-workspace contacts with an exact eight-digit IČO every 14 days at 03:00 `Europe/Bratislava`. It compares official name, legal address, DIČ, and IČ DPH, then notifies the workspace owner and asks whether to update the saved contact. No contact field changes before explicit button confirmation.
+`contacts` remains `partial`, `requires_setup`, and `requires_external_credentials`. A disabled-by-default deterministic monitor can check eligible workspace-owned contacts with an exact eight-digit IČO every 14 days at 03:00 `Europe/Bratislava`. Active owner authorization is mandatory. The monitor is independent of active-profile selection and may maintain a persisted inactive workspace/membership without reactivating it or exposing it to interactive flows. It compares official name, legal address, DIČ, and IČ DPH, then notifies the workspace owner and asks whether to update the saved contact. No contact field changes before explicit button confirmation.
 
 Missing or failed tax data never clears saved DIČ/IČ DPH. Email, IBAN, contact person, contract data, invoice rows, invoice items, `pdf_path`, and existing PDF files are outside the update. Already issued invoices are never rewritten by this monitor.
 

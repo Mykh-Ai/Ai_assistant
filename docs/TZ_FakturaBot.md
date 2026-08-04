@@ -1696,9 +1696,15 @@ This activation changes no canonical action, FSM ownership, schema, storage, ten
 
 A deterministic internal `contacts` scheduler may be enabled with `CONTACT_REGISTRY_MONITOR_ENABLED=1`. It is disabled by default and depends on the existing RPO parent gate and external tax credentials. The calendar schedule is anchored at `2026-08-03T03:00:00` in `Europe/Bratislava` and repeats every 14 days, preserving 03:00 across DST.
 
-Two additive tables store per-contact check state and bounded confirmation proposals. Eligible rows require a valid eight-digit IČO, active workspace/owner membership/authorization, a due slot, and no live pending proposal. Exact-IČO RPO lookup may include inactive entities so lifecycle changes do not disappear from monitoring. Missing/failed tax lookup preserves stored DIČ/IČ DPH.
+Two additive tables store per-contact check state and bounded confirmation proposals. Eligible rows require a valid eight-digit IČO, a persisted workspace-owned contact, active owner authorization, a due slot, and no live pending proposal. The check is independent of the user's currently selected business profile and deliberately includes a deactivated workspace or inactive membership when its owner remains authorized, so dormant profiles retain current registry details. Exact-IČO RPO lookup may include inactive entities so lifecycle changes do not disappear from monitoring. Missing/failed tax lookup preserves stored DIČ/IČ DPH.
 
 A detected official name, legal-address, DIČ, or IČ DPH difference is notification-only until the owner chooses `Aktualizovať kontakt`. Approval revalidates actor, workspace, TTL, IČO, contact version/old values, and conflicts in one transaction. Decline, replay, expiry, unauthorized actor, stale contact, ambiguity, and conflicts fail closed.
+
+Every notification identifies the saved contact and IČO and carries its own opaque proposal UUID. Proposals for different contacts remain independently actionable: applying one does not invalidate another. Owned stale, expired, and identity-conflict outcomes remove their obsolete buttons and explain the bounded reason; missing or forbidden callbacks do not alter markup because ownership is unproven. Cleanup failure is logged without rolling back an already committed contact update.
+
+Registry-assisted contact creation keeps the returned official registry name as the canonical save value after final confirmation; the user's name/IČO search text is query context only and is never used as a fallback company name for a selected registry entity.
+
+Inactive workspace profiles are also checked when their supplier owner is still an active authorized user. This maintenance exception does not reactivate the workspace or membership and does not make that profile available to normal interactive flows.
 
 The monitor never updates invoice/invoice-item rows, regenerates PDFs, changes `pdf_path`, or changes contact email, IBAN, person, or contract path. User-data deletion removes monitor/proposal rows before contact/workspace deletion. Rollout is backup-first, disabled deploy, schema validation, no-write dry-run, then controlled enablement.
 

@@ -7,6 +7,7 @@
   buttons, FSM states, and delete side effect are unchanged; the secondary
   InfoHelp confidence gate is no longer reachable from the direct supported
   route.
+- Hardened periodic contact-registry proposals for deployment: every card now identifies its contact and IČO, distinct proposal UUIDs remain independently actionable, stale/expired/identity-conflict outcomes are explained separately, and owned terminal markup is removed with cleanup-failure logging. Registry-assisted contact confirmation now previews and saves the same official company name. The monitor may maintain inactive profiles only for an actively authorized supplier owner and never reactivates the profile or rewrites issued invoices/PDFs.
 - Synchronized README, TZ, Product Truth, InfoHelp, the Gmail setup runbook,
   architecture proof, and acceptance proof with the connected controlled
   Gmail/Drive pilot. InfoHelp now distinguishes an external-credential

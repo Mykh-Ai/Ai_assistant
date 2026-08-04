@@ -33,6 +33,11 @@ contact version, old values, and name/IČO conflicts are revalidated. Only
 official name, legal address, DIČ, and IČ DPH may change. Invoice rows, invoice
 items, `pdf_path`, and PDF bytes remain identical.
 
+Two notifications for two different contacts remain independently actionable.
+Approving the first card updates only its bound contact; approving the second card
+then revalidates and updates its own bound contact. Both handled cards remove only
+their own inline markup.
+
 ### User declines
 
 The proposal becomes dismissed. The contact, invoices, and PDFs remain
@@ -49,6 +54,11 @@ and does not create a false tax-field difference.
 Wrong actor, inactive authorization/membership/workspace, expired proposal,
 callback replay, manually changed contact, IČO mismatch, ambiguous exact-IČO
 result, or workspace name/IČO conflict performs no contact write.
+
+Owned stale, expired, and identity-conflict cards remove obsolete markup and
+explain the bounded reason. Missing or wrong-actor cards retain markup because
+ownership is not proven. Telegram cleanup failure is logged and never rolls back
+an already committed contact update.
 
 ### Dry run
 
@@ -68,5 +78,9 @@ monitor tables remain unchanged.
 - no-write dry run;
 - bounded callback payload;
 - unchanged invoice row and PDF bytes after approved contact update.
+- two sequential real handler callbacks for distinct proposal UUIDs;
+- separate stale/conflict messaging and owned keyboard cleanup;
+- cleanup-failure logging without business rollback;
+- inactive-profile inclusion only for an actively authorized supplier owner.
 
 Focused and full-suite results are recorded in `PROJECT_LOG.md` after execution.

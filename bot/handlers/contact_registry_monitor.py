@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 import re
 
 from aiogram import F, Router
@@ -17,6 +18,7 @@ from bot.services.contact_registry_monitor import (
 
 
 router = Router()
+logger = logging.getLogger(__name__)
 _CALLBACK_RE = re.compile(
     rf'^{CALLBACK_PREFIX}:(?P<decision>{DECISION_YES}|{DECISION_NO}):'
     r'(?P<proposal>[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-'
@@ -49,8 +51,15 @@ async def contact_registry_monitor_callback(
         decision=decision,
         now=datetime.now(timezone.utc),
     )
+    logger.info(
+        'Contact registry proposal resolved proposal_id=%s actor_id=%s status=%s reason=%s',
+        match.group('proposal'),
+        actor_id,
+        resolution.status,
+        resolution.reason,
+    )
     if resolution.status == 'applied':
-        await _clear_keyboard(callback)
+        await _clear_keyboard(callback, proposal_id=match.group('proposal'))
         await _answer_message(
             callback,
             f'Kontakt „{resolution.contact_name}“ bol aktualizovaný. '
@@ -59,20 +68,41 @@ async def contact_registry_monitor_callback(
         await callback.answer()
         return
     if resolution.status == 'dismissed':
-        await _clear_keyboard(callback)
+        await _clear_keyboard(callback, proposal_id=match.group('proposal'))
         await _answer_message(callback, 'Kontakt zostal bez zmeny.')
+        await callback.answer()
+        return
+    if resolution.status in {'stale', 'expired', 'conflict'}:
+        await _clear_keyboard(callback, proposal_id=match.group('proposal'))
+        if resolution.status == 'expired':
+            text = 'Platnosť tejto kontroly už vypršala. Kontakt nebol zmenený.'
+        elif resolution.status == 'conflict':
+            text = (
+                'Aktualizáciu nemožno bezpečne použiť, pretože názov alebo IČO '
+                'koliduje s iným kontaktom. Nič som nezmenil.'
+            )
+        else:
+            text = (
+                'Kontakt alebo tento návrh sa medzičasom zmenil. Nič som nezmenil; '
+                'ďalšia kontrola vytvorí nový návrh, ak bude stále potrebný.'
+            )
+        await _answer_message(callback, text)
         await callback.answer()
         return
     await callback.answer(_STALE, show_alert=True)
 
 
-async def _clear_keyboard(callback: CallbackQuery) -> None:
+async def _clear_keyboard(callback: CallbackQuery, *, proposal_id: str) -> None:
     if callback.message is None or not hasattr(callback.message, 'edit_reply_markup'):
         return
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
-        return
+        logger.warning(
+            'Contact registry proposal keyboard cleanup failed proposal_id=%s',
+            proposal_id,
+            exc_info=True,
+        )
 
 
 async def _answer_message(callback: CallbackQuery, text: str) -> None:
