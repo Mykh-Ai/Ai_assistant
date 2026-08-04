@@ -1,3 +1,43 @@
+# 2026-08-04 - Supported canonical actions bypass the second InfoHelp veto
+
+- Read-only audit on `origin/main` `9e9e9022c2fe274c01a0c46a1624a096c0d41e03`
+  confirmed that `delete_existing_invoice` is implemented, Product Truth
+  `supported`, registered with an existing runtime owner, tenant-scoped lookup,
+  reference continuation, and shared `yes_no` confirmation. The only production
+  call to `should_run_contextual_info_help()` was in `process_invoice_text`.
+- Root causes were the shared predicate treating every `mutating`/`destructive`
+  action as requiring a second LLM and separately treating a missing invoice
+  reference as requiring that call. The secondary destructive confidence gate
+  (`0.98`) could therefore block a correct primary action and its native
+  continuation.
+- The shared predicate now routes a registered Product-Truth-supported action
+  with a real runtime owner directly after excluding questions,
+  correction/negation, commands, `unknown`, unsupported/non-eligible, and
+  unresolved cases. Mutation class alone is no longer a trigger. Owner-handled
+  missing slots are not reclassified.
+- `delete_existing_invoice` with reference `10` reaches the existing owner
+  exactly once and enters
+  `InvoiceStates.waiting_delete_existing_invoice_confirm`; without a reference
+  it enters `InvoiceReferenceContinuationStates.waiting_reference`. Text and
+  voice transcripts converge. The InfoHelp resolver is not called, so its
+  `0.98`/other confidence thresholds are unreachable on this direct route.
+- No canonical action, FSM state, confirmation, DecisionResolver family,
+  callback, button, keyboard, deletion service, lookup rule, authorization,
+  tenant scope, schema, storage, `.env`, or self-learning behavior changed. AI
+  maturity remains partial Level 2; this is a Class 5 deterministic routing
+  correction.
+- Regression-first evidence on old code: `4 failed, 22 passed`. Corrected
+  narrow suite: `26 passed in 5.89s`. Expanded invoice/InfoHelp/voice/FSM/
+  Product Truth/DecisionResolver suite: `1086 passed in 87.99s`. Full
+  repository regression: `2476 passed, 7 subtests passed in 457.79s`.
+- Architecture proof:
+  `docs/architecture/info_help_supported_action_direct_routing_architecture_design_proof.md`.
+  Conversation proof:
+  `docs/evals/info_help_supported_action_direct_routing_conversation_acceptance_proof.md`.
+- Full regression, commit, PR/checks/merge, deployment, and live Telegram
+  negative smoke are recorded when completed; no completion claim is made
+  before those gates.
+
 # 2026-08-02 - Gmail/Drive Product Truth and InfoHelp synchronized
 
 - `README.md`, `docs/TZ_FakturaBot.md`, Product Truth, InfoHelp, the Gmail

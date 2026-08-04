@@ -1713,3 +1713,9 @@ Existing invoice actions that require a reference share `InvoiceReferenceContinu
 Active-FSM informational controls can describe the active action or expected input without changing state. Unknown slash commands reach the same single V2 assistant only after known command routers.
 
 Configuration: `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`, default/fail-closed `disabled`. Interactive Telegram admin-pilot acceptance is pending; no deployment or production mode change is part of the implementation PR.
+
+## 2026-08-04 Addendum: supported actions route directly to existing owners
+
+After the primary resolver selects a Product-Truth-supported canonical action with a registered runtime owner, Contextual InfoHelp does not classify that request again merely because the action is mutating/destructive or an owner-handled business slot is missing. Questions, corrections/negations, `unknown`, unsupported, and genuinely ambiguous input retain the bounded InfoHelp path.
+
+For `delete_existing_invoice`, a supplied invoice reference reaches the existing tenant-scoped lookup and `InvoiceStates.waiting_delete_existing_invoice_confirm`; a missing reference reaches the existing `InvoiceReferenceContinuationStates.waiting_reference`. The existing `áno / nie` DecisionResolver confirmation and deletion owner are unchanged, and no invoice is deleted during top-level routing.

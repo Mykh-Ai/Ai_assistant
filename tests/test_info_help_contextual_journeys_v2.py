@@ -1,9 +1,12 @@
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from bot.config import Config
 from bot.handlers.invoice import (
     InvoiceReferenceContinuationStates,
+    InvoiceStates,
     process_invoice_text,
     unknown_slash_command,
 )
@@ -11,6 +14,8 @@ from bot.services.active_fsm_guard import handle_active_fsm_text_update
 from bot.services.db import init_db
 from bot.services.info_help_assistant import InfoHelpAssistantResult
 from bot.services.info_help_rollout import contextual_info_help_v2_enabled
+from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
+from bot.services.supplier_service import SupplierProfile, SupplierService
 
 
 class _Message:
@@ -144,7 +149,9 @@ def test_correction_negates_invoice_and_blocks_delete_flow(tmp_path: Path, monke
     assert state.current_state is None
 
 
-def test_supported_invoice_delete_without_reference_enters_continuation_after_v2(tmp_path: Path, monkeypatch) -> None:
+def test_supported_invoice_delete_without_reference_bypasses_infohelp_and_enters_continuation(
+    tmp_path: Path, monkeypatch
+) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
     message = _Message('Vymazať faktúru')
@@ -153,8 +160,15 @@ def test_supported_invoice_delete_without_reference_enters_continuation_after_v2
     async def _primary(**kwargs):
         return 'delete_existing_invoice'
 
+    assistant_calls: list[str] = []
+
     async def _assistant(**kwargs):
-        return _result(intent_complete=False, missing_slots=('invoice_reference',))
+        assistant_calls.append(kwargs['current_input_text'])
+        return _result(
+            intent_complete=False,
+            missing_slots=('invoice_reference',),
+            confidence=0.97,
+        )
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
     monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
@@ -162,19 +176,112 @@ def test_supported_invoice_delete_without_reference_enters_continuation_after_v2
 
     assert state.current_state == InvoiceReferenceContinuationStates.waiting_reference.state
     assert state.data['pending_invoice_reference_action'] == 'delete_existing_invoice'
+    assert assistant_calls == []
 
 
-def test_contact_edit_never_becomes_supplier_profile_edit(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize('input_channel', ('text', 'voice'))
+def test_supported_invoice_delete_reaches_existing_owner_once_without_infohelp(
+    tmp_path: Path, monkeypatch, input_channel: str
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    SupplierService(config.db_path).create_or_replace(
+        SupplierProfile(
+            telegram_id=111,
+            name='Supplier',
+            ico='1',
+            dic='1',
+            ic_dph='',
+            address='Address',
+            iban='SK1',
+            swift='ABCD',
+            email='supplier@example.test',
+            smtp_host=None,
+            smtp_user=None,
+            smtp_pass=None,
+            days_due=14,
+        )
+    )
+    invoice_service = InvoiceService(config.db_path)
+    invoice_id = invoice_service.create_invoice_with_items(
+        supplier_telegram_id=111,
+        contact_id=1,
+        issue_date='2026-08-04',
+        delivery_date='2026-08-04',
+        due_date='2026-08-18',
+        due_days=14,
+        total_amount=10,
+        currency='EUR',
+        status='draft',
+        items=[
+            CreateInvoiceItemPayload(
+                description_raw='service',
+                description_normalized='service',
+                item_description_raw='',
+                quantity=1,
+                unit='ks',
+                unit_price=10,
+                total_price=10,
+            )
+        ],
+        invoice_number='20260010',
+    )
+    message = _Message('Видалити фактуру 10')
+    state = _State()
+    assistant_calls: list[str] = []
+    owner_calls: list[tuple[str, str]] = []
+
+    async def _primary(**kwargs):
+        return 'delete_existing_invoice'
+
+    async def _assistant(**kwargs):
+        assistant_calls.append(kwargs['current_input_text'])
+        return _result(confidence=0.97)
+
+    from bot.handlers import invoice as invoice_handler
+
+    real_owner = invoice_handler._execute_invoice_reference_action
+
+    async def _owner(**kwargs):
+        owner_calls.append((kwargs['action_id'], kwargs['invoice_reference']))
+        await real_owner(**kwargs)
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    monkeypatch.setattr('bot.handlers.invoice._execute_invoice_reference_action', _owner)
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+            input_channel=input_channel,
+        )
+    )
+
+    assert assistant_calls == []
+    assert owner_calls == [('delete_existing_invoice', '10')]
+    assert state.current_state == InvoiceStates.waiting_delete_existing_invoice_confirm.state
+    assert invoice_service.get_invoice_by_id(invoice_id) is not None
+    assert message.answers[-1] == (
+        'Naozaj chcete vymazať faktúru 20260010? Odpovedzte: áno / nie'
+    )
+
+
+def test_unsupported_contact_edit_uses_infohelp_without_supplier_profile_edit(tmp_path: Path, monkeypatch) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
     message = _Message('Редагувати контакт')
     state = _State()
     supplier_calls: list[str] = []
+    assistant_calls: list[str] = []
 
     async def _primary(**kwargs):
-        return 'edit_supplier'
+        return 'unknown'
 
     async def _assistant(**kwargs):
+        assistant_calls.append(kwargs['current_input_text'])
         return _result(
             domain_id='contacts', object_kind='contact', operation_id='edit',
             proposed_action_id=None, confidence=0.97,
@@ -189,6 +296,7 @@ def test_contact_edit_never_becomes_supplier_profile_edit(tmp_path: Path, monkey
     asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
 
     assert supplier_calls == []
+    assert assistant_calls == [message.text]
     assert 'nepodporujem' in message.answers[-1].casefold()
 
 

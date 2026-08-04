@@ -7,7 +7,7 @@ import unicodedata
 from typing import Mapping
 
 from bot.services.info_help_action_registry import get_info_help_action
-from bot.services.product_truth import list_capabilities
+from bot.services.product_truth import ProductTruthStatus, get_capability, list_capabilities
 
 
 INFO_HELP_INTENT_BUSINESS_ACTION = 'business_action_request'
@@ -197,9 +197,6 @@ def should_run_contextual_info_help(
 ) -> bool:
     if primary_action == 'unknown' or input_channel == 'command' or input_text.lstrip().startswith('/'):
         return True
-    semantic = get_info_help_action(primary_action)
-    if semantic and semantic.mutation_class in {'mutating', 'destructive'}:
-        return True
     normalized = _normalize(input_text)
     wrapped = f' {normalized} '
     if any(token in wrapped for token in (' nie ', ' not ', ' ne ', ' а не ', ' але не ', ' but not ', ' namiesto ', ' замість ')):
@@ -208,18 +205,16 @@ def should_run_contextual_info_help(
         ('can ', 'could ', 'do you ', 'vies ', 'viete ', 'mozem ', 'ci mozem ', 'чи можу ', 'можно ли ')
     ):
         return True
-    if (
-        semantic
-        and 'invoice_reference' in semantic.required_slots
-        and re.search(r'\d', input_text) is None
-    ):
+    semantic = get_info_help_action(primary_action)
+    if semantic is None:
+        return False
+    if semantic.entry_mode == 'not_infohelp_eligible' or not semantic.runtime_owner:
         return True
-    slots = (primary_diagnostics or {}).get('slots')
-    return bool(
-        semantic
-        and semantic.required_slots
-        and isinstance(slots, Mapping)
-        and any(not slots.get(slot) for slot in semantic.required_slots)
+    capability = get_capability(semantic.capability_id).capability
+    return not (
+        capability.status == ProductTruthStatus.SUPPORTED
+        and bool(capability.runtime_owner)
+        and primary_action in capability.canonical_actions
     )
 
 

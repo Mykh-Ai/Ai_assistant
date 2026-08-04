@@ -944,13 +944,15 @@ STT/LLM or either persistence path. Active non-admin FSM ownership is unchanged.
 
 ## Contextual InfoHelp Assistant V2 - 2026-08-02
 
-Contextual V2 extends the existing InfoHelp owner; it is not a parallel recovery layer. One inbound update may cause exactly one enhanced InfoHelp call after the primary resolver when the primary result is unknown, mutating/destructive, missing a required slot, capability-like, corrective/negative, an unknown command, an explicit reply follow-up, or an active-flow help question.
+Contextual V2 extends the existing InfoHelp owner; it is not a parallel recovery layer. One inbound update may cause exactly one enhanced InfoHelp call after the primary resolver when the primary result is unknown, capability-like/informational, corrective/negative, an unknown command, an explicit reply follow-up, an active-flow help question, unsupported, or genuinely ambiguous. A Product-Truth-supported canonical action with a registered runtime owner is not classified again: mutation class alone is not an InfoHelp trigger, and an owner-handled missing slot enters that owner's existing continuation FSM.
 
 The bounded JSON distinguishes speech act, domain, exact business object, operation, reference, missing slots, correction/negation, explicit reply, active flow, registered action/capability/command and confidence. Python validates every field, repeats Product Truth lookup, requires exact `domain + object + operation`, and retains FSM, callback, tenant, confirmation and side-effect authority. A receipt delete never becomes invoice/account deletion; contact edit never becomes supplier-profile edit.
 
 Every bounded enum/list is sent with literal allowed values. The primary resolver result is untrusted diagnostic context and must not override an exact object named in the current input. Descriptive placeholder prose is never a valid output value; invalid output fails closed without a retry or side effect.
 
 An explicit reference token is copied as bounded text, including a numeric invoice reference such as `10`. It is never discarded merely because it is numeric, and it is never invented when absent. Python remains responsible for lookup, ambiguity/not-found handling, continuation state, confirmation, and execution.
+
+For direct supported actions, the contextual assistant is not called, so its confidence threshold cannot approve, downgrade, or veto the route. For example, `delete_existing_invoice` with reference `10` reaches the existing tenant-scoped lookup and confirmation owner; the same action without a reference reaches `InvoiceReferenceContinuationStates.waiting_reference`. Neither path deletes anything before the existing affirmative DecisionResolver confirmation.
 
 Same-chat/same-bot Telegram reply ownership and an active FSM help descriptor are Python-proven context facts. After bounded model parsing, Python may preserve those booleans as true when the validated inbound route already proved them; the model may add semantic interpretation but cannot erase deterministic ownership/state evidence or create it for an unproven reply/state.
 
