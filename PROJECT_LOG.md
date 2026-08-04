@@ -9048,7 +9048,10 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
 ### Persisted-data and rollout boundary
 
 - No schema, migration, storage-path, invoice/PDF, canonical action, or deployment configuration change. Existing proposal rows accept the new bounded `conflict` status because the additive table has no status `CHECK`; no backfill is required.
-- Production deployment, restart, server access, external-provider smoke, and production data writes were not performed in this repository session.
+- PR `#85` was merged as `e861b96c3892611ca97ca8225b32b6612534bdc2` and deployed by fast-forwarding `/bot/repo` on `main`, then rebuilding with `docker compose -f docker-compose.prod.yml up -d --build`.
+- Before deployment, the live SQLite database passed `PRAGMA quick_check`; a SQLite-consistent 512000-byte backup was written to `/bot/backups/contact-registry-pr85-pre-20260804T110717Z/fakturabot.db` and the backup independently passed `PRAGMA quick_check`.
+- After deployment, `fakturabot` was `Up` with restart count `0`; logs showed `FakturaBot starting`, polling, and the 14-day contact-registry monitor start. The deployed modules imported successfully and the live database again passed `PRAGMA quick_check`.
+- The production image intentionally excludes `pytest`, so no test dependency was installed on the server. The two-proposal journey remained covered by the pre-deployment focused and full suites; no synthetic production contact/proposal rows or external-provider writes were created for smoke testing.
 
 ### Verification
 
