@@ -9212,3 +9212,30 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   for an existing import, move/delete an existing Drive file, parse transactions,
   or change accounting/invoice state. Historical June Drive repair requires a
   separate read-only mapping, dry run, and explicit write approval.
+
+## Approved historical Gmail statement Drive repair
+
+- After explicit user approval, a Drive metadata audit proved that the June PDF
+  had already been moved manually from `2026-08` to `2026-06`; only its persisted
+  job/state summary was stale. The July PDF was still physically parented by
+  `2026-08`.
+- Created a fresh online SQLite backup plus full storage snapshot under the
+  isolated `/bot/backups` root and verified the backup database with
+  `PRAGMA quick_check` before repair writes.
+- Verified that no `2026-07` child existed under the canonical
+  `bankove_vypisy` parent, created that one folder, and moved only the existing
+  July Drive file by replacing its verified August parent. No PDF was uploaded,
+  copied, renamed, deleted, or content-modified.
+- Google Drive connector readback then found exactly one `original.pdf` under
+  `2026-06`, exactly one under `2026-07`, and none under the previous `2026-08`
+  folder.
+- In one bounded SQLite transaction, backfilled both imports' detected period
+  fields, synchronized `archive_status=uploaded`, archive-job target/folder,
+  accounting archive-state folder, and June/July folder-cache entries. Updated
+  only the two matching metadata sidecars atomically with the same period and
+  uploaded status.
+- Final DB/metadata readback matched for both months, archive/state folder IDs
+  agreed, both jobs remained `uploaded`, `PRAGMA quick_check=ok`, and bounded
+  FakturaBot logs contained no matching repair/scheduler/archive error. Original
+  bytes, transaction content, Gmail state, and accounting/invoice business state
+  were unchanged.
