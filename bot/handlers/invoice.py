@@ -42,6 +42,7 @@ from bot.keyboards.decision import (
     answer_with_decision_keyboard,
     approve_edit_cancel_keyboard,
     delete_cancel_keyboard,
+    info_help_admin_offer_keyboard,
     yes_no_keyboard,
 )
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
@@ -150,6 +151,8 @@ _EDIT_INVOICE_INTENT = 'edit_invoice'
 _EDIT_EXISTING_INVOICE_INTENT = 'edit_existing_invoice'
 _DELETE_EXISTING_INVOICE_INTENT = 'delete_existing_invoice'
 _MARK_EXISTING_INVOICE_PAID_INTENT = 'mark_existing_invoice_paid'
+_INFO_HELP_OFFER_MESSAGE_ID_KEY = 'info_help_offer_message_id'
+_INFO_HELP_OFFER_CHAT_ID_KEY = 'info_help_offer_chat_id'
 _SEND_INVOICE_INTENT = 'send_invoice'
 _ADD_CONTACT_INTENT = 'add_contact'
 _ADD_SERVICE_ALIAS_INTENT = 'add_service_alias'
@@ -1088,6 +1091,7 @@ class InvoiceReferenceContinuationStates(StatesGroup):
 
 
 class CustomizationRequestStates(StatesGroup):
+    waiting_admin_offer_decision = State()
     waiting_preview_decision = State()
     waiting_edit_text = State()
 
@@ -1346,6 +1350,73 @@ async def _start_customization_request_preview(
         _format_customization_request_preview(draft),
         approve_edit_cancel_keyboard(),
     )
+
+
+async def _offer_customization_request_from_info_help(
+    *,
+    message: Message,
+    state: FSMContext,
+    requester_telegram_id: int,
+    user_input_text: str,
+    source_channel: str,
+    result,
+    context_key,
+) -> None:
+    draft = _build_customization_request_draft(
+        requester_telegram_id=requester_telegram_id,
+        user_input_text=user_input_text,
+        source_channel=source_channel,
+        triage_class=TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+        capability_id=None,
+        topic_id=':'.join(
+            value
+            for value in (result.domain_id, result.object_kind, result.operation_id)
+            if value and value != 'unknown'
+        ) or None,
+        confidence=result.confidence,
+        business_need=user_input_text,
+        detected_domain=result.domain_id,
+        expected_outcome=result.acknowledgement_sk,
+        risk_level='high' if result.operation_id == 'delete' else 'medium',
+    )
+    await state.update_data(
+        **{
+            _CUSTOMIZATION_REQUEST_DRAFT_KEY: draft,
+            'customization_request_saved_id': None,
+        }
+    )
+    await state.set_state(CustomizationRequestStates.waiting_admin_offer_decision)
+    text = _format_exact_unsupported(result)
+    sent_message = await answer_with_decision_keyboard(
+        message, text, info_help_admin_offer_keyboard()
+    )
+    sent_message_id = getattr(sent_message, 'message_id', None)
+    offer_chat_id = getattr(getattr(message, 'chat', None), 'id', None)
+    if isinstance(sent_message_id, int) and isinstance(offer_chat_id, int):
+        await state.update_data(
+            **{
+                _INFO_HELP_OFFER_MESSAGE_ID_KEY: sent_message_id,
+                _INFO_HELP_OFFER_CHAT_ID_KEY: offer_chat_id,
+            }
+        )
+    info_help_conversation_context.capture_bot(context_key, text=text)
+
+
+async def clear_info_help_offer_keyboard(*, message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    message_id = data.get(_INFO_HELP_OFFER_MESSAGE_ID_KEY)
+    chat_id = data.get(_INFO_HELP_OFFER_CHAT_ID_KEY)
+    bot = getattr(message, 'bot', None)
+    if not isinstance(message_id, int) or not isinstance(chat_id, int) or bot is None:
+        return
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=None,
+        )
+    except Exception:
+        logger.exception('Failed to clear InfoHelp admin-offer inline keyboard')
 
 
 async def _save_customization_request_draft(
@@ -3691,8 +3762,14 @@ async def _apply_contextual_info_help_v2(
     capability_question = result.speech_act == INFO_HELP_SPEECH_CAPABILITY_QUESTION
     if capability_question:
         if exact is None:
-            await _answer_contextual_info_help(
-                message=message, context_key=context_key, text=_format_exact_unsupported(result)
+            await _offer_customization_request_from_info_help(
+                message=message,
+                state=state,
+                requester_telegram_id=actor_id,
+                user_input_text=invoice_text,
+                source_channel=input_channel,
+                result=result,
+                context_key=context_key,
             )
             return True, top_level_intent
         truth = get_safe_answer_payload(exact.capability_id)
@@ -3731,8 +3808,14 @@ async def _apply_contextual_info_help_v2(
         return True, top_level_intent
 
     if exact is None:
-        await _answer_contextual_info_help(
-            message=message, context_key=context_key, text=_format_exact_unsupported(result)
+        await _offer_customization_request_from_info_help(
+            message=message,
+            state=state,
+            requester_telegram_id=actor_id,
+            user_input_text=invoice_text,
+            source_channel=input_channel,
+            result=result,
+            context_key=context_key,
         )
         return True, top_level_intent
 
@@ -3752,8 +3835,14 @@ async def _apply_contextual_info_help_v2(
 
     truth = get_safe_answer_payload(exact.capability_id)
     if truth.get('product_status') not in {'supported', 'partial'} or not exact.runtime_owner:
-        await _answer_contextual_info_help(
-            message=message, context_key=context_key, text=_format_exact_unsupported(result)
+        await _offer_customization_request_from_info_help(
+            message=message,
+            state=state,
+            requester_telegram_id=actor_id,
+            user_input_text=invoice_text,
+            source_channel=input_channel,
+            result=result,
+            context_key=context_key,
         )
         return True, top_level_intent
     threshold = {'read_only': 0.85, 'mutating': 0.92, 'destructive': 0.98}.get(exact.mutation_class, 0.70)
@@ -5741,6 +5830,55 @@ async def customization_request_preview_decision(
         state=state,
         config=config,
         draft=draft,
+    )
+
+
+async def info_help_admin_offer_decision(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_decision: str,
+) -> None:
+    if canonical_decision == 'main_menu':
+        await clear_info_help_offer_keyboard(message=message, state=state)
+        await cmd_menu(message=message, config=config, state=state)
+        return
+
+    if canonical_decision != 'request_admin':
+        await answer_with_decision_keyboard(
+            message,
+            'Vyberte, prosím: Požiadať správcu alebo Hlavné menu.',
+            info_help_admin_offer_keyboard(),
+        )
+        return
+
+    await clear_info_help_offer_keyboard(message=message, state=state)
+    state_data = await state.get_data()
+    draft = state_data.get(_CUSTOMIZATION_REQUEST_DRAFT_KEY)
+    requester_telegram_id = _message_supplier_telegram_id(message)
+    if (
+        not isinstance(draft, dict)
+        or requester_telegram_id is None
+        or draft.get('requester_telegram_id') != requester_telegram_id
+    ):
+        await state.clear()
+        await message.answer('Návrh požiadavky už nie je dostupný. Požiadavku som neuložil.')
+        return
+
+    await state.set_state(CustomizationRequestStates.waiting_preview_decision)
+    await answer_with_decision_keyboard(
+        message,
+        _format_customization_request_preview(draft),
+        approve_edit_cancel_keyboard(),
+    )
+
+
+@router.message(CustomizationRequestStates.waiting_admin_offer_decision)
+async def info_help_admin_offer_text_fallback(message: Message) -> None:
+    await answer_with_decision_keyboard(
+        message,
+        'Vyberte, prosím, jednu z možností nižšie alebo použite /menu.',
+        info_help_admin_offer_keyboard(),
     )
 
 

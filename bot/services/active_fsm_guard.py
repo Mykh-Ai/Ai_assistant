@@ -367,6 +367,7 @@ async def touch_active_fsm_activity(state: FSMContext, *, now: datetime | None =
 
 
 async def expire_active_fsm_state(*, message: Message, state: FSMContext, config: Config) -> None:
+    await _clear_info_help_offer_keyboard_if_owned(message=message, state=state)
     await clear_current_state_safely(state=state, config=config)
     await message.answer(ACTIVE_FSM_EXPIRED_MESSAGE)
 
@@ -443,6 +444,7 @@ async def _resolve_navigation_for_update(
 
 
 async def _execute_navigation(*, decision: str, message: Message, state: FSMContext, config: Config) -> None:
+    await _clear_info_help_offer_keyboard_if_owned(message=message, state=state)
     if decision == 'cancel_current_flow':
         from bot.handlers.state_control import cancel_current_state
 
@@ -460,6 +462,15 @@ async def _execute_navigation(*, decision: str, message: Message, state: FSMCont
 
         await cmd_start(message=message, config=config, state=state)
         return
+
+
+async def _clear_info_help_offer_keyboard_if_owned(*, message: Message, state: FSMContext) -> None:
+    current_state = await state.get_state()
+    if current_state != 'CustomizationRequestStates:waiting_admin_offer_decision':
+        return
+    from bot.handlers.invoice import clear_info_help_offer_keyboard
+
+    await clear_info_help_offer_keyboard(message=message, state=state)
 
 
 async def _route_through_idle_top_level(

@@ -1,3 +1,35 @@
+# 2026-08-04 - Exact unsupported InfoHelp admin-review buttons
+
+- Preflight classified the existing behavior as `partial`: Contextual InfoHelp
+  truthfully offered an administrator-review request and the confirmation-gated
+  Level 3 customization flow already existed, but the offer exposed no action.
+- Touched scopes: Contextual InfoHelp handoff, one bounded FSM choice, Telegram
+  inline callbacks/cleanup, active-FSM navigation, tests, and active contracts.
+  No canonical top-level action, Product Truth capability/status, STT/LMM
+  business path, DB schema, persisted row, storage, access rule, invoice/receipt
+  operation, PDF, `.env`, or server runtime changed.
+- Exact unsupported results now show `Požiadať správcu` and `Hlavné menu`.
+  Admin review opens the existing `Schváliť / Upraviť / Zrušiť` preview; no
+  request is saved until that separate approval. Main menu reuses `cmd_menu()`
+  and saves nothing.
+- Callback identity remains `callback.from_user`, authorization remains in the
+  shared outer middleware, and FSM draft ownership is revalidated before the
+  preview. Wrong-state/foreign callbacks cannot edit unproven markup. Owned
+  handled/stale/expired callbacks and active `/menu`, `/cancel`, `/start`, and
+  timeout exits remove the offer keyboard; cleanup failure is logged without
+  rolling back a safe route.
+- AI maturity remains the existing partial Level 3 request-capture slice. No
+  self-learning hook applies because no semantic alias or confirmed product
+  behavior is learned.
+- Focused routing/callback/FSM verification: `53 passed`. Expanded neighboring
+  InfoHelp/voice/customization/confirmation verification: `291 passed, 7
+  subtests passed`; after the final message-ownership assertion was added, the
+  final code's complete repository regression passed: `2486 passed, 7 subtests
+  passed in 465.19s`. Live Telegram smoke remains pending; current status is
+  `implemented_pending_live_smoke`.
+- Conversation proof:
+  `docs/evals/info_help_admin_offer_buttons_conversation_acceptance_2026_08_04.md`.
+
 # 2026-08-04 - Supported canonical actions bypass the second InfoHelp veto
 
 - Read-only audit on `origin/main` `9e9e9022c2fe274c01a0c46a1624a096c0d41e03`
@@ -34,9 +66,18 @@
   `docs/architecture/info_help_supported_action_direct_routing_architecture_design_proof.md`.
   Conversation proof:
   `docs/evals/info_help_supported_action_direct_routing_conversation_acceptance_proof.md`.
-- Full regression, commit, PR/checks/merge, deployment, and live Telegram
-  negative smoke are recorded when completed; no completion claim is made
-  before those gates.
+- Delivered as commit `2d5967b1036adb47f0089bc21351ee8d497c0dbb`
+  through PR `#82`; merge/deployed main SHA is
+  `fd1e60ac7e185733d0c01957e579ccae0e27b47a`. The production container was
+  running with restart count `0`, active polling, and no polling conflict.
+- Live Telegram `Видалити фактуру 10` reached the existing confirmation for
+  `20260010`, proving the direct route. That invoice was subsequently deleted
+  after an affirmative choice, so it is not negative-smoke evidence and is not
+  claimed as such.
+- Live missing-slot `Видалити фактуру` followed by `9` reached confirmation for
+  `20260009`; the user chose the negative path, received
+  `Vymazanie faktúry bolo zrušené.`, and a read-only production check proved
+  invoice `20260009` remained present. This is the valid no-deletion smoke.
 
 # 2026-08-02 - Gmail/Drive Product Truth and InfoHelp synchronized
 

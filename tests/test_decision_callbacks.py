@@ -10,9 +10,22 @@ from bot.config import Config
 from bot.services.active_fsm_guard import ACTIVE_FSM_EXPIRED_MESSAGE, ACTIVE_FSM_LAST_ACTIVITY_AT_KEY
 from bot.handlers.access_admin import CustomizationRequestAdminResponseStates
 from bot.handlers.contacts import ContactStates
-from bot.handlers.decision_callbacks import _dispatch_decision_token, decision_callback
+from bot.handlers.decision_callbacks import (
+    _dispatch_decision_token,
+    decision_callback,
+    info_help_offer_callback,
+)
 from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
-from bot.keyboards.decision import DECISION_APPROVE, DECISION_CANCEL, DECISION_EDIT, DECISION_NO, DECISION_YES
+from bot.keyboards.decision import (
+    DECISION_APPROVE,
+    DECISION_CANCEL,
+    DECISION_EDIT,
+    DECISION_NO,
+    DECISION_YES,
+    INFO_HELP_OFFER_MAIN_MENU,
+    INFO_HELP_OFFER_REQUEST_ADMIN,
+    info_help_offer_callback_data,
+)
 from bot.services.authorization import TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.customization_requests import CustomizationRequestService
@@ -48,6 +61,8 @@ class _DummyMessage:
 class _CallbackSourceMessage(_DummyMessage):
     def __init__(self, user_id: int = AUTHORIZED_ID) -> None:
         super().__init__(user_id)
+        self.message_id = 501
+        self.chat = type('Chat', (), {'id': user_id + 1000})()
         self.reply_markup_edits: list[object | None] = []
         self.fail_edit_reply_markup = False
 
@@ -183,6 +198,13 @@ def _active_fsm_metadata(*, minutes_ago: int = 0) -> dict:
         ACTIVE_FSM_LAST_ACTIVITY_AT_KEY: (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat(),
     }
 
+
+def _info_help_offer_metadata(source_message: _CallbackSourceMessage) -> dict:
+    return {
+        'info_help_offer_message_id': source_message.message_id,
+        'info_help_offer_chat_id': source_message.chat.id,
+    }
+
 def _callback(user_id: int, data: str, source_message: object | None = None) -> CallbackQuery:
     callback = CallbackQuery(
         id='callback-id',
@@ -235,6 +257,171 @@ def test_stale_callback_is_rejected_without_dispatch(tmp_path: Path) -> None:
 
     assert callback.answers == [('Toto rozhodnutie už nie je dostupné. Pokračujte aktuálnym krokom v chate.', True)]
     assert state.cleared is False
+
+
+def test_info_help_admin_offer_button_opens_existing_preview_without_saving(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        info_help_offer_callback_data(INFO_HELP_OFFER_REQUEST_ADMIN),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_info_help_offer'),
+            'customization_request_saved_id': None,
+            **_active_fsm_metadata(),
+            **_info_help_offer_metadata(source_message),
+        },
+        CustomizationRequestStates.waiting_admin_offer_decision.state,
+    )
+
+    asyncio.run(info_help_offer_callback(callback, state, config))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+    assert any('Návrh požiadavky' in answer for answer in source_message.answers)
+    assert source_message.reply_markup_edits == [None]
+    assert callback.answers[-1] == (None, None)
+
+
+def test_info_help_main_menu_button_clears_offer_and_uses_existing_menu(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        info_help_offer_callback_data(INFO_HELP_OFFER_MAIN_MENU),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_info_help_menu'),
+            **_active_fsm_metadata(),
+            **_info_help_offer_metadata(source_message),
+        },
+        CustomizationRequestStates.waiting_admin_offer_decision.state,
+    )
+
+    asyncio.run(info_help_offer_callback(callback, state, config))
+
+    assert state.current_state is None
+    assert state.cleared is True
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+    assert any('/invoice' in answer for answer in source_message.answers)
+    assert source_message.reply_markup_edits == [None]
+
+
+def test_info_help_offer_wrong_state_cannot_clear_another_users_keyboard(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        UNKNOWN_ID,
+        info_help_offer_callback_data(INFO_HELP_OFFER_REQUEST_ADMIN),
+        source_message,
+    )
+    state = _DummyState(current_state=None)
+
+    asyncio.run(info_help_offer_callback(callback, state, config))
+
+    assert source_message.reply_markup_edits == []
+    assert callback.answers == [
+        ('Toto rozhodnutie už nie je dostupné. Pokračujte aktuálnym krokom v chate.', True)
+    ]
+
+
+def test_info_help_offer_different_message_cannot_use_same_users_offer_state(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        info_help_offer_callback_data(INFO_HELP_OFFER_REQUEST_ADMIN),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_info_help_other_message'),
+            **_active_fsm_metadata(),
+            'info_help_offer_message_id': source_message.message_id + 1,
+            'info_help_offer_chat_id': source_message.chat.id,
+        },
+        CustomizationRequestStates.waiting_admin_offer_decision.state,
+    )
+
+    asyncio.run(info_help_offer_callback(callback, state, config))
+
+    assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
+    assert source_message.reply_markup_edits == []
+    assert callback.answers == [
+        ('Toto rozhodnutie už nie je dostupné. Pokračujte aktuálnym krokom v chate.', True)
+    ]
+
+
+def test_stale_info_help_offer_expires_without_saving_and_removes_owned_keyboard(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        info_help_offer_callback_data(INFO_HELP_OFFER_REQUEST_ADMIN),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_info_help_stale'),
+            **_active_fsm_metadata(minutes_ago=60),
+            **_info_help_offer_metadata(source_message),
+        },
+        CustomizationRequestStates.waiting_admin_offer_decision.state,
+    )
+
+    asyncio.run(info_help_offer_callback(callback, state, config))
+
+    assert state.cleared is True
+    assert source_message.reply_markup_edits == [None]
+    assert callback.answers == [(ACTIVE_FSM_EXPIRED_MESSAGE, True)]
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+
+
+def test_info_help_offer_cleanup_failure_does_not_rollback_preview(
+    tmp_path: Path, caplog
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    source_message = _CallbackSourceMessage()
+    source_message.fail_edit_reply_markup = True
+    callback = _callback(
+        AUTHORIZED_ID,
+        info_help_offer_callback_data(INFO_HELP_OFFER_REQUEST_ADMIN),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'customization_request_draft': _customization_request_draft('cr_info_help_cleanup'),
+            **_active_fsm_metadata(),
+            **_info_help_offer_metadata(source_message),
+        },
+        CustomizationRequestStates.waiting_admin_offer_decision.state,
+    )
+
+    asyncio.run(info_help_offer_callback(callback, state, config))
+
+    assert state.current_state == CustomizationRequestStates.waiting_preview_decision
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=AUTHORIZED_ID,
+    ) == []
+    assert callback.answers[-1] == (None, None)
+    assert 'Failed to clear shared decision inline keyboard' in caplog.text
 
 
 def test_legacy_decision_callback_with_missing_timestamp_fails_closed(tmp_path: Path) -> None:

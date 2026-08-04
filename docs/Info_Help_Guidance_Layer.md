@@ -81,6 +81,10 @@ Unless later code proves otherwise:
 - eligible idle InfoHelp/Triage customization candidates can enter a
   confirmation-gated preview/save flow backed by
   `CustomizationRequestService`;
+- an exact unsupported Contextual InfoHelp answer can expose two bounded
+  inline choices: `Požiadať správcu` opens that existing preview and
+  `Hlavné menu` calls the existing menu owner. Neither choice saves a request;
+  persistence still requires the preview's separate approval;
 - this preview/save path is a partial Level 3 MVP slice only;
 - admin-only list/detail and status-only accept/reject review commands exist,
   but they do not notify users/admins, mutate Product Truth, convert to

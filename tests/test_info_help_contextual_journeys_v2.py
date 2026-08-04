@@ -5,13 +5,16 @@ import pytest
 
 from bot.config import Config
 from bot.handlers.invoice import (
+    CustomizationRequestStates,
     InvoiceReferenceContinuationStates,
     InvoiceStates,
+    info_help_admin_offer_text_fallback,
     process_invoice_text,
     unknown_slash_command,
 )
 from bot.services.active_fsm_guard import handle_active_fsm_text_update
 from bot.services.db import init_db
+from bot.services.customization_requests import CustomizationRequestService
 from bot.services.info_help_assistant import InfoHelpAssistantResult
 from bot.services.info_help_rollout import contextual_info_help_v2_enabled
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
@@ -27,9 +30,10 @@ class _Message:
         self.answers: list[str] = []
         self.answer_kwargs: list[dict] = []
 
-    async def answer(self, text: str, **kwargs) -> None:
+    async def answer(self, text: str, **kwargs):
         self.answers.append(text)
         self.answer_kwargs.append(kwargs)
+        return type('SentMessage', (), {'message_id': len(self.answers) + 500})()
 
     async def answer_document(self, *args, **kwargs) -> None:
         return None
@@ -88,7 +92,10 @@ def _result(**overrides) -> InfoHelpAssistantResult:
     return InfoHelpAssistantResult(**values)
 
 
-def test_receipt_delete_capability_question_blocks_false_invoice_delete(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize('input_channel', ('text', 'voice'))
+def test_receipt_delete_capability_question_blocks_false_invoice_delete(
+    tmp_path: Path, monkeypatch, input_channel: str
+) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
     message = _Message('Чи можу я видалити чек?')
@@ -110,12 +117,32 @@ def test_receipt_delete_capability_question_blocks_false_invoice_delete(tmp_path
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
     monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
-    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+            input_channel=input_channel,
+        )
+    )
 
     answer = message.answers[-1].casefold()
     assert 'nepodporujem' in answer
     assert 'inú deštruktívnu akciu' in answer
-    assert state.current_state is None
+    assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
+    labels = [
+        button.text
+        for row in message.answer_kwargs[-1]['reply_markup'].inline_keyboard
+        for button in row
+    ]
+    assert labels == ['Požiadať správcu', 'Hlavné menu']
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=111,
+    ) == []
+    assert state.data['customization_request_draft']['source_channel'] == input_channel
+    assert state.data['info_help_offer_message_id'] == 501
+    assert state.data['info_help_offer_chat_id'] == 111 + 1000
     assert 'číslo faktúry' not in answer
 
 
@@ -146,7 +173,35 @@ def test_correction_negates_invoice_and_blocks_delete_flow(tmp_path: Path, monke
     asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
 
     assert 'nepodporujem' in message.answers[-1].casefold()
-    assert state.current_state is None
+    assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=111,
+    ) == []
+
+
+def test_info_help_admin_offer_free_text_repeats_buttons_without_local_route_or_save(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _Message('зроби щось інше')
+    state = _State(
+        current_state=CustomizationRequestStates.waiting_admin_offer_decision.state,
+    )
+
+    asyncio.run(info_help_admin_offer_text_fallback(message))
+
+    assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
+    assert 'jednu z možností' in message.answers[-1]
+    labels = [
+        button.text
+        for row in message.answer_kwargs[-1]['reply_markup'].inline_keyboard
+        for button in row
+    ]
+    assert labels == ['Požiadať správcu', 'Hlavné menu']
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=111,
+    ) == []
 
 
 def test_supported_invoice_delete_without_reference_bypasses_infohelp_and_enters_continuation(
