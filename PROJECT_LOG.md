@@ -25,8 +25,19 @@
   InfoHelp/voice/customization/confirmation verification: `291 passed, 7
   subtests passed`; after the final message-ownership assertion was added, the
   final code's complete repository regression passed: `2486 passed, 7 subtests
-  passed in 465.19s`. Live Telegram smoke remains pending; current status is
-  `implemented_pending_live_smoke`.
+  passed in 465.19s`.
+- Published runtime commit `feda8fb04290f050e8b6657c7397662e2041f011`
+  through PR `#83`; GitHub reported no configured commit statuses and merged
+  the exact tested head into `main` as
+  `0ab1197fa90e3e24d63cee89dd57290a93f4d7c5`.
+- Production `/bot/repo` was clean before deployment and fast-forwarded from
+  `fd1e60a` to exact merge SHA `0ab1197`. The production compose image rebuilt
+  successfully; `fakturabot` and `fakturabot-cloudflared` are `Up`, bot restart
+  count is `0`, startup schedulers loaded, Telegram polling is active, no
+  polling conflict was observed, and in-container `compileall` passed. `.env`,
+  DB/storage, and unrelated server projects were not changed.
+- Live Telegram button interaction remains pending; current status is
+  `deployed_pending_live_smoke`.
 - Conversation proof:
   `docs/evals/info_help_admin_offer_buttons_conversation_acceptance_2026_08_04.md`.
 

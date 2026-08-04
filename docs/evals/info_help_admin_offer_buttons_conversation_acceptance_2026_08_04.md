@@ -1,6 +1,6 @@
 # InfoHelp Admin-Offer Buttons Conversation Acceptance — 2026-08-04
 
-Status: `implemented_pending_live_smoke`
+Status: `deployed_pending_live_smoke`
 
 ## Scope
 
@@ -29,10 +29,10 @@ preview's separate `Schváliť` decision remains the only entry to
 
 ## Pending evidence
 
-A post-deployment Telegram smoke must confirm both visible buttons, opening the
+A live Telegram smoke must confirm both visible buttons, opening the
 existing preview without creating a row, and returning to the current main menu
 without creating a row. Until then the runtime status is
-`implemented_pending_live_smoke`.
+`deployed_pending_live_smoke`.
 
 ## Automated verification
 
@@ -42,3 +42,16 @@ without creating a row. Until then the runtime status is
   case was added; that case passed in the focused rerun.
 - Full repository suite on the final code: `2486 passed, 7 subtests passed in
   465.19s`.
+
+## Delivery and deployment evidence
+
+- Runtime commit: `feda8fb04290f050e8b6657c7397662e2041f011`.
+- PR: `#83`, exact head merged to `main`.
+- Merge/deployed code SHA:
+  `0ab1197fa90e3e24d63cee89dd57290a93f4d7c5`.
+- Production `/bot/repo` was clean and fast-forwarded with `--ff-only`.
+- Production compose rebuild succeeded; bot and tunnel containers are `Up`,
+  bot restart count is `0`, startup/polling logs are healthy, and no Telegram
+  polling conflict was observed.
+- In-container `python -m compileall -q /app/bot` passed.
+- No `.env`, DB/storage, or unrelated server-project change was made.
