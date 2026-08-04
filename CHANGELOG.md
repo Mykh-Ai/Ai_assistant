@@ -1,5 +1,13 @@
 # Changelog
 
+- Added request-correlated Contextual InfoHelp observability for the primary
+  route, exact gate trigger reason, bounded model call, parser acceptance/
+  rejection, Python-validated result, final branch, confidence threshold, and
+  exact bot-visible response.
+  Raw bounded model JSON is logged only when debug transparency is enabled;
+  prompts, Product Truth payloads, secrets, exception messages, and duplicated
+  raw user transcripts remain excluded. Routing and business behavior are
+  unchanged.
 - Added fail-closed period routing for supported Gmail bank-statement PDFs:
   encrypted files are opened only in memory with an administrator-managed
   opening-password file, the calendar month with the most covered statement
