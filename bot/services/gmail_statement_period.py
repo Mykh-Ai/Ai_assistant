@@ -136,7 +136,7 @@ def _explicit_interval(text: str) -> tuple[date, date] | None:
 def _statement_date_interval(text: str) -> tuple[date, date] | None:
     current_values = _label_dates(text, r"(?<!posledn[\u00fd y]\s)\bd[\u00e1a]tum")
     previous_values = _label_dates(
-        text, r"\bposledn[\u00fd y]\s+v[\u00fd y]pis"
+        text, r"\bposledn[\u00fd y]\s*v[\u00fd y]pis"
     )
     if len(current_values) != 1 or len(previous_values) != 1:
         return None
@@ -173,4 +173,3 @@ def _parse_date(raw: str) -> date | None:
 
 def _failure(status: str) -> GmailStatementPeriodResult:
     return GmailStatementPeriodResult(status=status, error_code=status)
-
