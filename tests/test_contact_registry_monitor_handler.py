@@ -211,6 +211,109 @@ def test_two_distinct_proposal_buttons_remain_independently_actionable(
     assert addresses == [('New address 1',), ('New address 2',)]
 
 
+def test_one_callback_updates_same_owner_same_ico_duplicates_across_workspaces(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now_text = now.isoformat()
+    contacts: list[MonitoredContact] = []
+    with sqlite3.connect(config.db_path) as connection:
+        connection.execute(
+            "INSERT INTO authorized_users "
+            "(telegram_id, role, status, created_at) VALUES (111, 'user', 'active', ?)",
+            (now_text,),
+        )
+        for index, (workspace_id, saved_name, saved_ico, saved_address) in enumerate(
+            (
+                ('ws-1', 'Tech Company s.r.o.', '87654321', 'First old address'),
+                ('ws-2', 'Tech Company, s. r. o.', '87 654 321', 'Second old address'),
+            ),
+            start=1,
+        ):
+            connection.execute(
+                "INSERT INTO workspace "
+                "(workspace_id, display_name, storage_key, drive_folder_name, status, "
+                "created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)",
+                (workspace_id, f'Profile {index}', workspace_id, f'Profile {index}', now_text, now_text),
+            )
+            connection.execute(
+                "INSERT INTO workspace_membership "
+                "(workspace_id, telegram_id, role, status, created_at, updated_at) "
+                "VALUES (?, 111, 'owner', 'active', ?, ?)",
+                (workspace_id, now_text, now_text),
+            )
+            connection.execute(
+                "INSERT INTO supplier "
+                "(workspace_id, telegram_id, name, ico, dic, address, iban, swift, "
+                "email, days_due) VALUES (?, 111, ?, ?, '1234567890', 'Old', "
+                "'SK000', 'TEST', ?, 14)",
+                (workspace_id, f'Supplier {index}', f'1234567{index}', f'{index}@example.test'),
+            )
+            cursor = connection.execute(
+                "INSERT INTO contact "
+                "(workspace_id, supplier_telegram_id, name, ico, dic, ic_dph, address, "
+                "email, source_type, updated_at) VALUES "
+                "(?, 111, ?, ?, '2020202020', 'SK2020202020', ?, '', 'manual', ?)",
+                (workspace_id, saved_name, saved_ico, saved_address, now_text),
+            )
+            contacts.append(
+                MonitoredContact(
+                    contact_id=int(cursor.lastrowid),
+                    workspace_id=workspace_id,
+                    actor_telegram_id=111,
+                    name=saved_name,
+                    ico='87654321',
+                    dic='2020202020',
+                    ic_dph='SK2020202020',
+                    address=saved_address,
+                    updated_at=now_text,
+                )
+            )
+        connection.commit()
+
+    service = ContactRegistryMonitorService(config.db_path, config)
+    context_service = WorkspaceContextService(config.db_path)
+    proposals = []
+    for contact in contacts:
+        proposal = service.create_proposal(
+            context_service.resolve_for_background_workspace(contact.workspace_id),
+            contact,
+            now=now,
+            details=RegistryCompanyDetails(
+                subject_id='42',
+                name='Tech Company s.r.o.',
+                ico='87654321',
+                dic='2020202020',
+                ic_dph='SK2020202020',
+                address='New legal address',
+                city='Bratislava',
+                is_active=True,
+                provider_sources=('slovak_rpo',),
+            ),
+        )
+        assert proposal is not None
+        proposals.append(proposal)
+
+    callback = _Callback(f'contact_monitor:yes:{proposals[0].proposal_id}')
+    asyncio.run(handler.contact_registry_monitor_callback(callback, config))
+
+    assert callback.message.cleared is True
+    assert 'Aktualizované kontakty: 2' in callback.message.answers[0]
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute(
+            'SELECT workspace_id, name, address FROM contact ORDER BY workspace_id'
+        ).fetchall() == [
+            ('ws-1', 'Tech Company s.r.o.', 'New legal address'),
+            ('ws-2', 'Tech Company s.r.o.', 'New legal address'),
+        ]
+        assert connection.execute(
+            'SELECT status, COUNT(*) FROM contact_registry_change_proposal '
+            'GROUP BY status'
+        ).fetchall() == [('applied', 2)]
+
+
 def test_owned_stale_proposal_clears_markup_and_explains_no_write(
     monkeypatch,
     tmp_path: Path,

@@ -77,27 +77,34 @@ IČO is the immutable identity anchor. Missing or failed tax data never clears
 saved DIČ/IČ DPH. Normalized equality prevents formatting-only notifications.
 Raw provider responses are neither logged nor persisted.
 
-When a real difference exists, Python persists one pending proposal and sends
-the authorized workspace owner a Telegram message identifying the contact and
-IČO and showing old/new values with
+When a real difference exists, Python persists one pending proposal per contact
+snapshot. Proposals created for the same authorized actor, canonical IČO, and
+identical official target snapshot are presented as one Telegram group message
+identifying the company, affected saved-profile count, and old/new values with
 `Update contact` and `Leave unchanged` buttons. The callback contains only an
 opaque proposal UUID and canonical `yes`/`no`.
 
-Each proposal UUID remains independently bound to one contact snapshot. Applying
-one contact proposal does not invalidate a different contact proposal. If a
-proposal itself expired, its contact changed, or its resulting identity conflicts
-with another saved contact, Python returns that exact bounded outcome instead of
-presenting every case as a missing proposal.
+Each proposal UUID remains bound to one contact snapshot. Proposals with a
+different actor, canonical IČO, or official target snapshot remain independently
+actionable. Same-owner duplicate contacts with the same canonical IČO and target
+snapshot form one atomic confirmation group. Formatting differences such as
+`47 983 973` versus `47983973` are identity-equivalent and never create a false
+`contact_ico_changed` stale result. If any grouped contact changed, lost
+authorization, or conflicts, the group performs no partial contact write.
 
-Approval revalidates callback actor, authorized workspace ownership, pending
-status, expiry, contact workspace/IČO/version/old values, and name/IČO
+Approval revalidates callback actor, every grouped workspace ownership, pending
+status, expiry, canonical contact IČO, contact version/old values, and name/IČO
 conflicts in one immediate transaction. It updates only the four monitored
-contact columns and marks the proposal applied. Replays, wrong actors, stale
-contacts, expired proposals, conflicts, and malformed callbacks fail closed.
+contact columns for all explicitly grouped rows and marks every grouped proposal
+applied. Replays, wrong actors, stale contacts, expired proposals, conflicts,
+cross-owner same-IČO rows, and malformed callbacks fail closed.
 The asynchronous callback does not alter FSM state.
 
-Handled `applied`, `dismissed`, owned `stale`, `expired`, and `conflict` outcomes
-remove their inline markup. `missing` and `forbidden` do not edit markup because
+New duplicate proposals receive one inline keyboard for the group. Handled
+`applied`, `dismissed`, owned `stale`, `expired`, and `conflict` outcomes remove
+that markup. Legacy already-delivered cards may remain individually visible;
+after one grouped resolution, replaying another legacy card is stale and removes
+only its owned markup. `missing` and `forbidden` do not edit markup because
 message ownership is unproven. Cleanup failures are logged without reversing an
 already committed contact effect.
 
@@ -124,7 +131,8 @@ The user journey proving the feature is:
 1. a due authorized workspace contact is resolved by exact IČO;
 2. an official address/name/tax difference creates one notification;
 3. `Leave unchanged` dismisses it with no contact/invoice/PDF change; or
-4. `Update contact` revalidates and changes only allowed contact fields;
+4. `Update contact` revalidates and atomically changes allowed fields on every
+   explicitly grouped same-owner duplicate;
 5. duplicate/replayed/stale/wrong-tenant callbacks make no write.
 
 ## 7. Acceptance gate
@@ -135,5 +143,19 @@ behavior, proposal TTL/idempotency/staleness/conflict tests, deletion cleanup,
 Product Truth/InfoHelp/eval updates, invoice-row/PDF-byte invariants, focused
 tests, full suite, disabled production deploy, no-write dry-run, enabled
 schedule, and healthy-container smoke.
+
+## 8. 2026-08-04 production incident repair
+
+Production evidence showed one owner had the same IČO saved in two isolated
+workspaces, once as `47983973` and once as `47 983 973`. The literal callback
+comparison rejected the formatted row as `contact_ico_changed`; a later invoice
+correctly used that still-unmodified workspace contact. The repair canonicalizes
+IČO at revalidation and conflict boundaries, groups only same-owner/same-target
+pending rows without a schema change or backfill, and applies the group atomically.
+
+Persisted-data shape remains unchanged. Existing monitor/proposal rows are
+compatible and derive group membership dynamically; rollback is code rollback
+plus the normal pre-deploy SQLite backup. No invoice row, PDF, workspace owner,
+active selection, contact IČO formatting, or unrelated contact field is rewritten.
 
 ready_for_handoff

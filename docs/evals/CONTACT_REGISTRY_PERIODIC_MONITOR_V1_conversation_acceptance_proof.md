@@ -28,20 +28,23 @@ change.
 
 ### User approves
 
-The callback actor, workspace membership, proposal status/TTL, contact IČO,
-contact version, old values, and name/IČO conflicts are revalidated. Only
+The callback actor, every grouped workspace membership, proposal status/TTL,
+canonical contact IČO, contact version, old values, and name/IČO conflicts are
+revalidated in one immediate transaction. Only
 official name, legal address, DIČ, and IČ DPH may change. Invoice rows, invoice
 items, `pdf_path`, and PDF bytes remain identical.
 
-Two notifications for two different contacts remain independently actionable.
-Approving the first card updates only its bound contact; approving the second card
-then revalidates and updates its own bound contact. Both handled cards remove only
-their own inline markup.
+Two proposals for different companies remain independently actionable. Duplicate
+contacts for the same authorized owner, canonical IČO, and identical official
+target snapshot receive one grouped card; one approval updates every explicitly
+grouped workspace contact atomically. Saved IČO formatting such as `47 983 973`
+versus `47983973` does not create a false stale result. The same IČO owned by a
+different actor is never grouped or mutated.
 
 ### User declines
 
-The proposal becomes dismissed. The contact, invoices, and PDFs remain
-unchanged.
+The proposal group becomes dismissed. All grouped contacts, invoices, and PDFs
+remain unchanged.
 
 ### Missing tax result
 
@@ -54,6 +57,11 @@ and does not create a false tax-field difference.
 Wrong actor, inactive authorization/membership/workspace, expired proposal,
 callback replay, manually changed contact, IČO mismatch, ambiguous exact-IČO
 result, or workspace name/IČO conflict performs no contact write.
+
+If any grouped duplicate is stale, unauthorized, expired, or conflicting, no
+member of the group is partially updated. Existing legacy cards delivered before
+grouping may still be visible; replay after another grouped resolution is stale
+and cannot repeat a contact write.
 
 Owned stale, expired, and identity-conflict cards remove obsolete markup and
 explain the bounded reason. Missing or wrong-actor cards retain markup because
@@ -82,5 +90,21 @@ monitor tables remain unchanged.
 - separate stale/conflict messaging and owned keyboard cleanup;
 - cleanup-failure logging without business rollback;
 - inactive-profile inclusion only for an actively authorized supplier owner.
+- formatted saved-IČO versus canonical proposal identity regression;
+- one grouped notification for same-owner duplicates across workspaces;
+- one public callback applying two grouped rows atomically;
+- all-or-nothing rollback when one grouped duplicate is stale;
+- same-IČO cross-actor isolation.
 
 Focused and full-suite results are recorded in `PROJECT_LOG.md` after execution.
+
+## 2026-08-04 grouped duplicate repair evidence
+
+- Focused monitor/service/handler/Product Truth/workspace suite: `48 passed`.
+- Full repository suite: `2506 passed, 7 subtests passed`.
+- `python -m compileall -q bot`: passed.
+- `git diff --check`: passed with line-ending warnings only.
+- Production deploy and real callback smoke: pending at commit gate and must be
+  appended to `PROJECT_LOG.md` after rollout.
+
+`safe_to_commit`

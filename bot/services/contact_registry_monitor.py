@@ -143,6 +143,7 @@ class ProposalResolution:
     ]
     contact_name: str | None = None
     reason: str | None = None
+    affected_contacts: int = 1
 
 
 class RegistrySearchProvider(Protocol):
@@ -458,78 +459,104 @@ class ContactRegistryMonitorService:
             ):
                 connection.rollback()
                 return ProposalResolution('forbidden', reason='workspace_not_authorized')
+            group_rows = _pending_proposal_group(connection, row=row, now=now)
+            if not group_rows:
+                connection.rollback()
+                return ProposalResolution('stale', reason='proposal_group_missing')
+            for group_row in group_rows:
+                if not _authorized_actor_workspace_owner(
+                    connection,
+                    actor_telegram_id=actor_telegram_id,
+                    workspace_id=str(group_row['workspace_id']),
+                ):
+                    connection.rollback()
+                    return ProposalResolution(
+                        'forbidden', reason='group_workspace_not_authorized'
+                    )
             if decision == DECISION_NO:
-                connection.execute(
-                    "UPDATE contact_registry_change_proposal SET status='dismissed', "
-                    'resolved_at=?, updated_at=? WHERE proposal_id=?',
-                    (_iso(now), _iso(now), proposal_id),
+                _set_proposal_group_status(
+                    connection, group_rows, status='dismissed', now=now
                 )
                 connection.commit()
-                return ProposalResolution('dismissed')
+                return ProposalResolution(
+                    'dismissed', affected_contacts=len(group_rows)
+                )
             if decision != DECISION_YES:
                 connection.rollback()
                 return ProposalResolution('stale', reason='decision_invalid')
 
-            contact = connection.execute(
-                'SELECT * FROM contact WHERE id=? AND workspace_id=?',
-                (int(row['contact_id']), str(row['workspace_id'])),
-            ).fetchone()
-            old_values = json.loads(str(row['old_values_json']))
-            new_values = json.loads(str(row['new_values_json']))
-            stale_reason: str | None = None
-            if contact is None:
-                stale_reason = 'contact_missing'
-            elif str(contact['ico']) != str(row['ico']):
-                stale_reason = 'contact_ico_changed'
-            elif str(contact['updated_at']) != str(row['contact_updated_at']):
-                stale_reason = 'contact_version_changed'
-            elif any(contact[field] != old_values[field] for field in _MONITORED_FIELDS):
-                stale_reason = 'contact_values_changed'
-            if stale_reason is not None:
+            validated: list[tuple[sqlite3.Row, dict[str, Any]]] = []
+            for group_row in group_rows:
+                contact = connection.execute(
+                    'SELECT * FROM contact WHERE id=? AND workspace_id=?',
+                    (int(group_row['contact_id']), str(group_row['workspace_id'])),
+                ).fetchone()
+                old_values = json.loads(str(group_row['old_values_json']))
+                new_values = json.loads(str(group_row['new_values_json']))
+                stale_reason: str | None = None
+                if contact is None:
+                    stale_reason = 'contact_missing'
+                elif _canonical_ico(contact['ico']) != _canonical_ico(group_row['ico']):
+                    stale_reason = 'contact_ico_changed'
+                elif str(contact['updated_at']) != str(group_row['contact_updated_at']):
+                    stale_reason = 'contact_version_changed'
+                elif any(
+                    contact[field] != old_values[field] for field in _MONITORED_FIELDS
+                ):
+                    stale_reason = 'contact_values_changed'
+                if stale_reason is not None:
+                    _set_proposal_group_status(
+                        connection, group_rows, status='stale', now=now
+                    )
+                    connection.commit()
+                    return ProposalResolution(
+                        'stale', reason=stale_reason,
+                        affected_contacts=len(group_rows),
+                    )
+                if _contact_conflict(
+                    connection,
+                    workspace_id=str(group_row['workspace_id']),
+                    contact_id=int(group_row['contact_id']),
+                    name=str(new_values['name']),
+                    ico=str(group_row['ico']),
+                ):
+                    _set_proposal_group_status(
+                        connection, group_rows, status='conflict', now=now
+                    )
+                    connection.commit()
+                    return ProposalResolution(
+                        'conflict', reason='contact_identity_conflict',
+                        affected_contacts=len(group_rows),
+                    )
+                validated.append((group_row, new_values))
+
+            for group_row, new_values in validated:
                 connection.execute(
-                    "UPDATE contact_registry_change_proposal SET status='stale', "
-                    'resolved_at=?, updated_at=? WHERE proposal_id=?',
-                    (_iso(now), _iso(now), proposal_id),
+                    """
+                    UPDATE contact SET name=?, address=?, dic=?, ic_dph=?,
+                        updated_at=?
+                    WHERE id=? AND workspace_id=?
+                    """,
+                    (
+                        new_values['name'],
+                        new_values['address'],
+                        new_values['dic'],
+                        new_values['ic_dph'],
+                        _iso(now),
+                        int(group_row['contact_id']),
+                        str(group_row['workspace_id']),
+                    ),
                 )
-                connection.commit()
-                return ProposalResolution('stale', reason=stale_reason)
-            if _contact_conflict(
-                connection,
-                workspace_id=str(row['workspace_id']),
-                contact_id=int(row['contact_id']),
-                name=str(new_values['name']),
-                ico=str(row['ico']),
-            ):
-                connection.execute(
-                    "UPDATE contact_registry_change_proposal SET status='conflict', "
-                    'resolved_at=?, updated_at=? WHERE proposal_id=?',
-                    (_iso(now), _iso(now), proposal_id),
-                )
-                connection.commit()
-                return ProposalResolution('conflict', reason='contact_identity_conflict')
-            connection.execute(
-                """
-                UPDATE contact SET name=?, address=?, dic=?, ic_dph=?,
-                    updated_at=?
-                WHERE id=? AND workspace_id=?
-                """,
-                (
-                    new_values['name'],
-                    new_values['address'],
-                    new_values['dic'],
-                    new_values['ic_dph'],
-                    _iso(now),
-                    int(row['contact_id']),
-                    str(row['workspace_id']),
-                ),
-            )
-            connection.execute(
-                "UPDATE contact_registry_change_proposal SET status='applied', "
-                'resolved_at=?, updated_at=? WHERE proposal_id=?',
-                (_iso(now), _iso(now), proposal_id),
+            _set_proposal_group_status(
+                connection, group_rows, status='applied', now=now
             )
             connection.commit()
-            return ProposalResolution('applied', contact_name=str(new_values['name']))
+            selected_new_values = json.loads(str(row['new_values_json']))
+            return ProposalResolution(
+                'applied',
+                contact_name=str(selected_new_values['name']),
+                affected_contacts=len(group_rows),
+            )
 
     def _upsert_state(
         self,
@@ -619,6 +646,42 @@ def _authorized_actor_workspace_owner(
     ).fetchone() is not None
 
 
+def _pending_proposal_group(
+    connection: sqlite3.Connection, *, row: sqlite3.Row, now: datetime
+) -> list[sqlite3.Row]:
+    canonical_ico = _canonical_ico(row['ico'])
+    target_values = str(row['new_values_json'])
+    candidates = connection.execute(
+        """
+        SELECT * FROM contact_registry_change_proposal
+        WHERE actor_telegram_id=? AND status='pending' AND expires_at>?
+        ORDER BY detected_at, proposal_id
+        """,
+        (int(row['actor_telegram_id']), _iso(now)),
+    ).fetchall()
+    return [
+        candidate
+        for candidate in candidates
+        if _canonical_ico(candidate['ico']) == canonical_ico
+        and str(candidate['new_values_json']) == target_values
+    ]
+
+
+def _set_proposal_group_status(
+    connection: sqlite3.Connection,
+    rows: list[sqlite3.Row],
+    *,
+    status: str,
+    now: datetime,
+) -> None:
+    for row in rows:
+        connection.execute(
+            'UPDATE contact_registry_change_proposal '
+            'SET status=?, resolved_at=?, updated_at=? WHERE proposal_id=?',
+            (status, _iso(now), _iso(now), str(row['proposal_id'])),
+        )
+
+
 def _contact_conflict(
     connection: sqlite3.Connection,
     *,
@@ -627,13 +690,24 @@ def _contact_conflict(
     name: str,
     ico: str,
 ) -> bool:
-    return connection.execute(
+    rows = connection.execute(
         """
-        SELECT 1 FROM contact
-        WHERE workspace_id=? AND id<>? AND (name=? OR ico=?)
+        SELECT name, ico FROM contact
+        WHERE workspace_id=? AND id<>?
         """,
-        (workspace_id, contact_id, name, ico),
-    ).fetchone() is not None
+        (workspace_id, contact_id),
+    ).fetchall()
+    normalized_name = _normalize_value('name', name)
+    canonical_ico = _canonical_ico(ico)
+    return any(
+        _normalize_value('name', row['name']) == normalized_name
+        or _canonical_ico(row['ico']) == canonical_ico
+        for row in rows
+    )
+
+
+def _canonical_ico(value: Any) -> str:
+    return re.sub(r'\s+', '', str(value or ''))
 
 
 def _normalize_value(field: str, value: str | None) -> str:
@@ -718,6 +792,45 @@ def format_change_notification(proposal: ContactRegistryChangeProposal) -> str:
     return '\n'.join(lines)
 
 
+def format_grouped_change_notification(
+    proposals: tuple[ContactRegistryChangeProposal, ...],
+) -> str:
+    if not proposals:
+        raise ValueError('contact_monitor_empty_notification_group')
+    if len(proposals) == 1:
+        return format_change_notification(proposals[0])
+    primary = proposals[0]
+    labels = {'name': 'Názov', 'address': 'Sídlo', 'dic': 'DIČ', 'ic_dph': 'IČ DPH'}
+    lines = [
+        'V oficiálnom registri som našiel zmenu firmy:',
+        f'Kontakt: {primary.old_values["name"] or "—"}',
+        f'IČO: {primary.ico}',
+        f'Zmena sa týka {len(proposals)} uložených firemných profilov.',
+    ]
+    for field in _MONITORED_FIELDS:
+        changed = [proposal for proposal in proposals if field in proposal.changed_fields]
+        if not changed:
+            continue
+        old_values = list(dict.fromkeys(
+            str(proposal.old_values[field] or '—') for proposal in changed
+        ))
+        new_values = list(dict.fromkeys(
+            str(proposal.new_values[field] or '—') for proposal in changed
+        ))
+        old_label = 'pôvodne' if len(old_values) == 1 else 'uložené varianty'
+        lines.extend(
+            (
+                f'\n{labels[field]}:',
+                f'• {old_label}: {" | ".join(old_values)}',
+                f'• aktuálne: {" | ".join(new_values)}',
+            )
+        )
+    lines.append('\nJedným potvrdením aktualizujem všetky uvedené profily tejto firmy.')
+    lines.append('Už vystavené faktúry ani ich PDF sa nezmenia.')
+    lines.append('Chcete aktualizovať kontakty v databáze?')
+    return '\n'.join(lines)
+
+
 async def send_contact_registry_monitor_once(
     *,
     bot: Any | None,
@@ -760,6 +873,9 @@ async def send_contact_registry_monitor_once(
         'failed_checks': 0,
         'failed_notifications': 0,
     }
+    notification_groups: dict[
+        tuple[int, str, str], list[ContactRegistryChangeProposal]
+    ] = {}
     for contact in contacts:
         try:
             context = context_service.resolve_for_background_workspace(
@@ -805,27 +921,43 @@ async def send_contact_registry_monitor_once(
             counts['skipped_contacts'] += 1
             continue
         counts['proposals_created'] += 1
-        if bot is None:
-            continue
+        group_key = (
+            proposal.actor_telegram_id,
+            _canonical_ico(proposal.ico),
+            json.dumps(proposal.new_values, ensure_ascii=False, sort_keys=True),
+        )
+        notification_groups.setdefault(group_key, []).append(proposal)
+
+    if bot is None:
+        return ContactMonitorRunResult(**counts)
+    for proposals in notification_groups.values():
+        group = tuple(proposals)
+        primary = group[0]
         try:
             await bot.send_message(
-                context.actor_telegram_id,
-                format_change_notification(proposal),
-                reply_markup=proposal_keyboard(proposal.proposal_id),
+                primary.actor_telegram_id,
+                format_grouped_change_notification(group),
+                reply_markup=proposal_keyboard(primary.proposal_id),
             )
         except Exception:
             counts['failed_notifications'] += 1
-            service.mark_notification(
-                proposal.proposal_id, now=run_now, error_code='telegram_send_failed'
-            )
+            for proposal in group:
+                service.mark_notification(
+                    proposal.proposal_id,
+                    now=run_now,
+                    error_code='telegram_send_failed',
+                )
             logger.exception(
-                'Contact registry monitor notification failed proposal_id=%s workspace_id=%s',
-                proposal.proposal_id,
-                contact.workspace_id,
+                'Contact registry monitor notification failed proposal_id=%s group_size=%s',
+                primary.proposal_id,
+                len(group),
             )
         else:
             counts['notifications_sent'] += 1
-            service.mark_notification(proposal.proposal_id, now=run_now, error_code=None)
+            for proposal in group:
+                service.mark_notification(
+                    proposal.proposal_id, now=run_now, error_code=None
+                )
     return ContactMonitorRunResult(**counts)
 
 

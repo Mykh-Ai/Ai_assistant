@@ -9030,6 +9030,35 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   owner questions.
 
 
+## 2026-08-04 - Grouped same-company contact monitor repair
+
+### Production incident and root cause
+
+- Production evidence disproved the earlier false-green conclusion. One owner had the same company saved in two isolated workspaces: one contact stored IČO as `47983973`, the other as `47 983 973`. The first proposal applied, while the second logged `stale reason=contact_ico_changed` because callback revalidation compared the saved and canonical proposal strings literally.
+- Invoice `20260002` was then created in the second workspace after the failed callback and correctly used that still-unmodified contact. The monitor does not rewrite an issued PDF; the defect was the false stale gate plus per-row notification UX.
+
+### Runtime and safety decision
+
+- IČO revalidation and workspace conflict checks now use canonical whitespace-free identity without rewriting the user's stored IČO formatting.
+- Pending proposals are grouped only when actor, canonical IČO, and the complete official target snapshot are identical. New same-company duplicates receive one card; one `yes` or `no` resolves all explicitly grouped proposal rows in one immediate transaction.
+- Every grouped workspace authorization, contact version, old value, canonical IČO, and conflict is revalidated before writes. Any stale, unauthorized, or conflicting member prevents a partial group update. The same IČO belonging to another actor is never grouped.
+- No schema, backfill, migration, workspace selection, owner, contact IČO, invoice row, PDF, storage path, LLM/STT/LMM, FSM, canonical action, or self-learning change is introduced. Existing proposal rows remain compatible; grouping is derived dynamically.
+
+### Evidence status
+
+- Focused monitor/service/handler/Product Truth/workspace suite: `48 passed in 25.88s`.
+- `python -m compileall -q bot` and `git diff --check`: passed.
+- Full suite: `2506 passed, 7 subtests passed in 479.73s`.
+- GitHub publication, backup-first production deployment, forced monitor run, and real callback smoke: pending.
+
+## 2026-08-04 - Forced production contact registry monitor run
+
+- Explicit owner request authorized one immediate production run without changing the 14-day scheduler configuration. The one-shot used the deployed deterministic `send_contact_registry_monitor_once(..., persist=True, include_not_due=True)` path; existing live pending proposals remained excluded by the service gate.
+- Before the run, the live database passed `PRAGMA quick_check` and a SQLite-consistent 512000-byte backup was written to `/bot/backups/contact-registry-force-pre-20260804T111334Z/fakturabot.db`; the backup independently passed `PRAGMA quick_check`.
+- Pre-run aggregates were 5 contacts, 4 force-eligible contacts, 1 live pending proposal, and 5 monitor-state rows. The first pass checked 2 contacts, created and delivered 1 proposal, recorded 1 unchanged contact, and bounded 2 provider failures as `registry_unavailable` without contact writes.
+- One bounded retry was performed because both failures were provider timeout/network outcomes. It checked all 3 remaining eligible contacts, delivered 1 additional proposal, recorded 2 unchanged contacts, and returned zero failures.
+- Final aggregates: all 5 monitor-state rows had no active error and zero consecutive failures; 3 pending proposals were notified; database `PRAGMA quick_check` remained `ok`; the production container remained running with restart count `0`. No contact was auto-updated: every detected change still requires its own Telegram confirmation.
+
 ## 2026-08-04 - Contact registry monitor deployment hardening
 
 ### Incident and decision

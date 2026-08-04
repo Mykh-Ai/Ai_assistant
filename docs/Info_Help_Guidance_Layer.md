@@ -932,7 +932,7 @@ InfoHelp must classify the capability under `contacts` as `partial`, `requires_s
 
 InfoHelp must state that no contact changes automatically, unavailable tax data does not clear saved tax fields, and already issued invoices/PDFs are not rewritten. It must not promise live/real-time data, monitoring for contacts without valid IČO, email/IBAN/person discovery, or background monitoring when the deployment flag is off.
 
-The monitor is independent of active-profile selection. It may check a persisted inactive workspace/membership only while its supplier owner remains actively authorized; this maintenance exception neither reactivates nor exposes the profile to normal interactive flows. Every notification must identify the contact and IČO so multiple pending cards remain distinguishable.
+The monitor is independent of active-profile selection. It may check a persisted inactive workspace/membership only while its supplier owner remains actively authorized; this maintenance exception neither reactivates nor exposes the profile to normal interactive flows. Formatting-equivalent IČO values for duplicate contacts of the same authorized owner may be grouped only when the official target snapshot is identical. The group card identifies the company and affected profile count; one confirmation applies all listed rows atomically. Same-IČO contacts of another actor remain isolated, and no partial update occurs if any grouped row fails revalidation.
 
 ### Explicit problem-prefix routing - 2026-07-31
 
