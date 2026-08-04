@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
+from hashlib import sha256
 import json
 import logging
 from pathlib import Path
@@ -110,7 +112,7 @@ from bot.services.pdf_generator import (
     validate_item_detail_render_fit,
 )
 from bot.services.service_alias_service import ServiceAliasService
-from bot.services.product_truth import get_safe_answer_payload
+from bot.services.product_truth import get_capability, get_safe_answer_payload
 from bot.services.semantic_action_resolver import (
     resolve_bounded_confirmation_reply,
     resolve_invoice_date_normalization,
@@ -3661,6 +3663,111 @@ async def _answer_contextual_info_help(*, message: Message, context_key, text: s
     info_help_conversation_context.capture_bot(context_key, text=text)
 
 
+def _observable_resolver_diagnostics(
+    diagnostics: dict[str, object],
+    *,
+    include_raw_model_output: bool,
+) -> dict[str, object]:
+    visible = dict(diagnostics)
+    if not include_raw_model_output:
+        visible.pop('raw_model_output', None)
+        visible.pop('parsed_model_output', None)
+    return visible
+
+
+def _log_contextual_info_help_model_result(
+    *,
+    request_id: str,
+    telegram_update_id: int | None,
+    telegram_message_id: int | None,
+    actor_id: int,
+    workspace_id: str,
+    input_text: str,
+    input_channel: str,
+    primary_action: str,
+    primary_semantic,
+    primary_diagnostics: dict[str, object],
+    routing_diagnostics: dict[str, object],
+    assistant_result,
+    assistant_diagnostics: dict[str, object],
+    include_raw_model_output: bool,
+) -> None:
+    normalized_input = ' '.join(input_text.split())
+    primary_capability_id = (
+        primary_semantic.capability_id if primary_semantic is not None else primary_action
+    )
+    primary_truth_result = get_capability(primary_capability_id)
+    primary_truth = get_safe_answer_payload(primary_capability_id)
+    logger.info(
+        json.dumps(
+            {
+                'event': 'contextual_info_help_model_result',
+                'request_id': request_id,
+                'telegram_update_id': telegram_update_id,
+                'telegram_message_id': telegram_message_id,
+                'actor_telegram_id': actor_id,
+                'workspace_id': workspace_id,
+                'input_channel': input_channel,
+                'input_text_sha256': sha256(normalized_input.encode('utf-8')).hexdigest(),
+                'input_text_length': len(normalized_input),
+                'primary_action': primary_action,
+                'primary_capability_id': primary_truth.get('capability_id'),
+                'primary_product_status': primary_truth.get('product_status'),
+                'primary_runtime_owner': bool(primary_truth_result.capability.runtime_owner),
+                'primary_mutation_class': (
+                    primary_semantic.mutation_class if primary_semantic is not None else None
+                ),
+                'primary_resolver_diagnostics': _observable_resolver_diagnostics(
+                    primary_diagnostics,
+                    include_raw_model_output=include_raw_model_output,
+                ),
+                'contextual_info_help_routing': routing_diagnostics,
+                'info_help_model_diagnostics': _observable_resolver_diagnostics(
+                    assistant_diagnostics,
+                    include_raw_model_output=include_raw_model_output,
+                ),
+                'info_help_validated_result': asdict(assistant_result),
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def _log_contextual_info_help_outcome(
+    *,
+    request_id: str,
+    telegram_update_id: int | None,
+    telegram_message_id: int | None,
+    outcome: str,
+    handled: bool,
+    validated_action: str,
+    response_mode: str,
+    response_text: str | None = None,
+    capability_id: str | None = None,
+    product_status: str | None = None,
+    confidence_threshold: float | None = None,
+) -> None:
+    logger.info(
+        json.dumps(
+            {
+                'event': 'contextual_info_help_outcome',
+                'request_id': request_id,
+                'telegram_update_id': telegram_update_id,
+                'telegram_message_id': telegram_message_id,
+                'outcome': outcome,
+                'handled': handled,
+                'validated_action': validated_action,
+                'response_mode': response_mode,
+                'response_text': response_text,
+                'capability_id': capability_id,
+                'product_status': product_status,
+                'confidence_threshold': confidence_threshold,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
 def _format_exact_unsupported(result) -> str:
     object_labels = {
         'receipt': 'uložený bloček',
@@ -3689,6 +3796,10 @@ async def _apply_contextual_info_help_v2(
     input_channel: str,
     top_level_intent: str,
     top_level_diagnostics: dict[str, object],
+    routing_diagnostics: dict[str, object],
+    request_id: str,
+    telegram_update_id: int | None,
+    telegram_message_id: int | None,
 ) -> tuple[bool, str]:
     actor_id, chat_id = _message_context_ids(message)
     if actor_id is None or chat_id is None:
@@ -3708,6 +3819,7 @@ async def _apply_contextual_info_help_v2(
     recent = tuple(turn.as_payload() for turn in info_help_conversation_context.recent(context_key))
     semantic = get_info_help_action(top_level_intent)
     explicit_reply = _explicit_reply_context(message)
+    assistant_diagnostics: dict[str, object] = {}
     result = await resolve_info_help_assistant_with_llm(
         current_input_text=invoice_text,
         api_key=config.openai_api_key,
@@ -3718,7 +3830,49 @@ async def _apply_contextual_info_help_v2(
         primary_mutation_class=semantic.mutation_class if semantic else 'informational',
         recent_conversation=recent,
         explicit_reply=explicit_reply,
+        diagnostics=assistant_diagnostics,
     )
+    _log_contextual_info_help_model_result(
+        request_id=request_id,
+        telegram_update_id=telegram_update_id,
+        telegram_message_id=telegram_message_id,
+        actor_id=actor_id,
+        workspace_id=_workspace_key_for_runtime(runtime),
+        input_text=invoice_text,
+        input_channel=context_channel,
+        primary_action=top_level_intent,
+        primary_semantic=semantic,
+        primary_diagnostics=top_level_diagnostics,
+        routing_diagnostics=routing_diagnostics,
+        assistant_result=result,
+        assistant_diagnostics=assistant_diagnostics,
+        include_raw_model_output=config.debug_invoice_transparency,
+    )
+
+    def log_outcome(
+        *,
+        outcome: str,
+        handled: bool = True,
+        validated_action: str = top_level_intent,
+        response_mode: str,
+        response_text: str | None = None,
+        capability_id: str | None = None,
+        product_status: str | None = None,
+        confidence_threshold: float | None = None,
+    ) -> None:
+        _log_contextual_info_help_outcome(
+            request_id=request_id,
+            telegram_update_id=telegram_update_id,
+            telegram_message_id=telegram_message_id,
+            outcome=outcome,
+            handled=handled,
+            validated_action=validated_action,
+            response_mode=response_mode,
+            response_text=response_text,
+            capability_id=capability_id,
+            product_status=product_status,
+            confidence_threshold=confidence_threshold,
+        )
 
     if (
         result.refers_to_explicit_reply
@@ -3727,30 +3881,49 @@ async def _apply_contextual_info_help_v2(
     ):
         quoted = str(explicit_reply.get('replied_to_bot_text') or '')
         acknowledgement = result.acknowledgement_sk or 'Rozumiem, pýtate sa na moju citovanú správu.'
+        response_text = (
+            f'{acknowledgement}\nCitovaná správa bola: „{quoted[:500]}“\n'
+            'Táto správa opisovala stav v danom kroku; sama nič nevytvorila, nezmenila ani nevymazala.'
+        )
         await _answer_contextual_info_help(
             message=message,
             context_key=context_key,
-            text=(
-                f'{acknowledgement}\nCitovaná správa bola: „{quoted[:500]}“\n'
-                'Táto správa opisovala stav v danom kroku; sama nič nevytvorila, nezmenila ani nevymazala.'
-            ),
+            text=response_text,
+        )
+        log_outcome(
+            outcome='explicit_reply_explained',
+            response_mode='info_help_answer',
+            response_text=response_text,
         )
         return True, top_level_intent
 
     if result.intent_kind == INFO_HELP_INTENT_GENUINELY_UNCLEAR or result.confidence < 0.70:
+        response_text = 'Tejto správe som nerozumel. Skúste stručne napísať, čo chcete urobiť.'
         await _answer_contextual_info_help(
             message=message,
             context_key=context_key,
-            text='Tejto správe som nerozumel. Skúste stručne napísať, čo chcete urobiť.',
+            text=response_text,
+        )
+        log_outcome(
+            outcome='unclear_fallback',
+            response_mode='info_help_fallback',
+            response_text=response_text,
+            confidence_threshold=0.70,
         )
         return True, top_level_intent
 
     if result.probable_command_target:
         raw_command = invoice_text.split(maxsplit=1)[0]
+        response_text = f'Príkaz `{raw_command}` nepoznám. Pravdepodobne ste mysleli `{result.probable_command_target}`.'
         await _answer_contextual_info_help(
             message=message,
             context_key=context_key,
-            text=f'Príkaz `{raw_command}` nepoznám. Pravdepodobne ste mysleli `{result.probable_command_target}`.',
+            text=response_text,
+        )
+        log_outcome(
+            outcome='probable_command_hint',
+            response_mode='info_help_answer',
+            response_text=response_text,
         )
         return True, top_level_intent
 
@@ -3771,13 +3944,24 @@ async def _apply_contextual_info_help_v2(
                 result=result,
                 context_key=context_key,
             )
+            log_outcome(
+                outcome='capability_customization_offer',
+                response_mode='admin_review_offer',
+                response_text=_format_exact_unsupported(result),
+            )
             return True, top_level_intent
         truth = get_safe_answer_payload(exact.capability_id)
         summary = str(truth.get('summary_for_user') or 'Táto funkcia je dostupná podľa aktuálneho Product Truth.')
         limitations = truth.get('current_limitations') or []
         suffix = f"\nObmedzenie: {limitations[0]}" if limitations else ''
-        await _answer_contextual_info_help(
-            message=message, context_key=context_key, text=f'{summary}{suffix}'
+        response_text = f'{summary}{suffix}'
+        await _answer_contextual_info_help(message=message, context_key=context_key, text=response_text)
+        log_outcome(
+            outcome='capability_answer',
+            response_mode='product_truth_answer',
+            response_text=response_text,
+            capability_id=exact.capability_id,
+            product_status=str(truth.get('product_status') or '') or None,
         )
         return True, top_level_intent
 
@@ -3788,13 +3972,24 @@ async def _apply_contextual_info_help_v2(
             else 'Toto je mimo rozsahu OfficeFlow/FakturaBotu.'
         )
         await _answer_contextual_info_help(message=message, context_key=context_key, text=text)
+        log_outcome(
+            outcome=result.intent_kind,
+            response_mode='info_help_answer',
+            response_text=text,
+        )
         return True, top_level_intent
 
     if result.intent_kind == 'probable_command_typo' and not result.probable_command_target:
+        response_text = 'Tento príkaz nepoznám. Skontrolujte ho alebo napíšte, čo chcete urobiť.'
         await _answer_contextual_info_help(
             message=message,
             context_key=context_key,
-            text='Tento príkaz nepoznám. Skontrolujte ho alebo napíšte, čo chcete urobiť.',
+            text=response_text,
+        )
+        log_outcome(
+            outcome='unknown_command',
+            response_mode='info_help_fallback',
+            response_text=response_text,
         )
         return True, top_level_intent
 
@@ -3805,6 +4000,11 @@ async def _apply_contextual_info_help_v2(
             else 'Čo presne chcete urobiť?'
         )
         await _answer_contextual_info_help(message=message, context_key=context_key, text=question)
+        log_outcome(
+            outcome='clarification_requested',
+            response_mode='clarification',
+            response_text=question,
+        )
         return True, top_level_intent
 
     if exact is None:
@@ -3817,6 +4017,11 @@ async def _apply_contextual_info_help_v2(
             result=result,
             context_key=context_key,
         )
+        log_outcome(
+            outcome='unsupported_customization_offer',
+            response_mode='admin_review_offer',
+            response_text=_format_exact_unsupported(result),
+        )
         return True, top_level_intent
 
     if (
@@ -3826,10 +4031,17 @@ async def _apply_contextual_info_help_v2(
         or (semantic is not None and semantic.action_id != exact.action_id and not result.is_correction)
         or exact.entry_mode == 'not_infohelp_eligible'
     ):
+        response_text = result.clarification_question_sk or 'Spresnite prosím presný objekt a úkon. Nič som nevykonal.'
         await _answer_contextual_info_help(
             message=message,
             context_key=context_key,
-            text=result.clarification_question_sk or 'Spresnite prosím presný objekt a úkon. Nič som nevykonal.',
+            text=response_text,
+        )
+        log_outcome(
+            outcome='semantic_conflict_clarification',
+            response_mode='clarification',
+            response_text=response_text,
+            capability_id=exact.capability_id,
         )
         return True, top_level_intent
 
@@ -3844,15 +4056,40 @@ async def _apply_contextual_info_help_v2(
             result=result,
             context_key=context_key,
         )
+        log_outcome(
+            outcome='product_truth_customization_offer',
+            response_mode='admin_review_offer',
+            response_text=_format_exact_unsupported(result),
+            capability_id=exact.capability_id,
+            product_status=str(truth.get('product_status') or '') or None,
+        )
         return True, top_level_intent
     threshold = {'read_only': 0.85, 'mutating': 0.92, 'destructive': 0.98}.get(exact.mutation_class, 0.70)
     if result.confidence < threshold:
+        response_text = result.clarification_question_sk or 'Spresnite prosím, čo presne chcete urobiť. Nič som nevykonal.'
         await _answer_contextual_info_help(
             message=message,
             context_key=context_key,
-            text=result.clarification_question_sk or 'Spresnite prosím, čo presne chcete urobiť. Nič som nevykonal.',
+            text=response_text,
+        )
+        log_outcome(
+            outcome='confidence_gate_clarification',
+            response_mode='clarification',
+            response_text=response_text,
+            capability_id=exact.capability_id,
+            product_status=str(truth.get('product_status') or '') or None,
+            confidence_threshold=threshold,
         )
         return True, top_level_intent
+    log_outcome(
+        outcome='action_pass_through',
+        handled=False,
+        validated_action=exact.action_id,
+        response_mode='python_action_owner',
+        capability_id=exact.capability_id,
+        product_status=str(truth.get('product_status') or '') or None,
+        confidence_threshold=threshold,
+    )
     return False, exact.action_id
 
 
@@ -4375,6 +4612,7 @@ async def process_invoice_text(
     effective_input_channel = (
         'command' if invoice_text.lstrip().startswith('/') else input_channel
     )
+    info_help_routing_diagnostics: dict[str, object] = {}
     if (
         contextual_info_help_v2_enabled(config, actor_telegram_id)
         and should_run_contextual_info_help(
@@ -4382,6 +4620,7 @@ async def process_invoice_text(
             input_text=invoice_text,
             input_channel=effective_input_channel,
             primary_diagnostics=top_level_diagnostics,
+            routing_diagnostics=info_help_routing_diagnostics,
         )
     ):
         handled, validated_action = await _apply_contextual_info_help_v2(
@@ -4392,6 +4631,10 @@ async def process_invoice_text(
             input_channel=effective_input_channel,
             top_level_intent=top_level_intent,
             top_level_diagnostics=top_level_diagnostics,
+            routing_diagnostics=info_help_routing_diagnostics,
+            request_id=flow_request_id,
+            telegram_update_id=telegram_update_id,
+            telegram_message_id=message_id,
         )
         if handled:
             return

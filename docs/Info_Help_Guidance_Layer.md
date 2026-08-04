@@ -557,6 +557,35 @@ Do not store broad raw sensitive transcripts as reusable knowledge. Raw text
 storage, if ever used, must be explicitly justified by product policy and data
 safety rules.
 
+### Contextual InfoHelp V2 observability
+
+The top-level Contextual InfoHelp V2 route emits two request-correlated JSON
+events:
+
+- `contextual_info_help_model_result` records the request/update/message IDs,
+  actor/workspace scope, input channel, a normalized-input SHA-256 and length,
+  the exact Contextual InfoHelp gate decision/trigger reason, the primary
+  canonical action and Product Truth status/runtime-owner signal,
+  the primary resolver diagnostics, the InfoHelp model call status/model/
+  duration, parser acceptance or exact rejection reason, and the complete
+  Python-validated `InfoHelpAssistantResult`;
+- `contextual_info_help_outcome` records the final Python branch, whether
+  InfoHelp handled the request or released a validated action to its Python
+  owner, response mode, exact bot-visible response text where applicable,
+  capability/status, and the confidence threshold used by that branch.
+
+When `DEBUG_INVOICE_TRANSPARENCY` is enabled, the bounded raw JSON returned by
+the primary resolver and Contextual InfoHelp model is included (capped at 8000
+characters for the InfoHelp response). When it is disabled, raw and parsed
+model output is removed while call status, parser reason, validated result, and
+final outcome remain visible. System prompts, the Product Truth/action catalog
+sent to the model, API keys, exception messages, and full raw user transcripts
+must never be written by these events. Model-call failures expose only a safe
+failure category and exception type.
+
+These events are observability only. They do not change Product Truth, routing,
+confidence gates, FSM ownership, confirmation, persistence, or self-learning.
+
 ## User-Facing Examples
 
 ### Known Product Truth

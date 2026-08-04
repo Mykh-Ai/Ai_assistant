@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 import re
 import unicodedata
-from typing import Mapping
+from typing import Mapping, MutableMapping
 
 from bot.services.info_help_action_registry import get_info_help_action
 from bot.services.product_truth import ProductTruthStatus, get_capability, list_capabilities
@@ -95,12 +95,41 @@ class InfoHelpAssistantResult:
     clarification_question_sk: str = ''
 
 
-def parse_info_help_assistant_model_output(raw_model_output: str) -> InfoHelpAssistantResult:
+def _set_parse_diagnostics(
+    diagnostics: MutableMapping[str, object] | None,
+    *,
+    status: str,
+    reason: str | None = None,
+    invalid_fields: tuple[str, ...] = (),
+) -> None:
+    if diagnostics is None:
+        return
+    diagnostics.clear()
+    diagnostics['status'] = status
+    diagnostics['reason'] = reason
+    diagnostics['invalid_fields'] = list(invalid_fields)
+
+
+def parse_info_help_assistant_model_output(
+    raw_model_output: str,
+    *,
+    diagnostics: MutableMapping[str, object] | None = None,
+) -> InfoHelpAssistantResult:
     try:
         parsed = json.loads(raw_model_output or '{}')
     except (TypeError, json.JSONDecodeError):
+        _set_parse_diagnostics(
+            diagnostics,
+            status='rejected',
+            reason='invalid_json',
+        )
         return InfoHelpAssistantResult()
     if not isinstance(parsed, dict):
+        _set_parse_diagnostics(
+            diagnostics,
+            status='rejected',
+            reason='non_object_json',
+        )
         return InfoHelpAssistantResult()
 
     intent_kind = str(parsed.get('intent_kind') or '')
@@ -108,26 +137,55 @@ def parse_info_help_assistant_model_output(raw_model_output: str) -> InfoHelpAss
     domain_id = str(parsed.get('domain_id') or 'unknown')
     object_kind = str(parsed.get('object_kind') or 'unknown')
     operation_id = str(parsed.get('operation_id') or 'unknown')
-    if not (
-        intent_kind in _INTENT_KINDS
-        and speech_act in _SPEECH_ACTS
-        and domain_id in _DOMAINS
-        and object_kind in _OBJECTS
-        and operation_id in _OPERATIONS
-    ):
+    invalid_enum_fields = tuple(
+        name
+        for name, value, allowed in (
+            ('intent_kind', intent_kind, _INTENT_KINDS),
+            ('speech_act', speech_act, _SPEECH_ACTS),
+            ('domain_id', domain_id, _DOMAINS),
+            ('object_kind', object_kind, _OBJECTS),
+            ('operation_id', operation_id, _OPERATIONS),
+        )
+        if value not in allowed
+    )
+    if invalid_enum_fields:
+        _set_parse_diagnostics(
+            diagnostics,
+            status='rejected',
+            reason='invalid_bounded_enum',
+            invalid_fields=invalid_enum_fields,
+        )
         return InfoHelpAssistantResult(
             acknowledgement_sk=_bounded_text(parsed.get('acknowledgement_sk'), max_length=240)
         )
 
     action_id = _optional_text(parsed.get('proposed_action_id'), max_length=80)
     if action_id and get_info_help_action(action_id) is None:
+        _set_parse_diagnostics(
+            diagnostics,
+            status='rejected',
+            reason='unknown_action_id',
+            invalid_fields=('proposed_action_id',),
+        )
         return InfoHelpAssistantResult()
     known_capabilities = {item.capability_id for item in list_capabilities()}
     capability_id = _optional_text(parsed.get('proposed_capability_id'), max_length=100)
     if capability_id and capability_id not in known_capabilities:
+        _set_parse_diagnostics(
+            diagnostics,
+            status='rejected',
+            reason='unknown_capability_id',
+            invalid_fields=('proposed_capability_id',),
+        )
         return InfoHelpAssistantResult()
     command = _optional_text(parsed.get('probable_command_target'), max_length=80)
     if command and command not in KNOWN_INFO_HELP_COMMANDS:
+        _set_parse_diagnostics(
+            diagnostics,
+            status='rejected',
+            reason='unknown_command_token',
+            invalid_fields=('probable_command_target',),
+        )
         return InfoHelpAssistantResult()
     raw_confidence = parsed.get('confidence')
     confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else 0.0
@@ -137,7 +195,7 @@ def parse_info_help_assistant_model_output(raw_model_output: str) -> InfoHelpAss
     if _claims_side_effect(acknowledgement):
         acknowledgement = ''
 
-    return InfoHelpAssistantResult(
+    result = InfoHelpAssistantResult(
         intent_kind=intent_kind,
         speech_act=speech_act,
         domain_id=domain_id,
@@ -160,6 +218,8 @@ def parse_info_help_assistant_model_output(raw_model_output: str) -> InfoHelpAss
         acknowledgement_sk=acknowledgement,
         clarification_question_sk=_bounded_text(parsed.get('clarification_question_sk'), max_length=240),
     )
+    _set_parse_diagnostics(diagnostics, status='accepted')
+    return result
 
 
 def build_info_help_product_truth_view() -> list[dict[str, object]]:
@@ -194,28 +254,65 @@ def should_run_contextual_info_help(
     input_text: str,
     input_channel: str = 'text',
     primary_diagnostics: Mapping[str, object] | None = None,
+    routing_diagnostics: MutableMapping[str, object] | None = None,
 ) -> bool:
-    if primary_action == 'unknown' or input_channel == 'command' or input_text.lstrip().startswith('/'):
-        return True
+    if routing_diagnostics is not None:
+        routing_diagnostics.clear()
+        routing_diagnostics.update(
+            {
+                'primary_action': primary_action,
+                'input_channel': input_channel,
+                'decision': False,
+                'trigger_reason': None,
+                'semantic_registry_match': False,
+                'primary_product_status': None,
+                'primary_runtime_owner': None,
+            }
+        )
+
+    def decide(value: bool, reason: str) -> bool:
+        if routing_diagnostics is not None:
+            routing_diagnostics['decision'] = value
+            routing_diagnostics['trigger_reason'] = reason
+        return value
+
+    if primary_action == 'unknown':
+        return decide(True, 'primary_action_unknown')
+    if input_channel == 'command':
+        return decide(True, 'command_channel')
+    if input_text.lstrip().startswith('/'):
+        return decide(True, 'slash_command')
+    if primary_diagnostics and routing_diagnostics is not None:
+        routing_diagnostics['primary_diagnostics_present'] = True
     normalized = _normalize(input_text)
     wrapped = f' {normalized} '
     if any(token in wrapped for token in (' nie ', ' not ', ' ne ', ' а не ', ' але не ', ' but not ', ' namiesto ', ' замість ')):
-        return True
+        return decide(True, 'correction_or_negation')
     if input_text.strip().endswith('?') or normalized.startswith(
         ('can ', 'could ', 'do you ', 'vies ', 'viete ', 'mozem ', 'ci mozem ', 'чи можу ', 'можно ли ')
     ):
-        return True
+        return decide(True, 'question_form')
     semantic = get_info_help_action(primary_action)
     if semantic is None:
-        return False
-    if semantic.entry_mode == 'not_infohelp_eligible' or not semantic.runtime_owner:
-        return True
+        return decide(False, 'no_info_help_action_registration')
+    if routing_diagnostics is not None:
+        routing_diagnostics['semantic_registry_match'] = True
+    if semantic.entry_mode == 'not_infohelp_eligible':
+        return decide(True, 'not_infohelp_eligible')
+    if not semantic.runtime_owner:
+        return decide(True, 'info_help_action_missing_runtime_owner')
     capability = get_capability(semantic.capability_id).capability
-    return not (
+    if routing_diagnostics is not None:
+        routing_diagnostics['primary_product_status'] = capability.status.value
+        routing_diagnostics['primary_runtime_owner'] = bool(capability.runtime_owner)
+    direct_supported_action = (
         capability.status == ProductTruthStatus.SUPPORTED
         and bool(capability.runtime_owner)
         and primary_action in capability.canonical_actions
     )
+    if direct_supported_action:
+        return decide(False, 'supported_owned_action_direct')
+    return decide(True, 'product_truth_not_direct_supported')
 
 
 def _enum_list(value: object, allowed: set[str]) -> tuple[str, ...]:

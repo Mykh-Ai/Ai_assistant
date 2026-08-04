@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+from dataclasses import asdict, replace
 from difflib import get_close_matches
 import json
+from time import monotonic
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -191,10 +192,34 @@ async def resolve_info_help_assistant_with_llm(
     explicit_reply: dict[str, object] | None = None,
     active_runtime_context: dict[str, object] | None = None,
     timeout_seconds: float = 8.0,
+    diagnostics: dict[str, Any] | None = None,
 ) -> InfoHelpAssistantResult:
     """Run exactly one enhanced InfoHelp call; no retries or secondary classifier."""
+    if diagnostics is not None:
+        diagnostics.clear()
+        diagnostics.update(
+            {
+                'call_status': 'not_started',
+                'fallback_reason': None,
+                'model': model,
+                'input_channel': input_channel,
+                'primary_resolver_result': primary_resolver_result,
+                'recent_turn_count': min(len(recent_conversation), 6),
+                'explicit_reply_present': bool(explicit_reply),
+                'active_runtime_context_present': bool(active_runtime_context),
+                'duration_ms': 0,
+                'raw_model_output': None,
+                'parse': None,
+                'validated_result': asdict(InfoHelpAssistantResult()),
+            }
+        )
     cleaned = current_input_text.strip()
     if not cleaned or not api_key or not api_key.startswith('sk-'):
+        if diagnostics is not None:
+            diagnostics['call_status'] = 'not_run'
+            diagnostics['fallback_reason'] = (
+                'empty_input' if not cleaned else 'openai_api_key_unavailable'
+            )
         return InfoHelpAssistantResult()
     payload = build_info_help_assistant_payload(
         current_input_text=cleaned,
@@ -206,6 +231,7 @@ async def resolve_info_help_assistant_with_llm(
         explicit_reply=explicit_reply,
         active_runtime_context=active_runtime_context,
     )
+    started_at = monotonic()
     try:
         client = AsyncOpenAI(api_key=api_key)
         response = await asyncio.wait_for(
@@ -237,9 +263,19 @@ async def resolve_info_help_assistant_with_llm(
             ),
             timeout=timeout_seconds,
         )
-    except Exception:
+    except Exception as exc:
+        if diagnostics is not None:
+            diagnostics['call_status'] = 'failed'
+            diagnostics['fallback_reason'] = 'model_call_failed'
+            diagnostics['error_type'] = type(exc).__name__
+            diagnostics['duration_ms'] = round((monotonic() - started_at) * 1000)
         return InfoHelpAssistantResult()
-    result = parse_info_help_assistant_model_output(response.choices[0].message.content or '{}')
+    raw_model_output = response.choices[0].message.content or '{}'
+    parse_diagnostics: dict[str, object] = {}
+    result = parse_info_help_assistant_model_output(
+        raw_model_output,
+        diagnostics=parse_diagnostics,
+    )
     proven_explicit_reply = bool(explicit_reply and explicit_reply.get('replied_to_is_our_bot') is True)
     proven_active_flow = bool(
         primary_resolver_result == 'active_fsm_help'
@@ -255,6 +291,13 @@ async def resolve_info_help_assistant_with_llm(
             refers_to_explicit_reply=proven_explicit_reply,
             refers_to_active_flow=proven_active_flow,
         )
+    if diagnostics is not None:
+        diagnostics['call_status'] = 'completed'
+        diagnostics['raw_model_output'] = raw_model_output[:8000]
+        diagnostics['raw_model_output_truncated'] = len(raw_model_output) > 8000
+        diagnostics['parse'] = parse_diagnostics
+        diagnostics['validated_result'] = asdict(result)
+        diagnostics['duration_ms'] = round((monotonic() - started_at) * 1000)
     return result
 
 

@@ -74,6 +74,7 @@ def test_parser_preserves_exact_receipt_delete_capability_question() -> None:
 
 
 def test_parser_fails_closed_for_unknown_ids_and_oversized_text() -> None:
+    diagnostics: dict[str, object] = {}
     result = parse_info_help_assistant_model_output(
         _assistant_json(
             intent_kind='invented',
@@ -86,7 +87,8 @@ def test_parser_fails_closed_for_unknown_ids_and_oversized_text() -> None:
             probable_command_target='/root',
             confidence=4,
             acknowledgement_sk='x' * 1000,
-        )
+        ),
+        diagnostics=diagnostics,
     )
 
     assert result.intent_kind == INFO_HELP_INTENT_GENUINELY_UNCLEAR
@@ -95,6 +97,17 @@ def test_parser_fails_closed_for_unknown_ids_and_oversized_text() -> None:
     assert result.probable_command_target is None
     assert result.confidence == 0.0
     assert len(result.acknowledgement_sk) <= 240
+    assert diagnostics == {
+        'status': 'rejected',
+        'reason': 'invalid_bounded_enum',
+        'invalid_fields': [
+            'intent_kind',
+            'speech_act',
+            'domain_id',
+            'object_kind',
+            'operation_id',
+        ],
+    }
 
 
 @pytest.mark.parametrize(
@@ -219,6 +232,23 @@ def test_pre_execution_gate_routes_supported_owned_actions_once() -> None:
     assert should_run_contextual_info_help(primary_action='delete_user_database', input_text='vymaž všetko')
     assert not should_run_contextual_info_help(primary_action='show_supplier_profile', input_text='ukáž profil')
 
+    routing_diagnostics: dict[str, object] = {}
+    assert should_run_contextual_info_help(
+        primary_action='invoice_analytics',
+        input_text='На яку суму я виставив фактур цього року?',
+        input_channel='voice',
+        routing_diagnostics=routing_diagnostics,
+    )
+    assert routing_diagnostics == {
+        'primary_action': 'invoice_analytics',
+        'input_channel': 'voice',
+        'decision': True,
+        'trigger_reason': 'question_form',
+        'semantic_registry_match': False,
+        'primary_product_status': None,
+        'primary_runtime_owner': None,
+    }
+
 
 class _Completion:
     def __init__(self, content: str) -> None:
@@ -241,6 +271,7 @@ class _Client:
 def test_resolver_makes_exactly_one_enhanced_infohelp_call(monkeypatch) -> None:
     _Completions.calls = 0
     monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _Client)
+    diagnostics: dict[str, object] = {}
 
     result = asyncio.run(
         resolve_info_help_assistant_with_llm(
@@ -249,11 +280,22 @@ def test_resolver_makes_exactly_one_enhanced_infohelp_call(monkeypatch) -> None:
             model='gpt-4o',
             input_channel='text',
             primary_resolver_result='delete_existing_invoice',
+            diagnostics=diagnostics,
         )
     )
 
     assert result.proposed_action_id == 'delete_existing_invoice'
     assert _Completions.calls == 1
+    assert diagnostics['call_status'] == 'completed'
+    assert diagnostics['model'] == 'gpt-4o'
+    assert diagnostics['raw_model_output'] == _assistant_json()
+    assert diagnostics['parse'] == {
+        'status': 'accepted',
+        'reason': None,
+        'invalid_fields': [],
+    }
+    assert diagnostics['validated_result']['proposed_action_id'] == 'delete_existing_invoice'
+    assert diagnostics['duration_ms'] >= 0
 
 
 def test_resolver_preserves_python_proven_reply_and_active_flow_context(monkeypatch) -> None:

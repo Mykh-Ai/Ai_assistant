@@ -1,4 +1,6 @@
 import asyncio
+import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,7 @@ from bot.handlers.invoice import (
     CustomizationRequestStates,
     InvoiceReferenceContinuationStates,
     InvoiceStates,
+    _observable_resolver_diagnostics,
     info_help_admin_offer_text_fallback,
     process_invoice_text,
     unknown_slash_command,
@@ -63,13 +66,19 @@ class _State:
         self.cleared = True
 
 
-def _config(tmp_path: Path, *, rollout: str = 'enabled', admins=()) -> Config:
+def _config(
+    tmp_path: Path,
+    *,
+    rollout: str = 'enabled',
+    admins=(),
+    debug_invoice_transparency: bool = False,
+) -> Config:
     return Config(
         bot_token='token',
         openai_api_key='sk-test',
         openai_stt_model='whisper-1',
         openai_llm_model='gpt-4o',
-        debug_invoice_transparency=False,
+        debug_invoice_transparency=debug_invoice_transparency,
         db_path=tmp_path / 'test.db',
         storage_dir=tmp_path,
         admin_telegram_user_ids=frozenset(admins),
@@ -90,6 +99,121 @@ def _result(**overrides) -> InfoHelpAssistantResult:
     }
     values.update(overrides)
     return InfoHelpAssistantResult(**values)
+
+
+def test_infohelp_raw_model_output_is_hidden_without_debug_transparency() -> None:
+    visible = _observable_resolver_diagnostics(
+        {
+            'call_status': 'completed',
+            'raw_model_output': '{"intent_kind":"genuinely_unclear"}',
+            'parsed_model_output': {'intent_kind': 'genuinely_unclear'},
+            'parse': {'status': 'accepted'},
+        },
+        include_raw_model_output=False,
+    )
+
+    assert visible == {
+        'call_status': 'completed',
+        'parse': {'status': 'accepted'},
+    }
+
+
+def test_yearly_invoice_analytics_logs_infohelp_raw_result_and_unclear_outcome(
+    tmp_path: Path,
+    monkeypatch,
+    caplog,
+) -> None:
+    config = _config(tmp_path, debug_invoice_transparency=True)
+    init_db(config.db_path)
+    message = _Message('На яку суму я виставив фактур цього року?')
+    state = _State()
+    raw_model_output = json.dumps(
+        {
+            'intent_kind': 'genuinely_unclear',
+            'speech_act': 'unknown',
+            'domain_id': 'unknown',
+            'object_kind': 'unknown',
+            'operation_id': 'unknown',
+            'confidence': 0.0,
+        },
+        ensure_ascii=False,
+    )
+
+    async def _primary(**kwargs):
+        return 'invoice_analytics'
+
+    async def _assistant(**kwargs):
+        kwargs['diagnostics'].update(
+            {
+                'call_status': 'completed',
+                'fallback_reason': None,
+                'model': config.openai_llm_model,
+                'input_channel': 'voice_stt',
+                'primary_resolver_result': 'invoice_analytics',
+                'recent_turn_count': 1,
+                'explicit_reply_present': False,
+                'active_runtime_context_present': False,
+                'duration_ms': 123,
+                'raw_model_output': raw_model_output,
+                'parse': {
+                    'status': 'accepted',
+                    'reason': None,
+                    'invalid_fields': [],
+                },
+            }
+        )
+        return _result(
+            intent_kind='genuinely_unclear',
+            speech_act='unknown',
+            domain_id='unknown',
+            object_kind='unknown',
+            operation_id='unknown',
+            proposed_action_id=None,
+            intent_complete=False,
+            confidence=0.0,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    with caplog.at_level(logging.INFO, logger='bot.handlers.invoice'):
+        asyncio.run(
+            process_invoice_text(
+                message=message,
+                state=state,
+                config=config,
+                invoice_text=message.text,
+                request_id='repeat-analytics-question',
+                input_channel='voice',
+                telegram_update_id=77,
+            )
+        )
+
+    events = [json.loads(record.message) for record in caplog.records if record.message.startswith('{')]
+    model_event = next(item for item in events if item.get('event') == 'contextual_info_help_model_result')
+    outcome_event = next(item for item in events if item.get('event') == 'contextual_info_help_outcome')
+
+    assert model_event['request_id'] == 'repeat-analytics-question'
+    assert model_event['telegram_update_id'] == 77
+    assert model_event['primary_action'] == 'invoice_analytics'
+    assert model_event['primary_product_status'] == 'partial'
+    assert model_event['primary_runtime_owner'] is True
+    assert model_event['contextual_info_help_routing'] == {
+        'primary_action': 'invoice_analytics',
+        'input_channel': 'voice',
+        'decision': True,
+        'trigger_reason': 'question_form',
+        'semantic_registry_match': False,
+        'primary_product_status': None,
+        'primary_runtime_owner': None,
+    }
+    assert model_event['info_help_model_diagnostics']['raw_model_output'] == raw_model_output
+    assert model_event['info_help_model_diagnostics']['parse']['status'] == 'accepted'
+    assert model_event['info_help_validated_result']['intent_kind'] == 'genuinely_unclear'
+    assert outcome_event['outcome'] == 'unclear_fallback'
+    assert outcome_event['handled'] is True
+    assert outcome_event['validated_action'] == 'invoice_analytics'
+    assert outcome_event['response_text'] == message.answers[-1]
+    assert 'nerozumel' in outcome_event['response_text']
 
 
 @pytest.mark.parametrize('input_channel', ('text', 'voice'))

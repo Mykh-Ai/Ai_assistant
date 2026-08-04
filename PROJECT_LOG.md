@@ -1,3 +1,49 @@
+# 2026-08-04 - Contextual InfoHelp model-result observability
+
+- Live read-only evidence for the Ukrainian yearly outgoing-invoice total
+  question showed STT and OpenAI HTTP success. The first two requests stopped
+  before `top_level_intent_resolved`; the third reached `invoice_analytics`.
+  Code inspection proved the partial analytics action could be sent through
+  Contextual InfoHelp and its fail-closed `genuinely_unclear`/low-confidence
+  branch produced the observed `Tejto správe som nerozumel...` reply, but the
+  model JSON and validation reason were not logged.
+- Preflight read the active Product Doctrine, AI standards, Product Truth,
+  self-learning, evaluation/UX, TZ, LLM orchestrator/action/response/design,
+  bounded resolver, InfoHelp, customization, and confirmed-alias contracts.
+  Current status and maturity remain `partial` Level 2 Contextual InfoHelp;
+  this change adds observability and does not claim a routing or intelligence
+  repair.
+- The Contextual InfoHelp resolver now reports safe per-call diagnostics:
+  model/call status, duration, bounded raw JSON, parser acceptance or exact
+  rejection reason, and the complete Python-validated result. It still makes
+  exactly one bounded call, fails closed, and exposes only exception type on
+  failures.
+- Top-level Contextual InfoHelp now emits request-correlated
+  `contextual_info_help_model_result` and `contextual_info_help_outcome` JSON
+  events. They show the exact gate decision/trigger reason, primary action,
+  Product Truth status/runtime owner, input hash/channel, first-resolver
+  diagnostics, second-model diagnostics, final Python branch, confidence
+  threshold, and exact bot-visible response.
+  Raw model output is included only under the existing debug-transparency
+  switch; the production switch was confirmed read-only as enabled.
+- The events exclude system prompts, Product Truth/action payloads, API keys,
+  exception messages, and raw user transcript duplication. No canonical
+  action, prompt semantics, routing decision, confidence gate, STT/LMM, FSM,
+  confirmation, DB/storage, access, PDF, server configuration, or business
+  side effect changed. Product Truth and forbidden claims remain unchanged.
+- The proving journey uses the exact repeated-question shape
+  `На яку суму я виставив фактур цього року?` over the voice channel and asserts
+  the exact `question_form` gate reason, `invoice_analytics` + `partial`,
+  raw/validated InfoHelp output, parser status, the `unclear_fallback` outcome,
+  and the user-visible fallback text under one request ID. No self-learning
+  hook applies because no semantic mapping is confirmed or persisted.
+- Focused Contextual InfoHelp verification: `30 passed`. Expanded InfoHelp,
+  Product Truth, voice routing, invoice pre-routing, and invoice-analytics
+  regression: `501 passed`. The complete repository regression on current
+  `origin/main` `8c4d49b` passed: `2521 passed, 7 subtests passed in 500.80s`.
+  Deployment and the live repeated-question smoke remain pending; no server
+  write was performed.
+
 # 2026-08-04 - Exact unsupported InfoHelp admin-review buttons
 
 - Preflight classified the existing behavior as `partial`: Contextual InfoHelp
