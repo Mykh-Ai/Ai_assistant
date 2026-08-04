@@ -98,3 +98,13 @@ def test_conflicting_statement_dates_are_ambiguous() -> None:
     assert result.period_year is None
     assert result.period_month is None
 
+
+def test_statement_header_accepts_pdf_text_without_space_between_label_words() -> None:
+    result = detect_gmail_statement_period(
+        _pdf_with_text("Datum31.07.2026\nPoslednyvypis30.06.2026")
+    )
+
+    assert result.status == STATEMENT_PERIOD_DETECTED
+    assert result.start_date == date(2026, 7, 1)
+    assert result.end_date == date(2026, 7, 31)
+    assert (result.period_year, result.period_month) == (2026, 7)
