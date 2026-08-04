@@ -203,11 +203,20 @@ def test_payload_exposes_exact_enum_values_and_receipt_negative_space_example() 
     assert reference_example['missing_slots'] == []
 
 
-def test_pre_execution_gate_covers_unknown_destructive_correction_and_command() -> None:
+def test_pre_execution_gate_routes_supported_owned_actions_once() -> None:
     assert should_run_contextual_info_help(primary_action='unknown', input_text='x')
-    assert should_run_contextual_info_help(primary_action='delete_existing_invoice', input_text='vymaž faktúru')
+    assert not should_run_contextual_info_help(
+        primary_action='delete_existing_invoice', input_text='vymaž faktúru 10'
+    )
+    assert not should_run_contextual_info_help(
+        primary_action='delete_existing_invoice', input_text='vymaž faktúru'
+    )
+    assert should_run_contextual_info_help(
+        primary_action='delete_existing_invoice', input_text='Môžeš vymazať faktúru?'
+    )
     assert should_run_contextual_info_help(primary_action='edit_supplier', input_text='kontakt, nie profil')
     assert should_run_contextual_info_help(primary_action='unknown', input_text='/contat', input_channel='command')
+    assert should_run_contextual_info_help(primary_action='delete_user_database', input_text='vymaž všetko')
     assert not should_run_contextual_info_help(primary_action='show_supplier_profile', input_text='ukáž profil')
 
 

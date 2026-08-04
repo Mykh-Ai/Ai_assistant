@@ -1,5 +1,12 @@
 # Changelog
 
+- Routed already-resolved Product-Truth-supported canonical actions directly to
+  their registered Python owners instead of invoking Contextual InfoHelp solely
+  for a mutating/destructive class or an owner-handled missing slot. Existing
+  invoice deletion lookup, continuation, tenant validation, confirmation,
+  buttons, FSM states, and delete side effect are unchanged; the secondary
+  InfoHelp confidence gate is no longer reachable from the direct supported
+  route.
 - Synchronized README, TZ, Product Truth, InfoHelp, the Gmail setup runbook,
   architecture proof, and acceptance proof with the connected controlled
   Gmail/Drive pilot. InfoHelp now distinguishes an external-credential

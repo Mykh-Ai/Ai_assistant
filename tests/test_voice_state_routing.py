@@ -320,6 +320,23 @@ def test_voice_non_decision_state_routes_to_generic_create_flow(monkeypatch, tmp
     assert calls == ['generic']
 
 
+def test_voice_delete_invoice_transcript_converges_on_shared_text_route(monkeypatch, tmp_path: Path) -> None:
+    captured: list[tuple[str, str]] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'Видалити фактуру 10'
+
+    async def _invoice_text(**kwargs) -> None:
+        captured.append((kwargs['invoice_text'], kwargs['input_channel']))
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.process_invoice_text', _invoice_text)
+
+    asyncio.run(handle_voice(_DummyMessage(), _DummyBot(), _config(tmp_path), _DummyState(None)))
+
+    assert captured == [('Видалити фактуру 10', 'voice')]
+
+
 def test_voice_waiting_invoice_input_routes_to_invoice_text(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
 

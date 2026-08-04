@@ -1,5 +1,13 @@
 # InfoHelp Contextual AI Assistant V2 Architecture Design Proof
 
+Current routing amendment (2026-08-04):
+`docs/architecture/info_help_supported_action_direct_routing_architecture_design_proof.md`
+supersedes this proof only where this original V2 design used mutation class or
+an owner-handled missing slot to trigger a second pre-execution classification.
+An already resolved Product-Truth-supported canonical action with a registered
+runtime owner now routes directly to that owner. Questions, corrections,
+`unknown`, unsupported, and genuinely ambiguous input retain this V2 path.
+
 ## 1. Task Identity And Product Need
 
 - Task: `INFOHELP_CONTEXTUAL_AI_ASSISTANT_V2`.
