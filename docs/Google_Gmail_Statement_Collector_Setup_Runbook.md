@@ -2,8 +2,8 @@
 
 Status: `requires_setup`, `requires_admin`, `requires_external_credentials`.
 
-Last production verified: 2026-08-02. Protected-period repository behavior
-verified: 2026-08-04; production rollout remains pending.
+Last protected-period production detector smoke: 2026-08-04. New-import Drive
+routing and historical Drive repair remain separate acceptance scopes.
 
 This runbook activates the bounded Gmail OAuth and bank-statement attachment
 collector implemented in OfficeFlow/FakturaBot. It does not activate Google

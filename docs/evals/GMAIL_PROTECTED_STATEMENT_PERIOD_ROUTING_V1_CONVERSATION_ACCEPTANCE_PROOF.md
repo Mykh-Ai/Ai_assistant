@@ -1,6 +1,6 @@
 # Gmail Protected Statement Period Routing V1 — Conversation Acceptance Proof
 
-Status: `repository_verified`; production rollout and historical repair are
+Status: `production_detector_smoke_verified`; historical Drive repair remains
 pending separate approval.
 
 ## Product journey
@@ -56,8 +56,28 @@ Expected deterministic journey:
 
 Focused repository verification on 2026-08-04: `69 passed` before the final
 truth/docs synchronization. Final full suite: `2518 passed, 7 subtests passed`
-in 482.43 seconds. Production smoke remains required before production
-acceptance.
+in 482.43 seconds.
+
+### Controlled production detector smoke — 2026-08-04
+
+- PR #89 deployed the file-backed secret, additive schema, period detector, and
+  Drive-target contract. The live database passed `PRAGMA quick_check` before
+  backup, the secured backup passed its own `quick_check`, and the live database
+  passed again after migration.
+- The opening password was read from the user-authorized email and written
+  directly to `/bot/secrets/gmail-statement-pdf-open-password` with mode `0600`;
+  its value was not written to chat, Git, `.env`, logs, metadata, or this report.
+  `.env` contains only the absolute secret-file path.
+- The first smoke correctly failed closed because the real Tatra extraction
+  emitted `Poslednývýpis` without the visual space. PR #90 added only that
+  observed compact-label layout plus a regression test.
+- The repeated live smoke opened two existing PDFs (one encrypted) and resolved
+  both as `detected`, with one `2026-06` and one `2026-07` period. It did not
+  persist a decrypted file, backfill old rows, enqueue or move an existing Drive
+  file, or parse transactions.
+- Final runtime evidence: server `main` at `8f1be47`, FakturaBot and cloudflared
+  `Up`, Telegram polling started, and no matching traceback/scheduler/archive
+  error appeared in the bounded startup log review.
 
 ## Forbidden claims checked
 
