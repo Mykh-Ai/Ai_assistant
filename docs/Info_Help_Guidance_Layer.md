@@ -1038,6 +1038,11 @@ Recent context is process memory only: at most three user and three visible bot 
 
 The old broad catalogue is retained only for an explicit overview. Invalid model output and genuinely unclear input receive a short narrow fallback with no button or effect. Rollout is `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`; invalid/missing values are `disabled`.
 
+The one enhanced Contextual V2 call uses a 30-second timeout after production
+API evidence showed a valid unregistered-business-need answer may exceed the
+previous 8-second boundary. It still has no retry, secondary model, confidence
+gate, or execution authority; timeout/transport failure remains fail-closed.
+
 ### Primary-bundle ownership repair - 2026-08-05
 
 This amendment supersedes the earlier punctuation-, mutation-, correction-, and

@@ -243,7 +243,7 @@ async def resolve_info_help_assistant_with_llm(
     recent_conversation: tuple[dict[str, object], ...] | list[dict[str, object]] = (),
     explicit_reply: dict[str, object] | None = None,
     active_runtime_context: dict[str, object] | None = None,
-    timeout_seconds: float = 8.0,
+    timeout_seconds: float = 30.0,
     diagnostics: dict[str, Any] | None = None,
 ) -> InfoHelpAssistantResult:
     """Run exactly one enhanced InfoHelp call; no retries or secondary classifier."""

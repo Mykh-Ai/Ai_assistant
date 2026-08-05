@@ -312,6 +312,10 @@ def test_live_answer_validator_requires_slovak_and_product_truth_status_alignmen
         product_status='unsupported',
     ) == 'Nie, túto funkciu momentálne nepodporujem.'
     assert validate_info_help_answer_sk(
+        'Aktuálnu podporu nemožno spoľahlivo potvrdiť z Product Truth.',
+        product_status='unknown',
+    ) == 'Aktuálnu podporu nemožno spoľahlivo potvrdiť z Product Truth.'
+    assert validate_info_help_answer_sk(
         'This capability is not supported.',
         product_status='unsupported',
     ) is None

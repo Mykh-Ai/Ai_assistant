@@ -46,6 +46,19 @@
   subtests passed in 504.22s`. `python -m compileall -q bot` and
   `git diff --check` passed; only expected Windows line-ending warnings were
   reported.
+- Post-deploy live API smoke used the exact production STT transcript and a new
+  unregistered purchase-approval workflow question. The exact STT completed in
+  4566 ms with accepted JSON, `tax_accounting + tax_return + prepare`, verified
+  `bank_cashflow_tax_analytics`, and a live Slovak answer accepted without
+  fallback. The unregistered need completed in 27590 ms with accepted JSON,
+  no invented capability/action, a Slovak-normalized need, and the honest phrase
+  `nemožno spoľahlivo potvrdiť`. That phrase was semantically correct but absent
+  from the bounded unknown-status validator, and the production default timeout
+  of 8 seconds was too short for the observed call.
+- Added that Slovak unknown-status form and raised only the single enhanced
+  InfoHelp call timeout to 30 seconds. This does not add a retry, confidence
+  gate, route, capability, or side effect. Final focused verification and live
+  smoke after the amendment are recorded in the deployment follow-up.
 
 # 2026-08-05 - Restore exact unsupported InfoHelp routing before slot clarification
 
