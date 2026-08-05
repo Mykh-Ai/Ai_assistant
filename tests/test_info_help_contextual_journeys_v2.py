@@ -165,7 +165,14 @@ def test_yearly_voice_invoice_analytics_uses_primary_bundle_and_bypasses_infohel
         )
 
     events = [json.loads(record.message) for record in caplog.records if record.message.startswith('{')]
+    bundle_event = next(item for item in events if item.get('event') == 'top_level_bundle_result')
     top_level_event = next(item for item in events if item.get('event') == 'top_level_intent_resolved')
+    assert bundle_event['request_id'] == 'repeat-analytics-question'
+    assert bundle_event['input_channel'] == 'voice'
+    assert bundle_event['resolved_action'] == 'invoice_analytics'
+    assert bundle_event['primary_bundle_diagnostics']['routing_kind'] == 'business_action'
+    assert bundle_event['primary_bundle_diagnostics']['resolution_source'] == 'llm_bundle'
+    assert 'invoice_analytics' in bundle_event['primary_bundle_diagnostics']['raw_model_output']
     assert top_level_event['request_id'] == 'repeat-analytics-question'
     assert top_level_event['telegram_update_id'] == 77
     assert top_level_event['top_level_intent'] == 'invoice_analytics'

@@ -4623,6 +4623,29 @@ async def process_invoice_text(
     effective_input_channel = (
         'command' if invoice_text.lstrip().startswith('/') else input_channel
     )
+    normalized_top_level_input = ' '.join(invoice_text.split())
+    logger.info(
+        json.dumps(
+            {
+                'event': 'top_level_bundle_result',
+                'request_id': flow_request_id,
+                'telegram_update_id': telegram_update_id,
+                'telegram_message_id': message_id,
+                'actor_telegram_id': actor_telegram_id,
+                'input_channel': effective_input_channel,
+                'input_text_sha256': sha256(
+                    normalized_top_level_input.encode('utf-8')
+                ).hexdigest(),
+                'input_text_length': len(normalized_top_level_input),
+                'resolved_action': top_level_intent,
+                'primary_bundle_diagnostics': _observable_resolver_diagnostics(
+                    top_level_diagnostics,
+                    include_raw_model_output=config.debug_invoice_transparency,
+                ),
+            },
+            ensure_ascii=False,
+        )
+    )
     info_help_routing_diagnostics: dict[str, object] = {}
     if (
         contextual_info_help_v2_enabled(config, actor_telegram_id)

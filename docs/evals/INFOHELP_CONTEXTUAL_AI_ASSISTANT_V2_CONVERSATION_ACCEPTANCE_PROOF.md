@@ -108,6 +108,11 @@ The production-observed voice question
 3. Python validates the action and routes to the read-only analytics owner.
 4. Contextual InfoHelp is not called and cannot return an unclear fallback.
 
+The request-correlated `top_level_bundle_result` event records the direct
+route's validated action, `routing_kind`, resolution source, and bounded raw
+bundle JSON only under debug transparency, so bypassing InfoHelp does not hide
+the first model response.
+
 Additional automated evidence proves that a capability question is converted
 by the primary bundle to `unknown` + `capability_or_howto`, then one InfoHelp
 call answers `invoice_analytics` directly from Product Truth even though that
@@ -123,6 +128,10 @@ side-effect contract changed.
 Repository evidence for this amendment: focused adjacent suite `370 passed in
 46.93s`; complete suite `2528 passed, 7 subtests passed in 491.83s`;
 `python -m compileall -q bot` passed.
+
+After adding direct primary-bundle observability, the exact final code was
+reverified: focused route suite `264 passed in 43.48s`; complete suite `2528
+passed, 7 subtests passed in 492.83s`; compileall and diff checks passed.
 
 PR `#95` merged the exact tested head as
 `7e3d0556c235ce8b5c99cacc2493ad4f0502ba23`. Production was rebuilt on that
