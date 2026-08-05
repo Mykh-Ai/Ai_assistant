@@ -1,5 +1,16 @@
 # Changelog
 
+- Repaired top-level AI ownership: authorized idle natural language and STT now
+  run the bounded primary LLM bundle before local fallback. The bundle separates
+  real business actions from capability/how-to and contextual-help requests;
+  validated actions route directly to their Python owners and InfoHelp is used
+  only as a contextual recovery call.
+- Removed all InfoHelp confidence thresholds and confidence-based routing.
+  Question punctuation, `partial` Product Truth status, mutation class, and
+  incomplete InfoHelp registry coverage no longer veto a resolved action.
+  Capability answers use Product Truth capability IDs, schema/call failures are
+  distinguished from unclear user input, and active-FSM help consumes the
+  bounded second-call result without giving it state or side-effect authority.
 - Added request-correlated Contextual InfoHelp observability for the primary
   route, exact gate trigger reason, bounded model call, parser acceptance/
   rejection, Python-validated result, final branch, confidence threshold, and

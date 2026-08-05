@@ -118,7 +118,7 @@ def test_infohelp_raw_model_output_is_hidden_without_debug_transparency() -> Non
     }
 
 
-def test_yearly_invoice_analytics_logs_infohelp_raw_result_and_unclear_outcome(
+def test_yearly_voice_invoice_analytics_uses_primary_bundle_and_bypasses_infohelp(
     tmp_path: Path,
     monkeypatch,
     caplog,
@@ -127,51 +127,27 @@ def test_yearly_invoice_analytics_logs_infohelp_raw_result_and_unclear_outcome(
     init_db(config.db_path)
     message = _Message('На яку суму я виставив фактур цього року?')
     state = _State()
-    raw_model_output = json.dumps(
-        {
-            'intent_kind': 'genuinely_unclear',
-            'speech_act': 'unknown',
-            'domain_id': 'unknown',
-            'object_kind': 'unknown',
-            'operation_id': 'unknown',
-            'confidence': 0.0,
-        },
-        ensure_ascii=False,
-    )
-
     async def _primary(**kwargs):
+        if kwargs['context_name'] == 'invoice_analytics_execution_strategy':
+            return 'yearly_summary_fast_path'
+        assert kwargs['llm_first'] is True
+        kwargs['diagnostics'].update(
+            {
+                'canonical_action': 'invoice_analytics',
+                'routing_kind': 'business_action',
+                'resolution_source': 'llm_bundle',
+                'raw_model_output': json.dumps(
+                    {
+                        'canonical_action': 'invoice_analytics',
+                        'routing_kind': 'business_action',
+                    }
+                ),
+            }
+        )
         return 'invoice_analytics'
 
     async def _assistant(**kwargs):
-        kwargs['diagnostics'].update(
-            {
-                'call_status': 'completed',
-                'fallback_reason': None,
-                'model': config.openai_llm_model,
-                'input_channel': 'voice_stt',
-                'primary_resolver_result': 'invoice_analytics',
-                'recent_turn_count': 1,
-                'explicit_reply_present': False,
-                'active_runtime_context_present': False,
-                'duration_ms': 123,
-                'raw_model_output': raw_model_output,
-                'parse': {
-                    'status': 'accepted',
-                    'reason': None,
-                    'invalid_fields': [],
-                },
-            }
-        )
-        return _result(
-            intent_kind='genuinely_unclear',
-            speech_act='unknown',
-            domain_id='unknown',
-            object_kind='unknown',
-            operation_id='unknown',
-            proposed_action_id=None,
-            intent_complete=False,
-            confidence=0.0,
-        )
+        raise AssertionError('InfoHelp must not run after a resolved primary action')
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
     monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
@@ -189,31 +165,13 @@ def test_yearly_invoice_analytics_logs_infohelp_raw_result_and_unclear_outcome(
         )
 
     events = [json.loads(record.message) for record in caplog.records if record.message.startswith('{')]
-    model_event = next(item for item in events if item.get('event') == 'contextual_info_help_model_result')
-    outcome_event = next(item for item in events if item.get('event') == 'contextual_info_help_outcome')
-
-    assert model_event['request_id'] == 'repeat-analytics-question'
-    assert model_event['telegram_update_id'] == 77
-    assert model_event['primary_action'] == 'invoice_analytics'
-    assert model_event['primary_product_status'] == 'partial'
-    assert model_event['primary_runtime_owner'] is True
-    assert model_event['contextual_info_help_routing'] == {
-        'primary_action': 'invoice_analytics',
-        'input_channel': 'voice',
-        'decision': True,
-        'trigger_reason': 'question_form',
-        'semantic_registry_match': False,
-        'primary_product_status': None,
-        'primary_runtime_owner': None,
-    }
-    assert model_event['info_help_model_diagnostics']['raw_model_output'] == raw_model_output
-    assert model_event['info_help_model_diagnostics']['parse']['status'] == 'accepted'
-    assert model_event['info_help_validated_result']['intent_kind'] == 'genuinely_unclear'
-    assert outcome_event['outcome'] == 'unclear_fallback'
-    assert outcome_event['handled'] is True
-    assert outcome_event['validated_action'] == 'invoice_analytics'
-    assert outcome_event['response_text'] == message.answers[-1]
-    assert 'nerozumel' in outcome_event['response_text']
+    top_level_event = next(item for item in events if item.get('event') == 'top_level_intent_resolved')
+    assert top_level_event['request_id'] == 'repeat-analytics-question'
+    assert top_level_event['telegram_update_id'] == 77
+    assert top_level_event['top_level_intent'] == 'invoice_analytics'
+    assert not any(item.get('event') == 'contextual_info_help_model_result' for item in events)
+    assert message.answers
+    assert 'nerozumel' not in message.answers[-1].casefold()
 
 
 @pytest.mark.parametrize('input_channel', ('text', 'voice'))
@@ -226,7 +184,8 @@ def test_receipt_delete_capability_question_blocks_false_invoice_delete(
     state = _State()
 
     async def _primary(**kwargs):
-        return 'delete_existing_invoice'
+        kwargs['diagnostics']['routing_kind'] = 'capability_or_howto'
+        return 'unknown'
 
     async def _assistant(**kwargs):
         return _result(
@@ -236,7 +195,7 @@ def test_receipt_delete_capability_question_blocks_false_invoice_delete(
             object_kind='receipt',
             operation_id='delete',
             proposed_action_id=None,
-            confidence=0.98,
+            confidence=0.0,
         )
 
     monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
@@ -277,7 +236,8 @@ def test_correction_negates_invoice_and_blocks_delete_flow(tmp_path: Path, monke
     state = _State()
 
     async def _primary(**kwargs):
-        return 'delete_existing_invoice'
+        kwargs['diagnostics']['routing_kind'] = 'business_action'
+        return 'unknown'
 
     async def _assistant(**kwargs):
         return _result(
@@ -479,13 +439,134 @@ def test_unsupported_contact_edit_uses_infohelp_without_supplier_profile_edit(tm
     assert 'nepodporujem' in message.answers[-1].casefold()
 
 
+def test_infohelp_confidence_is_telemetry_and_does_not_block_validated_recovery(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _config(tmp_path)
+    message = _Message('Ukáž môj firemný profil')
+    state = _State()
+    owner_calls: list[str] = []
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'unknown'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        return _result(
+            domain_id='supplier_profile',
+            object_kind='supplier_profile',
+            operation_id='show',
+            proposed_action_id='show_supplier_profile',
+            confidence=0.0,
+        )
+
+    async def _owner(**kwargs):
+        owner_calls.append('show_supplier_profile')
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    monkeypatch.setattr('bot.handlers.invoice.cmd_moj_profil', _owner)
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+        )
+    )
+
+    assert owner_calls == ['show_supplier_profile']
+
+
+def test_infohelp_answers_invoice_analytics_capability_from_product_truth_without_action_registry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _config(tmp_path)
+    message = _Message('Vieš robiť analytiku vystavených faktúr?')
+    state = _State()
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'capability_or_howto'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='capability_question',
+            speech_act='capability_question',
+            domain_id='invoices',
+            object_kind='invoice',
+            operation_id='analyze',
+            proposed_action_id=None,
+            proposed_capability_id='invoice_analytics',
+            confidence=0.0,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+        )
+    )
+
+    assert message.answers
+    assert 'analyt' in message.answers[-1].casefold()
+    assert state.current_state is None
+    assert 'nepodporujem' not in message.answers[-1].casefold()
+
+
+def test_infohelp_schema_rejection_is_not_reported_as_user_ambiguity(tmp_path: Path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    message = _Message('Pomôž mi s analytikou')
+    state = _State()
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'contextual_help'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        kwargs['diagnostics'].update(
+            {
+                'call_status': 'completed',
+                'parse': {
+                    'status': 'rejected',
+                    'reason': 'invalid_bounded_enum',
+                    'invalid_fields': ['intent_kind'],
+                },
+            }
+        )
+        return InfoHelpAssistantResult()
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+        )
+    )
+
+    answer = message.answers[-1].casefold()
+    assert 'nepodarilo' in answer
+    assert 'nerozumel' not in answer
+
+
 def test_vague_delete_is_clarified_without_destructive_route(tmp_path: Path, monkeypatch) -> None:
     config = _config(tmp_path)
     message = _Message('видалити')
     state = _State()
 
     async def _primary(**kwargs):
-        return 'delete_user_database'
+        kwargs['diagnostics']['routing_kind'] = 'unknown'
+        return 'unknown'
 
     async def _assistant(**kwargs):
         return _result(
@@ -513,7 +594,8 @@ def test_vague_delete_cannot_replace_conflicting_primary_destructive_action(tmp_
     state = _State()
 
     async def _primary(**kwargs):
-        return 'delete_user_database'
+        kwargs['diagnostics']['routing_kind'] = 'unknown'
+        return 'unknown'
 
     async def _assistant(**kwargs):
         return _result(
@@ -532,7 +614,7 @@ def test_vague_delete_cannot_replace_conflicting_primary_destructive_action(tmp_
     asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
 
     assert state.current_state is None
-    assert message.answers[-1] == 'Spresnite prosím presný objekt a úkon. Nič som nevykonal.'
+    assert message.answers[-1] == 'Napíšte číslo faktúry.'
 
 
 def test_explicit_reply_unclear_result_explains_proven_quoted_bot_message(tmp_path: Path, monkeypatch) -> None:
@@ -624,6 +706,47 @@ def test_active_fsm_help_keeps_state_and_calls_contextual_assistant_once(tmp_pat
     assert calls == [message.text]
     assert 'stručný opis služby' in message.answers[-1]
     assert message.answer_kwargs[-1]['reply_markup'] is not None
+
+
+def test_active_fsm_contextual_infohelp_uses_command_typo_result_without_leaving_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    state_name = 'InvoiceStates:waiting_service_clarification'
+    state = _State(current_state=state_name)
+    message = _Message('/canel')
+
+    async def _navigation(**kwargs):
+        return 'contextual_info_help'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='probable_command_typo',
+            speech_act='unknown',
+            domain_id='unknown',
+            object_kind='unknown',
+            operation_id='unknown',
+            proposed_action_id=None,
+            probable_command_target='/cancel',
+            intent_complete=False,
+        )
+
+    monkeypatch.setattr('bot.services.active_fsm_guard.resolve_active_fsm_navigation', _navigation)
+    monkeypatch.setattr('bot.services.info_help_resolver.resolve_info_help_assistant_with_llm', _assistant)
+
+    handled = asyncio.run(
+        handle_active_fsm_text_update(
+            message=message,
+            state=state,
+            config=_config(tmp_path),
+            text=message.text,
+            input_channel='text',
+        )
+    )
+
+    assert handled is True
+    assert state.current_state == state_name
+    assert '`/cancel`' in message.answers[-1]
+    assert 'stručný opis služby' in message.answers[-1]
 
 
 def test_rollout_modes_fail_closed_and_admin_pilot_is_scoped(tmp_path: Path) -> None:

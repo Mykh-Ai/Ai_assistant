@@ -1,5 +1,10 @@
 # Supported Canonical Actions Route Directly To Existing Owners
 
+> Superseded for current routing by the 2026-08-05 primary-bundle ownership
+> amendment in
+> `docs/architecture/INFOHELP_CONTEXTUAL_AI_ASSISTANT_V2_ARCHITECTURE_DESIGN_PROOF.md`.
+> This file remains historical evidence of the narrower 2026-08-04 repair.
+
 Verdict: `ready_for_handoff`
 
 Date: 2026-08-04

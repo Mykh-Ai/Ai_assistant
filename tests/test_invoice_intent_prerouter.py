@@ -1538,6 +1538,7 @@ class _TopLevelActionOpenAIFake:
     last_payload: dict | None = None
     last_system_prompt: str | None = None
     canonical_action = 'show_recent_accounting_documents'
+    routing_kind: str | None = None
 
     def __init__(self, *, api_key: str) -> None:
         self.api_key = api_key
@@ -1546,7 +1547,10 @@ class _TopLevelActionOpenAIFake:
     async def create(self, **kwargs):
         _TopLevelActionOpenAIFake.last_system_prompt = kwargs['messages'][0]['content']
         _TopLevelActionOpenAIFake.last_payload = json.loads(kwargs['messages'][1]['content'])
-        return _FakeResponse(json.dumps({'canonical_action': _TopLevelActionOpenAIFake.canonical_action}))
+        payload = {'canonical_action': _TopLevelActionOpenAIFake.canonical_action}
+        if _TopLevelActionOpenAIFake.routing_kind is not None:
+            payload['routing_kind'] = _TopLevelActionOpenAIFake.routing_kind
+        return _FakeResponse(json.dumps(payload))
 
 
 class _InfoHelpTriageOpenAIFake:
@@ -1573,6 +1577,7 @@ class _InventedTopLevelActionOpenAIFake:
 
 def test_top_level_natural_phrase_uses_bounded_resolver_payload(monkeypatch) -> None:
     _TopLevelActionOpenAIFake.canonical_action = 'show_recent_accounting_documents'
+    _TopLevelActionOpenAIFake.routing_kind = None
     _TopLevelActionOpenAIFake.last_payload = None
     _TopLevelActionOpenAIFake.last_system_prompt = None
     monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
@@ -1599,6 +1604,7 @@ def test_top_level_natural_phrase_uses_bounded_resolver_payload(monkeypatch) -> 
     assert payload['allowed_actions'] == ['add_receipt', 'show_recent_accounting_documents', 'unknown']
     assert payload['expected_output'] == {
         'canonical_action': 'one allowed token or unknown',
+        'routing_kind': 'business_action, capability_or_howto, contextual_help, or unknown',
         'slots': 'optional object only when requested by action_hints',
     }
     assert 'show_recent_accounting_documents' in payload['action_hints']
@@ -1608,6 +1614,55 @@ def test_top_level_natural_phrase_uses_bounded_resolver_payload(monkeypatch) -> 
     assert 'Apply action_hints boundaries before positive examples' in (
         _TopLevelActionOpenAIFake.last_system_prompt or ''
     )
+
+
+def test_llm_first_bundle_runs_before_local_invoice_analytics_match(monkeypatch) -> None:
+    _TopLevelActionOpenAIFake.canonical_action = 'invoice_analytics'
+    _TopLevelActionOpenAIFake.routing_kind = 'business_action'
+    _TopLevelActionOpenAIFake.last_payload = None
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
+    diagnostics: dict[str, object] = {}
+
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['create_invoice', 'invoice_analytics', 'unknown'],
+            user_input_text='Na akú sumu som vystavil faktúry tento rok?',
+            api_key='sk-test',
+            model='gpt-4o',
+            diagnostics=diagnostics,
+            llm_first=True,
+        )
+    )
+
+    assert result == 'invoice_analytics'
+    assert _TopLevelActionOpenAIFake.last_payload is not None
+    assert diagnostics['resolution_source'] == 'llm_bundle'
+    assert diagnostics['routing_kind'] == 'business_action'
+    _TopLevelActionOpenAIFake.routing_kind = None
+
+
+def test_primary_bundle_routes_capability_question_to_infohelp_without_action_execution(monkeypatch) -> None:
+    _TopLevelActionOpenAIFake.canonical_action = 'invoice_analytics'
+    _TopLevelActionOpenAIFake.routing_kind = 'capability_or_howto'
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _TopLevelActionOpenAIFake)
+    diagnostics: dict[str, object] = {}
+
+    result = asyncio.run(
+        resolve_semantic_action(
+            context_name='top_level_action',
+            allowed_actions=['invoice_analytics', 'unknown'],
+            user_input_text='Vieš robiť analytiku vystavených faktúr?',
+            api_key='sk-test',
+            model='gpt-4o',
+            diagnostics=diagnostics,
+            llm_first=True,
+        )
+    )
+
+    assert result == 'unknown'
+    assert diagnostics['routing_kind'] == 'capability_or_howto'
+    _TopLevelActionOpenAIFake.routing_kind = None
 
 
 def test_top_level_profile_rekvizity_uses_llm_slovak_domain_normalization(monkeypatch) -> None:

@@ -1432,6 +1432,7 @@ async def resolve_semantic_action(
     auxiliary_context: dict[str, Any] | None = None,
     action_hints: dict[str, Any] | None = None,
     diagnostics: dict[str, Any] | None = None,
+    llm_first: bool = False,
 ) -> str:
     allowed = {value.strip() for value in allowed_actions if value and value.strip()}
     if _UNKNOWN not in allowed:
@@ -1442,7 +1443,7 @@ async def resolve_semantic_action(
         return _UNKNOWN
 
     local_priority = _fallback_for_context(context_name, cleaned, allowed)
-    if context_name == 'top_level_action' and local_priority in {
+    if not llm_first and context_name == 'top_level_action' and local_priority in {
         'start',
         'show_supplier_profile',
         'show_existing_invoice',
@@ -1467,6 +1468,12 @@ async def resolve_semantic_action(
             and api_key
             and api_key.startswith('sk-')
         ):
+            if diagnostics is not None:
+                diagnostics['canonical_action'] = local_priority
+                diagnostics['routing_kind'] = (
+                    'unknown' if local_priority == _UNKNOWN else 'business_action'
+                )
+                diagnostics['resolution_source'] = 'python_local_priority'
             return local_priority
 
     if api_key and api_key.startswith('sk-'):
@@ -1481,7 +1488,7 @@ async def resolve_semantic_action(
                         'role': 'system',
                         'content': (
                             'You are a bounded semantic canonicalizer. '
-                            'Return JSON only: {"canonical_action":"..."} where value is one allowed action or "unknown". When action_hints request slots, include a "slots" object; otherwise omit it. '
+                            'Return JSON only: {"canonical_action":"...","routing_kind":"..."} where canonical_action is one allowed action or "unknown" and routing_kind is exactly one of "business_action", "capability_or_howto", "contextual_help", or "unknown". When action_hints request slots, include a "slots" object; otherwise omit it. '
                             'Never return explanations. '
                             'User input may be Slovak, Ukrainian, Russian, mixed-language, colloquial, or STT-noisy. '
                             'First infer the user meaning and internally normalize it to Slovak FakturaBot product semantics. '
@@ -1493,6 +1500,9 @@ async def resolve_semantic_action(
                             'If allowed_actions includes an unsupported-domain action for bank/cashflow/tax/accounting-export analytics, choose that action for those requests even when the text also mentions receipts, bloceky, expenses, or accounting documents. '
                             'For top-level business analytics, expense-side spending questions such as "kolko som minul", vendor spending, categories, receipts, bloceky, and prijate/incoming invoices belong to accounting-document analytics when that action is allowed. '
                             'Outgoing/vystavene invoice totals, counts, customers, paid/unpaid, and revenue belong to invoice analytics when that action is allowed. '
+                            'A request to calculate, list, compare, show, or analyze the user\'s actual saved business data is a business_action even when phrased as a question. '
+                            'A question about whether the product can do something, how a function works, or what command to use is capability_or_howto and canonical_action must be "unknown" so contextual InfoHelp can answer without executing the business action. '
+                            'A request for help with the current conversation or confusion about what the bot expects is contextual_help and canonical_action must be "unknown". '
                             'Return "unknown" only when the normalized meaning is genuinely unclear or no allowed action fits.'
                         ),
                     },
@@ -1507,6 +1517,7 @@ async def resolve_semantic_action(
                                 'user_input_text': cleaned,
                                 'expected_output': {
                                     'canonical_action': 'one allowed token or unknown',
+                                    'routing_kind': 'business_action, capability_or_howto, contextual_help, or unknown',
                                     'slots': 'optional object only when requested by action_hints',
                                 },
                                 'auxiliary_context': auxiliary_context or {},
@@ -1521,16 +1532,35 @@ async def resolve_semantic_action(
             parsed = json.loads(raw)
             canonical = str(parsed.get('canonical_action', _UNKNOWN)).strip()
             if canonical in allowed:
+                default_routing_kind = 'unknown' if canonical == _UNKNOWN else 'business_action'
+                routing_kind = str(parsed.get('routing_kind') or default_routing_kind).strip()
+                if routing_kind not in {
+                    'business_action',
+                    'capability_or_howto',
+                    'contextual_help',
+                    'unknown',
+                }:
+                    routing_kind = default_routing_kind
+                if routing_kind in {'capability_or_howto', 'contextual_help', 'unknown'}:
+                    canonical = _UNKNOWN
                 if diagnostics is not None:
                     diagnostics['raw_model_output'] = raw
                     diagnostics['parsed_model_output'] = parsed
                     diagnostics['canonical_action'] = canonical
+                    diagnostics['routing_kind'] = routing_kind
+                    diagnostics['resolution_source'] = 'llm_bundle'
                     slots = parsed.get('slots')
                     diagnostics['slots'] = slots if isinstance(slots, dict) else {}
                 return canonical
         except Exception:
             pass
 
+    if diagnostics is not None:
+        diagnostics['canonical_action'] = local_priority
+        diagnostics['routing_kind'] = (
+            'unknown' if local_priority == _UNKNOWN else 'business_action'
+        )
+        diagnostics['resolution_source'] = 'python_fallback_after_llm'
     return local_priority
 
 

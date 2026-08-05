@@ -1735,4 +1735,17 @@ Configuration: `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`, de
 
 After the primary resolver selects a Product-Truth-supported canonical action with a registered runtime owner, Contextual InfoHelp does not classify that request again merely because the action is mutating/destructive or an owner-handled business slot is missing. Questions, corrections/negations, `unknown`, unsupported, and genuinely ambiguous input retain the bounded InfoHelp path.
 
+## 2026-08-05 Addendum: Primary LLM bundle owns idle intent routing
+
+After authorized idle text or authorized non-empty STT, the top-level bounded
+LLM bundle runs before the local semantic fallback. It returns an allowed
+canonical action plus `routing_kind`. Requests to calculate/list/analyze actual
+saved data are business actions even when phrased as questions; capability or
+how-to questions are routed to one contextual InfoHelp call without executing
+that business action. Every validated non-`unknown` action, including
+`invoice_analytics` with Product Truth status `partial`, routes directly to its
+existing Python owner. A question mark and model confidence do not gate or veto
+execution. Active FSM remains the first owner and may invoke contextual
+InfoHelp only for bounded help/confusion recovery.
+
 For `delete_existing_invoice`, a supplied invoice reference reaches the existing tenant-scoped lookup and `InvoiceStates.waiting_delete_existing_invoice_confirm`; a missing reference reaches the existing `InvoiceReferenceContinuationStates.waiting_reference`. The existing `áno / nie` DecisionResolver confirmation and deletion owner are unchanged, and no invoice is deleted during top-level routing.
