@@ -1,12 +1,12 @@
 # InfoHelp Contextual AI Assistant V2 Architecture Design Proof
 
-Current routing amendment (2026-08-04):
-`docs/architecture/info_help_supported_action_direct_routing_architecture_design_proof.md`
-supersedes this proof only where this original V2 design used mutation class or
-an owner-handled missing slot to trigger a second pre-execution classification.
-An already resolved Product-Truth-supported canonical action with a registered
-runtime owner now routes directly to that owner. Questions, corrections,
-`unknown`, unsupported, and genuinely ambiguous input retain this V2 path.
+Current routing amendment (2026-08-05) supersedes the earlier V2 gate and the
+2026-08-04 supported-only amendment: authorized idle natural language runs the
+top-level LLM bundle before local fallback; its bounded `routing_kind`
+distinguishes business execution from capability/how-to and contextual help.
+Every validated non-`unknown` action, including a Product Truth `partial`
+action, routes directly to its Python owner. Contextual InfoHelp is recovery
+only and model confidence has no routing authority.
 
 ## 1. Task Identity And Product Need
 
@@ -146,3 +146,30 @@ Regression-first evidence: before production code, `python -m pytest -q
 tests/test_info_help_contextual_v2.py tests/test_invoice_reference_continuation_v2.py`
 failed during collection with two expected missing-contract imports:
 `INFO_HELP_INTENT_GENUINELY_UNCLEAR` and `InvoiceReferenceContinuationStates`.
+
+## 17. 2026-08-05 Runtime Repair Amendment
+
+The production-observed outgoing-invoice analytics question proved two
+architecture defects: Python's local analytics match returned before the
+top-level LLM call, while punctuation then forced the already-resolved partial
+action into InfoHelp. A malformed but semantically useful InfoHelp enum was
+subsequently presented as user ambiguity.
+
+The repaired convergence is:
+
+```text
+authorized voice -> STT -> top-level LLM bundle -> Python validation
+                                          | validated business action
+                                          v
+                                  deterministic Python owner
+
+top-level bundle help/unknown -> one Contextual InfoHelp call ->
+Product Truth answer / command hint / clarification / bounded recovery
+```
+
+Active FSM remains a separate first owner: its navigation resolver decides
+whether the input is normal step data or help/confusion; only the latter runs
+the context-rich InfoHelp call, whose validated command hint or active-step
+classification now contributes to the deterministic response instead of being
+discarded. No DB, storage, access, callback, confirmation, or side-effect
+authority moved to either model.

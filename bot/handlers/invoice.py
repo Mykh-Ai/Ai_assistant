@@ -3745,7 +3745,6 @@ def _log_contextual_info_help_outcome(
     response_text: str | None = None,
     capability_id: str | None = None,
     product_status: str | None = None,
-    confidence_threshold: float | None = None,
 ) -> None:
     logger.info(
         json.dumps(
@@ -3761,7 +3760,6 @@ def _log_contextual_info_help_outcome(
                 'response_text': response_text,
                 'capability_id': capability_id,
                 'product_status': product_status,
-                'confidence_threshold': confidence_threshold,
             },
             ensure_ascii=False,
         )
@@ -3858,7 +3856,6 @@ async def _apply_contextual_info_help_v2(
         response_text: str | None = None,
         capability_id: str | None = None,
         product_status: str | None = None,
-        confidence_threshold: float | None = None,
     ) -> None:
         _log_contextual_info_help_outcome(
             request_id=request_id,
@@ -3871,7 +3868,6 @@ async def _apply_contextual_info_help_v2(
             response_text=response_text,
             capability_id=capability_id,
             product_status=product_status,
-            confidence_threshold=confidence_threshold,
         )
 
     if (
@@ -3897,7 +3893,29 @@ async def _apply_contextual_info_help_v2(
         )
         return True, top_level_intent
 
-    if result.intent_kind == INFO_HELP_INTENT_GENUINELY_UNCLEAR or result.confidence < 0.70:
+    parse_diagnostics = assistant_diagnostics.get('parse')
+    parse_rejected = (
+        isinstance(parse_diagnostics, dict)
+        and parse_diagnostics.get('status') == 'rejected'
+    )
+    if assistant_diagnostics.get('call_status') in {'failed', 'not_run'} or parse_rejected:
+        response_text = (
+            'Pomocný kontext sa teraz nepodarilo spoľahlivo spracovať. '
+            'Skúste požiadavku poslať znova alebo napíšte /menu.'
+        )
+        await _answer_contextual_info_help(
+            message=message,
+            context_key=context_key,
+            text=response_text,
+        )
+        log_outcome(
+            outcome='info_help_processing_failed',
+            response_mode='info_help_fallback',
+            response_text=response_text,
+        )
+        return True, top_level_intent
+
+    if result.intent_kind == INFO_HELP_INTENT_GENUINELY_UNCLEAR:
         response_text = 'Tejto správe som nerozumel. Skúste stručne napísať, čo chcete urobiť.'
         await _answer_contextual_info_help(
             message=message,
@@ -3908,7 +3926,6 @@ async def _apply_contextual_info_help_v2(
             outcome='unclear_fallback',
             response_mode='info_help_fallback',
             response_text=response_text,
-            confidence_threshold=0.70,
         )
         return True, top_level_intent
 
@@ -3934,7 +3951,10 @@ async def _apply_contextual_info_help_v2(
     )
     capability_question = result.speech_act == INFO_HELP_SPEECH_CAPABILITY_QUESTION
     if capability_question:
-        if exact is None:
+        capability_id = result.proposed_capability_id or (
+            exact.capability_id if exact is not None else None
+        )
+        if capability_id is None:
             await _offer_customization_request_from_info_help(
                 message=message,
                 state=state,
@@ -3950,7 +3970,7 @@ async def _apply_contextual_info_help_v2(
                 response_text=_format_exact_unsupported(result),
             )
             return True, top_level_intent
-        truth = get_safe_answer_payload(exact.capability_id)
+        truth = get_safe_answer_payload(capability_id)
         summary = str(truth.get('summary_for_user') or 'Táto funkcia je dostupná podľa aktuálneho Product Truth.')
         limitations = truth.get('current_limitations') or []
         suffix = f"\nObmedzenie: {limitations[0]}" if limitations else ''
@@ -3960,7 +3980,7 @@ async def _apply_contextual_info_help_v2(
             outcome='capability_answer',
             response_mode='product_truth_answer',
             response_text=response_text,
-            capability_id=exact.capability_id,
+            capability_id=capability_id,
             product_status=str(truth.get('product_status') or '') or None,
         )
         return True, top_level_intent
@@ -3993,8 +4013,16 @@ async def _apply_contextual_info_help_v2(
         )
         return True, top_level_intent
 
-    if result.intent_kind == 'incomplete_intent' or result.operation_id == 'unknown':
+    if (
+        result.intent_kind == 'incomplete_intent'
+        or result.operation_id == 'unknown'
+        or not result.intent_complete
+        or bool(result.missing_slots)
+    ):
         question = result.clarification_question_sk or (
+            'Napíšte číslo faktúry.'
+            if 'invoice_reference' in result.missing_slots
+            else
             'Čo presne chcete urobiť s kontaktom?'
             if result.object_kind == 'contact'
             else 'Čo presne chcete urobiť?'
@@ -4064,23 +4092,6 @@ async def _apply_contextual_info_help_v2(
             product_status=str(truth.get('product_status') or '') or None,
         )
         return True, top_level_intent
-    threshold = {'read_only': 0.85, 'mutating': 0.92, 'destructive': 0.98}.get(exact.mutation_class, 0.70)
-    if result.confidence < threshold:
-        response_text = result.clarification_question_sk or 'Spresnite prosím, čo presne chcete urobiť. Nič som nevykonal.'
-        await _answer_contextual_info_help(
-            message=message,
-            context_key=context_key,
-            text=response_text,
-        )
-        log_outcome(
-            outcome='confidence_gate_clarification',
-            response_mode='clarification',
-            response_text=response_text,
-            capability_id=exact.capability_id,
-            product_status=str(truth.get('product_status') or '') or None,
-            confidence_threshold=threshold,
-        )
-        return True, top_level_intent
     log_outcome(
         outcome='action_pass_through',
         handled=False,
@@ -4088,7 +4099,6 @@ async def _apply_contextual_info_help_v2(
         response_mode='python_action_owner',
         capability_id=exact.capability_id,
         product_status=str(truth.get('product_status') or '') or None,
-        confidence_threshold=threshold,
     )
     return False, exact.action_id
 
@@ -4347,6 +4357,7 @@ async def process_invoice_text(
             },
         },
         diagnostics=top_level_diagnostics,
+        llm_first=True,
         action_hints={
             **(
                 {

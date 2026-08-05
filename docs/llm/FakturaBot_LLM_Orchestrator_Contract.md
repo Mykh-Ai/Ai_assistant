@@ -587,3 +587,20 @@ The payload must enumerate literal allowed values for every bounded field. Prima
 Transport/runtime facts already validated by Python are not delegated back to the model. In particular, proven same-chat/same-bot explicit-reply ownership and a proven `active_fsm_help` descriptor are preserved after model parsing; unproven reply/state context cannot be created by this normalization.
 
 There is exactly one enhanced InfoHelp call per assisted update: no retry cascade, second recovery LLM, nearest-action LLM, RAG or persistent transcript. It is available for `unknown`, capability/informational questions, corrective/negative input, unknown commands, explicit-reply follow-ups, active-flow help, and other unresolved or genuinely ambiguous cases. It is not a second classifier or veto after the primary resolver has selected a Product-Truth-supported canonical action that has a registered runtime owner. Mutation class alone never triggers InfoHelp, and a missing business slot owned by an existing continuation FSM does not make that action unresolved. Such actions route once to their Python owner, which keeps slot validation, tenant scope, FSM, confirmation and side effects. Confidence thresholds inside the assisted unresolved-input branch are unreachable from this direct supported-action route. In Telegram callbacks the human actor is `callback.from_user`; `callback.message.from_user` is normally the bot author.
+
+### Top-level bundle and recovery ownership - 2026-08-05
+
+For authorized idle natural-language text and authorized non-empty STT, the
+top-level resolver runs LLM-first and returns bounded JSON containing
+`canonical_action` and `routing_kind`. The only routing kinds are
+`business_action`, `capability_or_howto`, `contextual_help`, and `unknown`.
+Python rejects non-allowed actions and uses the deterministic local candidate
+only as a fail-safe fallback when the model call cannot supply a valid result.
+
+A validated non-`unknown` action routes directly to its Python owner regardless
+of Product Truth being `supported` or `partial`. Contextual InfoHelp is invoked
+only after the primary bundle selects a help/recovery kind or returns
+`unknown`, and inside an active FSM only after the state-aware navigation owner
+classifies the message as help/confusion. A trailing question mark is not a
+routing signal. InfoHelp confidence is telemetry only and has no threshold or
+execution authority.

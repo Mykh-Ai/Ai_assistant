@@ -84,3 +84,12 @@ This flow is command-driven rather than semantic top-level resolver-driven, so i
 No public canonical action was added. `show_existing_invoice`, `edit_existing_invoice`, `delete_existing_invoice`, and `mark_existing_invoice_paid` now share `InvoiceReferenceContinuationStates.waiting_reference` when `invoice_reference` is absent. Direct reference, continuation text and continuation voice converge on `_execute_invoice_reference_action`; delete and mark-paid retain their existing `yes_no` confirmations.
 
 The Python-owned InfoHelp semantic registry records capability, domain, object, operation, mutation class, owner, commands, required slots, entry mode, continuation and confirmation metadata. Exact object/operation matching is mandatory. `delete_user_database` is explicitly `not_infohelp_eligible`; no contextual-recovery/assistant action, generic dispatcher or synthetic action-label route exists.
+
+### 2026-08-05 resolver ownership amendment
+
+No new canonical action is introduced. The top-level LLM bundle now also
+returns bounded `routing_kind`; a validated `business_action` such as
+`invoice_analytics` routes directly to its existing owner. Capability/how-to,
+contextual-help, and unknown results use the existing InfoHelp owner and do not
+execute the action named in the question. InfoHelp confidence is not an action
+registry or execution gate.

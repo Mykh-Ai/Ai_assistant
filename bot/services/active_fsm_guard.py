@@ -254,7 +254,7 @@ async def handle_active_fsm_text_update(
             resolve_info_help_assistant_with_llm,
         )
 
-        await resolve_info_help_assistant_with_llm(
+        info_help_result = await resolve_info_help_assistant_with_llm(
             current_input_text=text,
             api_key=config.openai_api_key,
             model=config.openai_llm_model,
@@ -270,11 +270,20 @@ async def handle_active_fsm_text_update(
                 'prior_bot_prompt': str(state_data.get('prior_bot_prompt') or '')[:500],
             },
         )
-        response = (
-            render_active_expected_input(descriptor)
-            if navigation_decision == 'describe_expected_input'
-            else render_active_fsm_description(descriptor)
-        )
+        if info_help_result.probable_command_target:
+            raw_command = text.split(maxsplit=1)[0]
+            response = (
+                f'Príkaz `{raw_command}` nepoznám. Pravdepodobne ste mysleli '
+                f'`{info_help_result.probable_command_target}`.\n'
+                f'{render_active_fsm_description(descriptor)}'
+            )
+        elif (
+            navigation_decision == 'describe_expected_input'
+            or info_help_result.intent_kind == 'active_expected_input_question'
+        ):
+            response = render_active_expected_input(descriptor)
+        else:
+            response = render_active_fsm_description(descriptor)
         await message.answer(
             response,
             reply_markup=active_fsm_main_menu_keyboard(),

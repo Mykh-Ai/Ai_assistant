@@ -73,6 +73,28 @@ def test_parser_preserves_exact_receipt_delete_capability_question() -> None:
     assert result.proposed_action_id is None
 
 
+def test_parser_normalizes_informational_speech_act_copied_into_intent_kind() -> None:
+    diagnostics: dict[str, object] = {}
+    result = parse_info_help_assistant_model_output(
+        _assistant_json(
+            intent_kind='informational_question',
+            speech_act='informational_question',
+            domain_id='invoices',
+            object_kind='invoice',
+            operation_id='analyze',
+            target_reference=None,
+            proposed_action_id=None,
+            proposed_capability_id='invoice_analytics',
+            confidence=0.95,
+        ),
+        diagnostics=diagnostics,
+    )
+
+    assert result.intent_kind == 'business_action_request'
+    assert result.proposed_capability_id == 'invoice_analytics'
+    assert diagnostics['status'] == 'accepted'
+
+
 def test_parser_fails_closed_for_unknown_ids_and_oversized_text() -> None:
     diagnostics: dict[str, object] = {}
     result = parse_info_help_assistant_model_output(
@@ -224,16 +246,16 @@ def test_pre_execution_gate_routes_supported_owned_actions_once() -> None:
     assert not should_run_contextual_info_help(
         primary_action='delete_existing_invoice', input_text='vymaž faktúru'
     )
-    assert should_run_contextual_info_help(
+    assert not should_run_contextual_info_help(
         primary_action='delete_existing_invoice', input_text='Môžeš vymazať faktúru?'
     )
-    assert should_run_contextual_info_help(primary_action='edit_supplier', input_text='kontakt, nie profil')
+    assert not should_run_contextual_info_help(primary_action='edit_supplier', input_text='kontakt, nie profil')
     assert should_run_contextual_info_help(primary_action='unknown', input_text='/contat', input_channel='command')
-    assert should_run_contextual_info_help(primary_action='delete_user_database', input_text='vymaž všetko')
+    assert not should_run_contextual_info_help(primary_action='delete_user_database', input_text='vymaž všetko')
     assert not should_run_contextual_info_help(primary_action='show_supplier_profile', input_text='ukáž profil')
 
     routing_diagnostics: dict[str, object] = {}
-    assert should_run_contextual_info_help(
+    assert not should_run_contextual_info_help(
         primary_action='invoice_analytics',
         input_text='На яку суму я виставив фактур цього року?',
         input_channel='voice',
@@ -242,12 +264,17 @@ def test_pre_execution_gate_routes_supported_owned_actions_once() -> None:
     assert routing_diagnostics == {
         'primary_action': 'invoice_analytics',
         'input_channel': 'voice',
-        'decision': True,
-        'trigger_reason': 'question_form',
-        'semantic_registry_match': False,
-        'primary_product_status': None,
-        'primary_runtime_owner': None,
+        'decision': False,
+        'trigger_reason': 'resolved_primary_action_direct',
+        'primary_routing_kind': None,
     }
+
+    capability_diagnostics = {'routing_kind': 'capability_or_howto'}
+    assert should_run_contextual_info_help(
+        primary_action='unknown',
+        input_text='Vieš robiť analytiku faktúr?',
+        primary_diagnostics=capability_diagnostics,
+    )
 
 
 class _Completion:

@@ -1,3 +1,51 @@
+# 2026-08-05 - Primary LLM bundle owns routing; InfoHelp is recovery only
+
+- Live evidence for `На яку суму я виставив фактур цього року?` proved the
+  actual order was wrong: the deterministic local analytics match returned
+  before the primary LLM call, then a punctuation gate sent the already
+  resolved `invoice_analytics` action into InfoHelp. InfoHelp returned useful
+  invoice-analysis semantics, but one invalid enum reset the whole result to
+  `genuinely_unclear`, producing the false `nerozumel` answer.
+- Preflight re-read the active Product Doctrine, AI standards, Product Truth,
+  self-learning, evaluation/UX, TZ, orchestrator/action/response/new-action/
+  bounded-resolver, InfoHelp, customization, and confirmed-alias contracts.
+  Touched scopes are top-level LLM routing, voice/text convergence, Contextual
+  InfoHelp, active-FSM help, tests, evals, and product contracts. No STT engine,
+  LMM, DB/schema/storage, access, callback, confirmation, PDF, or persisted data
+  semantics changed; no migration or backup is required.
+- `process_invoice_text()` now requests LLM-first top-level resolution. The
+  bounded bundle returns `canonical_action` plus `routing_kind` and falls back
+  to the deterministic local candidate only if the model path is unavailable
+  or invalid. A saved-data calculation/list/comparison is `business_action`;
+  capability/how-to and contextual-help outputs are forced to `unknown` for
+  one InfoHelp recovery call.
+- Any validated non-`unknown` action, including Product Truth `partial`
+  `invoice_analytics`, routes directly to its Python owner. The InfoHelp gate no
+  longer inspects punctuation, mutation class, negation wording, Product Truth
+  status, or action-registry coverage and cannot veto the primary result.
+- Removed every InfoHelp confidence threshold and confidence-based branch.
+  Model confidence remains bounded telemetry only. Invalid transport/schema is
+  reported as an InfoHelp processing failure, not mislabeled as user ambiguity;
+  the observed `informational_question` intent/speech-act shape is normalized
+  before enum validation.
+- Capability questions now use validated `proposed_capability_id` directly for
+  Product Truth answers, so invoice analytics is correctly described as
+  available/partial even though it is not an InfoHelp execution-registry row.
+  Active-FSM contextual help now uses the second call's bounded command target
+  or expected-input classification instead of discarding the result; state and
+  deterministic copy remain Python-owned.
+- AI maturity remains `partial` Level 2. No self-learning hook applies because
+  no alias or user pattern is persisted. Out of scope: new actions, schema/
+  storage writes, production configuration changes, and claiming success before
+  automated verification plus repeated live Telegram smoke.
+- Proving journeys cover LLM-before-local analytics routing, exact voice
+  analytics bypass of InfoHelp, capability-question handoff, Product Truth
+  answer without action-registry duplication, confidence `0.0` non-authority,
+  invalid-enum normalization, command/FSM recovery, and no hidden side effect.
+- Focused InfoHelp/invoice-routing/voice/Product-Truth/active-FSM verification:
+  `370 passed in 46.93s`. `python -m compileall -q bot` passed. The complete
+  repository regression passed: `2528 passed, 7 subtests passed in 491.83s`.
+
 # 2026-08-04 - Contextual InfoHelp model-result observability
 
 - Live read-only evidence for the Ukrainian yearly outgoing-invoice total

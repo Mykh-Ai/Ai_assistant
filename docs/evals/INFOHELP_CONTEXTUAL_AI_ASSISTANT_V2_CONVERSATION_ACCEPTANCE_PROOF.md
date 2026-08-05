@@ -96,3 +96,30 @@ After review and a deliberate `admin_pilot` configuration change, an authorized 
 - Final full suite on refreshed base: `2463 passed, 7 subtests passed in 751.20s`; no skipped tests were reported.
 - `python -m compileall -q bot`: passed.
 - `git diff --check`: passed (line-ending conversion warnings only).
+
+## 2026-08-05 primary-bundle regression amendment
+
+The production-observed voice question
+`На яку суму я виставив фактур цього року?` now proves this order:
+
+1. STT output enters `process_invoice_text`.
+2. The top-level LLM bundle runs with `llm_first=True` and returns
+   `invoice_analytics` + `business_action`.
+3. Python validates the action and routes to the read-only analytics owner.
+4. Contextual InfoHelp is not called and cannot return an unclear fallback.
+
+Additional automated evidence proves that a capability question is converted
+by the primary bundle to `unknown` + `capability_or_howto`, then one InfoHelp
+call answers `invoice_analytics` directly from Product Truth even though that
+action is absent from the narrower InfoHelp execution registry. Validated
+InfoHelp recovery behaves identically at model confidence `0.0`; no confidence
+threshold remains. Active-FSM help keeps the state and now uses the second
+call's bounded expected-input/command-typo result instead of discarding it.
+
+Status remains `partial` Level 2 pending a repeated real Telegram smoke after
+deployment. No persistence, tenant, authorization, confirmation, or business
+side-effect contract changed.
+
+Repository evidence for this amendment: focused adjacent suite `370 passed in
+46.93s`; complete suite `2528 passed, 7 subtests passed in 491.83s`;
+`python -m compileall -q bot` passed.

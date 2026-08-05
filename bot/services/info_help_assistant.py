@@ -7,7 +7,7 @@ import unicodedata
 from typing import Mapping, MutableMapping
 
 from bot.services.info_help_action_registry import get_info_help_action
-from bot.services.product_truth import ProductTruthStatus, get_capability, list_capabilities
+from bot.services.product_truth import list_capabilities
 
 
 INFO_HELP_INTENT_BUSINESS_ACTION = 'business_action_request'
@@ -134,6 +134,15 @@ def parse_info_help_assistant_model_output(
 
     intent_kind = str(parsed.get('intent_kind') or '')
     speech_act = str(parsed.get('speech_act') or '')
+    # Older/non-strict model responses sometimes copied the valid speech-act
+    # token into intent_kind. Normalize that harmless shape before validating
+    # the bounded result instead of turning it into fake user ambiguity.
+    if intent_kind == INFO_HELP_SPEECH_INFORMATIONAL:
+        intent_kind = (
+            INFO_HELP_INTENT_CAPABILITY_QUESTION
+            if speech_act == INFO_HELP_SPEECH_CAPABILITY_QUESTION
+            else INFO_HELP_INTENT_BUSINESS_ACTION
+        )
     domain_id = str(parsed.get('domain_id') or 'unknown')
     object_kind = str(parsed.get('object_kind') or 'unknown')
     operation_id = str(parsed.get('operation_id') or 'unknown')
@@ -264,9 +273,7 @@ def should_run_contextual_info_help(
                 'input_channel': input_channel,
                 'decision': False,
                 'trigger_reason': None,
-                'semantic_registry_match': False,
-                'primary_product_status': None,
-                'primary_runtime_owner': None,
+                'primary_routing_kind': None,
             }
         )
 
@@ -276,43 +283,30 @@ def should_run_contextual_info_help(
             routing_diagnostics['trigger_reason'] = reason
         return value
 
-    if primary_action == 'unknown':
-        return decide(True, 'primary_action_unknown')
-    if input_channel == 'command':
-        return decide(True, 'command_channel')
-    if input_text.lstrip().startswith('/'):
-        return decide(True, 'slash_command')
-    if primary_diagnostics and routing_diagnostics is not None:
-        routing_diagnostics['primary_diagnostics_present'] = True
-    normalized = _normalize(input_text)
-    wrapped = f' {normalized} '
-    if any(token in wrapped for token in (' nie ', ' not ', ' ne ', ' а не ', ' але не ', ' but not ', ' namiesto ', ' замість ')):
-        return decide(True, 'correction_or_negation')
-    if input_text.strip().endswith('?') or normalized.startswith(
-        ('can ', 'could ', 'do you ', 'vies ', 'viete ', 'mozem ', 'ci mozem ', 'чи можу ', 'можно ли ')
-    ):
-        return decide(True, 'question_form')
-    semantic = get_info_help_action(primary_action)
-    if semantic is None:
-        return decide(False, 'no_info_help_action_registration')
+    routing_kind = None
+    if primary_diagnostics:
+        candidate = str(primary_diagnostics.get('routing_kind') or '').strip()
+        if candidate in {
+            'business_action',
+            'capability_or_howto',
+            'contextual_help',
+            'unknown',
+        }:
+            routing_kind = candidate
     if routing_diagnostics is not None:
-        routing_diagnostics['semantic_registry_match'] = True
-    if semantic.entry_mode == 'not_infohelp_eligible':
-        return decide(True, 'not_infohelp_eligible')
-    if not semantic.runtime_owner:
-        return decide(True, 'info_help_action_missing_runtime_owner')
-    capability = get_capability(semantic.capability_id).capability
-    if routing_diagnostics is not None:
-        routing_diagnostics['primary_product_status'] = capability.status.value
-        routing_diagnostics['primary_runtime_owner'] = bool(capability.runtime_owner)
-    direct_supported_action = (
-        capability.status == ProductTruthStatus.SUPPORTED
-        and bool(capability.runtime_owner)
-        and primary_action in capability.canonical_actions
-    )
-    if direct_supported_action:
-        return decide(False, 'supported_owned_action_direct')
-    return decide(True, 'product_truth_not_direct_supported')
+        routing_diagnostics['primary_routing_kind'] = routing_kind
+
+    # A validated action belongs to its deterministic Python owner. InfoHelp is
+    # recovery/help only and cannot veto or reclassify an already resolved action.
+    if primary_action != 'unknown':
+        return decide(False, 'resolved_primary_action_direct')
+    if routing_kind == 'capability_or_howto':
+        return decide(True, 'primary_capability_or_howto')
+    if routing_kind == 'contextual_help':
+        return decide(True, 'primary_contextual_help')
+    if input_channel == 'command' or input_text.lstrip().startswith('/'):
+        return decide(True, 'unknown_command')
+    return decide(True, 'primary_action_unknown')
 
 
 def _enum_list(value: object, allowed: set[str]) -> tuple[str, ...]:

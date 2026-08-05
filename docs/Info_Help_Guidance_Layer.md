@@ -996,3 +996,32 @@ A proven quoted-message relationship is handled before the generic unclear fallb
 Recent context is process memory only: at most three user and three visible bot turns, same user/chat/workspace, ten-minute TTL, lost on restart. It excludes unauthorized input, files, logs, DB rows, secrets and background sends. A same-chat reply to this bot is part of the current request independent of TTL. Context clears on `/start`, `/menu`, `/cancel`, workspace switch and completed user-data deletion.
 
 The old broad catalogue is retained only for an explicit overview. Invalid model output and genuinely unclear input receive a short narrow fallback with no button or effect. Rollout is `INFOHELP_CONTEXTUAL_V2_ROLLOUT=disabled|admin_pilot|enabled`; invalid/missing values are `disabled`.
+
+### Primary-bundle ownership repair - 2026-08-05
+
+This amendment supersedes the earlier punctuation-, mutation-, correction-, and
+Product-Truth-status-based pre-execution gate.
+
+- After authorized idle text or a non-empty authorized STT transcript, Python
+  calls the bounded top-level LLM bundle first. A deterministic local match is
+  fallback evidence only when the call is unavailable, invalid, or fails.
+- The bundle returns a canonical action plus `routing_kind`:
+  `business_action`, `capability_or_howto`, `contextual_help`, or `unknown`.
+  Questions that calculate/list/analyze real saved business data are
+  `business_action`; capability/how-to questions do not execute that action.
+- Any non-`unknown` canonical action validated against Python-provided
+  `allowed_actions` routes directly to its Python owner. InfoHelp cannot veto,
+  downgrade, or reclassify it because of a question mark, `partial` Product
+  Truth status, mutation class, or missing owner-handled slot.
+- InfoHelp is a second contextual recovery call only for `unknown`,
+  `capability_or_howto`, `contextual_help`, unknown commands, explicit-reply
+  recovery, or active-FSM confusion. Active FSM ownership remains first.
+- Model `confidence` is telemetry only. It is validated and logged but never
+  authorizes, blocks, or selects a route. There are no confidence thresholds in
+  the InfoHelp execution path.
+- Capability answers use a validated `proposed_capability_id` directly against
+  Product Truth; an action need not be duplicated in the smaller InfoHelp action
+  registry merely to answer whether the capability exists.
+- Invalid InfoHelp transport/schema is a processing failure, not proof that the
+  user was unclear. User-facing recovery must say processing failed and must not
+  blame the input with a false `nerozumel` claim.
