@@ -582,6 +582,35 @@ This is a project-wide contract, not invoice-only. The same behavior applies to 
 
 The enhanced InfoHelp call receives current normalized input/channel/language/command hints, primary resolver result and diagnostics, same-chat explicit reply to this bot, bounded recent process-memory turns, safe active-state descriptors, compact Product Truth and the Python-owned action semantic registry. It returns JSON only; Python validates all enums, IDs, confidence and free text.
 
+### Capability business-outcome and language boundary - 2026-08-05
+
+For capability/how-to and proposed-business-outcome questions, Contextual
+InfoHelp must identify the requested outcome before interpreting the documents
+named as possible inputs. Invoices or receipts mentioned as source material for
+a tax/accounting outcome do not turn that question into `create_invoice`.
+InfoHelp-only semantic values such as `tax_accounting`, `tax_return`, and
+`prepare` describe the bounded need; they are not canonical executable actions
+and create no runtime owner or side effect.
+
+The model may select only a Python-provided Product Truth `capability_id`, may
+return a bounded Slovak-normalized business need, and may draft `answer_sk`
+using only that selected Product Truth record. Python repeats the Product Truth
+lookup and validates that the answer is Slovak, matches the verified status,
+and claims no side effect. A valid live `answer_sk` reaches the user; an absent
+or invalid answer falls back to the canonical Slovak capability-copy layer.
+Contextual V2 must not concatenate or expose internal English
+`summary_for_user`, limitation, or next-step registry fields directly. Every
+user-visible capability answer is Slovak-only; a missing localized copy uses a
+Slovak fail-safe response. Internal enum values such as `unknown` must not
+appear in user-facing prose.
+
+For a coherent new business need with no matching Product Truth capability,
+the model may draft a live Slovak answer only as an `unknown` explanation: the
+current support cannot be reliably confirmed and administrator review may be
+offered. Python validates that unknown-status wording before display. The model
+must not convert absence from Product Truth into verified `unsupported`,
+`planned`, or `supported` status and must not invent a capability ID.
+
 The payload must enumerate literal allowed values for every bounded field. Primary-resolver output is untrusted diagnostic evidence: it may trigger the call but cannot replace the exact object/operation/speech act in the current input. Schema descriptions and placeholder prose are not output values. Any out-of-bound value fails closed without retry or execution.
 
 Transport/runtime facts already validated by Python are not delegated back to the model. In particular, proven same-chat/same-bot explicit-reply ownership and a proven `active_fsm_help` descriptor are preserved after model parsing; unproven reply/state context cannot be created by this normalization.
