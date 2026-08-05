@@ -1,3 +1,53 @@
+# 2026-08-05 - Restore exact unsupported InfoHelp routing before slot clarification
+
+- Preflight re-checked the active Product Doctrine, AI implementation and
+  evaluation standards, Product Truth, InfoHelp V2, customization, canonical
+  action/orchestrator, bounded resolver, self-learning, UX evidence, and TZ
+  contracts. Current status remains `partial` Level 2 Contextual InfoHelp with
+  the existing partial Level 3 confirmation-gated customization offer.
+- Production logs and the user-visible Telegram responses proved that the
+  primary LLM bundle correctly returned `unknown`, while Contextual InfoHelp
+  correctly extracted `accounting_documents + receipt + delete`. The Python
+  branch introduced in `fc128d0` incorrectly treated
+  `intent_complete=false` as clarification before checking whether that exact
+  action exists.
+- Restored the contract order inside `_apply_contextual_info_help_v2`: genuinely
+  incomplete structure is clarified first; then Python checks the exact action
+  registry; only an exact supported action may use `intent_complete` or
+  `missing_slots` clarification. Unsupported receipt deletion now reaches the
+  existing truthful admin-review offer and still saves nothing before the
+  existing confirmation flow.
+- Touched scopes: top-level Contextual InfoHelp routing, text/STT parity,
+  user-facing recovery, tests, eval evidence, and current InfoHelp docs. No
+  primary-bundle prompt, model schema, confidence rule, canonical action,
+  Product Truth status, STT/LMM, active FSM owner, confirmation parser,
+  callback lifecycle, DB/schema/storage, access, PDF, server configuration, or
+  persisted data changed; no migration, backup, or self-learning hook applies.
+- Product journey: both `Видалити чек` and `Видалити останній чек`, over
+  text and voice, are tested with the production-observed
+  `business_action_request`, `receipt/delete`, `intent_complete=false`, and
+  optional model clarification. Expected result is the existing unsupported
+  answer plus admin/menu controls, zero saved customization requests, and zero
+  deletion.
+- The invariant is not receipt-specific: a public-entry parameter matrix also
+  covers unsupported `contact/edit`, `incoming_invoice/delete`, and
+  `supplier_profile/delete` results carrying both `intent_complete=false` and
+  a misleading missing slot. Every case reaches the same exact-registry-first
+  unsupported path with no saved request or business effect.
+- The shared unsupported renderer now states all three user-visible facts
+  required by the product journey: the exact function is currently unsupported,
+  the understood need looks like a concrete business feature for administrator
+  review, and the bot can prepare an administrator request that is persisted
+  only after the user's later confirmation. This copy is generic across exact
+  unsupported triples and does not special-case receipt wording.
+- Focused Contextual InfoHelp/routing regression suite: `271 passed`; the final
+  unsupported-copy subset passed `11 tests`. Final full repository suite:
+  `2535 passed, 7 subtests passed in 498.68s`.
+  `python -m compileall -q bot` and `git diff --check` also passed; only
+  expected Windows line-ending warnings were reported. Deployment and a
+  repeated live Telegram smoke were not performed in this repository-only
+  repair.
+
 # 2026-08-05 - Primary LLM bundle owns routing; InfoHelp is recovery only
 
 - Live evidence for `На яку суму я виставив фактур цього року?` proved the

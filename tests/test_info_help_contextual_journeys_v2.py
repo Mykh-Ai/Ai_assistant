@@ -236,6 +236,132 @@ def test_receipt_delete_capability_question_blocks_false_invoice_delete(
     assert 'číslo faktúry' not in answer
 
 
+@pytest.mark.parametrize('input_channel', ('text', 'voice'))
+@pytest.mark.parametrize(
+    ('user_input', 'clarification_question'),
+    (
+        ('Видалити чек', ''),
+        ('Видалити останній чек', 'Na ktorý konkrétny doklad sa to vzťahuje?'),
+    ),
+)
+def test_receipt_delete_execution_request_checks_exact_support_before_missing_slots(
+    tmp_path: Path,
+    monkeypatch,
+    input_channel: str,
+    user_input: str,
+    clarification_question: str,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _Message(user_input)
+    state = _State()
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'business_action'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='business_action_request',
+            speech_act='execute_request',
+            domain_id='accounting_documents',
+            object_kind='receipt',
+            operation_id='delete',
+            proposed_action_id=None,
+            target_reference=None,
+            intent_complete=False,
+            missing_slots=(),
+            clarification_question_sk=clarification_question,
+            confidence=0.95,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+            input_channel=input_channel,
+        )
+    )
+
+    answer = message.answers[-1].casefold()
+    assert 'nepodporujem' in answer
+    assert 'biznis funkcia' in answer
+    assert 'pre správcu pripraviť požiadavku' in answer
+    if clarification_question:
+        assert clarification_question.casefold() not in answer
+    assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=111,
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ('user_input', 'domain_id', 'object_kind', 'operation_id'),
+    (
+        ('Upraviť kontakt', 'contacts', 'contact', 'edit'),
+        ('Vymazať prijatú faktúru', 'accounting_documents', 'incoming_invoice', 'delete'),
+        ('Vymazať profil dodávateľa', 'supplier_profile', 'supplier_profile', 'delete'),
+    ),
+)
+def test_any_exact_unsupported_action_is_checked_before_completeness_slots(
+    tmp_path: Path,
+    monkeypatch,
+    user_input: str,
+    domain_id: str,
+    object_kind: str,
+    operation_id: str,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _Message(user_input)
+    state = _State()
+    model_clarification = 'Na ktorý konkrétny záznam sa to vzťahuje?'
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'business_action'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='business_action_request',
+            speech_act='execute_request',
+            domain_id=domain_id,
+            object_kind=object_kind,
+            operation_id=operation_id,
+            proposed_action_id=None,
+            target_reference=None,
+            intent_complete=False,
+            missing_slots=('invoice_reference',),
+            clarification_question_sk=model_clarification,
+            confidence=0.99,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+        )
+    )
+
+    answer = message.answers[-1].casefold()
+    assert 'nepodporujem' in answer
+    assert 'biznis funkcia' in answer
+    assert 'pre správcu pripraviť požiadavku' in answer
+    assert model_clarification.casefold() not in answer
+    assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=111,
+    ) == []
+
+
 def test_correction_negates_invoice_and_blocks_delete_flow(tmp_path: Path, monkeypatch) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)

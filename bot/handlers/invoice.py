@@ -3777,11 +3777,17 @@ def _format_exact_unsupported(result) -> str:
     object_label = object_labels.get(result.object_kind, result.object_kind)
     operation_label = operation_labels.get(result.operation_id, result.operation_id)
     acknowledgement = result.acknowledgement_sk or f'Rozumiem, chcete {operation_label} {object_label}.'
+    substitute_warning = (
+        'Neponúknem namiesto nej inú deštruktívnu akciu.'
+        if result.operation_id == 'delete'
+        else 'Neponúknem namiesto nej inú akciu.'
+    )
     return (
         f'{acknowledgement}\n'
         'Túto presnú funkciu momentálne nepodporujem. '
-        'Neponúknem namiesto nej inú deštruktívnu akciu.\n'
-        'Ak chcete, môžem z toho pripraviť požiadavku na kontrolu správcom; uloží sa až po vašom potvrdení.'
+        f'{substitute_warning}\n'
+        'Vyzerá to ako konkrétna biznis funkcia, ktorú môže posúdiť správca.\n'
+        'Ak chcete, môžem pre správcu pripraviť požiadavku; uloží sa až po vašom potvrdení.'
     )
 
 
@@ -4013,16 +4019,8 @@ async def _apply_contextual_info_help_v2(
         )
         return True, top_level_intent
 
-    if (
-        result.intent_kind == 'incomplete_intent'
-        or result.operation_id == 'unknown'
-        or not result.intent_complete
-        or bool(result.missing_slots)
-    ):
+    if result.intent_kind == 'incomplete_intent' or result.operation_id == 'unknown':
         question = result.clarification_question_sk or (
-            'Napíšte číslo faktúry.'
-            if 'invoice_reference' in result.missing_slots
-            else
             'Čo presne chcete urobiť s kontaktom?'
             if result.object_kind == 'contact'
             else 'Čo presne chcete urobiť?'
@@ -4049,6 +4047,20 @@ async def _apply_contextual_info_help_v2(
             outcome='unsupported_customization_offer',
             response_mode='admin_review_offer',
             response_text=_format_exact_unsupported(result),
+        )
+        return True, top_level_intent
+
+    if not result.intent_complete or bool(result.missing_slots):
+        question = result.clarification_question_sk or (
+            'Napíšte číslo faktúry.'
+            if 'invoice_reference' in result.missing_slots
+            else 'Čo presne chcete urobiť?'
+        )
+        await _answer_contextual_info_help(message=message, context_key=context_key, text=question)
+        log_outcome(
+            outcome='clarification_requested',
+            response_mode='clarification',
+            response_text=question,
         )
         return True, top_level_intent
 

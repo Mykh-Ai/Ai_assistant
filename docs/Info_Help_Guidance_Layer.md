@@ -983,6 +983,22 @@ Contextual V2 extends the existing InfoHelp owner; it is not a parallel recovery
 
 The bounded JSON distinguishes speech act, domain, exact business object, operation, reference, missing slots, correction/negation, explicit reply, active flow, registered action/capability/command and confidence. Python validates every field, repeats Product Truth lookup, requires exact `domain + object + operation`, and retains FSM, callback, tenant, confirmation and side-effect authority. A receipt delete never becomes invoice/account deletion; contact edit never becomes supplier-profile edit.
 
+Python checks whether the exact `domain + object + operation` is registered
+before treating `intent_complete=false` or `missing_slots` as a reason to ask
+for an action slot. Missing slots are meaningful only for an exact supported
+action. An explicit but unsupported request such as `receipt + delete` must
+therefore receive the truthful unsupported/customization-offer response even
+when the model reports no target reference; it must not ask which receipt to
+delete. Structurally unclear input (`incomplete_intent` or unknown operation)
+still receives clarification before any unsupported-feature offer.
+
+The visible unsupported response names three facts for every exact unsupported
+business request: the function is not currently supported, the understood need
+looks like a concrete business feature for administrator review, and the bot
+can prepare an administrator request that is saved only after the user's later
+confirmation. The response never claims that review, implementation, or the
+requested business effect already happened.
+
 Every bounded enum/list is sent with literal allowed values. The primary resolver result is untrusted diagnostic context and must not override an exact object named in the current input. Descriptive placeholder prose is never a valid output value; invalid output fails closed without a retry or side effect.
 
 An explicit reference token is copied as bounded text, including a numeric invoice reference such as `10`. It is never discarded merely because it is numeric, and it is never invented when absent. Python remains responsible for lookup, ambiguity/not-found handling, continuation state, confirmation, and execution.

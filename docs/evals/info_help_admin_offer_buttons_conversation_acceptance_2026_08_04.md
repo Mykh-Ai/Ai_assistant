@@ -1,6 +1,6 @@
 # InfoHelp Admin-Offer Buttons Conversation Acceptance — 2026-08-04
 
-Status: `deployed_pending_live_smoke`
+Status: `repository_fix_verified_pending_deployment_and_live_smoke`
 
 ## Scope
 
@@ -13,7 +13,7 @@ capability, DB schema, admin notification, or business side effect.
 
 | Journey | Input / choice | Expected route and visible result | State / effects | Automated evidence |
 |---|---|---|---|---|
-| Unsupported receipt deletion | `Видалити останній чек` (text or STT) | Truthful unsupported answer plus `Požiadať správcu` and `Hlavné menu` | `waiting_admin_offer_decision`; zero saved requests; no receipt/invoice deletion | `test_receipt_delete_capability_question_blocks_false_invoice_delete`; `test_correction_negates_invoice_and_blocks_delete_flow` |
+| Unsupported receipt deletion | `Видалити чек` or `Видалити останній чек` (text or STT), including `intent_complete=false` | Truthful unsupported answer plus `Požiadať správcu` and `Hlavné menu`; no model-generated document clarification | `waiting_admin_offer_decision`; zero saved requests; no receipt/invoice deletion | `test_receipt_delete_execution_request_checks_exact_support_before_missing_slots`; `test_receipt_delete_capability_question_blocks_false_invoice_delete`; `test_correction_negates_invoice_and_blocks_delete_flow` |
 | Ask admin | `Požiadať správcu` callback | Existing Slovak request preview with `Schváliť / Upraviť / Zrušiť` | `waiting_preview_decision`; zero saved requests | `test_info_help_admin_offer_button_opens_existing_preview_without_saving` |
 | Return to menu | `Hlavné menu` callback or active `/menu` | Existing `MENU_MESSAGE` owner | FSM cleared; zero saved requests; owned offer markup removed | `test_info_help_main_menu_button_clears_offer_and_uses_existing_menu`; `test_info_help_offer_menu_control_removes_owned_inline_keyboard` |
 | Wrong actor/state | callback without the owning FSM context | Stale-choice alert | no save; no state change; foreign/unproven markup is not edited | `test_info_help_offer_wrong_state_cannot_clear_another_users_keyboard` |
@@ -36,6 +36,16 @@ without creating a row. Until then the runtime status is
 
 ## Automated verification
 
+- Regression repair focused suite on 2026-08-05: `271 passed`. This proves
+  text/voice execution requests with the production-observed
+  `intent_complete=false` shape are classified against the exact registry
+  before missing-slot clarification. Deployment and repeated live Telegram
+  smoke remain pending.
+- Full repository verification for the final regression repair and shared
+  unsupported-business-feature copy: `2535 passed, 7 subtests passed in
+  498.68s`. `python -m compileall -q bot` and
+  `git diff --check` also passed; only expected Windows line-ending warnings
+  were reported.
 - Focused routing/callback/FSM suite: `53 passed`.
 - Expanded neighboring InfoHelp, voice, customization, and invoice-confirmation
   suite: `291 passed, 7 subtests passed` before the final message-ownership

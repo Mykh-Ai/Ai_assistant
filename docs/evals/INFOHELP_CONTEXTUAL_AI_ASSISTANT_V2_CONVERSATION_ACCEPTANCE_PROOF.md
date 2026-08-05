@@ -37,6 +37,8 @@ Text and voice use the same `process_invoice_text` and invoice-reference owner. 
 | # | Journey | Automated evidence | Effect/state result |
 |---|---|---|---|
 | 1 | Ukrainian receipt-delete capability question | `test_receipt_delete_capability_question_blocks_false_invoice_delete` | unsupported exact intent; no state/effect/invoice prompt |
+| 1a | Ukrainian receipt-delete execution request with `intent_complete=false`, including `Видалити останній чек` | `test_receipt_delete_execution_request_checks_exact_support_before_missing_slots` for text and voice | exact support is checked before missing-slot clarification; unsupported offer; model clarification is not shown; no saved request or deletion |
+| 1b | Other explicit unsupported triples across contacts, incoming invoices, and supplier profiles with incomplete/missing-slot model output | `test_any_exact_unsupported_action_is_checked_before_completeness_slots` | the same registry-first invariant applies across domains; no phrase/object-specific runtime exception, saved request, or business effect |
 | 2 | English `delete receipt` | exact-registry/parser and unsupported journey coverage | no nearest delete action; narrow unsupported response |
 | 3 | correction: receipt, not invoice | `test_correction_negates_invoice_and_blocks_delete_flow` | negated invoice blocks invoice delete |
 | 4 | delete invoice without reference, then `10` | `test_supported_invoice_delete_without_reference_enters_continuation_after_v2`; continuation tests | waiting reference; next input state-owned; confirmation still required |
