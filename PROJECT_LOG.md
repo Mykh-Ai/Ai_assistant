@@ -45,6 +45,19 @@
 - Focused InfoHelp/invoice-routing/voice/Product-Truth/active-FSM verification:
   `370 passed in 46.93s`. `python -m compileall -q bot` passed. The complete
   repository regression passed: `2528 passed, 7 subtests passed in 491.83s`.
+- Published exact tested commit
+  `fc128d0d2ba3565824f6ac4a9af126ba4fa636b0` through API PR `#95`;
+  GitHub reported no configured commit statuses and merged it as
+  `7e3d0556c235ce8b5c99cacc2493ad4f0502ba23`.
+- Production `/bot/repo` was clean and fast-forwarded from `27d2b1a` to exact
+  merge SHA `7e3d055`. The compose image rebuilt successfully; `fakturabot`
+  and `fakturabot-cloudflared` are `Up`, bot restart count is `0`, in-container
+  `compileall` passed, schedulers started, and Telegram polling is active.
+  `.env`, DB/storage, and unrelated server projects were not changed.
+- Deployment status is `deployed_pending_live_smoke`. The administrator can now
+  repeat the same voice analytics question; request-correlated observability
+  must show the primary bundle result and no Contextual InfoHelp call for the
+  resolved `invoice_analytics` action.
 
 # 2026-08-04 - Contextual InfoHelp model-result observability
 

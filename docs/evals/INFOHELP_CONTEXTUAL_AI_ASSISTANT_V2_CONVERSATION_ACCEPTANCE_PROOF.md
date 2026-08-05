@@ -123,3 +123,10 @@ side-effect contract changed.
 Repository evidence for this amendment: focused adjacent suite `370 passed in
 46.93s`; complete suite `2528 passed, 7 subtests passed in 491.83s`;
 `python -m compileall -q bot` passed.
+
+PR `#95` merged the exact tested head as
+`7e3d0556c235ce8b5c99cacc2493ad4f0502ba23`. Production was rebuilt on that
+SHA with both compose services up, bot restart count `0`, in-container compile
+success, and active Telegram polling. Runtime status is
+`deployed_pending_live_smoke`; the repeated real voice question remains the
+final interactive acceptance step.
