@@ -632,6 +632,7 @@ def test_infohelp_answers_invoice_analytics_capability_from_product_truth_withou
             operation_id='analyze',
             proposed_action_id=None,
             proposed_capability_id='invoice_analytics',
+            answer_sk='Creates an outgoing invoice draft from text or voice.',
             confidence=0.0,
         )
 
@@ -651,6 +652,138 @@ def test_infohelp_answers_invoice_analytics_capability_from_product_truth_withou
     assert 'analyt' in message.answers[-1].casefold()
     assert state.current_state is None
     assert 'nepodporujem' not in message.answers[-1].casefold()
+    assert 'creates an outgoing invoice' not in message.answers[-1].casefold()
+
+
+@pytest.mark.parametrize('input_channel', ('text', 'voice'))
+def test_tax_return_capability_delivers_validated_live_slovak_infohelp_answer(
+    tmp_path: Path, monkeypatch, input_channel: str
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _Message('Можеш справити данєві признання на закладі фактур, bločekів?')
+    state = _State()
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'capability_or_howto'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='capability_question',
+            speech_act='capability_question',
+            domain_id='tax_accounting',
+            object_kind='tax_return',
+            operation_id='prepare',
+            proposed_action_id=None,
+            proposed_capability_id='bank_cashflow_tax_analytics',
+            normalized_business_need_sk='Pripraviť daňové priznanie na základe faktúr a bločkov.',
+            answer_sk=(
+                'Nie, prípravu daňového priznania momentálne nepodporujem. '
+                'Viem pracovať iba s ohraničenou analytikou uložených dokladov bez daňového poradenstva.'
+            ),
+            confidence=0.95,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(
+        process_invoice_text(
+            message=message,
+            state=state,
+            config=config,
+            invoice_text=message.text,
+            input_channel=input_channel,
+        )
+    )
+
+    answer = message.answers[-1]
+    lowered = answer.casefold()
+    assert 'prípravu daňového priznania momentálne nepodporujem' in lowered
+    assert 'bez daňového poradenstva' in lowered
+    assert 'creates an outgoing invoice' not in lowered
+    assert 'unknown' not in lowered
+    assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
+    draft = state.data['customization_request_draft']
+    assert draft['source_capability_id'] == 'bank_cashflow_tax_analytics'
+    assert draft['business_need'].startswith('Pripraviť daňové priznanie')
+    assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
+        telegram_id=111,
+    ) == []
+
+
+def test_unmatched_business_need_never_exposes_internal_unknown_tokens(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _config(tmp_path)
+    message = _Message('Potrebujem nový firemný proces')
+    state = _State()
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'capability_or_howto'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='capability_question',
+            speech_act='capability_question',
+            domain_id='unknown',
+            object_kind='unknown',
+            operation_id='unknown',
+            proposed_action_id=None,
+            proposed_capability_id=None,
+            normalized_business_need_sk='Zaviesť nový firemný proces.',
+            answer_sk=(
+                'Túto novú biznis potrebu neviem spoľahlivo potvrdiť z aktuálneho Product Truth. '
+                'Môžem ju pripraviť na kontrolu správcom.'
+            ),
+            confidence=0.8,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    answer = message.answers[-1]
+    assert 'unknown' not in answer.casefold()
+    assert 'neviem spoľahlivo potvrdiť' in answer
+    assert 'kontrolu správcom' in answer
+    assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
+
+
+def test_unmatched_business_need_rejects_live_supported_claim(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = _config(tmp_path)
+    message = _Message('Potrebujem nový firemný proces')
+    state = _State()
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'capability_or_howto'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        return _result(
+            intent_kind='capability_question',
+            speech_act='capability_question',
+            domain_id='unknown',
+            object_kind='unknown',
+            operation_id='unknown',
+            proposed_action_id=None,
+            proposed_capability_id=None,
+            normalized_business_need_sk='Zaviesť nový firemný proces.',
+            answer_sk='Áno, táto nová funkcia je podporovaná a pripravená.',
+            confidence=0.9,
+        )
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    answer = message.answers[-1]
+    assert 'podporovaná a pripravená' not in answer
+    assert 'Zaviesť nový firemný proces.' in answer
+    assert 'uloží sa až po vašom potvrdení' in answer
 
 
 def test_infohelp_schema_rejection_is_not_reported_as_user_ambiguity(tmp_path: Path, monkeypatch) -> None:

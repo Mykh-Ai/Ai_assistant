@@ -1,3 +1,52 @@
+# 2026-08-05 - Restore canonical Slovak InfoHelp capability rendering
+
+- Production evidence for the same noisy STT transcript showed two inconsistent
+  Contextual InfoHelp V2 results: one incorrectly selected `create_invoice` and
+  exposed its internal English Product Truth summary; the next returned
+  `unknown` object/operation and rendered `unknown unknown`. STT and the primary
+  LLM bundle both completed; the regression was inside the V2 capability schema
+  and Python response path.
+- Re-read the active AI/InfoHelp/Product Truth/evaluation contracts and the
+  canonical `docs/llm/FakturaBot_LLM_Orchestrator_Contract.md`. The contract
+  requires multilingual/noisy input, bounded model outputs, Python-owned truth
+  and execution, and Slovak-only user-facing replies.
+- Removed the erroneous direct V2 response composition from internal English
+  `summary_for_user/current_limitations`. The model may now draft `answer_sk`
+  from the selected Product Truth record; Python exposes it only when Slovak,
+  aligned with the verified status, and free of side-effect claims. Invalid or
+  absent live copy returns through the pre-existing canonical
+  `_SLOVAK_CAPABILITY_COPY` renderer. Every current Product Truth capability now
+  has Slovak copy, and a future missing copy fails safe in Slovak.
+- The same live-answer path applies globally to coherent business needs with no
+  matching capability, but only under Python-validated `unknown` semantics:
+  the answer must admit current Product Truth cannot reliably confirm support
+  and may offer administrator review. A claim that an unregistered feature is
+  supported is rejected and replaced by the generic Slovak fallback.
+- Extended only the bounded InfoHelp semantic description with
+  `tax_accounting`, `tax_return`, `prepare`, and
+  `normalized_business_need_sk`. These describe a non-executable business need;
+  they add no canonical action or runtime owner. The prompt now prioritizes the
+  desired business outcome over source-document nouns, so preparing a tax
+  return from invoices/receipts maps to verified unsupported capability
+  `bank_cashflow_tax_analytics`, not `create_invoice`.
+- Unsupported verified capabilities reuse the Slovak Product Truth answer and
+  the existing administrator-review buttons. The draft carries the verified
+  capability and Slovak-normalized need, but no customization-request row or
+  business effect exists before the existing confirmation. User-visible
+  fallback text never interpolates raw `unknown` enum tokens.
+- Touched scopes: InfoHelp V2 schema/prompt, Product Truth rendering,
+  text/voice-STT parity, customization-offer draft context, tests, UX evidence,
+  TZ and AI contracts. Status remains `partial` Level 2 plus partial Level 3.
+  No canonical action, Product Truth status, STT engine, LMM, DB/schema/storage,
+  access, callback/DecisionResolver, PDF, deployment, persisted data, migration,
+  or self-learning hook changed.
+- Focused InfoHelp/Product Truth regression suite passed: `181 passed in
+  13.99s`; the wider primary-routing/voice/InfoHelp/Product Truth suite passed
+  `493 passed in 62.47s`. Final full repository suite passed `2543 passed, 7
+  subtests passed in 504.22s`. `python -m compileall -q bot` and
+  `git diff --check` passed; only expected Windows line-ending warnings were
+  reported.
+
 # 2026-08-05 - Restore exact unsupported InfoHelp routing before slot clarification
 
 - Preflight re-checked the active Product Doctrine, AI implementation and

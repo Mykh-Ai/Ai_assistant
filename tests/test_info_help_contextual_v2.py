@@ -5,10 +5,12 @@ from types import SimpleNamespace
 import pytest
 
 from bot.services.info_help import (
+    _SLOVAK_CAPABILITY_COPY,
     INFO_HELP_INTENT_GENUINELY_UNCLEAR,
     INFO_HELP_SPEECH_CAPABILITY_QUESTION,
     build_info_help_product_truth_view,
     parse_info_help_assistant_model_output,
+    render_product_truth_payload,
     should_run_contextual_info_help,
 )
 from bot.services.info_help_action_registry import (
@@ -16,6 +18,7 @@ from bot.services.info_help_action_registry import (
     get_info_help_action,
 )
 from bot.services.info_help_context import InfoHelpConversationContextService
+from bot.services.info_help_assistant import validate_info_help_answer_sk
 from bot.services.info_help_resolver import (
     build_info_help_assistant_payload,
     resolve_info_help_assistant_with_llm,
@@ -45,6 +48,8 @@ def _assistant_json(**overrides) -> str:
         'confidence': 0.99,
         'acknowledgement_sk': 'Rozumiem, chcete vymazať faktúru.',
         'clarification_question_sk': '',
+        'normalized_business_need_sk': '',
+        'answer_sk': '',
     }
     payload.update(overrides)
     return json.dumps(payload, ensure_ascii=False)
@@ -71,6 +76,31 @@ def test_parser_preserves_exact_receipt_delete_capability_question() -> None:
     assert result.object_kind == 'receipt'
     assert result.operation_id == 'delete'
     assert result.proposed_action_id is None
+
+
+def test_parser_accepts_tax_business_need_without_inventing_an_action() -> None:
+    result = parse_info_help_assistant_model_output(
+        _assistant_json(
+            intent_kind='capability_question',
+            speech_act='capability_question',
+            domain_id='tax_accounting',
+            object_kind='tax_return',
+            operation_id='prepare',
+            target_reference=None,
+            proposed_action_id=None,
+            proposed_capability_id='bank_cashflow_tax_analytics',
+            normalized_business_need_sk='Pripraviť daňové priznanie na základe faktúr a bločkov.',
+            answer_sk='Nie, prípravu daňového priznania momentálne nepodporujem.',
+        )
+    )
+
+    assert result.domain_id == 'tax_accounting'
+    assert result.object_kind == 'tax_return'
+    assert result.operation_id == 'prepare'
+    assert result.proposed_action_id is None
+    assert result.proposed_capability_id == 'bank_cashflow_tax_analytics'
+    assert result.normalized_business_need_sk.startswith('Pripraviť daňové priznanie')
+    assert result.answer_sk.startswith('Nie, prípravu daňového priznania')
 
 
 def test_parser_normalizes_informational_speech_act_copied_into_intent_kind() -> None:
@@ -175,6 +205,28 @@ def test_product_truth_view_is_derived_and_contains_no_forbidden_raw_fields() ->
     assert 'test_refs' not in delete_invoice
 
 
+def test_every_product_truth_capability_has_canonical_slovak_copy() -> None:
+    capability_ids = {item['capability_id'] for item in build_info_help_product_truth_view()}
+
+    assert capability_ids <= set(_SLOVAK_CAPABILITY_COPY)
+
+
+def test_product_truth_renderer_never_falls_back_to_internal_english_fields() -> None:
+    rendered = render_product_truth_payload(
+        {
+            'capability_id': 'future_capability_without_copy',
+            'product_status': 'unknown',
+            'summary_for_user': 'Internal English summary must stay hidden.',
+            'current_limitations': ['Internal English limitation must stay hidden.'],
+            'safe_next_steps': ['Internal English next step must stay hidden.'],
+        }
+    )
+
+    assert 'Internal English' not in rendered
+    assert 'Schopnosť produktu' in rendered
+    assert 'slovenskú používateľskú formuláciu' in rendered
+
+
 def test_context_service_bounds_ttl_roles_and_isolation() -> None:
     now = datetime(2026, 8, 2, 12, 0, tzinfo=UTC)
     service = InfoHelpConversationContextService(ttl=timedelta(minutes=10), max_turns_per_role=3)
@@ -229,13 +281,48 @@ def test_payload_exposes_exact_enum_values_and_receipt_negative_space_example() 
     serialized = json.dumps(payload, ensure_ascii=False)
     assert 'one bounded intent kind' not in serialized
     assert 'capability_question' in payload['expected_output']['intent_kind']['allowed_values']
-    example = payload['product_and_action_context']['critical_semantic_examples'][0]['result']
+    examples = payload['product_and_action_context']['critical_semantic_examples']
+    example = next(
+        item['result'] for item in examples if item['input'] == 'Чи можу я видалити чек?'
+    )
     assert (example['domain_id'], example['object_kind'], example['operation_id']) == ('accounting_documents', 'receipt', 'delete')
     assert payload['product_and_action_context']['primary_resolver_is_untrusted_diagnostic'] is True
-    reference_example = payload['product_and_action_context']['critical_semantic_examples'][-1]['result']
+    reference_example = next(
+        item['result'] for item in examples if item['input'] == 'Видалити фактуру 10'
+    )
     assert reference_example['target_reference'] == '10'
     assert reference_example['intent_complete'] is True
     assert reference_example['missing_slots'] == []
+    tax_example = next(
+        item['result']
+        for item in examples
+        if item['input'] == 'Можеш справити данєві признання на закладі фактур, bločekів?'
+    )
+    assert (tax_example['domain_id'], tax_example['object_kind'], tax_example['operation_id']) == (
+        'tax_accounting', 'tax_return', 'prepare'
+    )
+    assert tax_example['proposed_capability_id'] == 'bank_cashflow_tax_analytics'
+    assert 'normalized_business_need_sk' in payload['expected_output']
+    assert 'answer_sk' in payload['expected_output']
+
+
+def test_live_answer_validator_requires_slovak_and_product_truth_status_alignment() -> None:
+    assert validate_info_help_answer_sk(
+        'Nie, túto funkciu momentálne nepodporujem.',
+        product_status='unsupported',
+    ) == 'Nie, túto funkciu momentálne nepodporujem.'
+    assert validate_info_help_answer_sk(
+        'This capability is not supported.',
+        product_status='unsupported',
+    ) is None
+    assert validate_info_help_answer_sk(
+        'Áno, táto funkcia je podporovaná.',
+        product_status='unsupported',
+    ) is None
+    assert validate_info_help_answer_sk(
+        'Faktúru som vytvoril.',
+        product_status='supported',
+    ) is None
 
 
 def test_pre_execution_gate_routes_supported_owned_actions_once() -> None:

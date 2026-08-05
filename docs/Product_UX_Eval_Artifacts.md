@@ -143,6 +143,27 @@ The smoke section must name the current maturity label: `supported`, `partial`,
 `planned`, `unsupported`, or `unknown`. Do not mark a phase complete when users
 cannot ask about the feature and receive a truthful answer.
 
+### Contextual InfoHelp capability-language regression - 2026-08-05
+
+- Maturity: `partial` Level 2 with the existing partial Level 3
+  confirmation-gated administrator offer.
+- Public text and voice/STT fixture: noisy mixed-language request to prepare a
+  tax return from invoices and receipts.
+- Expected bounded result: `tax_accounting + tax_return + prepare`, verified
+  capability `bank_cashflow_tax_analytics`, no executable canonical action.
+- Expected response: a validated live Slovak `answer_sk` grounded in the
+  unsupported Product Truth status, with canonical Slovak copy as fallback and
+  a safe administrator-review offer.
+- Forbidden: `create_invoice`, unvalidated or status-conflicting `answer_sk`, raw English Product Truth summary/limitations,
+  visible `unknown`, any saved request before confirmation, or any invoice,
+  document, tax, DB, file, FSM business-flow, or external side effect.
+- Contrast: a real question about creating an outgoing invoice remains
+  `create_invoice`; source invoices/receipts in a tax goal do not imply it.
+- Unregistered-business-need contrast: a live Slovak answer may say Product
+  Truth cannot reliably confirm support and offer administrator review; a live
+  claim that the unknown feature is supported must be rejected and replaced by
+  the Slovak fallback.
+
 ## Result Policy
 
 Do not call a layer complete unless the relevant eval result is recorded.

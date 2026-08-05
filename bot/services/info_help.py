@@ -80,6 +80,54 @@ _SLOVAK_CAPABILITY_COPY = {
         'limitation': 'Bežné použitie vyžaduje autorizovaného používateľa, profil dodávateľa, službu a kontakt.',
         'safe_next': 'Ak chcete faktúru naozaj vytvoriť, napíšte konkrétne údaje faktúry alebo použite /invoice.',
     },
+    'show_existing_invoice': {
+        'title': 'Zobrazenie existujúcej faktúry',
+        'summary': 'Jednu už vytvorenú odosielanú faktúru možno zobraziť podľa čísla alebo referencie v rámci aktuálneho dodávateľa.',
+        'limitation': 'Je to iba čítanie; faktúru neupravuje ani nemení uložené údaje.',
+        'safe_next': 'Uveďte číslo alebo referenciu faktúry.',
+    },
+    'invoice_pdf_generation': {
+        'title': 'Vytvorenie PDF faktúry',
+        'summary': 'PDF faktúry s aktuálnym rozložením FakturaBotu a QR Pay by Square je podporované.',
+        'limitation': 'Vlastné zákaznícke PDF šablóny nie sú súčasťou tejto schopnosti.',
+        'safe_next': 'Dokončite kontrolovaný fakturačný tok; PDF vznikne až po validácii a schválení.',
+    },
+    'supplier_profile': {
+        'title': 'Profil dodávateľa',
+        'summary': 'Profil dodávateľa alebo firmy používaný na faktúrach možno vytvoriť a zobraziť.',
+        'limitation': 'Neznámy alebo neautorizovaný používateľ profil vytvoriť nemôže.',
+        'safe_next': 'Po autorizácii použite /moj_profil.',
+    },
+    'edit_supplier_profile': {
+        'title': 'Úprava profilu dodávateľa',
+        'summary': 'Údaje profilu dodávateľa možno upravovať po jednotlivých poliach s Python validáciou a potvrdením.',
+        'limitation': 'Presné údaje ako IBAN, daňové identifikátory a email zostávajú textové vstupy.',
+        'safe_next': 'Po autorizácii použite /upravit_profil alebo požiadajte o úpravu profilu.',
+    },
+    'officeflow_idle_attachment_router': {
+        'title': 'Rozpoznanie voľnej prílohy OfficeFlow',
+        'summary': 'Fotku alebo PDF mimo aktívneho toku možno po autorizácii klasifikovať a navrhnúť bezpečný ďalší krok.',
+        'limitation': 'Aktívny FSM má prednosť; samotná klasifikácia nič neukladá ani nevytvára a samostatné uloženie zmluvy nie je implementované.',
+        'safe_next': 'Počkajte na návrh ohraničenej cesty a potvrďte ho pred akýmkoľvek účinkom.',
+    },
+    'invoice_draft_edit_flow': {
+        'title': 'Úprava návrhu faktúry',
+        'summary': 'Pred uložením možno návrh faktúry upraviť, schváliť alebo zrušiť cez spoločný kontrolovaný tok.',
+        'limitation': 'Presné zmenené hodnoty musia prejsť textovým vstupom a Python validáciou; bez potvrdenia sa nič neuloží.',
+        'safe_next': 'V náhľade faktúry vyberte úpravu, schválenie alebo zrušenie.',
+    },
+    'self_learning_aliases': {
+        'title': 'Potvrdené učenie významových aliasov',
+        'summary': 'Niektoré potvrdené aliasy kontaktov a služieb sa môžu uložiť v rámci dodávateľa po úspešnom vyriešení.',
+        'limitation': 'Nejde o všeobecné učenie tém, zmenu Product Truth ani adaptívny workflow engine.',
+        'safe_next': 'Alias sa môže naučiť iba po potvrdenom vyriešení a nikdy nesmie vytvoriť novú kanonickú akciu.',
+    },
+    'info_help': {
+        'title': 'Pomoc InfoHelp',
+        'summary': 'InfoHelp čiastočne odpovedá na otázky o možnostiach produktu a pomáha bezpečne obnoviť nejasnú požiadavku.',
+        'limitation': 'Je to čiastočný Level 2/3 základ; model iba interpretuje a Python opätovne overuje Product Truth, presný objekt, operáciu, stav, vlastníka a všetky účinky.',
+        'safe_next': 'Opíšte biznis cieľ prirodzeným jazykom; InfoHelp odpovie podľa aktuálneho Product Truth alebo ponúkne potvrdený ľudský review tok.',
+    },
     'invoice_period_summary': {
         'title': 'Ročný súhrn v analytike faktúr',
         'summary': 'Jednoduchý ročný súhrn uložených vystavených faktúr je interná read-only vetva pod analytikou faktúr.',
@@ -835,12 +883,21 @@ def classify_info_help_capability(
 def _render_product_truth_payload(payload: Mapping[str, Any]) -> str:
     capability_id = str(payload.get('capability_id') or '')
     slovak_copy = _SLOVAK_CAPABILITY_COPY.get(capability_id, {})
-    title = str(slovak_copy.get('title') or payload.get('title') or capability_id or 'Neznáma schopnosť')
+    title = str(slovak_copy.get('title') or 'Schopnosť produktu')
     product_status = str(payload.get('product_status') or 'unknown')
     account_status = str(payload.get('account_status') or 'unknown')
-    summary = str(slovak_copy.get('summary') or payload.get('summary_for_user') or '').strip()
-    limitation = str(slovak_copy.get('limitation') or _join_payload_text(payload.get('current_limitations'))).strip()
-    safe_next = str(slovak_copy.get('safe_next') or _join_payload_text(payload.get('safe_next_steps'))).strip()
+    summary = str(
+        slovak_copy.get('summary')
+        or 'Podrobnosti o tejto schopnosti zatiaľ nemajú schválenú slovenskú používateľskú formuláciu.'
+    ).strip()
+    limitation = str(
+        slovak_copy.get('limitation')
+        or 'Interný opis sa používateľovi nezobrazuje; rozhodujúci zostáva overený stav Product Truth.'
+    ).strip()
+    safe_next = str(
+        slovak_copy.get('safe_next')
+        or 'Požiadajte o spresnenie alebo kontrolu správcom.'
+    ).strip()
 
     lines = [
         f'{title}: {_STATUS_LABELS.get(product_status, product_status)}.',
@@ -872,6 +929,11 @@ def _render_product_truth_payload(payload: Mapping[str, Any]) -> str:
         lines.append(review_offer)
 
     return '\n\n'.join(lines)
+
+
+def render_product_truth_payload(payload: Mapping[str, Any]) -> str:
+    """Render validated Product Truth through the canonical Slovak copy layer."""
+    return _render_product_truth_payload(payload)
 
 
 def _join_payload_text(value: object) -> str:

@@ -62,6 +62,7 @@ from bot.services.info_help import (
     build_product_truth_guidance,
     build_top_level_unknown_guidance,
     render_info_help_triage_result,
+    render_product_truth_payload,
     resolve_info_help_triage_result_with_llm,
 )
 from bot.services.info_help_action_registry import (
@@ -72,6 +73,7 @@ from bot.services.info_help_assistant import (
     INFO_HELP_INTENT_GENUINELY_UNCLEAR,
     INFO_HELP_SPEECH_CAPABILITY_QUESTION,
     should_run_contextual_info_help,
+    validate_info_help_answer_sk,
 )
 from bot.services.info_help_context import info_help_conversation_context
 from bot.services.info_help_resolver import resolve_info_help_assistant_with_llm
@@ -1363,22 +1365,24 @@ async def _offer_customization_request_from_info_help(
     source_channel: str,
     result,
     context_key,
+    capability_id: str | None = None,
+    response_text: str | None = None,
 ) -> None:
     draft = _build_customization_request_draft(
         requester_telegram_id=requester_telegram_id,
         user_input_text=user_input_text,
         source_channel=source_channel,
         triage_class=TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
-        capability_id=None,
+        capability_id=capability_id,
         topic_id=':'.join(
             value
             for value in (result.domain_id, result.object_kind, result.operation_id)
             if value and value != 'unknown'
         ) or None,
         confidence=result.confidence,
-        business_need=user_input_text,
+        business_need=result.normalized_business_need_sk or user_input_text,
         detected_domain=result.domain_id,
-        expected_outcome=result.acknowledgement_sk,
+        expected_outcome=result.normalized_business_need_sk or result.acknowledgement_sk,
         risk_level='high' if result.operation_id == 'delete' else 'medium',
     )
     await state.update_data(
@@ -1388,7 +1392,7 @@ async def _offer_customization_request_from_info_help(
         }
     )
     await state.set_state(CustomizationRequestStates.waiting_admin_offer_decision)
-    text = _format_exact_unsupported(result)
+    text = response_text or _format_exact_unsupported(result)
     sent_message = await answer_with_decision_keyboard(
         message, text, info_help_admin_offer_keyboard()
     )
@@ -3774,9 +3778,16 @@ def _format_exact_unsupported(result) -> str:
         'accounting_document': 'účtovný doklad',
     }
     operation_labels = {'delete': 'odstrániť', 'edit': 'upraviť', 'create': 'vytvoriť'}
-    object_label = object_labels.get(result.object_kind, result.object_kind)
-    operation_label = operation_labels.get(result.operation_id, result.operation_id)
-    acknowledgement = result.acknowledgement_sk or f'Rozumiem, chcete {operation_label} {object_label}.'
+    object_label = object_labels.get(result.object_kind)
+    operation_label = operation_labels.get(result.operation_id)
+    if result.acknowledgement_sk:
+        acknowledgement = result.acknowledgement_sk
+    elif result.normalized_business_need_sk:
+        acknowledgement = f'Rozumiem, ide o túto biznis potrebu: {result.normalized_business_need_sk}'
+    elif object_label and operation_label:
+        acknowledgement = f'Rozumiem, chcete {operation_label} {object_label}.'
+    else:
+        acknowledgement = 'Rozumiem, ide o novú alebo zatiaľ nepodporovanú biznis požiadavku.'
     substitute_warning = (
         'Neponúknem namiesto nej inú deštruktívnu akciu.'
         if result.operation_id == 'delete'
@@ -3961,6 +3972,10 @@ async def _apply_contextual_info_help_v2(
             exact.capability_id if exact is not None else None
         )
         if capability_id is None:
+            response_text = validate_info_help_answer_sk(
+                result.answer_sk,
+                product_status='unknown',
+            )
             await _offer_customization_request_from_info_help(
                 message=message,
                 state=state,
@@ -3969,25 +3984,47 @@ async def _apply_contextual_info_help_v2(
                 source_channel=input_channel,
                 result=result,
                 context_key=context_key,
+                response_text=response_text,
             )
             log_outcome(
                 outcome='capability_customization_offer',
                 response_mode='admin_review_offer',
-                response_text=_format_exact_unsupported(result),
+                response_text=response_text or _format_exact_unsupported(result),
             )
             return True, top_level_intent
         truth = get_safe_answer_payload(capability_id)
-        summary = str(truth.get('summary_for_user') or 'Táto funkcia je dostupná podľa aktuálneho Product Truth.')
-        limitations = truth.get('current_limitations') or []
-        suffix = f"\nObmedzenie: {limitations[0]}" if limitations else ''
-        response_text = f'{summary}{suffix}'
+        product_status = str(truth.get('product_status') or 'unknown')
+        response_text = validate_info_help_answer_sk(
+            result.answer_sk,
+            product_status=product_status,
+        ) or render_product_truth_payload(truth)
+        if product_status not in {'supported', 'partial'} and truth.get('customization_allowed'):
+            await _offer_customization_request_from_info_help(
+                message=message,
+                state=state,
+                requester_telegram_id=actor_id,
+                user_input_text=invoice_text,
+                source_channel=input_channel,
+                result=result,
+                context_key=context_key,
+                capability_id=capability_id,
+                response_text=response_text,
+            )
+            log_outcome(
+                outcome='capability_customization_offer',
+                response_mode='admin_review_offer',
+                response_text=response_text,
+                capability_id=capability_id,
+                product_status=product_status,
+            )
+            return True, top_level_intent
         await _answer_contextual_info_help(message=message, context_key=context_key, text=response_text)
         log_outcome(
             outcome='capability_answer',
             response_mode='product_truth_answer',
             response_text=response_text,
             capability_id=capability_id,
-            product_status=str(truth.get('product_status') or '') or None,
+            product_status=product_status,
         )
         return True, top_level_intent
 

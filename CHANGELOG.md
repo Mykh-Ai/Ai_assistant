@@ -1,5 +1,20 @@
 # Changelog
 
+- Restored the canonical Slovak Product Truth fallback for Contextual InfoHelp
+  V2 capability answers and removed the direct path that exposed
+  internal English `summary_for_user`/limitation fields. Capability questions
+  are now bounded by their desired business outcome, including tax-return
+  preparation from invoices/receipts as the verified unsupported
+  `bank_cashflow_tax_analytics` capability rather than `create_invoice`.
+  A model-authored `answer_sk` now reaches the user when Python validates its
+  Slovak language, verified Product Truth status, and absence of side-effect
+  claims; invalid/absent copy falls back to `_SLOVAK_CAPABILITY_COPY`. Added
+  Slovak copy coverage for every current Product Truth capability, a Slovak-only
+  fail-safe for future missing copy, and suppression of visible `unknown` enum
+  tokens. Coherent unregistered business needs may receive a validated live
+  Slovak unknown-status explanation, while unsupported claims for unregistered
+  features are rejected in favor of the deterministic fallback. No action,
+  Product Truth status, persistence, or side effect was added.
 - Fixed a Contextual InfoHelp V2 routing regression for explicit unsupported
   actions. Python now checks the exact `domain + object + operation` registry
   match before applying `intent_complete`/`missing_slots` clarification, so

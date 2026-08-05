@@ -1723,6 +1723,23 @@ The monitor never updates invoice/invoice-item rows, regenerates PDFs, changes `
 
 The existing InfoHelp owner has a rollout-gated contextual V2 contract. It runs one bounded assistant call when the primary resolver is unknown or potentially unsafe/incomplete, then Python validates Product Truth, exact domain/object/operation, runtime owner, required slots, FSM, callback actor, tenant scope, confirmation and side effects. V2 adds no public business action and no generic nearest-action dispatcher.
 
+2026-08-05 language repair: capability/business-outcome questions are mapped by
+the desired outcome rather than by source-document nouns. Tax-return preparation
+from invoices/receipts is bounded InfoHelp semantics and maps to the verified
+unsupported `bank_cashflow_tax_analytics` Product Truth entry; it is not invoice
+creation and adds no action. A live `answer_sk` reaches the user only after
+Python validates Slovak language, verified Product Truth status, and absence of
+side-effect claims; otherwise V2 uses the pre-existing canonical Slovak
+`_SLOVAK_CAPABILITY_COPY` renderer. The direct V2 path that exposed internal
+English Product Truth fields is removed, and missing localized copy fails safe
+in Slovak without exposing `unknown` tokens.
+
+For a coherent business need absent from Product Truth, live `answer_sk` is
+allowed only as a validated Slovak explanation that support cannot be reliably
+confirmed, followed by the existing confirmation-gated administrator-review
+offer. The absence of a capability record must not be presented as verified
+support or as an implemented feature.
+
 Recent context is process-memory only, scoped by Telegram user/chat/workspace, limited to three user and three visible bot turns for ten minutes, and lost on restart. Explicit same-chat replies to this bot are part of the current request independently of TTL. No logs, DB rows, files, secrets or persistent transcript are used.
 
 Existing invoice actions that require a reference share `InvoiceReferenceContinuationStates.waiting_reference`; the next text/voice reference is state-owned and converges on the same scoped lookup/preview owner as a direct reference. Delete and mark-paid remain confirmation-gated.

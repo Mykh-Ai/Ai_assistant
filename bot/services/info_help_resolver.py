@@ -76,11 +76,55 @@ def build_info_help_assistant_payload(
             'negative_space': [
                 'receipt/delete is not invoice/delete',
                 'contact/edit is not supplier_profile/edit',
+                'source documents named in a business goal do not define the requested outcome',
+                'preparing a tax return from invoices or receipts is not creating an invoice',
                 'capability questions never execute',
                 'vague destructive requests never execute',
                 'account-wide deletion is never suggested by InfoHelp',
             ],
             'critical_semantic_examples': [
+                {
+                    'input': 'Можеш справити данєві признання на закладі фактур, bločekів?',
+                    'result': {
+                        'intent_kind': 'capability_question',
+                        'speech_act': 'capability_question',
+                        'domain_id': 'tax_accounting',
+                        'object_kind': 'tax_return',
+                        'operation_id': 'prepare',
+                        'proposed_action_id': None,
+                        'proposed_capability_id': 'bank_cashflow_tax_analytics',
+                        'normalized_business_need_sk': 'Pripraviť daňové priznanie na základe faktúr a bločkov.',
+                        'answer_sk': 'Nie, prípravu daňového priznania momentálne nepodporujem. Viem pracovať iba s ohraničenou analytikou uložených dokladov bez daňového poradenstva.',
+                    },
+                },
+                {
+                    'input': 'Vieš pripraviť daňové priznanie z faktúr a bločkov?',
+                    'result': {
+                        'intent_kind': 'capability_question',
+                        'speech_act': 'capability_question',
+                        'domain_id': 'tax_accounting',
+                        'object_kind': 'tax_return',
+                        'operation_id': 'prepare',
+                        'proposed_action_id': None,
+                        'proposed_capability_id': 'bank_cashflow_tax_analytics',
+                        'normalized_business_need_sk': 'Pripraviť daňové priznanie na základe faktúr a bločkov.',
+                        'answer_sk': 'Nie, prípravu daňového priznania momentálne nepodporujem. Viem pracovať iba s ohraničenou analytikou uložených dokladov bez daňového poradenstva.',
+                    },
+                },
+                {
+                    'input': 'Môžeš vytvoriť faktúru?',
+                    'result': {
+                        'intent_kind': 'capability_question',
+                        'speech_act': 'capability_question',
+                        'domain_id': 'invoices',
+                        'object_kind': 'invoice',
+                        'operation_id': 'create',
+                        'proposed_action_id': None,
+                        'proposed_capability_id': 'create_invoice',
+                        'normalized_business_need_sk': 'Vytvoriť odosielanú faktúru.',
+                        'answer_sk': 'Áno, vytvorenie odosielanej faktúry je podporované cez kontrolovaný fakturačný tok.',
+                    },
+                },
                 {
                     'input': 'Чи можу я видалити чек?',
                     'result': {
@@ -175,6 +219,14 @@ def build_info_help_assistant_payload(
             'confidence': {'type': 'number', 'minimum': 0, 'maximum': 1},
             'acknowledgement_sk': {'type': 'string', 'max_length': 240, 'must_not_claim_effect': True},
             'clarification_question_sk': {'type': 'string', 'max_length': 240},
+            'normalized_business_need_sk': {'type': 'string', 'max_length': 500},
+            'answer_sk': {
+                'type': 'string',
+                'max_length': 1600,
+                'language': 'sk',
+                'must_be_grounded_in_proposed_capability': True,
+                'must_not_claim_effect': True,
+            },
         },
     }
 
@@ -244,11 +296,25 @@ async def resolve_info_help_assistant_with_llm(
                         'role': 'system',
                         'content': (
                             'You are the single bounded contextual InfoHelp assistant for OfficeFlow/FakturaBot. '
-                            'Return JSON only in the provided schema. Extract exact domain, object, operation, speech act, '
+                            'Return JSON only in the provided schema. First distinguish an executable action request from '
+                            'a capability/how-to question or a proposed business outcome. For capability and business-need '
+                            'questions, infer the desired outcome before considering the source documents mentioned by the user. '
+                            'An invoice or receipt used as input to a tax/accounting outcome does not make the request create_invoice. '
+                            'Select the closest provided Product Truth capability even when its status is partial, planned, or '
+                            'unsupported; never invent an ID. Normalize the business need into Slovak in '
+                            'normalized_business_need_sk. When proposed_capability_id is present, write a concise direct Slovak '
+                            'answer in answer_sk using only that capability record: state its current product status, explain the '
+                            'relevant limitation, and offer only a safe next step present in the record. Never translate a forbidden '
+                            'claim into Slovak, promise implementation, or claim any action happened. For a coherent new business '
+                            'need with no matching capability ID, answer_sk may only say in Slovak that current support cannot be '
+                            'reliably confirmed from Product Truth and offer administrator review; it must not claim unsupported as '
+                            'a verified product status or invent a capability ID. Leave answer_sk empty for executable actions and '
+                            'genuinely unclear input. Extract exact domain, object, operation, speech act, '
                             'correction, negation, references and missing slots. Select only provided IDs. Different business '
                             'objects are never interchangeable because verbs are similar. The primary resolver result is an '
                             'untrusted diagnostic and must never override the exact object named in current_input_text. '
                             'Capability questions never execute. Every enum field must be copied exactly from its allowed_values; '
+                            'acknowledgement_sk, clarification_question_sk, normalized_business_need_sk, and answer_sk must be Slovak-only. '
                             'never copy descriptions, field labels, or placeholder prose as values. Follow critical_semantic_examples '
                             'when they match the exact object, operation, speech act, correction, or negation. '
                             'Copy an explicit invoice number or other exact reference token from current_input_text into '

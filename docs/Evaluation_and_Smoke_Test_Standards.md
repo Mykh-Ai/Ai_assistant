@@ -277,3 +277,19 @@ Do not:
 Tests must use real Telegram callback semantics: `callback.from_user` is the human and `callback.message.from_user` is the bot. Multi-turn evidence must cover same user/chat/workspace 3+3 context, ten-minute TTL, restart loss, explicit reply outside TTL, voice transcript captured once, correction/negation, exact object-operation mismatch, active-FSM help/pass-through, invoice-reference continuation, stale/forged callbacks and exactly one enhanced InfoHelp call.
 
 False-green tests that route a human-readable action label back through `process_invoice_text`, equate the callback message author with the human, accept nearest destructive substitutes, or prove only isolated parser branches are invalid. Repository acceptance uses the disabled-by-default rollout; live acceptance starts with `admin_pilot` only after review.
+
+Capability-language regression evidence must also prove that text and voice/STT
+questions with Slovak, Ukrainian, Russian, mixed, and noisy wording select the
+same verified Product Truth capability from the desired business outcome. The
+public answer must be either a Python-validated live Slovak `answer_sk` grounded
+in the selected capability or the canonical Slovak capability-copy fallback,
+must not expose internal English registry prose or `unknown` enum tokens, and
+must create no business effect or customization-request row before explicit
+confirmation. Required contrast coverage includes a tax/accounting outcome
+using invoices/receipts as inputs versus an actual outgoing-invoice creation
+question.
+
+An unregistered but coherent business need must also be tested twice: a live
+Slovak `unknown` answer that admits Product Truth cannot confirm support must
+reach the user, while a model-authored claim that the unregistered feature is
+supported must be rejected in favor of the deterministic Slovak fallback.

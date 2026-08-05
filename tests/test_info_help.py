@@ -1209,22 +1209,21 @@ def test_invoice_analytics_direct_runtime_request_is_known_capability_not_new_fe
     assert result.capability_id == 'invoice_analytics'
 
 
-def test_product_truth_renderer_uses_payload_fields_when_localized_copy_is_missing() -> None:
+def test_product_truth_renderer_uses_canonical_slovak_copy() -> None:
     answer = info_help._render_product_truth_payload(get_safe_answer_payload('invoice_pdf_generation'))
 
-    assert 'Invoice PDF generation: podporované.' in answer
-    assert 'Táto schopnosť' not in answer
-    assert 'Generates invoice PDFs' in answer
-    assert 'Use the approved invoice flow' in answer
+    assert 'Vytvorenie PDF faktúry: podporované.' in answer
+    assert 'Generates invoice PDFs' not in answer
+    assert 'Dokončite kontrolovaný fakturačný tok' in answer
 
 
-def test_unknown_product_truth_renderer_does_not_collapse_to_supported_generic_title() -> None:
+def test_unknown_product_truth_renderer_fails_safe_in_slovak() -> None:
     answer = info_help._render_product_truth_payload(get_safe_answer_payload('invoice_year_summary'))
 
-    assert 'Unknown capability: neznáme.' in answer
-    assert 'Táto schopnosť' not in answer
+    assert 'Schopnosť produktu: neznáme.' in answer
     assert 'podporované' not in answer
-    assert 'Product Truth has no verified entry' in answer
+    assert 'Product Truth has no verified entry' not in answer
+    assert 'schválenú slovenskú používateľskú formuláciu' in answer
 
 
 def test_info_help_triage_out_of_domain_weather() -> None:

@@ -983,6 +983,31 @@ Contextual V2 extends the existing InfoHelp owner; it is not a parallel recovery
 
 The bounded JSON distinguishes speech act, domain, exact business object, operation, reference, missing slots, correction/negation, explicit reply, active flow, registered action/capability/command and confidence. Python validates every field, repeats Product Truth lookup, requires exact `domain + object + operation`, and retains FSM, callback, tenant, confirmation and side-effect authority. A receipt delete never becomes invoice/account deletion; contact edit never becomes supplier-profile edit.
 
+Capability and proposed-business-outcome questions are resolved by their desired
+outcome, not merely by nouns naming source documents. For example, asking
+whether a tax return can be prepared from invoices and receipts maps to the
+verified `bank_cashflow_tax_analytics` Product Truth capability and must not map
+to `create_invoice`. The bounded InfoHelp-only semantics
+`tax_accounting + tax_return + prepare` do not add an executable action.
+
+After Python validates the selected capability, a live model-authored
+`answer_sk` may reach the user only when it is Slovak, matches the verified
+Product Truth status, and contains no side-effect claim. Otherwise the visible
+answer uses the canonical `_SLOVAK_CAPABILITY_COPY` renderer. Contextual V2
+must never render the registry's internal English summary/limitation fields
+directly. Every current Product Truth capability has approved Slovak copy; a
+future missing copy fails safe in Slovak. Internal `unknown` enum values are
+never inserted into user prose. Unsupported capability answers retain the
+existing confirmation-gated administrator-review offer; no request is
+persisted before confirmation.
+
+A coherent new business need with no registered capability may also receive a
+live Slovak `answer_sk`, but only as a Python-validated `unknown` explanation:
+current support cannot be reliably confirmed from Product Truth and the need
+may be offered for administrator review. Absence from Product Truth is not
+proof of `unsupported`, `planned`, or `supported`, and the model may not invent
+an ID. Invalid copy falls back to the generic Slovak customization offer.
+
 Python checks whether the exact `domain + object + operation` is registered
 before treating `intent_complete=false` or `missing_slots` as a reason to ask
 for an action slot. Missing slots are meaningful only for an exact supported

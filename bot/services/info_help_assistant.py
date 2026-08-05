@@ -45,16 +45,16 @@ _SPEECH_ACTS = {
 _DOMAINS = {
     'invoices', 'accounting_documents', 'contacts', 'supplier_profile',
     'service_aliases', 'work_time', 'access_control', 'workspace_setup',
-    'customization', 'product', 'unknown',
+    'tax_accounting', 'customization', 'product', 'unknown',
 }
 _OBJECTS = {
     'invoice', 'receipt', 'incoming_invoice', 'accounting_document', 'contact',
     'supplier_profile', 'service_alias', 'work_time_entry', 'work_time_report',
-    'user_data', 'workspace', 'product_capability', 'unknown',
+    'tax_return', 'user_data', 'workspace', 'product_capability', 'unknown',
 }
 _OPERATIONS = {
     'create', 'show', 'show_recent', 'edit', 'delete', 'mark_paid', 'analyze',
-    'generate', 'switch', 'explain', 'unknown',
+    'generate', 'prepare', 'switch', 'explain', 'unknown',
 }
 KNOWN_INFO_HELP_COMMANDS = (
     '/start', '/menu', '/cancel', '/invoice', '/contact', '/contact_add',
@@ -93,6 +93,8 @@ class InfoHelpAssistantResult:
     confidence: float = 0.0
     acknowledgement_sk: str = ''
     clarification_question_sk: str = ''
+    normalized_business_need_sk: str = ''
+    answer_sk: str = ''
 
 
 def _set_parse_diagnostics(
@@ -203,6 +205,12 @@ def parse_info_help_assistant_model_output(
     acknowledgement = _bounded_text(parsed.get('acknowledgement_sk'), max_length=240)
     if _claims_side_effect(acknowledgement):
         acknowledgement = ''
+    normalized_business_need = _bounded_text(
+        parsed.get('normalized_business_need_sk'), max_length=500
+    )
+    answer = _bounded_text(parsed.get('answer_sk'), max_length=1600)
+    if _claims_side_effect(answer):
+        answer = ''
 
     result = InfoHelpAssistantResult(
         intent_kind=intent_kind,
@@ -226,6 +234,8 @@ def parse_info_help_assistant_model_output(
         confidence=confidence,
         acknowledgement_sk=acknowledgement,
         clarification_question_sk=_bounded_text(parsed.get('clarification_question_sk'), max_length=240),
+        normalized_business_need_sk=normalized_business_need,
+        answer_sk=answer,
     )
     _set_parse_diagnostics(diagnostics, status='accepted')
     return result
@@ -241,6 +251,7 @@ def build_info_help_product_truth_view() -> list[dict[str, object]]:
             'account_status': 'unknown',
             'summary': item.summary_for_user,
             'current_limitations': list(item.current_limitations[:4]),
+            'forbidden_claims': list(item.forbidden_claims[:6]),
             'canonical_actions': list(item.canonical_actions),
             'commands': list(item.commands),
             'runtime_owner': bool(item.runtime_owner),
@@ -341,3 +352,42 @@ def _claims_side_effect(value: str) -> bool:
         phrase in normalized
         for phrase in ('som vymazal', 'som odstranil', 'som ulozil', 'som vytvoril', 'bola vymazana', 'bolo ulozene')
     )
+
+
+def validate_info_help_answer_sk(value: str, *, product_status: str) -> str | None:
+    """Validate Slovak response copy against Python-owned Product Truth status."""
+    answer = _bounded_text(value, max_length=1600)
+    if not answer or _claims_side_effect(answer):
+        return None
+    lowered = answer.casefold()
+    if not any(character in lowered for character in 'áäčďéíľĺňóôŕšťúýž'):
+        return None
+    normalized = _normalize(answer)
+    unsupported_markers = (
+        'nepodpor', 'nie je implement', 'nie su implement', 'nedokazem',
+        'neviem priprav', 'momentalne ne',
+    )
+    partial_markers = ('ciastoc', 'obmedzen')
+    planned_markers = ('planovan', 'v plane')
+    unknown_markers = ('neznam', 'neviem spolahlivo potvrdit', 'neda sa spolahlivo potvrdit')
+    if product_status == 'unsupported' and not any(
+        marker in normalized for marker in unsupported_markers
+    ):
+        return None
+    if product_status == 'partial' and not any(
+        marker in normalized for marker in partial_markers
+    ):
+        return None
+    if product_status == 'planned' and not any(
+        marker in normalized for marker in planned_markers
+    ):
+        return None
+    if product_status == 'unknown' and not any(
+        marker in normalized for marker in unknown_markers
+    ):
+        return None
+    if product_status == 'supported' and any(
+        marker in normalized for marker in unsupported_markers
+    ):
+        return None
+    return answer
