@@ -1,5 +1,15 @@
 # Changelog
 
+- Fixed a Contextual InfoHelp V2 routing regression for explicit unsupported
+  actions. Python now checks the exact `domain + object + operation` registry
+  match before applying `intent_complete`/`missing_slots` clarification, so
+  `Видалити чек` and `Видалити останній чек` again receive the truthful
+  unsupported/admin-review offer instead of a request to identify a receipt.
+  Structurally unclear input and supported actions with missing slots retain
+  their existing clarification behavior; no capability or side effect was
+  added. The shared unsupported renderer now explicitly says the understood
+  need looks like a concrete business feature and offers to prepare an
+  administrator request that is saved only after later confirmation.
 - Repaired top-level AI ownership: authorized idle natural language and STT now
   run the bounded primary LLM bundle before local fallback. The bundle separates
   real business actions from capability/how-to and contextual-help requests;
