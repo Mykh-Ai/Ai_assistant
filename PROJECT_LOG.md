@@ -19,6 +19,12 @@
   or invalid. A saved-data calculation/list/comparison is `business_action`;
   capability/how-to and contextual-help outputs are forced to `unknown` for
   one InfoHelp recovery call.
+- Every primary bundle result now emits a request-correlated
+  `top_level_bundle_result` event before the InfoHelp gate. It includes the
+  validated action, `routing_kind`, resolution source, input hash/channel, and
+  bounded raw model JSON only when the existing debug-transparency switch is
+  enabled. This closes the direct-route observability gap: the analytics journey
+  can bypass InfoHelp and still expose exactly what the first bundle returned.
 - Any validated non-`unknown` action, including Product Truth `partial`
   `invoice_analytics`, routes directly to its Python owner. The InfoHelp gate no
   longer inspects punctuation, mutation class, negation wording, Product Truth
@@ -58,6 +64,10 @@
   repeat the same voice analytics question; request-correlated observability
   must show the primary bundle result and no Contextual InfoHelp call for the
   resolved `invoice_analytics` action.
+- After closing the direct-route logging gap, the exact final code passed the
+  focused bundle/InfoHelp/invoice suite (`264 passed in 43.48s`), compileall and
+  diff checks, then the complete repository suite again (`2528 passed, 7
+  subtests passed in 492.83s`).
 
 # 2026-08-04 - Contextual InfoHelp model-result observability
 

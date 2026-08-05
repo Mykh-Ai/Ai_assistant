@@ -5,6 +5,9 @@
   real business actions from capability/how-to and contextual-help requests;
   validated actions route directly to their Python owners and InfoHelp is used
   only as a contextual recovery call.
+- Added request-correlated `top_level_bundle_result` observability for direct
+  routes, including the bounded route kind, resolution source, validated action,
+  and raw bundle JSON only under the existing debug-transparency switch.
 - Removed all InfoHelp confidence thresholds and confidence-based routing.
   Question punctuation, `partial` Product Truth status, mutation class, and
   incomplete InfoHelp registry coverage no longer veto a resolved action.
