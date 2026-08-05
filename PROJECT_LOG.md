@@ -60,6 +60,30 @@
   gate, route, capability, or side effect. Final focused verification and live
   smoke after the amendment are recorded in the deployment follow-up.
 
+## Production deployment follow-up
+
+- Runtime PR `#100` merged as `a7c34ac`; the live API smoke then produced the
+  valid Slovak form `nemožno spoľahlivo potvrdiť` and exposed the old 8-second
+  transport boundary. Follow-up PR `#101` merged the bounded validator/timeout
+  repair as final production SHA `a39274548ad9c167713d692a6564f5fed84d13a1`.
+- Before the first deploy, production `/bot/repo` was clean at `e13525a`, both
+  containers were Up, and restart count was zero. Backup
+  `/bot/backups/infohelp-v2-live-answer-20260805T112816Z` contains the live DB
+  and `.env` with mode `0600`; source and backup DB both returned
+  `PRAGMA quick_check=ok`.
+- Final real API smoke on the deployed container completed the exact production
+  STT in 4201 ms with accepted JSON, `tax_accounting + tax_return + prepare`,
+  verified unsupported `bank_cashflow_tax_analytics`, and live Slovak
+  `answer_sk` accepted with `fallback_used=false`.
+- A new unregistered purchase-approval workflow completed in 6418 ms with
+  accepted JSON, no capability/action invention, Slovak-normalized business
+  need, and a live honest Product Truth `unknown` answer accepted with
+  `fallback_used=false`. The smoke made no business write; live DB quick check
+  remained `ok`.
+- Temporary smoke scripts were removed from the server and container. Production
+  repo is clean at the final SHA; FakturaBot and cloudflared are Up, restart
+  count is zero, and logs show normal startup, schedulers and Telegram polling.
+
 # 2026-08-05 - Restore exact unsupported InfoHelp routing before slot clarification
 
 - Preflight re-checked the active Product Doctrine, AI implementation and
