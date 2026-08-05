@@ -15,6 +15,10 @@
   Slovak unknown-status explanation, while unsupported claims for unregistered
   features are rejected in favor of the deterministic fallback. No action,
   Product Truth status, persistence, or side effect was added.
+  Production API smoke also expanded the accepted Slovak unknown-status form
+  `nemožno spoľahlivo potvrdiť` and raised the single Contextual InfoHelp call
+  timeout from 8 to 30 seconds; confidence still has no routing authority and
+  there is still no retry cascade.
 - Fixed a Contextual InfoHelp V2 routing regression for explicit unsupported
   actions. Python now checks the exact `domain + object + operation` registry
   match before applying `intent_complete`/`missing_slots` clarification, so

@@ -369,7 +369,10 @@ def validate_info_help_answer_sk(value: str, *, product_status: str) -> str | No
     )
     partial_markers = ('ciastoc', 'obmedzen')
     planned_markers = ('planovan', 'v plane')
-    unknown_markers = ('neznam', 'neviem spolahlivo potvrdit', 'neda sa spolahlivo potvrdit')
+    unknown_markers = (
+        'neznam', 'neviem spolahlivo potvrdit', 'neda sa spolahlivo potvrdit',
+        'nemozno spolahlivo potvrdit',
+    )
     if product_status == 'unsupported' and not any(
         marker in normalized for marker in unsupported_markers
     ):

@@ -617,6 +617,11 @@ Transport/runtime facts already validated by Python are not delegated back to th
 
 There is exactly one enhanced InfoHelp call per assisted update: no retry cascade, second recovery LLM, nearest-action LLM, RAG or persistent transcript. It is available for `unknown`, capability/informational questions, corrective/negative input, unknown commands, explicit-reply follow-ups, active-flow help, and other unresolved or genuinely ambiguous cases. It is not a second classifier or veto after the primary resolver has selected a Product-Truth-supported canonical action that has a registered runtime owner. Mutation class alone never triggers InfoHelp, and a missing business slot owned by an existing continuation FSM does not make that action unresolved. Such actions route once to their Python owner, which keeps slot validation, tenant scope, FSM, confirmation and side effects. Confidence thresholds inside the assisted unresolved-input branch are unreachable from this direct supported-action route. In Telegram callbacks the human actor is `callback.from_user`; `callback.message.from_user` is normally the bot author.
 
+The single enhanced InfoHelp call has a 30-second runtime timeout based on live
+production latency evidence. Timeout changes transport tolerance only: there is
+still no retry cascade, confidence threshold, alternate classifier, or side
+effect, and a transport timeout still fails closed.
+
 ### Top-level bundle and recovery ownership - 2026-08-05
 
 For authorized idle natural-language text and authorized non-empty STT, the
