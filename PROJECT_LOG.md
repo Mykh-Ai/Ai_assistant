@@ -44,9 +44,35 @@
   unsupported-copy subset passed `11 tests`. Final full repository suite:
   `2535 passed, 7 subtests passed in 498.68s`.
   `python -m compileall -q bot` and `git diff --check` also passed; only
-  expected Windows line-ending warnings were reported. Deployment and a
-  repeated live Telegram smoke were not performed in this repository-only
-  repair.
+  expected Windows line-ending warnings were reported.
+
+## Controlled production deployment
+
+- Published runtime commit `4cddb9353931d1951f1a5ee2a9a73e9c921b3053`
+  through GitHub API PR `#98`; GitHub merged it to `main` as
+  `f09cdb7601e73bb18e1a1075b292c0270bbf4e04`.
+- Verified the production checkout was clean at the previous merge
+  `328d1b7`, both containers were already `Up`, and no unrelated server path
+  was touched. Created `/bot/backups/infohelp-v2-routing-20260805T080320Z`
+  containing the live SQLite database and `.env` with closed permissions.
+  Source and backup SQLite both returned `PRAGMA quick_check=ok` before deploy.
+- Fast-forwarded only `/bot/repo` to the exact merge SHA and rebuilt with the
+  existing production Compose file. FakturaBot and cloudflared are `Up`, bot
+  restart count is `0`, and logs show successful startup and Telegram polling
+  without a polling conflict.
+- In-container compileall passed. The minimal production image does not ship
+  pytest, so a server pytest command correctly reported the package absent;
+  the complete repository suite remains the authoritative automated evidence.
+- Ran a deterministic, no-LLM renderer smoke inside the deployed container.
+  `receipt + delete` produced the approved Slovak response: unsupported exact
+  function, no substitute destructive action, concrete business-feature
+  classification, administrator-request offer, and save only after later
+  confirmation. No request, document, invoice, DB row, or file was created or
+  deleted.
+- Post-deploy live SQLite returned `quick_check=ok`; `/bot/repo` remained clean
+  at the merge SHA, containers remained healthy, and no `.env`, schema,
+  storage-layout, access, or Product Truth change was made. Human Telegram
+  repetition of the original message remains pending interactive evidence.
 
 # 2026-08-05 - Primary LLM bundle owns routing; InfoHelp is recovery only
 

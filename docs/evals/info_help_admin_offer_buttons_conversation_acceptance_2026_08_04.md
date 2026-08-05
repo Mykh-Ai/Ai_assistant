@@ -1,6 +1,6 @@
 # InfoHelp Admin-Offer Buttons Conversation Acceptance — 2026-08-04
 
-Status: `repository_fix_verified_pending_deployment_and_live_smoke`
+Status: `deployed_renderer_smoke_passed_pending_live_telegram_retest`
 
 ## Scope
 
@@ -54,6 +54,33 @@ without creating a row. Until then the runtime status is
   465.19s`.
 
 ## Delivery and deployment evidence
+
+### 2026-08-05 unsupported-routing regression repair
+
+- Runtime commit `4cddb9353931d1951f1a5ee2a9a73e9c921b3053` was
+  published through GitHub API PR `#98` and merged to `main` as
+  `f09cdb7601e73bb18e1a1075b292c0270bbf4e04`.
+- Before deployment, `/bot/repo` was clean at `328d1b7`. A timestamped SQLite
+  and `.env` backup was created under
+  `/bot/backups/infohelp-v2-routing-20260805T080320Z` with mode `0600` files;
+  both source and backup databases returned `PRAGMA quick_check=ok`.
+- Production fast-forwarded to the exact merge SHA and rebuilt successfully.
+  `fakturabot` and `fakturabot-cloudflared` are `Up`, FakturaBot restart count
+  is `0`, and logs show `FakturaBot starting`, `Start polling`, and
+  `Run polling for bot` without a Telegram polling conflict.
+- In-container `python -m compileall -q /app/bot` passed. The production image
+  intentionally has no pytest package, so server pytest was not available;
+  repository verification remains the final full suite of `2535 passed, 7
+  subtests passed`.
+- A deterministic renderer smoke inside the deployed container for
+  `receipt + delete` returned the exact unsupported, no-substitute,
+  business-feature, administrator-request, and save-only-after-confirmation
+  wording. It made no LLM call and no business/storage write.
+- Post-deploy live SQLite returned `quick_check=ok`; the server checkout is
+  clean at the deployed merge SHA. No environment, DB/schema, storage layout,
+  access, or persisted business data was changed by this deployment.
+- A repeated human Telegram message is still required to close transport/UI
+  acceptance for the originally observed journey.
 
 - Runtime commit: `feda8fb04290f050e8b6657c7397662e2041f011`.
 - PR: `#83`, exact head merged to `main`.
