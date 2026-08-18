@@ -297,6 +297,13 @@ service-specific grant, current workspace authority, successful token
 decryption, and no substitution. First connection without refresh token fails
 as `needs_reauth`. `invalid_grant` also becomes `needs_reauth`.
 
+The Gmail API client may surface refresh rejection as
+`google.auth.exceptions.RefreshError` without an HTTP `resp.status`. The
+transport must inspect only the bounded structured provider code carried by
+that exception: `invalid_grant` maps to `GmailReadonlyNeedsReauth`; retryable
+refresh/transport failures map to the bounded retryable error. Raw descriptions
+must not enter logs, Telegram, or persistence.
+
 `/gmail_disconnect` is local in V1:
 
 - disable the workspace Gmail binding immediately;

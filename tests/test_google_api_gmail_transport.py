@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from google.auth.exceptions import RefreshError, TransportError
 
 from bot.services.gmail_readonly_adapter import (
     GmailReadonlyNeedsReauth,
@@ -95,6 +96,61 @@ def test_transport_maps_provider_status_without_raw_error(
     )
 
     with pytest.raises(error_type):
+        transport.list_messages(
+            query="has:attachment", page_token=None, max_results=10
+        )
+
+
+def test_transport_maps_refresh_invalid_grant_to_needs_reauth() -> None:
+    resource = Resource()
+    resource.error = RefreshError(
+        "invalid_grant: Token has been expired or revoked.",
+        {"error": "invalid_grant", "error_description": "sensitive provider text"},
+        retryable=False,
+    )
+    transport = GoogleAPIGmailReadonlyTransport(
+        access_token="a",
+        refresh_token="r",
+        client_id="c",
+        client_secret="s",
+        scopes=("https://www.googleapis.com/auth/gmail.readonly",),
+        service=resource,
+    )
+
+    with pytest.raises(GmailReadonlyNeedsReauth, match="^gmail_needs_reauth$"):
+        transport.list_messages(
+            query="has:attachment", page_token=None, max_results=10
+        )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RefreshError(
+            "temporarily unavailable",
+            {"error": "temporarily_unavailable"},
+            retryable=True,
+        ),
+        TransportError("network unavailable"),
+    ],
+)
+def test_transport_maps_refresh_transport_failures_to_retryable(
+    error: Exception,
+) -> None:
+    resource = Resource()
+    resource.error = error
+    transport = GoogleAPIGmailReadonlyTransport(
+        access_token="a",
+        refresh_token="r",
+        client_id="c",
+        client_secret="s",
+        scopes=("https://www.googleapis.com/auth/gmail.readonly",),
+        service=resource,
+    )
+
+    with pytest.raises(
+        GmailReadonlyRetryableError, match="^gmail_provider_retryable$"
+    ):
         transport.list_messages(
             query="has:attachment", page_token=None, max_results=10
         )

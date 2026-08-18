@@ -45,6 +45,12 @@ project.
 6. Complete Google's required verification for the restricted Gmail scope
    before production use. Keep the integration disabled until verification and
    the public callback deployment are both complete.
+7. Do not leave a deployed external OAuth client in publishing status
+   `Testing`: grants that include `gmail.readonly` can receive a seven-day
+   refresh-token lifetime. Use the approved production audience/status and
+   complete any required verification or Workspace trust policy before relying
+   on scheduled collection. Changing the publishing status does not revive an
+   already expired grant; run `/gmail_connect` again afterward.
 
 Official references:
 
@@ -204,6 +210,10 @@ Operational status source:
 
 - `401`/`403` from Gmail transitions the binding and grant to
   `needs_reauth`; collection stops until a new `/gmail_connect` succeeds.
+- Google Auth refresh `invalid_grant` follows the same `needs_reauth` path.
+  Raw provider descriptions are not logged or persisted. A deployment that was
+  left in OAuth `Testing` must first be moved to its approved production state,
+  then reauthorized because the expired refresh token cannot be repaired.
 - Retryable provider failures do not delete or rewrite stored files.
 - A source duplicate is skipped before attachment download where possible.
 - A content duplicate gets its own metadata record but reuses the canonical

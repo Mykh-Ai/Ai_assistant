@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from google.auth.exceptions import RefreshError, TransportError
+
 from bot.services.gmail_readonly_adapter import (
     GmailReadonlyError,
     GmailReadonlyNeedsReauth,
@@ -115,12 +117,31 @@ class GoogleAPIGmailReadonlyTransport:
 
 
 def _raise_transport(error: Exception) -> None:
+    if isinstance(error, RefreshError):
+        provider_code = _refresh_error_provider_code(error)
+        if provider_code == "invalid_grant":
+            raise GmailReadonlyNeedsReauth("gmail_needs_reauth") from None
+        if bool(getattr(error, "retryable", False)):
+            raise GmailReadonlyRetryableError("gmail_provider_retryable") from None
+        raise GmailReadonlyError("gmail_provider_failed") from None
+    if isinstance(error, TransportError):
+        raise GmailReadonlyRetryableError("gmail_provider_retryable") from None
     status = getattr(getattr(error, "resp", None), "status", None)
     if status in {401, 403}:
         raise GmailReadonlyNeedsReauth("gmail_needs_reauth") from None
     if status in {408, 429} or (isinstance(status, int) and status >= 500):
         raise GmailReadonlyRetryableError("gmail_provider_retryable") from None
     raise GmailReadonlyError("gmail_provider_failed") from None
+
+
+def _refresh_error_provider_code(error: RefreshError) -> str | None:
+    for detail in error.args[1:]:
+        if not isinstance(detail, dict):
+            continue
+        code = detail.get("error")
+        if isinstance(code, str) and code.strip():
+            return code.strip().lower()
+    return None
 
 
 def _required(value: object) -> str:
