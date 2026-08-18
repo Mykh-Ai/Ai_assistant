@@ -362,6 +362,20 @@ Notes:
 
 ---
 
+### 6.1A) Direct edit-operation routing and buttons - 2026-08-18
+
+The first invoice-edit state is a unified bounded operation selector, not a mandatory two-turn `invoice_level`/`item_level` corridor.
+
+- Python supplies every currently supported invoice and existing-item edit operation as an allowed output.
+- A concrete text/STT meaning such as `dátum dodania`, `číslo faktúry`, `množstvo položky`, or their multilingual/noisy equivalents may resolve directly to the final canonical operation and skip already-understood hierarchy levels.
+- `invoice_level`, `item_level`, clarification-only `edit_invoice_date`, and `unknown` remain valid only for genuinely generic or unclear input.
+- Inline buttons emit the same canonical operation tokens and converge on the same Python handlers; buttons do not carry edited business values or execute mutations.
+- One-item invoices may bind the item target immediately. With several items, Python preserves the selected item operation and asks only for the bounded target before continuing.
+- Exact-value, arithmetic, tenant, draft/persisted, confirmation, and PDF-rebuild boundaries are unchanged.
+- The LLM remains a bounded canonicalizer and never mutates FSM/DB/PDF state.
+
+Runtime invoice-level tokens are `edit_invoice_number`, `edit_invoice_issue_date`, `edit_invoice_delivery_date`, `edit_invoice_due_date`, and clarification-only `edit_invoice_date`. Runtime item-level tokens are `replace_service`, `replace_main_description`, `add_item_details`, `clear_item_details`, `edit_item_quantity`, `edit_item_unit_price`, and `edit_item_total_amount`.
+
 ## 6.2) Planned `create_invoice` Phase 2 dual-shape intake contract (docs-first)
 
 Scope contract (Phase 1 for future multi-item intake):

@@ -47,6 +47,15 @@ from bot.keyboards.decision import (
     info_help_admin_offer_keyboard,
     yes_no_keyboard,
 )
+from bot.keyboards.invoice_edit import (
+    INVOICE_EDIT_BACK,
+    INVOICE_EDIT_CANCEL,
+    INVOICE_EDIT_ITEM_TARGET_PREFIX,
+    invoice_edit_invoice_keyboard,
+    invoice_edit_item_keyboard,
+    invoice_edit_item_target_keyboard,
+    invoice_edit_main_keyboard,
+)
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.customization_requests import (
     CustomizationRequestService,
@@ -1121,6 +1130,10 @@ _EDIT_INVOICE_OPERATION_ISSUE_DATE = 'edit_invoice_issue_date'
 _EDIT_INVOICE_OPERATION_DELIVERY_DATE = 'edit_invoice_delivery_date'
 _EDIT_INVOICE_OPERATION_DUE_DATE = 'edit_invoice_due_date'
 _EDIT_ITEM_OPERATION_UNKNOWN = 'unknown'
+_INVOICE_EDIT_MENU_MESSAGE_ID_KEY = 'invoice_edit_menu_message_id'
+_INVOICE_EDIT_MENU_CHAT_ID_KEY = 'invoice_edit_menu_chat_id'
+_INVOICE_EDIT_MENU_OWNER_ID_KEY = 'invoice_edit_menu_owner_id'
+_INVOICE_EDIT_PENDING_ITEM_OPERATION_KEY = 'invoice_edit_pending_item_operation'
 _INVOICE_NUMBER_PATTERN = re.compile(r'^(?:19|20)\d{6}$')
 _ITEM_BOUNDARY_NUMBERED_MARKER_PATTERN = re.compile(
     r'(?:^|[\s,;:])'
@@ -2015,10 +2028,98 @@ async def _show_updated_draft_preview(
 async def _resolve_invoice_edit_scope(*, config: Config, user_input_text: str) -> str:
     return await resolve_semantic_action(
         context_name='invoice_edit_scope_selection',
-        allowed_actions=['invoice_level', 'item_level', _EDIT_ITEM_OPERATION_UNKNOWN],
+        allowed_actions=[
+            'invoice_level',
+            'item_level',
+            _EDIT_INVOICE_OPERATION_NUMBER,
+            _EDIT_INVOICE_OPERATION_ISSUE_DATE,
+            _EDIT_INVOICE_OPERATION_DELIVERY_DATE,
+            _EDIT_INVOICE_OPERATION_DUE_DATE,
+            _EDIT_INVOICE_OPERATION_DATE,
+            _EDIT_ITEM_OPERATION_REPLACE_SERVICE,
+            _EDIT_ITEM_OPERATION_REPLACE_MAIN_DESCRIPTION,
+            _EDIT_ITEM_OPERATION_ADD_DETAILS,
+            _EDIT_ITEM_OPERATION_CLEAR_DETAILS,
+            _EDIT_ITEM_OPERATION_QUANTITY,
+            _EDIT_ITEM_OPERATION_UNIT_PRICE,
+            _EDIT_ITEM_OPERATION_TOTAL_AMOUNT,
+            _EDIT_ITEM_OPERATION_UNKNOWN,
+        ],
         user_input_text=user_input_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
+        action_hints={
+            'invoice_level': {
+                'meaning': 'The user generically wants to edit invoice-level fields but has not named a specific field.',
+                'positive_examples': ['upraviť faktúru', 'змінити дані фактури'],
+                'not_this': ['a named invoice field', 'an invoice item field'],
+            },
+            'item_level': {
+                'meaning': 'The user generically wants to edit an invoice item but has not named a specific item field.',
+                'positive_examples': ['upraviť položku', 'змінити позицію фактури'],
+                'not_this': ['invoice number', 'invoice dates'],
+            },
+            _EDIT_INVOICE_OPERATION_NUMBER: {
+                'meaning': 'Change the invoice number.',
+                'positive_examples': ['upraviť číslo faktúry', 'змінити номер фактури'],
+                'not_this': ['select an item by its index'],
+            },
+            _EDIT_INVOICE_OPERATION_ISSUE_DATE: {
+                'meaning': 'Change the invoice issue date (dátum vystavenia).',
+                'positive_examples': ['dátum vystavenia', 'дата виставлення'],
+                'not_this': ['delivery date', 'due date'],
+            },
+            _EDIT_INVOICE_OPERATION_DELIVERY_DATE: {
+                'meaning': 'Change the invoice delivery/supply date (dátum dodania).',
+                'positive_examples': ['dátum dodania', 'датом додання', 'дата поставки'],
+                'not_this': ['issue date', 'due date'],
+            },
+            _EDIT_INVOICE_OPERATION_DUE_DATE: {
+                'meaning': 'Change the invoice due/payment deadline date (dátum splatnosti).',
+                'positive_examples': ['dátum splatnosti', 'термін оплати'],
+                'not_this': ['issue date', 'delivery date'],
+            },
+            _EDIT_INVOICE_OPERATION_DATE: {
+                'meaning': 'The user wants to change a date but did not identify which invoice date.',
+                'positive_examples': ['upraviť dátum', 'змінити дату'],
+                'not_this': ['a clearly named issue, delivery, or due date'],
+            },
+            _EDIT_ITEM_OPERATION_REPLACE_SERVICE: {
+                'meaning': 'Change the service identity/name of an existing invoice item.',
+                'positive_examples': ['zmeniť službu položky', 'змінити послугу'],
+                'not_this': ['free-text item details', 'invoice number'],
+            },
+            _EDIT_ITEM_OPERATION_REPLACE_MAIN_DESCRIPTION: {
+                'meaning': 'Replace the main free-text description of an existing invoice item.',
+                'positive_examples': ['nový opis položky', 'змінити опис позиції'],
+                'not_this': ['service alias', 'invoice date'],
+            },
+            _EDIT_ITEM_OPERATION_ADD_DETAILS: {
+                'meaning': 'Add or replace additional details for an existing invoice item.',
+                'positive_examples': ['pridať detaily k položke', 'додати деталі позиції'],
+                'not_this': ['main service identity'],
+            },
+            _EDIT_ITEM_OPERATION_CLEAR_DETAILS: {
+                'meaning': 'Clear additional details from an existing invoice item.',
+                'positive_examples': ['vymazať detaily položky', 'видалити деталі позиції'],
+                'not_this': ['delete the invoice', 'delete the item'],
+            },
+            _EDIT_ITEM_OPERATION_QUANTITY: {
+                'meaning': 'Change the quantity of an existing invoice item.',
+                'positive_examples': ['upraviť množstvo', 'змінити кількість'],
+                'not_this': ['unit price', 'item total'],
+            },
+            _EDIT_ITEM_OPERATION_UNIT_PRICE: {
+                'meaning': 'Change the unit price of an existing invoice item.',
+                'positive_examples': ['upraviť cenu za m.j.', 'змінити ціну за одиницю'],
+                'not_this': ['quantity', 'item total'],
+            },
+            _EDIT_ITEM_OPERATION_TOTAL_AMOUNT: {
+                'meaning': 'Change the total amount of an existing invoice item.',
+                'positive_examples': ['upraviť sumu položky', 'змінити суму позиції'],
+                'not_this': ['invoice analytics', 'unit price'],
+            },
+        },
     )
 
 
@@ -2127,6 +2228,122 @@ def _item_edit_actions_prompt() -> str:
         'Vyberte úpravu položky: napíšte `zmeniť službu`, `nový opis položky`, '
         '`pridať detaily k položke`, `vymazať detaily položky`, `upraviť množstvo`, '
         '`upraviť cenu za m.j.` alebo `upraviť sumu položky`.'
+    )
+
+
+def _invoice_edit_invoice_operations() -> set[str]:
+    return {
+        _EDIT_INVOICE_OPERATION_NUMBER,
+        _EDIT_INVOICE_OPERATION_ISSUE_DATE,
+        _EDIT_INVOICE_OPERATION_DELIVERY_DATE,
+        _EDIT_INVOICE_OPERATION_DUE_DATE,
+        _EDIT_INVOICE_OPERATION_DATE,
+    }
+
+
+def _invoice_edit_item_operations() -> set[str]:
+    return {
+        _EDIT_ITEM_OPERATION_REPLACE_SERVICE,
+        _EDIT_ITEM_OPERATION_REPLACE_MAIN_DESCRIPTION,
+        _EDIT_ITEM_OPERATION_ADD_DETAILS,
+        _EDIT_ITEM_OPERATION_CLEAR_DETAILS,
+        _EDIT_ITEM_OPERATION_QUANTITY,
+        _EDIT_ITEM_OPERATION_UNIT_PRICE,
+        _EDIT_ITEM_OPERATION_TOTAL_AMOUNT,
+    }
+
+
+def _invoice_edit_main_prompt(invoice_number: object) -> str:
+    return (
+        f'Úprava faktúry {invoice_number}. Vyberte rozsah úpravy: číslo/dátum faktúry '
+        'alebo položka. Konkrétnu úpravu môžete vybrať tlačidlom, napísať alebo nadiktovať.'
+    )
+
+
+async def _send_invoice_edit_keyboard(
+    *,
+    message: Message,
+    state: FSMContext,
+    text: str,
+    reply_markup,
+) -> None:
+    sent_message = await answer_with_decision_keyboard(message, text, reply_markup)
+    sent_message_id = getattr(sent_message, 'message_id', None)
+    sent_chat_id = getattr(getattr(sent_message, 'chat', None), 'id', None)
+    if not isinstance(sent_chat_id, int):
+        sent_chat_id = getattr(getattr(message, 'chat', None), 'id', None)
+    owner_id = getattr(getattr(message, 'from_user', None), 'id', None)
+    await state.update_data(
+        **{
+            _INVOICE_EDIT_MENU_MESSAGE_ID_KEY: sent_message_id if isinstance(sent_message_id, int) else None,
+            _INVOICE_EDIT_MENU_CHAT_ID_KEY: sent_chat_id if isinstance(sent_chat_id, int) else None,
+            _INVOICE_EDIT_MENU_OWNER_ID_KEY: owner_id if isinstance(owner_id, int) else None,
+        }
+    )
+
+
+async def clear_invoice_edit_keyboard(*, message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    message_id = data.get(_INVOICE_EDIT_MENU_MESSAGE_ID_KEY)
+    chat_id = data.get(_INVOICE_EDIT_MENU_CHAT_ID_KEY)
+    bot = getattr(message, 'bot', None)
+    if not isinstance(message_id, int) or not isinstance(chat_id, int) or bot is None:
+        return
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=None,
+        )
+    except Exception:
+        logger.exception('Failed to clear invoice edit inline keyboard')
+
+
+async def _show_invoice_edit_main_menu(
+    *,
+    message: Message,
+    state: FSMContext,
+    invoice_number: object,
+) -> None:
+    await state.update_data(**{_INVOICE_EDIT_PENDING_ITEM_OPERATION_KEY: None})
+    await state.set_state(InvoiceStates.waiting_edit_scope)
+    await _send_invoice_edit_keyboard(
+        message=message,
+        state=state,
+        text=_invoice_edit_main_prompt(invoice_number),
+        reply_markup=invoice_edit_main_keyboard(),
+    )
+
+
+async def _show_invoice_edit_item_actions(
+    *,
+    message: Message,
+    state: FSMContext,
+    preview_text: str,
+) -> None:
+    await state.update_data(**{_INVOICE_EDIT_PENDING_ITEM_OPERATION_KEY: None})
+    await state.set_state(InvoiceStates.waiting_edit_item_action)
+    await _send_invoice_edit_keyboard(
+        message=message,
+        state=state,
+        text=f'{preview_text}\n\n{_item_edit_actions_prompt()}',
+        reply_markup=invoice_edit_item_keyboard(),
+    )
+
+
+async def _show_invoice_edit_item_targets(
+    *,
+    message: Message,
+    state: FSMContext,
+    prompt: str,
+    item_labels: list[str],
+) -> None:
+    await state.set_state(InvoiceStates.waiting_edit_item_target)
+    await _send_invoice_edit_keyboard(
+        message=message,
+        state=state,
+        text=prompt,
+        reply_markup=invoice_edit_item_target_keyboard(item_labels),
     )
 
 
@@ -5129,10 +5346,10 @@ async def _start_invoice_draft_edit_flow(*, message: Message, state: FSMContext)
         edit_target_item_index=None,
         edit_target_item_id=None,
     )
-    await state.set_state(InvoiceStates.waiting_edit_scope)
-    await message.answer(
-        f'Úprava návrhu faktúry {draft.get("invoice_number", "-")}. '
-        'Vyberte rozsah úpravy: `faktúra` (číslo/dátum) alebo `položka`.'
+    await _show_invoice_edit_main_menu(
+        message=message,
+        state=state,
+        invoice_number=draft.get('invoice_number', '-'),
     )
 
 
@@ -5848,10 +6065,10 @@ async def start_invoice_edit_flow(
         edit_target_item_index=None,
         edit_target_item_id=None,
     )
-    await state.set_state(InvoiceStates.waiting_edit_scope)
-    await message.answer(
-        f'Úprava faktúry {invoice.invoice_number}. '
-        'Vyberte rozsah úpravy: `faktúra` (číslo/dátum) alebo `položka`.'
+    await _show_invoice_edit_main_menu(
+        message=message,
+        state=state,
+        invoice_number=invoice.invoice_number,
     )
 
 
@@ -6242,8 +6459,120 @@ async def customization_request_edit_text(message: Message, state: FSMContext) -
     )
 
 
+async def process_invoice_edit_callback_choice(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_choice: str,
+) -> bool:
+    current_state = await state.get_state()
+    current_state_name = current_state if isinstance(current_state, str) else getattr(current_state, 'state', None)
+
+    if canonical_choice == INVOICE_EDIT_CANCEL:
+        from bot.handlers.state_control import cancel_current_state
+
+        await cancel_current_state(message=message, state=state, config=config)
+        return True
+
+    if canonical_choice == INVOICE_EDIT_BACK:
+        if current_state_name not in {
+            InvoiceStates.waiting_edit_invoice_action.state,
+            InvoiceStates.waiting_edit_item_target.state,
+            InvoiceStates.waiting_edit_item_action.state,
+        }:
+            return False
+        data = await state.get_data()
+        invoice_number: object = '-'
+        if data.get('edit_stage') == 'draft':
+            draft = data.get('invoice_draft')
+            if isinstance(draft, dict):
+                invoice_number = draft.get('invoice_number', '-')
+        else:
+            invoice_id = data.get('edit_invoice_id') or data.get('last_invoice_id')
+            if isinstance(invoice_id, int) and getattr(message, 'from_user', None) is not None:
+                runtime = await _invoice_runtime_or_recover(
+                    message=message,
+                    state=state,
+                    config=config,
+                )
+                if runtime is None:
+                    return True
+                invoice = runtime.get_invoice_for_supplier_by_id(
+                    supplier_telegram_id=message.from_user.id,
+                    invoice_id=invoice_id,
+                )
+                if invoice is not None:
+                    invoice_number = invoice.invoice_number
+        await _show_invoice_edit_main_menu(
+            message=message,
+            state=state,
+            invoice_number=invoice_number,
+        )
+        return True
+
+    if canonical_choice.startswith(INVOICE_EDIT_ITEM_TARGET_PREFIX):
+        if current_state_name != InvoiceStates.waiting_edit_item_target.state:
+            return False
+        raw_index = canonical_choice[len(INVOICE_EDIT_ITEM_TARGET_PREFIX) :]
+        if not raw_index.isdigit():
+            return False
+        await invoice_edit_item_target(
+            message=message,
+            state=state,
+            config=config,
+            canonical_target_index=int(raw_index),
+        )
+        return True
+
+    if current_state_name == InvoiceStates.waiting_edit_scope.state:
+        if canonical_choice not in {
+            'invoice_level',
+            'item_level',
+            *_invoice_edit_invoice_operations(),
+            *_invoice_edit_item_operations(),
+        }:
+            return False
+        await invoice_edit_scope(
+            message=message,
+            state=state,
+            config=config,
+            canonical_operation=canonical_choice,
+        )
+        return True
+
+    if current_state_name == InvoiceStates.waiting_edit_invoice_action.state:
+        if canonical_choice not in _invoice_edit_invoice_operations():
+            return False
+        await invoice_edit_invoice_action(
+            message=message,
+            state=state,
+            config=config,
+            canonical_operation=canonical_choice,
+        )
+        return True
+
+    if current_state_name == InvoiceStates.waiting_edit_item_action.state:
+        if canonical_choice not in _invoice_edit_item_operations():
+            return False
+        await invoice_edit_item_action(
+            message=message,
+            state=state,
+            config=config,
+            canonical_operation=canonical_choice,
+        )
+        return True
+
+    return False
+
+
 @router.message(InvoiceStates.waiting_edit_item_target)
-async def invoice_edit_item_target(message: Message, state: FSMContext, config: Config) -> None:
+async def invoice_edit_item_target(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_target_index: int | None = None,
+) -> None:
     raw_value = (message.text or '').strip()
 
     state_data = await state.get_data()
@@ -6258,29 +6587,52 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
             str(item.get('service_display_name') or item.get('service_short_name') or '')
             for item in items
         ]
-        target_index = await _resolve_item_target_index_bounded(
-            config=config,
-            user_input_text=raw_value,
-            item_count=len(items),
-            item_options=option_descriptions,
-        )
+        target_index = canonical_target_index
         if target_index is None:
-            await message.answer(
-                _with_fsm_recovery_hint(
-                    'Prosím, spresnite číslo položky, ktorú chcete upraviť (napr. 1 alebo 2).'
-                )
+            target_index = await _resolve_item_target_index_bounded(
+                config=config,
+                user_input_text=raw_value,
+                item_count=len(items),
+                item_options=option_descriptions,
+            )
+        if target_index is None:
+            await clear_invoice_edit_keyboard(message=message, state=state)
+            await _show_invoice_edit_item_targets(
+                message=message,
+                state=state,
+                prompt=_with_fsm_recovery_hint(
+                    'Prosím, spresnite číslo položky, ktorú chcete upraviť, alebo ju vyberte tlačidlom.'
+                ),
+                item_labels=option_descriptions,
             )
             return
         if _draft_item_at_index(draft, target_index) is None:
-            await message.answer(
-                _with_fsm_recovery_hint(
-                    'Taká položka neexistuje. Zadajte prosím platné číslo položky (napr. 1 alebo 2).'
-                )
+            await clear_invoice_edit_keyboard(message=message, state=state)
+            await _show_invoice_edit_item_targets(
+                message=message,
+                state=state,
+                prompt=_with_fsm_recovery_hint(
+                    'Taká položka neexistuje. Vyberte platnú položku.'
+                ),
+                item_labels=option_descriptions,
             )
             return
         await state.update_data(edit_target_item_index=target_index, edit_target_item_id=target_index)
-        await state.set_state(InvoiceStates.waiting_edit_item_action)
-        await message.answer(_draft_item_preview(draft, target_index) + f'\n\n{_item_edit_actions_prompt()}')
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        pending_operation = state_data.get(_INVOICE_EDIT_PENDING_ITEM_OPERATION_KEY)
+        if pending_operation in _invoice_edit_item_operations():
+            await invoice_edit_item_action(
+                message=message,
+                state=state,
+                config=config,
+                canonical_operation=str(pending_operation),
+            )
+            return
+        await _show_invoice_edit_item_actions(
+            message=message,
+            state=state,
+            preview_text=_draft_item_preview(draft, target_index),
+        )
         return
 
     invoice_id = state_data.get('edit_invoice_id') or state_data.get('last_invoice_id')
@@ -6310,26 +6662,34 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
 
     items = invoice_service.get_items_by_invoice_id(invoice_id)
     option_descriptions = [item.description_normalized or item.description_raw for item in items]
-    target_index = await _resolve_item_target_index_bounded(
-        config=config,
-        user_input_text=raw_value,
-        item_count=len(items),
-        item_options=option_descriptions,
-    )
+    target_index = canonical_target_index
     if target_index is None:
-        await message.answer(
-            _with_fsm_recovery_hint(
-                'Prosím, spresnite číslo položky, ktorú chcete upraviť (napr. 1 alebo 2).'
-            )
+        target_index = await _resolve_item_target_index_bounded(
+            config=config,
+            user_input_text=raw_value,
+            item_count=len(items),
+            item_options=option_descriptions,
+        )
+    if target_index is None:
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        await _show_invoice_edit_item_targets(
+            message=message,
+            state=state,
+            prompt=_with_fsm_recovery_hint(
+                'Prosím, spresnite číslo položky, ktorú chcete upraviť, alebo ju vyberte tlačidlom.'
+            ),
+            item_labels=option_descriptions,
         )
         return
 
     target_item = _resolve_target_item_from_index(invoice_items=items, target_item_index=target_index)
     if target_item is None:
-        await message.answer(
-            _with_fsm_recovery_hint(
-                'Taká položka neexistuje. Zadajte prosím platné číslo položky (napr. 1 alebo 2).'
-            )
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        await _show_invoice_edit_item_targets(
+            message=message,
+            state=state,
+            prompt=_with_fsm_recovery_hint('Taká položka neexistuje. Vyberte platnú položku.'),
+            item_labels=option_descriptions,
         )
         return
 
@@ -6343,21 +6703,55 @@ async def invoice_edit_item_target(message: Message, state: FSMContext, config: 
         return
 
     await state.update_data(edit_target_item_index=target_index, edit_target_item_id=target_item.id)
-    await state.set_state(InvoiceStates.waiting_edit_item_action)
-    await message.answer(
-        _format_item_edit_preview(invoice.invoice_number, target_item, target_index)
-        + f'\n\n{_item_edit_actions_prompt()}',
+    await clear_invoice_edit_keyboard(message=message, state=state)
+    pending_operation = state_data.get(_INVOICE_EDIT_PENDING_ITEM_OPERATION_KEY)
+    if pending_operation in _invoice_edit_item_operations():
+        await invoice_edit_item_action(
+            message=message,
+            state=state,
+            config=config,
+            canonical_operation=str(pending_operation),
+        )
+        return
+    await _show_invoice_edit_item_actions(
+        message=message,
+        state=state,
+        preview_text=_format_item_edit_preview(invoice.invoice_number, target_item, target_index),
     )
 
 
 @router.message(InvoiceStates.waiting_edit_scope)
-async def invoice_edit_scope(message: Message, state: FSMContext, config: Config) -> None:
-    scope = await _resolve_invoice_edit_scope(config=config, user_input_text=(message.text or ''))
+async def invoice_edit_scope(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_operation: str | None = None,
+) -> None:
+    scope = canonical_operation or await _resolve_invoice_edit_scope(
+        config=config,
+        user_input_text=(message.text or ''),
+    )
+    if scope in _invoice_edit_invoice_operations():
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        await invoice_edit_invoice_action(
+            message=message,
+            state=state,
+            config=config,
+            canonical_operation=scope,
+        )
+        return
+    pending_item_operation = scope if scope in _invoice_edit_item_operations() else None
+    if pending_item_operation is not None:
+        scope = 'item_level'
     if scope == _EDIT_ITEM_OPERATION_UNKNOWN:
-        await message.answer(
-            _with_fsm_recovery_hint(
-                'Prosím, vyberte rozsah úpravy: `faktúra` alebo `položka`.'
-            )
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        await _send_invoice_edit_keyboard(
+            message=message,
+            state=state,
+            text=_with_fsm_recovery_hint(
+                'Prosím, vyberte rozsah úpravy alebo konkrétnu zmenu tlačidlom, textom či hlasom.'
+            ),
+            reply_markup=invoice_edit_main_keyboard(),
         )
         return
 
@@ -6369,11 +6763,13 @@ async def invoice_edit_scope(message: Message, state: FSMContext, config: Config
             await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
             return
         if scope == 'invoice_level':
+            await clear_invoice_edit_keyboard(message=message, state=state)
             await state.set_state(InvoiceStates.waiting_edit_invoice_action)
-            await message.answer(
-                f'Úprava na úrovni návrhu faktúry {draft.get("invoice_number", "-")}. '
-                'Napíšte: `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
-                '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+            await _send_invoice_edit_keyboard(
+                message=message,
+                state=state,
+                text=f'Vyberte údaj návrhu faktúry {draft.get("invoice_number", "-")}, ktorý chcete upraviť.',
+                reply_markup=invoice_edit_invoice_keyboard(),
             )
             return
         items = _draft_items(draft)
@@ -6383,14 +6779,35 @@ async def invoice_edit_scope(message: Message, state: FSMContext, config: Config
             return
         if len(items) == 1:
             await state.update_data(edit_target_item_index=1, edit_target_item_id=1)
-            await state.set_state(InvoiceStates.waiting_edit_item_action)
-            await message.answer(_draft_item_preview(draft, 1) + f'\n\n{_item_edit_actions_prompt()}')
+            await clear_invoice_edit_keyboard(message=message, state=state)
+            if pending_item_operation is not None:
+                await invoice_edit_item_action(
+                    message=message,
+                    state=state,
+                    config=config,
+                    canonical_operation=pending_item_operation,
+                )
+                return
+            await _show_invoice_edit_item_actions(
+                message=message,
+                state=state,
+                preview_text=_draft_item_preview(draft, 1),
+            )
             return
-        await state.update_data(edit_target_item_index=None, edit_target_item_id=None)
-        await state.set_state(InvoiceStates.waiting_edit_item_target)
-        await message.answer(
-            f'Návrh faktúry {draft.get("invoice_number", "-")} má viac položiek. '
-            'Napíšte číslo položky, ktorú chcete upraviť (napr. 1, 2, 3).'
+        await state.update_data(
+            edit_target_item_index=None,
+            edit_target_item_id=None,
+            **{_INVOICE_EDIT_PENDING_ITEM_OPERATION_KEY: pending_item_operation},
+        )
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        await _show_invoice_edit_item_targets(
+            message=message,
+            state=state,
+            prompt=f'Návrh faktúry {draft.get("invoice_number", "-")} má viac položiek. Vyberte položku na úpravu.',
+            item_labels=[
+                str(item.get('service_display_name') or item.get('service_short_name') or '')
+                for item in items
+            ],
         )
         return
 
@@ -6420,11 +6837,13 @@ async def invoice_edit_scope(message: Message, state: FSMContext, config: Config
         return
 
     if scope == 'invoice_level':
+        await clear_invoice_edit_keyboard(message=message, state=state)
         await state.set_state(InvoiceStates.waiting_edit_invoice_action)
-        await message.answer(
-            f'Úprava na úrovni faktúry {invoice.invoice_number}. '
-            'Napíšte: `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
-            '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
+        await _send_invoice_edit_keyboard(
+            message=message,
+            state=state,
+            text=f'Vyberte údaj faktúry {invoice.invoice_number}, ktorý chcete upraviť.',
+            reply_markup=invoice_edit_invoice_keyboard(),
         )
         return
 
@@ -6436,32 +6855,58 @@ async def invoice_edit_scope(message: Message, state: FSMContext, config: Config
 
     if len(items) == 1:
         await state.update_data(edit_target_item_index=1, edit_target_item_id=items[0].id)
-        await state.set_state(InvoiceStates.waiting_edit_item_action)
-        await message.answer(
-            _format_item_edit_preview(invoice.invoice_number, items[0], 1)
-            + f'\n\n{_item_edit_actions_prompt()}',
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        if pending_item_operation is not None:
+            await invoice_edit_item_action(
+                message=message,
+                state=state,
+                config=config,
+                canonical_operation=pending_item_operation,
+            )
+            return
+        await _show_invoice_edit_item_actions(
+            message=message,
+            state=state,
+            preview_text=_format_item_edit_preview(invoice.invoice_number, items[0], 1),
         )
         return
 
-    await state.update_data(edit_target_item_index=None, edit_target_item_id=None)
-    await state.set_state(InvoiceStates.waiting_edit_item_target)
-    await message.answer(
-        f'Faktúra {invoice.invoice_number} má viac položiek. '
-        'Napíšte číslo položky, ktorú chcete upraviť (napr. 1, 2, 3).'
+    await state.update_data(
+        edit_target_item_index=None,
+        edit_target_item_id=None,
+        **{_INVOICE_EDIT_PENDING_ITEM_OPERATION_KEY: pending_item_operation},
+    )
+    await clear_invoice_edit_keyboard(message=message, state=state)
+    await _show_invoice_edit_item_targets(
+        message=message,
+        state=state,
+        prompt=f'Faktúra {invoice.invoice_number} má viac položiek. Vyberte položku na úpravu.',
+        item_labels=[item.description_normalized or item.description_raw for item in items],
     )
 
 
 @router.message(InvoiceStates.waiting_edit_invoice_action)
-async def invoice_edit_invoice_action(message: Message, state: FSMContext, config: Config) -> None:
-    operation = await _resolve_invoice_edit_action(config=config, user_input_text=(message.text or ''))
+async def invoice_edit_invoice_action(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_operation: str | None = None,
+) -> None:
+    operation = canonical_operation or await _resolve_invoice_edit_action(
+        config=config,
+        user_input_text=(message.text or ''),
+    )
     if operation == _EDIT_ITEM_OPERATION_UNKNOWN:
-        await message.answer(
-            _with_fsm_recovery_hint(
-                'Prosím, napíšte `upraviť číslo faktúry`, `upraviť dátum vystavenia`, '
-                '`upraviť dátum dodania` alebo `upraviť dátum splatnosti`.'
-            )
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        await _send_invoice_edit_keyboard(
+            message=message,
+            state=state,
+            text=_with_fsm_recovery_hint('Vyberte údaj faktúry, ktorý chcete upraviť.'),
+            reply_markup=invoice_edit_invoice_keyboard(),
         )
         return
+
+    await clear_invoice_edit_keyboard(message=message, state=state)
 
     state_data = await state.get_data()
     if state_data.get('edit_stage') == 'draft':
@@ -6478,7 +6923,12 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
             )
             return
         if operation == _EDIT_INVOICE_OPERATION_DATE:
-            await message.answer('Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?')
+            await _send_invoice_edit_keyboard(
+                message=message,
+                state=state,
+                text='Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?',
+                reply_markup=invoice_edit_invoice_keyboard(),
+            )
             return
         if operation not in {
             _EDIT_INVOICE_OPERATION_ISSUE_DATE,
@@ -6526,8 +6976,11 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
         return
 
     if operation == _EDIT_INVOICE_OPERATION_DATE:
-        await message.answer(
-            'Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?'
+        await _send_invoice_edit_keyboard(
+            message=message,
+            state=state,
+            text='Ktorý dátum chcete upraviť: vystavenia, dodania alebo splatnosti?',
+            reply_markup=invoice_edit_invoice_keyboard(),
         )
         return
 
@@ -6550,11 +7003,28 @@ async def invoice_edit_invoice_action(message: Message, state: FSMContext, confi
 
 
 @router.message(InvoiceStates.waiting_edit_item_action)
-async def invoice_edit_item_action(message: Message, state: FSMContext, config: Config) -> None:
-    operation = await _resolve_item_edit_action(config=config, user_input_text=(message.text or ''))
+async def invoice_edit_item_action(
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    canonical_operation: str | None = None,
+) -> None:
+    operation = canonical_operation or await _resolve_item_edit_action(
+        config=config,
+        user_input_text=(message.text or ''),
+    )
     if operation == _EDIT_ITEM_OPERATION_UNKNOWN:
-        await message.answer(_with_fsm_recovery_hint(f'Prosím, {_item_edit_actions_prompt().lower()}'))
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        await _send_invoice_edit_keyboard(
+            message=message,
+            state=state,
+            text=_with_fsm_recovery_hint(f'Prosím, {_item_edit_actions_prompt().lower()}'),
+            reply_markup=invoice_edit_item_keyboard(),
+        )
         return
+
+    await clear_invoice_edit_keyboard(message=message, state=state)
+    await state.update_data(**{_INVOICE_EDIT_PENDING_ITEM_OPERATION_KEY: None})
 
     state_data = await state.get_data()
     target_item_id = state_data.get('edit_target_item_id')

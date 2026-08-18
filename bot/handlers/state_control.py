@@ -11,7 +11,11 @@ from bot.config import Config
 from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
 from bot.handlers.contacts import ContactStates
 from bot.handlers.delete_user_database import DeleteUserDatabaseStates
-from bot.handlers.invoice import InvoiceStates, process_invoice_postpdf_decision
+from bot.handlers.invoice import (
+    InvoiceStates,
+    clear_invoice_edit_keyboard,
+    process_invoice_postpdf_decision,
+)
 from bot.handlers.officeflow_attachment_router import OfficeFlowAttachmentRouterStates
 from bot.handlers.onboarding import OnboardingStates, SupplierProfileEditStates
 from bot.handlers.supplier import ServiceAliasStates
@@ -67,6 +71,14 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
         return
 
     data = await state.get_data()
+
+    if current_state in {
+        InvoiceStates.waiting_edit_scope.state,
+        InvoiceStates.waiting_edit_invoice_action.state,
+        InvoiceStates.waiting_edit_item_target.state,
+        InvoiceStates.waiting_edit_item_action.state,
+    }:
+        await clear_invoice_edit_keyboard(message=message, state=state)
 
     if current_state == InvoiceStates.waiting_pdf_decision.state and data.get('edit_stage') != 'persisted':
         await process_invoice_postpdf_decision(

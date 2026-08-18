@@ -274,9 +274,9 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'edit_existing_invoice': {
         'title': 'Úprava existujúcej faktúry',
-        'summary': 'Existujúcu odoslanú faktúru možno upraviť cez ohraničený tok po vyhľadaní konkrétnej faktúry.',
-        'limitation': 'Číslo faktúry a presné upravované hodnoty sú citlivé na presnosť a patria do textu.',
-        'safe_next': 'Napíšte, ktorú faktúru chcete upraviť, a pokračujte cez existujúci edit flow.',
+        'summary': 'Existujúcu odoslanú faktúru možno po vyhľadaní upraviť cez priame tlačidlá alebo pomenovaním konkrétneho údaja textom či hlasom.',
+        'limitation': 'Presné číslo faktúry, číselné hodnoty položiek, služba a finálny opis zostávajú textové a Python ich validuje; dátum možno nadiktovať a následne sa tiež validuje.',
+        'safe_next': 'Napíšte, ktorú faktúru chcete upraviť, potom vyberte údaj tlačidlom alebo povedzte napríklad „dátum dodania“.',
     },
     'mark_existing_invoice_paid': {
         'title': 'Označenie faktúry ako uhradenej',

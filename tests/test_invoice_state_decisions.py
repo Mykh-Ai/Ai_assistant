@@ -10,6 +10,7 @@ from bot.handlers.invoice import (
     InvoiceStates,
     _format_preview,
     _invoice_exact_value_recovery_hint,
+    _resolve_invoice_edit_scope,
     invoice_edit_invoice_action,
     invoice_edit_invoice_date_value,
     invoice_edit_description_value,
@@ -587,6 +588,271 @@ def test_preview_edit_enters_draft_edit_flow_without_invoice_row(tmp_path: Path)
     assert state.data['edit_invoice_id'] is None
     assert InvoiceService(db_path).get_invoice_by_number('20260009') is None
     assert not message.documents
+
+
+def test_preview_edit_direct_delivery_date_text_skips_scope_loop_and_returns_updated_preview(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    telegram_id = 9013
+    db_path = tmp_path / 'draft-edit-direct-delivery-date.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'invoice_draft': _draft_for_tests(contact_id)})
+
+    asyncio.run(
+        process_invoice_preview_confirmation(
+            message=message,
+            state=state,
+            config=config,
+            confirmation_text='upraviť',
+        )
+    )
+    assert state.current_state == InvoiceStates.waiting_edit_scope
+
+    captured_inputs: list[str] = []
+
+    async def _resolve_direct_delivery_date(*, user_input_text: str, **kwargs) -> str:
+        captured_inputs.append(user_input_text)
+        return 'edit_invoice_delivery_date'
+
+    async def _normalize_date(**kwargs) -> str:
+        return '15.08.2026'
+
+    monkeypatch.setattr('bot.handlers.invoice._resolve_invoice_edit_scope', _resolve_direct_delivery_date)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_invoice_date_normalization', _normalize_date)
+
+    asyncio.run(
+        invoice_edit_scope(
+            message=type(
+                'M',
+                (),
+                {'from_user': message.from_user, 'text': 'Датом додання', 'answer': message.answer},
+            )(),
+            state=state,
+            config=config,
+        )
+    )
+
+    assert captured_inputs == ['Датом додання']
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
+    assert state.data['edit_invoice_date_operation'] == 'edit_invoice_delivery_date'
+
+    asyncio.run(
+        invoice_edit_invoice_date_value(
+            message=type(
+                'M',
+                (),
+                {'from_user': message.from_user, 'text': '15 августа', 'answer': message.answer},
+            )(),
+            state=state,
+            config=config,
+        )
+    )
+
+    assert state.data['invoice_draft']['delivery_date'] == '2026-08-15'
+    assert state.current_state == InvoiceStates.waiting_confirm
+    assert 'Dátum dodania' in message.answers[-1]
+    assert InvoiceService(db_path).get_invoice_by_number('20260009') is None
+
+
+def test_invoice_edit_entry_resolver_exposes_concrete_actions_to_llm(monkeypatch, tmp_path: Path) -> None:
+    captured: dict = {}
+
+    async def _resolver(**kwargs) -> str:
+        captured.update(kwargs)
+        return 'edit_invoice_delivery_date'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=tmp_path / 'resolver-contract.db',
+        storage_dir=tmp_path,
+    )
+
+    result = asyncio.run(
+        _resolve_invoice_edit_scope(
+            config=config,
+            user_input_text='Датом додання',
+        )
+    )
+
+    assert result == 'edit_invoice_delivery_date'
+    assert captured['context_name'] == 'invoice_edit_scope_selection'
+    assert 'edit_invoice_delivery_date' in captured['allowed_actions']
+    assert 'edit_item_quantity' in captured['allowed_actions']
+    assert captured['action_hints']['edit_invoice_delivery_date']['meaning']
+
+
+def test_edit_scope_direct_clear_item_details_completes_without_extra_submenu(tmp_path: Path) -> None:
+    telegram_id = 9016
+    db_path = tmp_path / 'draft-edit-direct-clear-details.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    draft = _draft_for_tests(contact_id)
+    draft['items'] = [
+        {
+            'service_short_name': 'servis',
+            'service_display_name': 'Servis zariadenia',
+            'quantity': 1,
+            'unit': 'ks',
+            'unit_price': 100,
+            'amount': 100,
+            'item_description_raw': 'hala B',
+        }
+    ]
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft})
+    state.current_state = InvoiceStates.waiting_edit_scope
+
+    asyncio.run(
+        invoice_edit_scope(
+            message=message,
+            state=state,
+            config=config,
+            canonical_operation='clear_item_details',
+        )
+    )
+
+    assert state.current_state == InvoiceStates.waiting_confirm
+    assert state.data['invoice_draft']['items'][0]['item_description_raw'] is None
+    assert message.answers[-1].startswith('Detaily položky boli vymazané.')
+
+
+def test_edit_scope_direct_operations_cover_every_supported_sublevel(tmp_path: Path) -> None:
+    telegram_id = 9014
+    db_path = tmp_path / 'draft-edit-direct-operation-matrix.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    cases = {
+        'edit_invoice_number': (InvoiceStates.waiting_edit_invoice_number_value, None),
+        'edit_invoice_issue_date': (InvoiceStates.waiting_edit_invoice_date_value, 'edit_invoice_issue_date'),
+        'edit_invoice_delivery_date': (InvoiceStates.waiting_edit_invoice_date_value, 'edit_invoice_delivery_date'),
+        'edit_invoice_due_date': (InvoiceStates.waiting_edit_invoice_date_value, 'edit_invoice_due_date'),
+        'replace_service': (InvoiceStates.waiting_edit_service_value, 'replace_service'),
+        'replace_main_description': (InvoiceStates.waiting_edit_description_value, 'replace_main_description'),
+        'add_item_details': (InvoiceStates.waiting_edit_description_value, 'add_item_details'),
+        'edit_item_quantity': (InvoiceStates.waiting_edit_item_numeric_value, 'edit_item_quantity'),
+        'edit_item_unit_price': (InvoiceStates.waiting_edit_item_numeric_value, 'edit_item_unit_price'),
+        'edit_item_total_amount': (InvoiceStates.waiting_edit_item_numeric_value, 'edit_item_total_amount'),
+    }
+
+    for operation, (expected_state, expected_mode) in cases.items():
+        draft = _draft_for_tests(contact_id)
+        state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft})
+        state.current_state = InvoiceStates.waiting_edit_scope
+        message = _DummyMessage(telegram_id, text='natural language selection')
+        asyncio.run(
+            invoice_edit_scope(
+                message=message,
+                state=state,
+                config=config,
+                canonical_operation=operation,
+            )
+        )
+        assert state.current_state == expected_state, operation
+        if operation.startswith('edit_invoice_') and operation != 'edit_invoice_number':
+            assert state.data['edit_invoice_date_operation'] == expected_mode
+        if operation in {
+            'replace_service',
+            'replace_main_description',
+            'add_item_details',
+            'edit_item_quantity',
+            'edit_item_unit_price',
+            'edit_item_total_amount',
+        }:
+            assert state.data['edit_item_action_mode'] == expected_mode
+
+
+def test_direct_multi_item_operation_asks_only_for_target_then_continues(tmp_path: Path) -> None:
+    telegram_id = 9015
+    db_path = tmp_path / 'draft-edit-direct-multi-item.db'
+    contact_id = _setup_profiles(db_path, telegram_id)
+    draft = _draft_for_tests(contact_id)
+    draft['items'] = [
+        {
+            'service_short_name': 'servis',
+            'service_display_name': 'Servis zariadenia',
+            'quantity': 1,
+            'unit': 'ks',
+            'unit_price': 100,
+            'amount': 100,
+            'item_description_raw': None,
+        },
+        {
+            'service_short_name': 'montaz',
+            'service_display_name': 'Montáž zariadenia',
+            'quantity': 1,
+            'unit': 'ks',
+            'unit_price': 200,
+            'amount': 200,
+            'item_description_raw': None,
+        },
+    ]
+    config = Config(
+        bot_token='token',
+        openai_api_key='key',
+        openai_stt_model='whisper-1',
+        openai_llm_model='gpt-4o',
+        debug_invoice_transparency=False,
+        db_path=db_path,
+        storage_dir=tmp_path,
+    )
+    message = _DummyMessage(telegram_id)
+    state = _DummyState(data={'edit_stage': 'draft', 'invoice_draft': draft})
+    state.current_state = InvoiceStates.waiting_edit_scope
+
+    asyncio.run(
+        invoice_edit_scope(
+            message=message,
+            state=state,
+            config=config,
+            canonical_operation='edit_item_quantity',
+        )
+    )
+    assert state.current_state == InvoiceStates.waiting_edit_item_target
+    assert state.data['invoice_edit_pending_item_operation'] == 'edit_item_quantity'
+
+    asyncio.run(
+        invoice_edit_item_target(
+            message=message,
+            state=state,
+            config=config,
+            canonical_target_index=2,
+        )
+    )
+    assert state.data['edit_target_item_index'] == 2
+    assert state.data['edit_item_action_mode'] == 'edit_item_quantity'
+    assert state.current_state == InvoiceStates.waiting_edit_item_numeric_value
 
 
 def test_preview_finalize_rejects_used_proposed_invoice_number(tmp_path: Path, monkeypatch) -> None:

@@ -85,7 +85,7 @@ router = Router(name='voice')
 logger = logging.getLogger(__name__)
 
 
-def _inject_recognized_text(message: Message, recognized_text: str):
+def _inject_recognized_text(message: Message, recognized_text: str, *, bot: Bot | None = None):
     async def _noop_answer_document(*args, **kwargs) -> None:
         return None
 
@@ -97,6 +97,9 @@ def _inject_recognized_text(message: Message, recognized_text: str):
             'answer': message.answer,
             'answer_document': getattr(message, 'answer_document', _noop_answer_document),
             'from_user': getattr(message, 'from_user', None),
+            'bot': bot or getattr(message, 'bot', None),
+            'chat': getattr(message, 'chat', None),
+            'message_id': getattr(message, 'message_id', None),
         },
     )()
 
@@ -181,7 +184,7 @@ async def handle_voice(
             )
             if handled_by_active_guard:
                 return
-        text_message = _inject_recognized_text(message, recognized_text)
+        text_message = _inject_recognized_text(message, recognized_text, bot=bot)
         if current_state == InvoiceStates.waiting_input.state:
             await process_invoice_text(
                 message=message,

@@ -376,7 +376,7 @@ async def touch_active_fsm_activity(state: FSMContext, *, now: datetime | None =
 
 
 async def expire_active_fsm_state(*, message: Message, state: FSMContext, config: Config) -> None:
-    await _clear_info_help_offer_keyboard_if_owned(message=message, state=state)
+    await _clear_owned_inline_keyboards(message=message, state=state)
     await clear_current_state_safely(state=state, config=config)
     await message.answer(ACTIVE_FSM_EXPIRED_MESSAGE)
 
@@ -453,7 +453,7 @@ async def _resolve_navigation_for_update(
 
 
 async def _execute_navigation(*, decision: str, message: Message, state: FSMContext, config: Config) -> None:
-    await _clear_info_help_offer_keyboard_if_owned(message=message, state=state)
+    await _clear_owned_inline_keyboards(message=message, state=state)
     if decision == 'cancel_current_flow':
         from bot.handlers.state_control import cancel_current_state
 
@@ -480,6 +480,22 @@ async def _clear_info_help_offer_keyboard_if_owned(*, message: Message, state: F
     from bot.handlers.invoice import clear_info_help_offer_keyboard
 
     await clear_info_help_offer_keyboard(message=message, state=state)
+
+
+async def _clear_owned_inline_keyboards(*, message: Message, state: FSMContext) -> None:
+    await _clear_info_help_offer_keyboard_if_owned(message=message, state=state)
+    current_state = await state.get_state()
+    from bot.handlers.invoice import InvoiceStates, clear_invoice_edit_keyboard
+
+    invoice_edit_states = {
+        InvoiceStates.waiting_edit_scope.state,
+        InvoiceStates.waiting_edit_invoice_action.state,
+        InvoiceStates.waiting_edit_item_target.state,
+        InvoiceStates.waiting_edit_item_action.state,
+    }
+    if current_state not in invoice_edit_states:
+        return
+    await clear_invoice_edit_keyboard(message=message, state=state)
 
 
 async def _route_through_idle_top_level(
