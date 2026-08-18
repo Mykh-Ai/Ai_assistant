@@ -217,6 +217,8 @@ Operational status source:
 - The scheduler emits one cooldown-protected Slovak administrator notice with
   `/gmail_connect`, then sleeps for the configured check interval. A
   `needs_reauth` outcome must never become a tight retry or notification loop.
+  Later ticks while the binding remains inactive are quiet no-ops until a new
+  successful `/gmail_connect` activates the replacement grant.
 - Retryable provider failures do not delete or rewrite stored files.
 - A source duplicate is skipped before attachment download where possible.
 - A content duplicate gets its own metadata record but reuses the canonical

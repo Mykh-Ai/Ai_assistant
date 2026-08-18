@@ -308,6 +308,9 @@ After marking the binding/grant, the tick returns an explicit
 `needs_reauth` outcome to the async scheduler. The scheduler may send one
 cooldown-protected administrator notice and must then sleep for the normal
 configured interval; neither a missing signal nor a tight retry loop is valid.
+Once the persisted binding is no longer active, later ticks are no-effect
+until a verified OAuth callback activates a replacement grant; inactivity is
+not logged as a provider outage.
 
 `/gmail_disconnect` is local in V1:
 
