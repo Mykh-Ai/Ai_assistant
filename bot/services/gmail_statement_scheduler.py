@@ -9,7 +9,10 @@ from aiogram import Bot
 
 from bot.config import Config
 from bot.services.db import managed_connection
-from bot.services.google_integration_service import ensure_google_integration_schema
+from bot.services.google_integration_service import (
+    GoogleIntegrationError,
+    ensure_google_integration_schema,
+)
 from bot.services.accounting_document_archive_service import (
     AccountingDocumentArchiveService,
 )
@@ -104,7 +107,12 @@ def _run_tick(config: Config):
         secret=gmail.token_crypto_secret, key_id="google-integration-fernet-v1"
     )
     runtime = GoogleGmailRuntimeService(config.db_path, crypto)
-    grant = runtime.load_active_grant(workspace.workspace_id)
+    try:
+        grant = runtime.load_active_grant(workspace.workspace_id)
+    except GoogleIntegrationError as exc:
+        if str(exc) == "gmail_binding_inactive":
+            return None
+        raise
     transport = GoogleAPIGmailReadonlyTransport(
         access_token=grant.access_token,
         refresh_token=grant.refresh_token,

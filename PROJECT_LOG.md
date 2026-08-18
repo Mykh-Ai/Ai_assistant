@@ -47,6 +47,12 @@
   remain pending for the follow-up state recorded here.
 - Full repository regression after the scheduler signal/notification/sleep
   follow-up: `2561 passed, 7 subtests passed in 495.81s`.
+- Restart-path review added a quiet fail-closed outcome for an already inactive
+  Gmail binding. After the one transition notice, later scheduled ticks do no
+  Gmail/file/DB work and do not misreport expected inactivity as a provider
+  outage while waiting for `/gmail_connect`.
+- Final focused lifecycle regression: `34 passed in 4.78s`; final full
+  repository regression: `2562 passed, 7 subtests passed in 495.06s`.
 
 # 2026-08-18 - Unified direct invoice-edit routing and inline controls
 

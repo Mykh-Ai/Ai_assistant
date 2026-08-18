@@ -8,7 +8,9 @@
   retryable, and raw provider descriptions are never logged or persisted. The
   scheduler now returns an explicit reauthorization outcome, sends at most one
   cooldown-protected administrator notice, and still sleeps at the configured
-  interval instead of entering a tight reauthorization loop.
+  interval instead of entering a tight reauthorization loop. Later ticks with
+  an already inactive/`needs_reauth` binding are quiet no-ops rather than
+  recurring scheduler errors.
 - Replaced the mandatory two-turn invoice edit scope corridor with one unified bounded edit selector. Concrete text/STT requests may now resolve directly to invoice number, issue/delivery/due date, service, description/details, quantity, unit price, or item-total operations; generic input still receives bounded clarification. Added Slovak inline buttons for invoice fields, item targets, and item operations. Buttons, text, and voice converge on the existing Python value handlers, while multi-item flows preserve the selected operation and ask only for the target. Callback actor/message/state/expiry checks and keyboard cleanup were added without changing DB schema, invoice mutation rules, tenant scoping, confirmation gates, or PDF layout.
 - Restored the canonical Slovak Product Truth fallback for Contextual InfoHelp
   V2 capability answers and removed the direct path that exposed

@@ -9,6 +9,7 @@ import pytest
 import bot.services.gmail_statement_scheduler as scheduler
 from bot.services.gmail_readonly_adapter import GmailReadonlyNeedsReauth
 from bot.services.gmail_statement_collector import GmailStatementImportResult
+from bot.services.google_integration_service import GoogleIntegrationError
 from bot.services.gmail_statement_scheduler import (
     _bounded_query,
     _mark_reauth_notified,
@@ -177,6 +178,39 @@ def test_run_tick_returns_reauth_signal_after_marking_binding(
 
     assert scheduler._run_tick(config) == ("needs_reauth", None, workspace)
     assert runtime.marked == [workspace.workspace_id]
+
+
+def test_run_tick_treats_inactive_binding_as_quiet_noop(monkeypatch, tmp_path) -> None:
+    gmail = SimpleNamespace(
+        target_workspace_id="workspace-zevs",
+        token_crypto_secret="unused",
+    )
+    workspace = SimpleNamespace(workspace_id="workspace-zevs")
+
+    class Runtime:
+        def load_active_grant(self, workspace_id):
+            assert workspace_id == workspace.workspace_id
+            raise GoogleIntegrationError("gmail_binding_inactive")
+
+    monkeypatch.setattr(scheduler, "load_google_gmail_config", lambda: gmail)
+    monkeypatch.setattr(
+        scheduler, "load_statement_pdf_open_password", lambda config: None
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "WorkspaceContextService",
+        lambda db_path: SimpleNamespace(
+            resolve_for_background_workspace=lambda workspace_id: workspace
+        ),
+    )
+    monkeypatch.setattr(scheduler, "FernetTokenCryptoProvider", lambda **kwargs: object())
+    monkeypatch.setattr(
+        scheduler, "GoogleGmailRuntimeService", lambda db_path, crypto: Runtime()
+    )
+
+    config = SimpleNamespace(db_path=tmp_path / "db.sqlite")
+
+    assert scheduler._run_tick(config) is None
 
 
 def test_scheduler_notifies_once_then_sleeps_on_reauth(monkeypatch, tmp_path) -> None:
