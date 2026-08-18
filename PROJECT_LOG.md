@@ -13,20 +13,28 @@
   - button/text/voice paths converge on the same invoice handlers/value owners;
   - added Back/Cancel, prompt actor/message/chat ownership, stale/legacy expiry checks, wrong-actor/wrong-message fail-closed behavior, and handled/owned-stale markup cleanup.
 - Product Truth/InfoHelp: `edit_existing_invoice` remains `supported` and `requires_setup`; copy now explains direct buttons/text/voice selection and the unchanged text-first precision boundaries. Forbidden claims remain: no arbitrary field editing, contact replacement, add/remove item, cross-tenant edit, or unconfirmed write.
-- Touched scopes: invoice FSM/subflow routing, bounded LLM action selection, STT convergence transport metadata, inline callbacks/keyboards, Product Truth/InfoHelp copy, tests/evals/docs. No STT model, LMM, DB/schema/storage, persisted-data migration, PDF layout, access model, deployment, external credentials, or self-learning storage changed.
+- Touched implementation scopes: invoice FSM/subflow routing, bounded LLM action selection, STT convergence transport metadata, inline callbacks/keyboards, Product Truth/InfoHelp copy, tests/evals/docs. No STT model, LMM, DB/schema/storage, persisted-data migration, PDF layout, access model, deployment configuration, external credentials, or self-learning storage changed.
 - Self-learning: considered and intentionally unchanged; successful edit phrasing is not persisted as an alias by this repair.
 - User journey evidence:
   - preview -> `upraviť` -> `Датом додання` -> `15 августа` -> updated draft preview;
   - direct matrix for invoice number, all three dates, service, description/details, quantity, unit price, and item total;
   - preserved operation across multi-item target selection;
   - voice and callback convergence, Back/Cancel, stale and wrong-actor safety.
-- Conversation Acceptance Proof: `docs/evals/invoice_edit_direct_action_conversation_acceptance_proof.md`, verdict `safe_to_commit` for local tested code; production Telegram smoke/deploy not run.
+- Conversation Acceptance Proof: `docs/evals/invoice_edit_direct_action_conversation_acceptance_proof.md`, local verdict `safe_to_commit`; production deployment health passed and the exact interactive Telegram journey remains pending owner smoke.
 - Tests:
   - invoice/voice/callback focused regression: `173 passed in 62.34s` before final callback-matrix additions;
   - invoice-edit callback subset after additions: `7 passed, 27 deselected in 5.03s`;
   - Product Truth + InfoHelp + invoice/voice/callback regression: `308 passed in 63.96s`;
   - full repository: `2556 passed, 7 subtests passed in 497.69s`.
 - Initial full-suite attempt hit the command's 5-minute timeout without a test failure; rerun with a sufficient timeout completed green.
+
+## Production deployment follow-up
+
+- Feature commit `4460650` was merged into `main` as `63a20c9` and pushed to `origin/main`.
+- Production `/bot/repo` was clean at `f32383b`, fast-forwarded to `63a20c9`, and rebuilt with the existing `docker-compose.prod.yml`; no `.env`, database, storage, schema, or credentials were changed.
+- `fakturabot` and `fakturabot-cloudflared` were `Up`; the bot container reported `running=true`, `restarting=false`, exit code `0`, and restart count `0`. Logs showed `FakturaBot starting`, `Start polling`, and `Run polling for bot`.
+- The first post-start Gmail background tick logged bounded `gmail_provider_failed`. The bot remained running and polling; this release did not change Gmail scheduler/transport code. The warning is recorded separately from invoice-edit deployment health and was not hidden as a successful Gmail check.
+- Deployment status: `deployed_pending_interactive_smoke`. No synthetic invoice, PDF, DB row, Telegram message, or other business side effect was created during server verification.
 
 # 2026-08-05 - Restore canonical Slovak InfoHelp capability rendering
 

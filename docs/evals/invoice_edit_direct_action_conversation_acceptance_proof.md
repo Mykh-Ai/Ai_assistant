@@ -1,8 +1,8 @@
 # Invoice Edit Direct Action Conversation Acceptance Proof
 
 - Architecture proof: `docs/architecture/invoice_edit_direct_action_architecture_design_proof.md`
-- Working state: uncommitted local changes on 2026-08-18.
-- Environment: local pytest with mocked STT/LLM/PDF boundaries where named; no production deployment or DB migration.
+- Working state: feature commit `4460650`, merged into `main` as `63a20c9` on 2026-08-18.
+- Environment: local pytest with mocked STT/LLM/PDF boundaries where named, followed by production container deployment health verification; no DB migration.
 - Declared AI maturity: existing bounded semantic canonicalization; no new Product Truth maturity level.
 - Product Truth: `edit_existing_invoice` remains `supported` with precision/setup limitations.
 
@@ -64,7 +64,8 @@
 - Focused invoice/voice/callback regression: `173 passed` before the final callback-matrix additions; the added invoice-edit callback subset then passed `7 passed`.
 - Product Truth + InfoHelp + invoice/voice/callback regression: `308 passed in 63.96s`.
 - Full repository suite: `2556 passed, 7 subtests passed in 497.69s`.
-- Production Telegram smoke: not run; deployment was not requested and no server state was changed.
+- Production deployment health: pass at merge SHA `63a20c9`; container running with restart count `0`, and startup/polling logs present.
+- Production Telegram journey smoke: not run; no synthetic invoice or business write was created during deployment verification.
 
 ## Design-to-code mapping
 
@@ -78,4 +79,4 @@
 
 ## Verdict
 
-`safe_to_commit` for the tested local implementation. This is not merge or deployment approval. Production runtime remains unproven until deployed and manually exercised in Telegram.
+`deployed_pending_interactive_smoke`. Automated coverage and production startup/polling health pass; the exact owner journey in Telegram remains the final interactive acceptance step.
