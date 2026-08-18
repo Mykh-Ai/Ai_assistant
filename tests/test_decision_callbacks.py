@@ -14,6 +14,7 @@ from bot.handlers.decision_callbacks import (
     _dispatch_decision_token,
     decision_callback,
     info_help_offer_callback,
+    invoice_edit_callback,
 )
 from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
 from bot.keyboards.decision import (
@@ -25,6 +26,13 @@ from bot.keyboards.decision import (
     INFO_HELP_OFFER_MAIN_MENU,
     INFO_HELP_OFFER_REQUEST_ADMIN,
     info_help_offer_callback_data,
+)
+from bot.keyboards.invoice_edit import (
+    invoice_edit_callback_data,
+    invoice_edit_item_keyboard,
+    invoice_edit_item_target_keyboard,
+    invoice_edit_main_keyboard,
+    parse_invoice_edit_callback_data,
 )
 from bot.services.authorization import TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
 from bot.services.contact_service import ContactProfile, ContactService
@@ -257,6 +265,226 @@ def test_stale_callback_is_rejected_without_dispatch(tmp_path: Path) -> None:
 
     assert callback.answers == [('Toto rozhodnutie už nie je dostupné. Pokračujte aktuálnym krokom v chate.', True)]
     assert state.cleared is False
+
+
+def test_invoice_edit_delivery_date_button_uses_shared_operation_owner(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    contact_id = _setup_supplier_and_contact(config.db_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        invoice_edit_callback_data('edit_invoice_delivery_date'),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'edit_stage': 'draft',
+            'invoice_draft': _draft(contact_id),
+            'invoice_edit_menu_message_id': source_message.message_id,
+            'invoice_edit_menu_chat_id': source_message.chat.id,
+            'invoice_edit_menu_owner_id': AUTHORIZED_ID,
+            **_active_fsm_metadata(),
+        },
+        InvoiceStates.waiting_edit_scope.state,
+    )
+
+    asyncio.run(invoice_edit_callback(callback, state, config))
+
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value
+    assert state.data['edit_invoice_date_operation'] == 'edit_invoice_delivery_date'
+    assert source_message.reply_markup_edits == [None]
+    assert callback.answers[-1] == (None, None)
+
+
+def test_invoice_edit_keyboards_expose_all_supported_canonical_choices() -> None:
+    main_tokens = {
+        parse_invoice_edit_callback_data(button.callback_data)
+        for row in invoice_edit_main_keyboard().inline_keyboard
+        for button in row
+    }
+    item_tokens = {
+        parse_invoice_edit_callback_data(button.callback_data)
+        for row in invoice_edit_item_keyboard().inline_keyboard
+        for button in row
+    }
+    target_tokens = {
+        parse_invoice_edit_callback_data(button.callback_data)
+        for row in invoice_edit_item_target_keyboard(['Servis', 'Montáž']).inline_keyboard
+        for button in row
+    }
+
+    assert {
+        'edit_invoice_number',
+        'edit_invoice_issue_date',
+        'edit_invoice_delivery_date',
+        'edit_invoice_due_date',
+        'item_level',
+        'cancel',
+    } <= main_tokens
+    assert {
+        'replace_service',
+        'replace_main_description',
+        'add_item_details',
+        'clear_item_details',
+        'edit_item_quantity',
+        'edit_item_unit_price',
+        'edit_item_total_amount',
+        'back',
+        'cancel',
+    } <= item_tokens
+    assert {'item_target:1', 'item_target:2', 'back', 'cancel'} <= target_tokens
+
+
+def test_invoice_edit_callback_wrong_actor_keeps_keyboard_and_state(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        UNKNOWN_ID,
+        invoice_edit_callback_data('edit_invoice_delivery_date'),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'invoice_edit_menu_message_id': source_message.message_id,
+            'invoice_edit_menu_chat_id': source_message.chat.id,
+            'invoice_edit_menu_owner_id': AUTHORIZED_ID,
+            **_active_fsm_metadata(),
+        },
+        InvoiceStates.waiting_edit_scope.state,
+    )
+
+    asyncio.run(invoice_edit_callback(callback, state, config))
+
+    assert state.current_state == InvoiceStates.waiting_edit_scope.state
+    assert source_message.reply_markup_edits == []
+    assert callback.answers[-1][1] is True
+
+
+def test_invoice_edit_owned_stale_callback_clears_state_and_markup(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        invoice_edit_callback_data('item_level'),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'invoice_edit_menu_message_id': source_message.message_id,
+            'invoice_edit_menu_chat_id': source_message.chat.id,
+            'invoice_edit_menu_owner_id': AUTHORIZED_ID,
+            **_active_fsm_metadata(minutes_ago=60),
+        },
+        InvoiceStates.waiting_edit_scope.state,
+    )
+
+    asyncio.run(invoice_edit_callback(callback, state, config))
+
+    assert state.cleared is True
+    assert source_message.reply_markup_edits == [None]
+    assert callback.answers[-1] == (ACTIVE_FSM_EXPIRED_MESSAGE, True)
+
+
+def test_invoice_edit_cancel_button_clears_state_and_owned_markup(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        invoice_edit_callback_data('cancel'),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'invoice_edit_menu_message_id': source_message.message_id,
+            'invoice_edit_menu_chat_id': source_message.chat.id,
+            'invoice_edit_menu_owner_id': AUTHORIZED_ID,
+            **_active_fsm_metadata(),
+        },
+        InvoiceStates.waiting_edit_scope.state,
+    )
+
+    asyncio.run(invoice_edit_callback(callback, state, config))
+
+    assert state.cleared is True
+    assert source_message.reply_markup_edits == [None]
+    assert source_message.answers[-1].startswith('Rozpracovaná akcia bola zrušená.')
+
+
+def test_invoice_edit_item_target_button_continues_preserved_operation(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    contact_id = _setup_supplier_and_contact(config.db_path)
+    draft = _draft(contact_id)
+    draft['items'] = [
+        {
+            'service_short_name': 'servis',
+            'service_display_name': 'Servis',
+            'quantity': 1,
+            'unit': 'ks',
+            'unit_price': 100,
+            'amount': 100,
+        },
+        {
+            'service_short_name': 'montaz',
+            'service_display_name': 'Montáž',
+            'quantity': 1,
+            'unit': 'ks',
+            'unit_price': 200,
+            'amount': 200,
+        },
+    ]
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        invoice_edit_callback_data('item_target:2'),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'edit_stage': 'draft',
+            'invoice_draft': draft,
+            'invoice_edit_pending_item_operation': 'edit_item_quantity',
+            'invoice_edit_menu_message_id': source_message.message_id,
+            'invoice_edit_menu_chat_id': source_message.chat.id,
+            'invoice_edit_menu_owner_id': AUTHORIZED_ID,
+            **_active_fsm_metadata(),
+        },
+        InvoiceStates.waiting_edit_item_target.state,
+    )
+
+    asyncio.run(invoice_edit_callback(callback, state, config))
+
+    assert state.current_state == InvoiceStates.waiting_edit_item_numeric_value
+    assert state.data['edit_target_item_index'] == 2
+    assert state.data['edit_item_action_mode'] == 'edit_item_quantity'
+    assert source_message.reply_markup_edits == [None]
+
+
+def test_invoice_edit_back_button_returns_to_unified_menu(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    contact_id = _setup_supplier_and_contact(config.db_path)
+    source_message = _CallbackSourceMessage()
+    callback = _callback(
+        AUTHORIZED_ID,
+        invoice_edit_callback_data('back'),
+        source_message,
+    )
+    state = _DummyState(
+        {
+            'edit_stage': 'draft',
+            'invoice_draft': _draft(contact_id),
+            'invoice_edit_menu_message_id': source_message.message_id,
+            'invoice_edit_menu_chat_id': source_message.chat.id,
+            'invoice_edit_menu_owner_id': AUTHORIZED_ID,
+            **_active_fsm_metadata(),
+        },
+        InvoiceStates.waiting_edit_item_action.state,
+    )
+
+    asyncio.run(invoice_edit_callback(callback, state, config))
+
+    assert state.current_state == InvoiceStates.waiting_edit_scope
+    assert 'Vyberte rozsah úpravy' in source_message.answers[-1]
+    assert source_message.reply_markup_edits == [None]
 
 
 def test_info_help_admin_offer_button_opens_existing_preview_without_saving(tmp_path: Path) -> None:

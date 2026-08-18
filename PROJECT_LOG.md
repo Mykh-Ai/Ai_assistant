@@ -1,3 +1,33 @@
+# 2026-08-18 - Unified direct invoice-edit routing and inline controls
+
+- Diagnosed the production loop after preview `upraviť`: `waiting_edit_scope` allowed only `invoice_level`, `item_level`, or `unknown`, so the bounded LLM could understand `Датом додання` only in the next state and the first state repeated `faktúra alebo položka`.
+- Historical distinction: Session 036 fixed post-success return to approval, while Sessions 037/042/054 introduced and reused the two-step scope/action graph. Existing tests either stopped at `waiting_edit_scope`, injected `edit_invoice_date_operation` directly, or proved only voice transport, leaving the real public journey false-green.
+- Architecture classification: existing in-FSM sub-action repair under draft/persisted invoice editing; no new top-level canonical action. Approved proof: `docs/architecture/invoice_edit_direct_action_architecture_design_proof.md` with `ready_for_handoff`.
+- AI layer: existing bounded semantic canonicalization, no maturity-level upgrade. Python supplies the complete supported operation set and semantic boundaries; LLM selects one allowed token or `unknown`; Python retains FSM, validation, tenant scope, confirmation, DB/PDF, and side-effect authority.
+- Runtime:
+  - expanded the first edit resolver to return concrete invoice and existing-item operations directly;
+  - concrete text/STT now skips already-understood scope/action levels;
+  - generic invoice/item/date wording keeps bounded clarification compatibility;
+  - one-item flows bind the target immediately; multi-item flows preserve the chosen operation and ask only for the target;
+  - added Slovak inline keyboards for invoice fields, item targets, and item operations;
+  - button/text/voice paths converge on the same invoice handlers/value owners;
+  - added Back/Cancel, prompt actor/message/chat ownership, stale/legacy expiry checks, wrong-actor/wrong-message fail-closed behavior, and handled/owned-stale markup cleanup.
+- Product Truth/InfoHelp: `edit_existing_invoice` remains `supported` and `requires_setup`; copy now explains direct buttons/text/voice selection and the unchanged text-first precision boundaries. Forbidden claims remain: no arbitrary field editing, contact replacement, add/remove item, cross-tenant edit, or unconfirmed write.
+- Touched scopes: invoice FSM/subflow routing, bounded LLM action selection, STT convergence transport metadata, inline callbacks/keyboards, Product Truth/InfoHelp copy, tests/evals/docs. No STT model, LMM, DB/schema/storage, persisted-data migration, PDF layout, access model, deployment, external credentials, or self-learning storage changed.
+- Self-learning: considered and intentionally unchanged; successful edit phrasing is not persisted as an alias by this repair.
+- User journey evidence:
+  - preview -> `upraviť` -> `Датом додання` -> `15 августа` -> updated draft preview;
+  - direct matrix for invoice number, all three dates, service, description/details, quantity, unit price, and item total;
+  - preserved operation across multi-item target selection;
+  - voice and callback convergence, Back/Cancel, stale and wrong-actor safety.
+- Conversation Acceptance Proof: `docs/evals/invoice_edit_direct_action_conversation_acceptance_proof.md`, verdict `safe_to_commit` for local tested code; production Telegram smoke/deploy not run.
+- Tests:
+  - invoice/voice/callback focused regression: `173 passed in 62.34s` before final callback-matrix additions;
+  - invoice-edit callback subset after additions: `7 passed, 27 deselected in 5.03s`;
+  - Product Truth + InfoHelp + invoice/voice/callback regression: `308 passed in 63.96s`;
+  - full repository: `2556 passed, 7 subtests passed in 497.69s`.
+- Initial full-suite attempt hit the command's 5-minute timeout without a test failure; rerun with a sufficient timeout completed green.
+
 # 2026-08-05 - Restore canonical Slovak InfoHelp capability rendering
 
 - Production evidence for the same noisy STT transcript showed two inconsistent

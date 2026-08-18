@@ -628,6 +628,48 @@ def test_voice_waiting_edit_scope_routes_to_edit_scope_handler(monkeypatch, tmp_
     assert calls == ['položka']
 
 
+def test_voice_waiting_edit_scope_direct_delivery_date_skips_scope_loop(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    async def _stt(*args, **kwargs) -> str:
+        return 'Датом додання'
+
+    async def _resolve_scope(**kwargs) -> str:
+        assert kwargs['user_input_text'] == 'Датом додання'
+        return 'edit_invoice_delivery_date'
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.invoice._resolve_invoice_edit_scope', _resolve_scope)
+
+    state = _DummyState(InvoiceStates.waiting_edit_scope.state)
+    state.data.update(
+        {
+            'edit_stage': 'draft',
+            'invoice_draft': {
+                'invoice_number': '20260009',
+                'items': [
+                    {
+                        'service_short_name': 'servis',
+                        'service_display_name': 'Servis zariadenia',
+                        'quantity': 1,
+                        'unit': 'ks',
+                        'unit_price': 100,
+                        'amount': 100,
+                    }
+                ],
+            },
+        }
+    )
+    message = _DummyMessage()
+
+    asyncio.run(handle_voice(message, _DummyBot(), _config(tmp_path), state))
+
+    assert state.current_state == InvoiceStates.waiting_edit_invoice_date_value.state
+    assert state.data['edit_invoice_date_operation'] == 'edit_invoice_delivery_date'
+    assert message.answers[-1].startswith('Napíšte alebo nadiktujte nový dátum dodania.')
+
+
 def test_voice_global_cancel_in_active_state_runs_shared_cancel(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
 

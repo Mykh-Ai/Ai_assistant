@@ -24,6 +24,7 @@ from bot.handlers.invoice import (
     info_help_admin_offer_decision,
     invoice_delete_existing_invoice_confirm,
     invoice_mark_existing_invoice_paid_confirm,
+    process_invoice_edit_callback_choice,
     process_invoice_customer_alias_confirm,
     process_invoice_preview_confirmation,
 )
@@ -65,6 +66,10 @@ from bot.keyboards.decision import (
     INFO_HELP_OFFER_MAIN_MENU,
     INFO_HELP_OFFER_REQUEST_ADMIN,
 )
+from bot.keyboards.invoice_edit import (
+    INVOICE_EDIT_CALLBACK_PREFIX,
+    parse_invoice_edit_callback_data,
+)
 
 
 router = Router(name='decision_callbacks')
@@ -72,6 +77,62 @@ logger = logging.getLogger(__name__)
 
 
 _STALE_DECISION_MESSAGE = 'Toto rozhodnutie už nie je dostupné. Pokračujte aktuálnym krokom v chate.'
+
+_INVOICE_EDIT_CALLBACK_STATES = {
+    InvoiceStates.waiting_edit_scope.state,
+    InvoiceStates.waiting_edit_invoice_action.state,
+    InvoiceStates.waiting_edit_item_target.state,
+    InvoiceStates.waiting_edit_item_action.state,
+}
+
+
+@router.callback_query(F.data.startswith(INVOICE_EDIT_CALLBACK_PREFIX))
+async def invoice_edit_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    config: Config,
+) -> None:
+    token = parse_invoice_edit_callback_data(callback.data)
+    current_state = _state_name(await state.get_state())
+    if token is None or current_state not in _INVOICE_EDIT_CALLBACK_STATES:
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+        return
+
+    state_data = await state.get_data()
+    source_message = callback.message
+    source_message_id = getattr(source_message, 'message_id', None)
+    source_chat_id = getattr(getattr(source_message, 'chat', None), 'id', None)
+    actor_id = getattr(callback.from_user, 'id', None)
+    if (
+        state_data.get('invoice_edit_menu_message_id') != source_message_id
+        or state_data.get('invoice_edit_menu_chat_id') != source_chat_id
+        or state_data.get('invoice_edit_menu_owner_id') != actor_id
+    ):
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+        return
+
+    if await is_active_fsm_callback_stale_or_legacy(
+        state=state,
+        current_state=current_state,
+    ):
+        await clear_current_state_safely(state=state, config=config)
+        await callback.answer(ACTIVE_FSM_EXPIRED_MESSAGE, show_alert=True)
+        await _clear_inline_keyboard(callback)
+        return
+
+    handled = await process_invoice_edit_callback_choice(
+        message=_CallbackMessageAdapter(callback),
+        state=state,
+        config=config,
+        canonical_choice=token,
+    )
+    if not handled:
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+        return
+
+    await _clear_inline_keyboard(callback)
+    await callback.answer()
+    await touch_active_fsm_activity(state)
 
 
 @router.callback_query(F.data.startswith(INFO_HELP_OFFER_CALLBACK_PREFIX))
@@ -129,12 +190,11 @@ class _CallbackMessageAdapter:
         self.message_id = getattr(source_message, 'message_id', None)
         self.chat = getattr(source_message, 'chat', None)
 
-    async def answer(self, text: str, **kwargs) -> None:
+    async def answer(self, text: str, **kwargs):
         source_message = self._callback.message
         if source_message is not None and hasattr(source_message, 'answer'):
-            await source_message.answer(text, **kwargs)
-            return
-        await self._callback.answer(text, show_alert=True)
+            return await source_message.answer(text, **kwargs)
+        return await self._callback.answer(text, show_alert=True)
 
     async def answer_document(self, document, caption: str | None = None, **kwargs) -> None:
         source_message = self._callback.message

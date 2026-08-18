@@ -1066,6 +1066,8 @@ Runtime follow-up areas (future patches):
 - `schváliť`
 - `upraviť`
 
+Після `upraviť` бот показує єдине inline-меню для номера фактури, трьох дат і гілки позиції. Користувач не зобов’язаний окремо відповідати `faktúra` або `položka`: конкретний text/STT-запит bounded LLM resolver відразу мапує на кінцеву підтримувану операцію. Загальне або неясне формулювання залишається в clarification-state без запису. Для однієї позиції ціль визначається відразу; для кількох позицій уже розпізнана операція зберігається і бот запитує лише цільову позицію. Кнопки, текст і голос сходяться в ті самі Python handlers. Точний номер, числові значення позиції, сервіс і фінальний опис залишаються в чинних text-first/validation межах; дати можуть використовувати bounded voice normalization із подальшою Python-валідацією.
+
 ### 6.3 Explicit edit of existing persisted invoice by number
 
 - Existing/finalized invoice edit is entered only by explicit command semantics (`upraviť faktúru 15`, `uprav faktúru číslo 20260015`, etc.).

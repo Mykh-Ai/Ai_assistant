@@ -164,6 +164,14 @@ cannot ask about the feature and receive a truthful answer.
   claim that the unknown feature is supported must be rejected and replaced by
   the Slovak fallback.
 
+### Invoice edit direct-operation regression - 2026-08-18
+
+- Maturity/status: existing `edit_existing_invoice` remains `supported`; this is an in-FSM routing and keyboard repair, not a new AI layer or top-level action.
+- Required journey: preview/persisted edit -> concrete text/STT operation or canonical inline button -> exact value owner -> updated preview/approval state.
+- Required coverage: invoice number; issue/delivery/due dates; service, main description, item details, quantity, unit price, item total; one and multiple items; generic clarification; unknown no-write; Back/Cancel; owned stale and wrong-actor callbacks; keyboard cleanup.
+- Exact regression fixture: `Датом додання` from the first edit prompt must resolve directly to `edit_invoice_delivery_date`, not loop on `faktúra alebo položka`.
+- Evidence artifact: `docs/evals/invoice_edit_direct_action_conversation_acceptance_proof.md`.
+
 ## Result Policy
 
 Do not call a layer complete unless the relevant eval result is recorded.
