@@ -1,3 +1,39 @@
+# 2026-08-18 - Gmail expired refresh-token diagnosis and recovery hardening
+
+- A read-only production audit found the Gmail binding/grant still reported
+  `active`/`connected`, while the last successful collection check was
+  `2026-08-09T09:35:27.809962+00:00`. The encrypted grant and all required
+  server configuration values were present and decryptable.
+- A controlled no-persistence OAuth refresh probe returned the bounded
+  `GoogleIntegrationOAuthNeedsReauth: oauth_needs_reauth`, proving Google token
+  endpoint `invalid_grant`. No token, DB row, Gmail message, file, or server
+  configuration was changed by the probe.
+- The grant was created on 2026-08-02 and stopped refreshing around the
+  seven-day boundary. This strongly matches an external Google OAuth app left
+  in publishing status `Testing`; final audience/status evidence remains an
+  external Google Cloud Console check. Other provider-side revocation causes
+  remain possible until that setting is observed.
+- Root implementation defect: `google-auth` raises refresh rejection as
+  `RefreshError` without `resp.status`; the Gmail transport mapped it to generic
+  `gmail_provider_failed`. The scheduler therefore never reached its existing
+  `GmailReadonlyNeedsReauth` branch, never marked the binding/grant, and left
+  `/gmail_status` falsely green.
+- Runtime repair maps structured refresh `invalid_grant` to
+  `gmail_needs_reauth`, maps retryable refresh/transport failures to the bounded
+  retryable error, and never exposes raw provider descriptions. Existing Python
+  authority then owns status persistence and the Slovak administrator
+  reauthorization notification.
+- Touched scopes: deterministic Gmail readonly transport error mapping, focused
+  tests, Gmail architecture/runbook/eval documentation, changelog, and project
+  log. No Gmail scope, query, mutation capability, LLM/STT/LMM/FSM, DB schema,
+  stored document, access model, Drive credential, or self-learning behavior
+  changed.
+- Focused Gmail transport/scheduler/collector/integration/settings regression:
+  `31 passed in 4.94s`. Full repository regression:
+  `2559 passed, 7 subtests passed in 491.96s`. Merge/deploy, Google
+  publishing-status transition, new `/gmail_connect`, and live collection tick
+  remain pending.
+
 # 2026-08-18 - Unified direct invoice-edit routing and inline controls
 
 - Diagnosed the production loop after preview `upraviť`: `waiting_edit_scope` allowed only `invoice_level`, `item_level`, or `unknown`, so the bounded LLM could understand `Датом додання` only in the next state and the first state repeated `faktúra alebo položka`.
