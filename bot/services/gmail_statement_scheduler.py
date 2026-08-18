@@ -70,21 +70,21 @@ async def run_gmail_statement_scheduler(*, bot: Bot, config: Config) -> None:
                                 config.db_path,
                                 workspace.workspace_id,
                             )
-                    continue
-                store = GmailStatementStore(config.db_path, config.storage_dir)
-                for imported in result.new_imports:
-                    try:
-                        await bot.send_message(
-                            workspace.actor_telegram_id,
-                            _notification_text(imported),
-                        )
-                    except Exception:
-                        logger.exception(
-                            "gmail_statement_notification_failed import_id=%s",
-                            imported.import_id,
-                        )
-                    else:
-                        store.mark_notified(imported.import_id)
+                else:
+                    store = GmailStatementStore(config.db_path, config.storage_dir)
+                    for imported in result.new_imports:
+                        try:
+                            await bot.send_message(
+                                workspace.actor_telegram_id,
+                                _notification_text(imported),
+                            )
+                        except Exception:
+                            logger.exception(
+                                "gmail_statement_notification_failed import_id=%s",
+                                imported.import_id,
+                            )
+                        else:
+                            store.mark_notified(imported.import_id)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -146,7 +146,7 @@ def _run_tick(config: Config):
             "gmail_statement_scheduler_needs_reauth workspace_id=%s",
             workspace.workspace_id,
         )
-        return None
+        return "needs_reauth", None, workspace
     if config.google_drive_enabled:
         store = GmailStatementStore(config.db_path, config.storage_dir)
         archive = AccountingDocumentArchiveService(config.db_path)

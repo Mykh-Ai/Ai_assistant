@@ -304,6 +304,11 @@ that exception: `invalid_grant` maps to `GmailReadonlyNeedsReauth`; retryable
 refresh/transport failures map to the bounded retryable error. Raw descriptions
 must not enter logs, Telegram, or persistence.
 
+After marking the binding/grant, the tick returns an explicit
+`needs_reauth` outcome to the async scheduler. The scheduler may send one
+cooldown-protected administrator notice and must then sleep for the normal
+configured interval; neither a missing signal nor a tight retry loop is valid.
+
 `/gmail_disconnect` is local in V1:
 
 - disable the workspace Gmail binding immediately;

@@ -31,7 +31,7 @@ The separate owner Drive reauthorization and queued statement upload succeeded.
 | Callback has wrong/expired/reused state | No token persistence or binding activation | callback/service tests | passed |
 | Callback identity or email does not match | No binding activation | OAuth/service tests | passed |
 | Callback includes Drive or other scope | Flow rejected | allowed-scope validation test | passed |
-| Provider returns Gmail 401/403 or refresh `invalid_grant` while collecting | Binding/grant become `needs_reauth`; no file deletion or raw provider diagnostic | transport/service/runtime implementation | focused HTTP and Google Auth refresh classification tests passed; production `invalid_grant` reproduced read-only; post-deploy transition smoke pending |
+| Provider returns Gmail 401/403 or refresh `invalid_grant` while collecting | Binding/grant become `needs_reauth`; one cooldown-protected admin notice; normal scheduler sleep; no file deletion, raw provider diagnostic, or tight loop | transport/service/runtime implementation | focused classification, tick-signal, notification and sleep tests passed; production status transition passed; post-reauthorization tick pending |
 | Message contains ordinary text body | Body ignored; only filename-bearing allowlisted candidates | adapter tests | passed |
 | First valid statement attachment | Workspace-local atomic original + metadata, `parse_status=deferred` | collector tests plus controlled production tick | passed |
 | Same Gmail source repeats | No second download/store | collector/service source dedup | passed locally |

@@ -214,6 +214,9 @@ Operational status source:
   Raw provider descriptions are not logged or persisted. A deployment that was
   left in OAuth `Testing` must first be moved to its approved production state,
   then reauthorized because the expired refresh token cannot be repaired.
+- The scheduler emits one cooldown-protected Slovak administrator notice with
+  `/gmail_connect`, then sleeps for the configured check interval. A
+  `needs_reauth` outcome must never become a tight retry or notification loop.
 - Retryable provider failures do not delete or rewrite stored files.
 - A source duplicate is skipped before attachment download where possible.
 - A content duplicate gets its own metadata record but reuses the canonical

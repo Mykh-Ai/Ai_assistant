@@ -28,11 +28,25 @@
   log. No Gmail scope, query, mutation capability, LLM/STT/LMM/FSM, DB schema,
   stored document, access model, Drive credential, or self-learning behavior
   changed.
-- Focused Gmail transport/scheduler/collector/integration/settings regression:
-  `31 passed in 4.94s`. Full repository regression:
+- First production deploy at merge SHA `3ae24d3` was preceded by a
+  SQLite-consistent 520192-byte backup whose `PRAGMA quick_check` returned
+  `ok`. Startup proved `invalid_grant` now reaches the bounded
+  `gmail_statement_scheduler_needs_reauth` path and the bot remained polling.
+- That live proof exposed a second pre-existing defect: `_run_tick()` marked
+  reauthorization but returned `None`, while the async scheduler's notification
+  branch required an explicit `needs_reauth` tuple. If made reachable, its
+  `continue` would also have skipped the configured sleep. The follow-up returns
+  the signal, sends at most one cooldown-protected Slovak notice, and falls
+  through to the normal interval sleep.
+- Focused Gmail transport/scheduler/collector/integration/settings regression
+  before the scheduler-signal addition: `31 passed in 4.94s`; after the
+  notification/sleep coverage: `33 passed in 4.77s`. Full repository regression
+  before the follow-up:
   `2559 passed, 7 subtests passed in 491.96s`. Merge/deploy, Google
   publishing-status transition, new `/gmail_connect`, and live collection tick
-  remain pending.
+  remain pending for the follow-up state recorded here.
+- Full repository regression after the scheduler signal/notification/sleep
+  follow-up: `2561 passed, 7 subtests passed in 495.81s`.
 
 # 2026-08-18 - Unified direct invoice-edit routing and inline controls
 
