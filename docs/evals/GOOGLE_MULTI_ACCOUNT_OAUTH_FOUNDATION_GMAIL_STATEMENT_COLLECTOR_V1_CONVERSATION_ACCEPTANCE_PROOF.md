@@ -1,6 +1,6 @@
 # Gmail OAuth and statement collector V1 — conversation acceptance proof
 
-Date: 2026-07-30
+Date: 2026-08-18
 
 Verdict: `partial`; controlled OAuth/callback and first collection are
 `runtime_proven` for the configured pilot.
@@ -10,6 +10,8 @@ bounded Gmail query, one atomic workspace-local statement import, and a second
 tick with no new import have succeeded. Broader launch evidence remains
 incomplete: Google restricted-scope verification evidence, source-repeat
 redownload dedup under an overlapping query, and revoke/disconnect recovery.
+The external OAuth app is now `In production`; a new consent, bot restart,
+successful empty collection tick, and no-persistence refresh-token probe passed.
 The separate owner Drive reauthorization and queued statement upload succeeded.
 
 ## Maturity
@@ -31,7 +33,7 @@ The separate owner Drive reauthorization and queued statement upload succeeded.
 | Callback has wrong/expired/reused state | No token persistence or binding activation | callback/service tests | passed |
 | Callback identity or email does not match | No binding activation | OAuth/service tests | passed |
 | Callback includes Drive or other scope | Flow rejected | allowed-scope validation test | passed |
-| Provider returns Gmail 401/403 or refresh `invalid_grant` while collecting | Binding/grant become `needs_reauth`; one cooldown-protected admin notice; normal scheduler sleep; later inactive ticks are quiet; no file deletion, raw provider diagnostic, or tight loop | transport/service/runtime implementation | focused classification, tick-signal, notification, sleep and inactive-noop tests passed; production status transition passed; post-reauthorization tick pending |
+| Provider returns Gmail 401/403 or refresh `invalid_grant` while collecting | Binding/grant become `needs_reauth`; one cooldown-protected admin notice; normal scheduler sleep; later inactive ticks are quiet; no file deletion, raw provider diagnostic, or tight loop | transport/service/runtime implementation | focused classification, tick-signal, notification, sleep and inactive-noop tests passed; production transition, new consent, restart, empty collection tick, and refresh-token probe passed |
 | Message contains ordinary text body | Body ignored; only filename-bearing allowlisted candidates | adapter tests | passed |
 | First valid statement attachment | Workspace-local atomic original + metadata, `parse_status=deferred` | collector tests plus controlled production tick | passed |
 | Same Gmail source repeats | No second download/store | collector/service source dedup | passed locally |
@@ -55,7 +57,10 @@ Completed in the controlled pilot:
 4. a second tick with no additional import;
 5. backup, owner Drive reauthorization, encrypted connected grant, and
    queued bank-statement job/archive state reaching `uploaded` while the local
-   import remains preserved.
+   import remains preserved;
+6. external OAuth publishing status changed from `Testing` to `In production`,
+   followed by new Gmail consent, a bot-only restart, a successful empty Gmail
+   tick, and a successful no-persistence refresh-token probe.
 
 Still required:
 
@@ -65,8 +70,8 @@ Still required:
    source and proves no second download/store;
 3. exercise revoked-token and `/gmail_disconnect` recovery while preserving
    the imported original;
-4. verify restart/integrity and rollback procedures against the controlled
-   imported record.
+4. exercise the documented rollback procedure against a controlled backup when
+   a rollback drill is explicitly approved.
 
 Capability status remains `partial`, `requires_setup`, `requires_admin`, and
 `requires_external_credentials` outside the configured pilot.

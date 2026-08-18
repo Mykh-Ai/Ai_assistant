@@ -198,6 +198,25 @@ credentials while configuring Gmail.
   archive state reached `uploaded`; the local Gmail import remained stored with
   `parse_status=deferred`.
 
+### Production publishing and reauthorization evidence — 2026-08-18
+
+- The existing external Google OAuth application was audited in the existing
+  `ZevsFlow Google Integrations` project. Its single web client, deployed client
+  id, exact callback URI, and bounded `openid email profile gmail.readonly`
+  scope set match; no credential or scope was added or replaced.
+- Publishing status changed from `Testing` to `In production`, then the
+  configured administrator completed a new `/gmail_connect` for the expected
+  Gmail account. The workspace binding/grant returned to
+  `active`/`connected` with a new encrypted token envelope.
+- A SQLite-consistent database backup plus storage archive preceded a bot-only
+  restart. The immediate scheduler tick completed with zero failed/rejected
+  items and advanced the successful-check timestamp; a separate
+  no-persistence OAuth refresh probe also succeeded.
+- Google Verification Center still marks branding/data-access verification as
+  incomplete for the restricted Gmail scope. The controlled pilot is working
+  in production publishing status, but broader verified rollout must not be
+  claimed until Google's verification process is completed.
+
 Operational status source:
 
 - use `/gmail_status` for the current Gmail binding/collector state and

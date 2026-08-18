@@ -1,3 +1,36 @@
+# 2026-08-18 - Gmail OAuth production publication and reauthorization proof
+
+- Audited the existing Google Cloud project `ZevsFlow Google Integrations`
+  without creating or deleting credentials. The single web OAuth client matches
+  the deployed Gmail client id and keeps the exact production redirect
+  `https://zevsflow.sk/oauth/google/integration/callback`.
+- Confirmed the requested consent set remains bounded to `openid`, `email`,
+  `profile`, and `gmail.readonly`; no Drive, send, modify, or broader Gmail
+  scope was added.
+- Changed the existing external OAuth application's publishing status from
+  `Testing` to `In production`. Google Verification Center still reports that
+  branding/data-access verification is incomplete for the restricted Gmail
+  scope, so wider verified rollout remains pending and is not claimed here.
+- The configured administrator completed a new `/gmail_connect` consent for
+  `officezevs2024@gmail.com`. The existing workspace binding/grant returned to
+  `active`/`connected`, their bounded error codes cleared, and a replacement
+  encrypted token envelope was saved without exposing credentials.
+- Before restart/smoke writes, created a SQLite-consistent database backup and
+  storage archive under
+  `/bot/backups/gmail-oauth-production-20260818T172746Z`; backup
+  `PRAGMA quick_check` returned `ok`.
+- Restarted only the `fakturabot` service. Startup returned to normal polling,
+  the immediate read-only Gmail scheduler tick completed with zero messages,
+  zero stored, zero rejected, and zero failed, and
+  `last_successful_check_at` advanced to `2026-08-18T17:28:08.152358+00:00`.
+- A separate no-persistence refresh-token probe succeeded after restart. No
+  `gmail_provider_failed`, `gmail_statement_scheduler_needs_reauth`, traceback,
+  or polling restart appeared in the bounded post-restart log window.
+- No repository code, server environment value, OAuth credential, Gmail query,
+  DB schema, imported document, Drive grant, or stored file was changed by this
+  operational recovery beyond the expected OAuth token/binding timestamps and
+  successful-check state.
+
 # 2026-08-18 - Gmail expired refresh-token diagnosis and recovery hardening
 
 - A read-only production audit found the Gmail binding/grant still reported
