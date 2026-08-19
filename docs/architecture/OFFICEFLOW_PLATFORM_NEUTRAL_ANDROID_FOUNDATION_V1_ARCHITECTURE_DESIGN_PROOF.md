@@ -782,3 +782,35 @@ This sequence is directional context, not authorization to implement later stage
 The product direction and Stage A scope are approved. The implementation agent may implement **only Stage A** as frozen here. It must not infer Android UI, public signup, business mutation endpoints, shared FSM design, or later rollout stages.
 
 Any contradiction discovered between this proof and current runtime/data must be reported as a design blocker before the agent invents a different identity, tenant, FSM, or confirmation architecture.
+
+---
+
+## 19. Stage A Implementation Checkpoint — 2026-08-19
+
+Implementation checkpoint: `safe_to_commit`
+
+The approved Stage A was implemented without material design variance:
+
+- additive `principal`, `principal_external_identity`, `api_enrollment`, and `api_session` schema with fail-closed shape/constraint/index validation;
+- lazy administrator-issued Telegram mapping and hashed, expiring, single-use enrollment;
+- opaque hashed access/refresh sessions, atomic refresh rotation, replay rejection, current-access revocation, persisted restart-safe lookup, and current-session revoke;
+- a separate `python -m bot.officeflow_api_app` aiohttp process whose focused configuration does not require `BOT_TOKEN`;
+- exactly the approved session/workspace/invoice/detail/PDF/contact route surface;
+- current-access and workspace-membership validation on every protected business read;
+- request-only single-workspace defaulting, explicit multi-workspace selection requirement, and no `active_workspace_selection` write;
+- allowlisted invoice/contact/session/workspace responses and confined persisted-PDF streaming;
+- no business mutation, AI/STT/LMM, external service, Telegram send, callback, FSM, or polling lifecycle change.
+
+Evidence is recorded in
+`docs/evals/OFFICEFLOW_PLATFORM_NEUTRAL_ANDROID_FOUNDATION_V1_acceptance_proof.md`.
+The implementation-specific focused suite passed 36 tests, the shared
+access/workspace/tenant regression passed 64 tests, and the full repository
+suite passed 2598 tests plus 7 subtests. Existing-data fixture bootstrap proves
+the additive schema preserves existing business rows, relationships, workspace
+ownership, and PDF pointers.
+
+Rollout status: **not deployed**. No production migration, server restart,
+Cloudflare/public exposure, secret change, or Android application is part of
+this checkpoint. Telegram remains the current end-user runtime. Android and
+cross-channel mutating/conversational workflows remain deferred to later
+approved stages.

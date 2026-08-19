@@ -12,6 +12,9 @@ class WorkspaceInvoicePdfStorageError(RuntimeError):
     pass
 
 
+MAX_API_INVOICE_PDF_BYTES = 25 * 1024 * 1024
+
+
 def workspace_invoice_pdf_path(
     storage_dir: Path,
     context: WorkspaceContext,
@@ -44,6 +47,48 @@ class WorkspaceInvoicePdfStorageService:
         if invoice.pdf_path and str(invoice.pdf_path).strip():
             return Path(invoice.pdf_path)
         return self.target_path(context, invoice_number=invoice.invoice_number)
+
+    def resolve_existing_read_path(
+        self,
+        context: WorkspaceContext,
+        invoice: InvoiceRecord,
+    ) -> Path:
+        """Resolve one persisted invoice PDF pointer for bounded read-only use."""
+
+        self._assert_invoice_context(context, invoice)
+        pointer = str(invoice.pdf_path or '').strip()
+        if not pointer or len(pointer) > 2048 or '\x00' in pointer:
+            raise WorkspaceInvoicePdfStorageError('invoice_pdf_unavailable')
+        invoice_root = (self._storage_dir / 'invoices').resolve()
+        raw_path = Path(pointer)
+        candidates = (
+            (raw_path,)
+            if raw_path.is_absolute()
+            else (
+                Path.cwd() / raw_path,
+                self._storage_dir / raw_path,
+                self._storage_dir.parent / raw_path,
+            )
+        )
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve(strict=True)
+                resolved.relative_to(invoice_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if resolved.suffix.casefold() != '.pdf' or not resolved.is_file():
+                continue
+            size = resolved.stat().st_size
+            if size < 5 or size > MAX_API_INVOICE_PDF_BYTES:
+                continue
+            try:
+                with resolved.open('rb') as handle:
+                    if handle.read(5) != b'%PDF-':
+                        continue
+            except OSError:
+                continue
+            return resolved
+        raise WorkspaceInvoicePdfStorageError('invoice_pdf_unavailable')
 
     def persist_path(
         self,
