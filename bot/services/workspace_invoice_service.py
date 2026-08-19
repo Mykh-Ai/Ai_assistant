@@ -169,6 +169,27 @@ class WorkspaceInvoiceService:
             ).fetchone()
         return _row_to_invoice(row) if row is not None else None
 
+    def list_invoices(
+        self,
+        context: WorkspaceContext,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[InvoiceRecord]:
+        if isinstance(limit, bool) or limit < 1 or limit > 100:
+            raise ValueError('invoice_read_limit_invalid')
+        if isinstance(offset, bool) or offset < 0 or offset > 100_000:
+            raise ValueError('invoice_read_offset_invalid')
+        with managed_connection(self._db_path) as connection:
+            self._require_schema(connection)
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                f'{_INVOICE_SELECT} WHERE workspace_id = ? '
+                'ORDER BY issue_date DESC, id DESC LIMIT ? OFFSET ?',
+                (context.workspace_id, limit, offset),
+            ).fetchall()
+        return [_row_to_invoice(row) for row in rows]
+
     def get_by_id(
         self,
         context: WorkspaceContext,

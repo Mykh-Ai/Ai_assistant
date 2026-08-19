@@ -12,6 +12,9 @@ class WorkspaceInvoicePdfStorageError(RuntimeError):
     pass
 
 
+MAX_API_INVOICE_PDF_BYTES = 25 * 1024 * 1024
+
+
 def workspace_invoice_pdf_path(
     storage_dir: Path,
     context: WorkspaceContext,
@@ -44,6 +47,89 @@ class WorkspaceInvoicePdfStorageService:
         if invoice.pdf_path and str(invoice.pdf_path).strip():
             return Path(invoice.pdf_path)
         return self.target_path(context, invoice_number=invoice.invoice_number)
+
+    def resolve_existing_read_path(
+        self,
+        context: WorkspaceContext,
+        invoice: InvoiceRecord,
+    ) -> Path:
+        """Resolve one persisted invoice PDF pointer for bounded read-only use."""
+
+        self._assert_invoice_context(context, invoice)
+        pointer = str(invoice.pdf_path or '').strip()
+        if not pointer or len(pointer) > 2048 or '\x00' in pointer:
+            raise WorkspaceInvoicePdfStorageError('invoice_pdf_unavailable')
+        invoice_root = (self._storage_dir / 'invoices').resolve()
+        workspace_root = (
+            invoice_root
+            / _safe_path_segment(context.storage_key, field='storage_key')
+        ).resolve()
+        expected_filename = (
+            _safe_path_segment(invoice.invoice_number, field='invoice_number')
+            + '.pdf'
+        )
+        allowed_parents = {workspace_root}
+        legacy_actor_root = invoice_root / str(invoice.supplier_telegram_id)
+        if self._legacy_actor_root_is_unambiguous(context, invoice):
+            allowed_parents.add(legacy_actor_root.resolve())
+        raw_path = Path(pointer)
+        candidates = (
+            (raw_path,)
+            if raw_path.is_absolute()
+            else (
+                Path.cwd() / raw_path,
+                self._storage_dir / raw_path,
+                self._storage_dir.parent / raw_path,
+            )
+        )
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve(strict=True)
+                resolved.relative_to(invoice_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if (
+                resolved.parent not in allowed_parents
+                or resolved.name != expected_filename
+                or resolved.suffix.casefold() != '.pdf'
+                or not resolved.is_file()
+            ):
+                continue
+            size = resolved.stat().st_size
+            if size < 5 or size > MAX_API_INVOICE_PDF_BYTES:
+                continue
+            try:
+                with resolved.open('rb') as handle:
+                    if handle.read(5) != b'%PDF-':
+                        continue
+            except OSError:
+                continue
+            return resolved
+        raise WorkspaceInvoicePdfStorageError('invoice_pdf_unavailable')
+
+    def _legacy_actor_root_is_unambiguous(
+        self,
+        context: WorkspaceContext,
+        invoice: InvoiceRecord,
+    ) -> bool:
+        """Permit the old numeric owner root only for one provable workspace."""
+
+        if invoice.supplier_telegram_id <= 0:
+            return False
+        with managed_connection(self._db_path) as connection:
+            rows = connection.execute(
+                'SELECT workspace_id FROM supplier WHERE telegram_id = ? '
+                'UNION SELECT workspace_id FROM invoice '
+                'WHERE supplier_telegram_id = ?',
+                (
+                    invoice.supplier_telegram_id,
+                    invoice.supplier_telegram_id,
+                ),
+            ).fetchall()
+        workspace_ids = {
+            str(row[0]) if row[0] is not None else None for row in rows
+        }
+        return workspace_ids == {context.workspace_id}
 
     def persist_path(
         self,

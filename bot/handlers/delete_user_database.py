@@ -25,17 +25,22 @@ DELETE_USER_DATABASE_SAFE_EXIT_HINT = (
 DELETE_USER_DATABASE_WARNING = (
     'Ak vymažete databázu, natrvalo odstránite svoje pracovné údaje vo FakturaBot '
     'a stratíte prístup k botu.\n\n'
+    'Existujúce prihlasovacie údaje k prvostrannému API sa natrvalo zneplatnia. '
+    'Budúci prístup cez API bude vyžadovať nové jednorazové oprávnenie od administrátora.\n\n'
     'Nové pripojenie bude možné iba po opätovnom schválení administrátorom.\n\n'
     'Pre potvrdenie napíšte presne:\n'
     f'{EXACT_DELETE_DATABASE_CONFIRMATION}'
 )
 DELETE_USER_DATABASE_DONE_MESSAGE = (
     'Databáza bola vymazaná a prístup k FakturaBot bol odstránený.\n\n'
+    'Existujúce prihlasovacie údaje k prvostrannému API boli zneplatnené.\n\n'
     'Ak budete chcieť FakturaBot používať znova, pošlite /start a počkajte na nové '
-    'schválenie administrátorom.'
+    'schválenie administrátorom. Budúci prístup cez API vyžaduje aj nové jednorazové '
+    'oprávnenie od administrátora.'
 )
 DELETE_USER_DATABASE_PARTIAL_FILES_MESSAGE = (
     'Databáza bola vymazaná a prístup k FakturaBot bol odstránený.\n\n'
+    'Existujúce prihlasovacie údaje k prvostrannému API boli zneplatnené.\n\n'
     'Niektoré lokálne súbory sa nepodarilo odstrániť automaticky. Administrátor ich musí skontrolovať.'
 )
 

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 import shutil
 import sqlite3
 
 from bot.services.access_control import mark_deleted_database_in_connection
 from bot.services.accounting_document_storage import workspace_key_for_supplier
+from bot.services.api_enrollment import ApiEnrollmentService
+from bot.services.api_session import ApiSessionService
 from bot.services.db import managed_connection
+from bot.services.principal_identity import PrincipalIdentityService
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,23 @@ class UserDataDeletionService:
 
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row
+            connection.execute('BEGIN IMMEDIATE')
+            identity = PrincipalIdentityService.resolve_active_telegram_identity_in_connection(
+                connection,
+                telegram_id,
+            )
+            if identity is not None:
+                revoked_at = datetime.now(UTC)
+                ApiSessionService.revoke_all_for_principal_in_connection(
+                    connection,
+                    principal_id=identity.principal_id,
+                    now=revoked_at,
+                )
+                ApiEnrollmentService.revoke_pending_for_principal_in_connection(
+                    connection,
+                    principal_id=identity.principal_id,
+                    now=revoked_at,
+                )
             supplier_columns = {
                 str(row[1])
                 for row in connection.execute('PRAGMA table_info(supplier)').fetchall()

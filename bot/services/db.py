@@ -481,6 +481,132 @@ CREATE TABLE IF NOT EXISTS active_workspace_selection (
     updated_at TEXT NOT NULL
 );
 """
+
+PRINCIPAL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS principal (
+    principal_id TEXT PRIMARY KEY NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+PRINCIPAL_EXTERNAL_IDENTITY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS principal_external_identity (
+    identity_id TEXT PRIMARY KEY NOT NULL,
+    principal_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'inactive')),
+    created_at TEXT NOT NULL,
+    UNIQUE(provider, subject)
+);
+"""
+
+API_ENROLLMENT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS api_enrollment (
+    enrollment_id TEXT PRIMARY KEY NOT NULL,
+    principal_id TEXT NOT NULL,
+    secret_hash TEXT NOT NULL UNIQUE CHECK (length(secret_hash) = 64),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'consumed', 'revoked')),
+    device_label TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    consumed_at TEXT,
+    revoked_at TEXT
+);
+"""
+
+API_SESSION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS api_session (
+    session_id TEXT PRIMARY KEY NOT NULL,
+    principal_id TEXT NOT NULL,
+    access_token_hash TEXT NOT NULL UNIQUE CHECK (length(access_token_hash) = 64),
+    refresh_token_hash TEXT NOT NULL UNIQUE CHECK (length(refresh_token_hash) = 64),
+    device_label TEXT,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT,
+    access_expires_at TEXT NOT NULL,
+    refresh_expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    token_version INTEGER NOT NULL DEFAULT 1 CHECK (token_version > 0)
+);
+"""
+
+OFFICEFLOW_API_TABLE_COLUMNS = {
+    'principal': {'principal_id', 'created_at', 'updated_at'},
+    'principal_external_identity': {
+        'identity_id',
+        'principal_id',
+        'provider',
+        'subject',
+        'status',
+        'created_at',
+    },
+    'api_enrollment': {
+        'enrollment_id',
+        'principal_id',
+        'secret_hash',
+        'status',
+        'device_label',
+        'created_at',
+        'expires_at',
+        'consumed_at',
+        'revoked_at',
+    },
+    'api_session': {
+        'session_id',
+        'principal_id',
+        'access_token_hash',
+        'refresh_token_hash',
+        'device_label',
+        'created_at',
+        'last_seen_at',
+        'access_expires_at',
+        'refresh_expires_at',
+        'revoked_at',
+        'token_version',
+    },
+}
+
+OFFICEFLOW_API_REQUIRED_SQL_FRAGMENTS = {
+    'principal_external_identity': (
+        "check(statusin('active','inactive'))",
+        'unique(provider,subject)',
+    ),
+    'api_enrollment': (
+        'uniquecheck(length(secret_hash)=64)',
+        "check(statusin('pending','consumed','revoked'))",
+    ),
+    'api_session': (
+        'uniquecheck(length(access_token_hash)=64)',
+        'uniquecheck(length(refresh_token_hash)=64)',
+        'check(token_version>0)',
+    ),
+}
+
+OFFICEFLOW_API_INDEXES = {
+    'principal_external_identity': {
+        'idx_principal_external_identity_principal_status': (
+            'principal_id',
+            'status',
+            'provider',
+        ),
+    },
+    'api_enrollment': {
+        'idx_api_enrollment_principal_status_expires': (
+            'principal_id',
+            'status',
+            'expires_at',
+        ),
+    },
+    'api_session': {
+        'idx_api_session_principal_status': (
+            'principal_id',
+            'revoked_at',
+            'refresh_expires_at',
+        ),
+    },
+}
 SUPPLIER_EXPECTED_COLUMNS = {
     'id': 'INTEGER PRIMARY KEY AUTOINCREMENT',
     'workspace_id': 'TEXT UNIQUE',
@@ -1134,6 +1260,65 @@ def ensure_workspace_foundation_schema(connection: sqlite3.Connection) -> None:
         'ON workspace (status, created_at)'
     )
 
+
+def ensure_officeflow_api_access_schema(connection: sqlite3.Connection) -> None:
+    """Create only the additive Stage A identity and API-access foundation."""
+
+    connection.execute(PRINCIPAL_SCHEMA)
+    connection.execute(PRINCIPAL_EXTERNAL_IDENTITY_SCHEMA)
+    connection.execute(API_ENROLLMENT_SCHEMA)
+    connection.execute(API_SESSION_SCHEMA)
+    for table_name, expected_columns in OFFICEFLOW_API_TABLE_COLUMNS.items():
+        actual_columns = {
+            str(row[1])
+            for row in connection.execute(
+                f'PRAGMA table_info({table_name})'
+            ).fetchall()
+        }
+        if actual_columns != expected_columns:
+            raise RuntimeError(
+                f'Incompatible local schema for table {table_name}. '
+                'Manual migration/intervention is required; automatic DROP is disabled.'
+            )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_principal_external_identity_principal_status '
+        'ON principal_external_identity (principal_id, status, provider)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_api_enrollment_principal_status_expires '
+        'ON api_enrollment (principal_id, status, expires_at)'
+    )
+    connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_api_session_principal_status '
+        'ON api_session (principal_id, revoked_at, refresh_expires_at)'
+    )
+    for table_name, required_fragments in OFFICEFLOW_API_REQUIRED_SQL_FRAGMENTS.items():
+        row = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        create_sql = '' if row is None else str(row[0] or '')
+        normalized = ''.join(create_sql.casefold().split()).replace('"', '')
+        if any(fragment not in normalized for fragment in required_fragments):
+            raise RuntimeError(
+                f'Incompatible local schema for table {table_name}. '
+                'Manual migration/intervention is required; automatic DROP is disabled.'
+            )
+    for table_name, expected_indexes in OFFICEFLOW_API_INDEXES.items():
+        for index_name, expected_columns in expected_indexes.items():
+            actual_columns = tuple(
+                str(row[2])
+                for row in connection.execute(
+                    f'PRAGMA index_info({index_name})'
+                ).fetchall()
+            )
+            if actual_columns != expected_columns:
+                raise RuntimeError(
+                    f'Incompatible local schema for table {table_name}. '
+                    'Manual migration/intervention is required; automatic DROP is disabled.'
+                )
+
+
 def _ensure_work_time_day_additive_columns(connection: sqlite3.Connection) -> None:
     existing_columns = {
         row[1] for row in connection.execute('PRAGMA table_info(work_time_days)').fetchall()
@@ -1490,6 +1675,7 @@ def init_db(db_path: Path) -> None:
         _bootstrap_runtime_issue_table(connection)
         _bootstrap_runtime_issue_handoff_table(connection)
         ensure_workspace_foundation_schema(connection)
+        ensure_officeflow_api_access_schema(connection)
         ensure_archive_schema(connection)
         ensure_google_drive_connection_schema(connection)
         ensure_work_time_schema(connection)
