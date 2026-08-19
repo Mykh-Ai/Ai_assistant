@@ -75,29 +75,33 @@ class OfficeFlowViewModel(private val container: AppContainer) : ViewModel() {
 
     init { initialize() }
 
-    fun initialize() = viewModelScope.launch {
-        _root.value = RootState.Loading
-        if (!container.sessionRepository.hasStoredSession()) {
-            _root.value = RootState.Enrollment()
-            return@launch
-        }
-        when (container.sessionRepository.validate()) {
-            is SessionResult.Success -> loadWorkspaces()
-            SessionResult.EnrollmentRequired -> _root.value = RootState.Enrollment("Relácia už nie je platná.")
-            SessionResult.TemporarilyBlocked -> _root.value = RootState.TemporarilyBlocked
-            SessionResult.RefreshUncertain -> _root.value = RootState.RefreshUncertain
-            is SessionResult.Failure -> loadWorkspaces()
+    fun initialize() {
+        viewModelScope.launch {
+            _root.value = RootState.Loading
+            if (!container.sessionRepository.hasStoredSession()) {
+                _root.value = RootState.Enrollment()
+                return@launch
+            }
+            when (container.sessionRepository.validate()) {
+                is SessionResult.Success -> loadWorkspaces()
+                SessionResult.EnrollmentRequired -> _root.value = RootState.Enrollment("Relácia už nie je platná.")
+                SessionResult.TemporarilyBlocked -> _root.value = RootState.TemporarilyBlocked
+                SessionResult.RefreshUncertain -> _root.value = RootState.RefreshUncertain
+                is SessionResult.Failure -> loadWorkspaces()
+            }
         }
     }
 
-    fun enroll(secret: String) = viewModelScope.launch {
-        _root.value = RootState.Loading
-        when (container.sessionRepository.enroll(secret, "OfficeFlow Android")) {
-            is SessionResult.Success -> loadWorkspaces()
-            SessionResult.RefreshUncertain -> _root.value = RootState.Enrollment(
-                "Výsledok pripojenia sa pre chybu siete nedá potvrdiť. Kód neopakujte automaticky; požiadajte správcu o kontrolu."
-            )
-            else -> _root.value = RootState.Enrollment("Kód je neplatný, použitý alebo exspirovaný.")
+    fun enroll(secret: String) {
+        viewModelScope.launch {
+            _root.value = RootState.Loading
+            when (container.sessionRepository.enroll(secret, "OfficeFlow Android")) {
+                is SessionResult.Success -> loadWorkspaces()
+                SessionResult.RefreshUncertain -> _root.value = RootState.Enrollment(
+                    "Výsledok pripojenia sa pre chybu siete nedá potvrdiť. Kód neopakujte automaticky; požiadajte správcu o kontrolu."
+                )
+                else -> _root.value = RootState.Enrollment("Kód je neplatný, použitý alebo exspirovaný.")
+            }
         }
     }
 
@@ -133,62 +137,70 @@ class OfficeFlowViewModel(private val container: AppContainer) : ViewModel() {
         _root.value = RootState.WorkspacePicker(state.workspaces)
     }
 
-    fun loadInvoices(reset: Boolean = true) = viewModelScope.launch {
-        val workspace = currentWorkspace() ?: return@launch
-        val old = _invoices.value
-        if (old.loading || (!reset && old.endReached)) return@launch
-        val offset = if (reset) 0 else old.nextOffset
-        _invoices.value = if (reset) InvoiceListState(loading = true) else old.copy(loading = true, error = null)
-        when (val result = container.invoiceRepository.list(workspace.workspaceId, offset)) {
-            is SessionResult.Success -> {
-                val page = result.value.invoices
-                val combined = if (reset) page else (old.items + page).distinctBy { it.id }
-                _invoices.value = InvoiceListState(
-                    items = combined,
-                    nextOffset = offset + page.size,
-                    endReached = page.size < InvoiceRepository.PAGE_SIZE,
-                )
-            }
-            else -> {
-                handleSessionResult(result)
-                _invoices.value = old.copy(loading = false, error = messageFor(result))
-            }
-        }
-    }
-
-    fun loadInvoice(invoiceId: Long) = viewModelScope.launch {
-        _detail.value = DetailState.Loading
-        val workspace = currentWorkspace() ?: return@launch
-        when (val result = container.invoiceRepository.detail(workspace.workspaceId, invoiceId)) {
-            is SessionResult.Success -> _detail.value = DetailState.Ready(result.value)
-            else -> {
-                handleSessionResult(result)
-                _detail.value = DetailState.Error(messageFor(result))
+    fun loadInvoices(reset: Boolean = true) {
+        viewModelScope.launch {
+            val workspace = currentWorkspace() ?: return@launch
+            val old = _invoices.value
+            if (old.loading || (!reset && old.endReached)) return@launch
+            val offset = if (reset) 0 else old.nextOffset
+            _invoices.value = if (reset) InvoiceListState(loading = true) else old.copy(loading = true, error = null)
+            when (val result = container.invoiceRepository.list(workspace.workspaceId, offset)) {
+                is SessionResult.Success -> {
+                    val page = result.value.invoices
+                    val combined = if (reset) page else (old.items + page).distinctBy { it.id }
+                    _invoices.value = InvoiceListState(
+                        items = combined,
+                        nextOffset = offset + page.size,
+                        endReached = page.size < InvoiceRepository.PAGE_SIZE,
+                    )
+                }
+                else -> {
+                    handleSessionResult(result)
+                    _invoices.value = old.copy(loading = false, error = messageFor(result))
+                }
             }
         }
     }
 
-    fun loadContacts() = viewModelScope.launch {
-        val workspace = currentWorkspace() ?: return@launch
-        _contacts.value = ContactsState(loading = true)
-        when (val result = container.contactRepository.list(workspace.workspaceId)) {
-            is SessionResult.Success -> _contacts.value = ContactsState(items = result.value)
-            else -> {
-                handleSessionResult(result)
-                _contacts.value = ContactsState(error = messageFor(result))
+    fun loadInvoice(invoiceId: Long) {
+        viewModelScope.launch {
+            _detail.value = DetailState.Loading
+            val workspace = currentWorkspace() ?: return@launch
+            when (val result = container.invoiceRepository.detail(workspace.workspaceId, invoiceId)) {
+                is SessionResult.Success -> _detail.value = DetailState.Ready(result.value)
+                else -> {
+                    handleSessionResult(result)
+                    _detail.value = DetailState.Error(messageFor(result))
+                }
             }
         }
     }
 
-    fun loadPdf(invoiceId: Long) = viewModelScope.launch {
-        releasePdf()
-        _pdf.value = PdfUiState.Loading
-        val workspace = currentWorkspace() ?: return@launch
-        when (val result = container.pdfRepository.download(workspace.workspaceId, invoiceId)) {
-            is SessionResult.Success -> _pdf.value = PdfUiState.Ready(result.value)
-            else -> {
-                handleSessionResult(result)
-                _pdf.value = PdfUiState.Error("PDF nie je dostupné.")
+    fun loadContacts() {
+        viewModelScope.launch {
+            val workspace = currentWorkspace() ?: return@launch
+            _contacts.value = ContactsState(loading = true)
+            when (val result = container.contactRepository.list(workspace.workspaceId)) {
+                is SessionResult.Success -> _contacts.value = ContactsState(items = result.value)
+                else -> {
+                    handleSessionResult(result)
+                    _contacts.value = ContactsState(error = messageFor(result))
+                }
+            }
+        }
+    }
+
+    fun loadPdf(invoiceId: Long) {
+        viewModelScope.launch {
+            releasePdf()
+            _pdf.value = PdfUiState.Loading
+            val workspace = currentWorkspace() ?: return@launch
+            when (val result = container.pdfRepository.download(workspace.workspaceId, invoiceId)) {
+                is SessionResult.Success -> _pdf.value = PdfUiState.Ready(result.value)
+                else -> {
+                    handleSessionResult(result)
+                    _pdf.value = PdfUiState.Error("PDF nie je dostupné.")
+                }
             }
         }
     }
@@ -198,13 +210,15 @@ class OfficeFlowViewModel(private val container: AppContainer) : ViewModel() {
         _pdf.value = PdfUiState.Idle
     }
 
-    fun signOut() = viewModelScope.launch {
-        val confirmed = container.sessionRepository.signOut()
-        clearBusinessState()
-        _root.value = RootState.Enrollment(
-            if (confirmed) "Boli ste odhlásený."
-            else "Lokálne odhlásenie je dokončené, ale zrušenie relácie na serveri sa nepodarilo potvrdiť."
-        )
+    fun signOut() {
+        viewModelScope.launch {
+            val confirmed = container.sessionRepository.signOut()
+            clearBusinessState()
+            _root.value = RootState.Enrollment(
+                if (confirmed) "Boli ste odhlásený."
+                else "Lokálne odhlásenie je dokončené, ale zrušenie relácie na serveri sa nepodarilo potvrdiť."
+            )
+        }
     }
 
     fun clearNotice() { _notice.value = null }

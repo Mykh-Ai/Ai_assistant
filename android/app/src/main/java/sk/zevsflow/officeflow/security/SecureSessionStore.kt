@@ -56,35 +56,37 @@ class SecureSessionStore(
         }
     }
 
-    override suspend fun replace(credentials: SessionCredentials) = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val plaintext = json.encodeToString(credentials).encodeToByteArray()
-            require(plaintext.size <= MAX_PLAINTEXT_BYTES)
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-            val ciphertext = cipher.doFinal(plaintext)
-            val temporary = File(credentialFile.parentFile, "$FILE_NAME.tmp")
-            FileOutputStream(temporary).use { fileOutput ->
-                DataOutputStream(fileOutput).use { output ->
-                    output.writeByte(FORMAT_VERSION)
-                    output.writeByte(cipher.iv.size)
-                    output.write(cipher.iv)
-                    output.writeInt(ciphertext.size)
-                    output.write(ciphertext)
-                    output.flush()
-                    fileOutput.fd.sync()
+    override suspend fun replace(credentials: SessionCredentials) {
+        mutex.withLock {
+            withContext(Dispatchers.IO) {
+                val plaintext = json.encodeToString(credentials).encodeToByteArray()
+                require(plaintext.size <= MAX_PLAINTEXT_BYTES)
+                val cipher = Cipher.getInstance(TRANSFORMATION)
+                cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+                val ciphertext = cipher.doFinal(plaintext)
+                val temporary = File(credentialFile.parentFile, "$FILE_NAME.tmp")
+                FileOutputStream(temporary).use { fileOutput ->
+                    DataOutputStream(fileOutput).use { output ->
+                        output.writeByte(FORMAT_VERSION)
+                        output.writeByte(cipher.iv.size)
+                        output.write(cipher.iv)
+                        output.writeInt(ciphertext.size)
+                        output.write(ciphertext)
+                        output.flush()
+                        fileOutput.fd.sync()
+                    }
                 }
-            }
-            try {
-                Files.move(
-                    temporary.toPath(),
-                    credentialFile.toPath(),
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING,
-                )
-            } catch (exc: Exception) {
-                temporary.delete()
-                throw IllegalStateException("secure_session_replace_failed", exc)
+                try {
+                    Files.move(
+                        temporary.toPath(),
+                        credentialFile.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING,
+                    )
+                } catch (exc: Exception) {
+                    temporary.delete()
+                    throw IllegalStateException("secure_session_replace_failed", exc)
+                }
             }
         }
     }
