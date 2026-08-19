@@ -45,6 +45,20 @@ class PrincipalIdentityService:
             ).fetchone()
         return _row_to_identity(row) if row is not None else None
 
+    @staticmethod
+    def resolve_active_telegram_identity_in_connection(
+        connection: sqlite3.Connection,
+        telegram_id: int,
+    ) -> PrincipalExternalIdentity | None:
+        subject = _telegram_subject(telegram_id)
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            _IDENTITY_SELECT
+            + ' WHERE e.provider = ? AND e.subject = ? AND e.status = ?',
+            (TELEGRAM_PROVIDER, subject, IDENTITY_STATUS_ACTIVE),
+        ).fetchone()
+        return _row_to_identity(row) if row is not None else None
+
     def resolve_or_create_telegram_identity(
         self,
         telegram_id: int,

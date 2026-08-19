@@ -493,3 +493,24 @@ Evidence:
 Final verdict: `ready_for_handoff`.
 
 The implementation agent may add only the bounded credential-revocation integration described here while fixing PR #104. Any broader redesign of `/vymazat_databazu`, block/unblock, Android flows, public API deletion, principal lifecycle, or Product Truth requires a separate architecture decision.
+
+---
+
+## 16. Implementation Checkpoint — 2026-08-19
+
+Implementation checkpoint: `safe_to_commit`
+
+The bounded addendum is implemented without material design variance:
+
+- `UserDataDeletionService` opens one immediate SQLite transaction, resolves only the existing active Telegram principal mapping, revokes all non-revoked sessions and pending enrollments through their service-owned in-connection helpers, executes the existing scoped reset, marks `deleted_database`, and commits once;
+- missing principal remains a valid legacy deletion case and no principal is created by deletion;
+- principal/external identity and terminal credential audit rows are retained;
+- wrong confirmation, cancel, and voice-final-confirmation paths remain effect-free;
+- database failure rolls back credential, business, and access effects together and does not start filesystem cleanup;
+- post-commit local cleanup failure leaves credentials and access terminal;
+- later re-approval does not revive old access, refresh, or enrollment secrets; a fresh administrator enrollment is required;
+- unrelated principals remain untouched and ordinary temporary block/unblock remains non-terminal.
+
+Evidence: `tests/test_delete_user_database_flow.py` passed 12 tests, the combined Stage A/addendum targeted proof passed 52 tests, the shared access/workspace/tenant regression passed 64 tests, and the full repository suite passed 2605 tests plus 7 subtests. Static compile and diff checks pass. Detailed A1–A11 evidence is recorded in `docs/evals/OFFICEFLOW_PLATFORM_NEUTRAL_ANDROID_FOUNDATION_V1_acceptance_proof.md`.
+
+No production migration, deployment, server restart, public API exposure, new Android runtime, new business action, new FSM, or external-service effect was performed.

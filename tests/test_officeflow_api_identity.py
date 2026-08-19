@@ -13,6 +13,10 @@ from bot.cli.officeflow_api_access import main as api_access_cli_main
 from bot.services.api_enrollment import ApiEnrollmentError, ApiEnrollmentService
 from bot.services.api_session import ApiSessionError, ApiSessionService
 from bot.services.db import init_db
+from bot.services.officeflow_api_context import (
+    OfficeFlowApiAuthorizationError,
+    OfficeFlowApiContextService,
+)
 from bot.services.principal_identity import PrincipalIdentityError, PrincipalIdentityService
 
 
@@ -278,6 +282,31 @@ def test_current_access_revocation_invalidates_existing_session(
 
     with pytest.raises(ApiSessionError):
         ApiSessionService(db_path).rotate_refresh(credentials.refresh_token)
+
+
+def test_temporary_block_denies_without_terminalizing_session(
+    tmp_path: Path,
+) -> None:
+    db_path = _active_db(tmp_path)
+    issue = ApiEnrollmentService(db_path).issue_for_authorized_telegram_user(
+        telegram_id=USER_ID,
+        device_label='Temporary block device',
+    )
+    credentials = ApiEnrollmentService(db_path).exchange(issue.enrollment_secret)
+    context = OfficeFlowApiContextService(db_path)
+    assert context.authenticate_access(credentials.access_token).telegram_id == USER_ID
+
+    access = AccessControlService(db_path)
+    access.block_user(telegram_id=USER_ID, decided_by=ADMIN_ID)
+    with pytest.raises(OfficeFlowApiAuthorizationError):
+        context.authenticate_access(credentials.access_token)
+    listed = ApiSessionService(db_path).list_sessions_for_telegram_user(USER_ID)
+    assert len(listed) == 1
+    assert listed[0].status == 'active'
+    assert listed[0].revoked_at is None
+
+    access.approve_user(telegram_id=USER_ID, approved_by=ADMIN_ID, role='owner')
+    assert context.authenticate_access(credentials.access_token).telegram_id == USER_ID
 
 
 def test_admin_session_list_and_revoke_are_target_scoped_and_secret_free(

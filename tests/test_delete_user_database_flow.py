@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import sqlite3
+
+import pytest
 
 from bot.config import Config
 from bot.handlers.access_admin import cmd_approve, cmd_users
@@ -24,13 +27,17 @@ from bot.services.access_control import (
     AUTHORIZED_STATUS_DELETED_DATABASE,
     AccessControlService,
 )
+from bot.services.api_enrollment import ApiEnrollmentError, ApiEnrollmentService
+from bot.services.api_session import ApiSessionError, ApiSessionService
 from bot.services.authorization import ACCESS_REQUEST_MESSAGE, TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
 from bot.services.contact_service import ContactProfile, ContactService
 from bot.services.db import init_db, managed_connection
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
+from bot.services.principal_identity import PrincipalIdentityService
 from bot.services.semantic_action_resolver import resolve_semantic_action
 from bot.services.service_alias_service import ServiceAliasService
 from bot.services.supplier_service import SupplierProfile, SupplierService
+from bot.services.user_data_deletion import UserDataDeletionService
 
 
 ADMIN_ID = 990001
@@ -244,6 +251,43 @@ def _count(db_path: Path, sql: str, params: tuple = ()) -> int:
     return int(row[0])
 
 
+def _setup_api_credentials(config: Config, user_id: int):
+    enrollments = ApiEnrollmentService(config.db_path)
+    consumed = enrollments.issue_for_authorized_telegram_user(
+        telegram_id=user_id,
+        device_label=f'Active {user_id}',
+    )
+    credentials = enrollments.exchange(consumed.enrollment_secret)
+    pending = enrollments.issue_for_authorized_telegram_user(
+        telegram_id=user_id,
+        device_label=f'Pending {user_id}',
+    )
+    identity = PrincipalIdentityService(config.db_path).resolve_telegram_identity(
+        user_id
+    )
+    assert identity is not None
+    return credentials, pending, identity
+
+
+def _assert_api_credentials_untouched(
+    config: Config,
+    user_id: int,
+    credentials,
+    pending,
+) -> None:
+    assert ApiSessionService(config.db_path).authenticate_access(
+        credentials.access_token
+    )
+    statuses = {
+        item.enrollment_id: item
+        for item in ApiEnrollmentService(config.db_path).list_status_for_telegram_user(
+            user_id
+        )
+    }
+    assert statuses[pending.enrollment_id].status == 'pending'
+    assert statuses[pending.enrollment_id].revoked_at is None
+
+
 def test_vymazat_databazu_command_starts_warning_state_without_deleting(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
@@ -337,6 +381,7 @@ def test_wrong_typed_confirmation_does_not_delete_or_revoke(tmp_path: Path) -> N
     init_db(config.db_path)
     _setup_authorized_user(config, USER_A)
     SupplierService(config.db_path).create_or_replace(_supplier(USER_A))
+    credentials, pending, _ = _setup_api_credentials(config, USER_A)
     message = _DummyMessage('vymazat databazu', USER_A)
     state = _DummyState(DeleteUserDatabaseStates.waiting_exact_confirmation.state)
 
@@ -347,6 +392,12 @@ def test_wrong_typed_confirmation_does_not_delete_or_revoke(tmp_path: Path) -> N
     assert AccessControlService(config.db_path).get_authorized_user(USER_A).status == AUTHORIZED_STATUS_ACTIVE
     assert 'napíšte presne' in message.answers[-1]
     assert DELETE_USER_DATABASE_SAFE_EXIT_HINT in message.answers[-1]
+    _assert_api_credentials_untouched(
+        config,
+        USER_A,
+        credentials,
+        pending,
+    )
 
 
 def test_delete_database_global_cancel_aliases_clear_state_without_deletion(tmp_path: Path) -> None:
@@ -356,6 +407,7 @@ def test_delete_database_global_cancel_aliases_clear_state_without_deletion(tmp_
         init_db(config.db_path)
         _setup_authorized_user(config, USER_A)
         SupplierService(config.db_path).create_or_replace(_supplier(USER_A))
+        credentials, pending, _ = _setup_api_credentials(config, USER_A)
         message = _DummyMessage(alias, USER_A)
         state = _DummyState(DeleteUserDatabaseStates.waiting_exact_confirmation.state)
 
@@ -365,6 +417,12 @@ def test_delete_database_global_cancel_aliases_clear_state_without_deletion(tmp_
         assert message.answers == [STATE_CANCELLED_MESSAGE]
         assert SupplierService(config.db_path).get_by_telegram_id(USER_A) is not None
         assert AccessControlService(config.db_path).get_authorized_user(USER_A).status == AUTHORIZED_STATUS_ACTIVE
+        _assert_api_credentials_untouched(
+            config,
+            USER_A,
+            credentials,
+            pending,
+        )
 
 
 def test_voice_in_final_confirmation_state_never_deletes_or_calls_stt(monkeypatch, tmp_path: Path) -> None:
@@ -372,6 +430,7 @@ def test_voice_in_final_confirmation_state_never_deletes_or_calls_stt(monkeypatc
     init_db(config.db_path)
     _setup_authorized_user(config, USER_A)
     SupplierService(config.db_path).create_or_replace(_supplier(USER_A))
+    credentials, pending, _ = _setup_api_credentials(config, USER_A)
 
     async def _stt(*args, **kwargs) -> str:
         raise AssertionError('STT must not run for exact delete confirmation state')
@@ -385,6 +444,147 @@ def test_voice_in_final_confirmation_state_never_deletes_or_calls_stt(monkeypatc
     assert message.answers == [VOICE_EXACT_CONFIRMATION_MESSAGE]
     assert SupplierService(config.db_path).get_by_telegram_id(USER_A) is not None
     assert AccessControlService(config.db_path).get_authorized_user(USER_A).status == AUTHORIZED_STATUS_ACTIVE
+    _assert_api_credentials_untouched(
+        config,
+        USER_A,
+        credentials,
+        pending,
+    )
+
+
+def test_exact_delete_terminalizes_only_target_api_credentials_and_fresh_enrollment_works(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    access = AccessControlService(config.db_path)
+    _setup_authorized_user(config, USER_A)
+    _setup_authorized_user(config, USER_B)
+    SupplierService(config.db_path).create_or_replace(_supplier(USER_A))
+    SupplierService(config.db_path).create_or_replace(_supplier(USER_B))
+    credentials_a, pending_a, identity_a = _setup_api_credentials(config, USER_A)
+    credentials_b, pending_b, identity_b = _setup_api_credentials(config, USER_B)
+
+    message = _DummyMessage(EXACT_DELETE_DATABASE_CONFIRMATION, USER_A)
+    state = _DummyState(DeleteUserDatabaseStates.waiting_exact_confirmation.state)
+    asyncio.run(confirm_delete_user_database(message, state, config))
+
+    assert state.cleared is True
+    assert access.get_authorized_user(USER_A).status == AUTHORIZED_STATUS_DELETED_DATABASE
+    assert PrincipalIdentityService(config.db_path).resolve_telegram_identity(USER_A) == identity_a
+    assert PrincipalIdentityService(config.db_path).resolve_telegram_identity(USER_B) == identity_b
+    sessions_a = ApiSessionService(config.db_path).list_sessions_for_telegram_user(USER_A)
+    sessions_b = ApiSessionService(config.db_path).list_sessions_for_telegram_user(USER_B)
+    assert [item.status for item in sessions_a] == ['revoked']
+    assert [item.status for item in sessions_b] == ['active']
+    enrollment_a = {
+        item.enrollment_id: item
+        for item in ApiEnrollmentService(config.db_path).list_status_for_telegram_user(USER_A)
+    }
+    enrollment_b = {
+        item.enrollment_id: item
+        for item in ApiEnrollmentService(config.db_path).list_status_for_telegram_user(USER_B)
+    }
+    assert enrollment_a[pending_a.enrollment_id].status == 'revoked'
+    assert enrollment_a[pending_a.enrollment_id].revoked_at is not None
+    assert sorted(item.status for item in enrollment_a.values()) == ['consumed', 'revoked']
+    assert enrollment_b[pending_b.enrollment_id].status == 'pending'
+    assert sorted(item.status for item in enrollment_b.values()) == ['consumed', 'pending']
+    with pytest.raises(ApiSessionError):
+        ApiSessionService(config.db_path).authenticate_access(credentials_a.access_token)
+    with pytest.raises(ApiSessionError):
+        ApiSessionService(config.db_path).rotate_refresh(credentials_a.refresh_token)
+    with pytest.raises(ApiEnrollmentError):
+        ApiEnrollmentService(config.db_path).exchange(pending_a.enrollment_secret)
+    assert ApiSessionService(config.db_path).authenticate_access(credentials_b.access_token)
+
+    access.approve_user(telegram_id=USER_A, approved_by=ADMIN_ID)
+    with pytest.raises(ApiSessionError):
+        ApiSessionService(config.db_path).authenticate_access(credentials_a.access_token)
+    with pytest.raises(ApiSessionError):
+        ApiSessionService(config.db_path).rotate_refresh(credentials_a.refresh_token)
+    with pytest.raises(ApiEnrollmentError):
+        ApiEnrollmentService(config.db_path).exchange(pending_a.enrollment_secret)
+
+    fresh_issue = ApiEnrollmentService(config.db_path).issue_for_authorized_telegram_user(
+        telegram_id=USER_A,
+        device_label='Fresh trust',
+    )
+    fresh = ApiEnrollmentService(config.db_path).exchange(
+        fresh_issue.enrollment_secret
+    )
+    assert fresh.access_token != credentials_a.access_token
+    assert ApiSessionService(config.db_path).authenticate_access(fresh.access_token)
+    final_sessions = ApiSessionService(config.db_path).list_sessions_for_telegram_user(
+        USER_A
+    )
+    assert sorted(item.status for item in final_sessions) == ['active', 'revoked']
+
+
+def test_delete_database_failure_rolls_back_business_access_and_api_credentials(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    _setup_authorized_user(config, USER_A)
+    SupplierService(config.db_path).create_or_replace(_supplier(USER_A))
+    credentials, pending, _ = _setup_api_credentials(config, USER_A)
+    filesystem_calls: list[bool] = []
+
+    def _fail_mark_deleted(*args, **kwargs) -> None:
+        raise sqlite3.OperationalError('injected reset failure')
+
+    def _unexpected_filesystem(*args, **kwargs):
+        filesystem_calls.append(True)
+        return [], [], []
+
+    monkeypatch.setattr(
+        'bot.services.user_data_deletion.mark_deleted_database_in_connection',
+        _fail_mark_deleted,
+    )
+    monkeypatch.setattr(
+        UserDataDeletionService,
+        '_delete_scoped_filesystem_paths',
+        _unexpected_filesystem,
+    )
+    with pytest.raises(sqlite3.OperationalError, match='injected reset failure'):
+        UserDataDeletionService(config.db_path, config.storage_dir).delete_user_database(
+            telegram_id=USER_A
+        )
+
+    assert filesystem_calls == []
+    assert SupplierService(config.db_path).get_by_telegram_id(USER_A) is not None
+    assert AccessControlService(config.db_path).get_authorized_user(USER_A).status == AUTHORIZED_STATUS_ACTIVE
+    _assert_api_credentials_untouched(config, USER_A, credentials, pending)
+
+
+def test_partial_filesystem_failure_keeps_account_and_credentials_terminal(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    _setup_authorized_user(config, USER_A)
+    SupplierService(config.db_path).create_or_replace(_supplier(USER_A))
+    credentials, pending, _ = _setup_api_credentials(config, USER_A)
+
+    monkeypatch.setattr(
+        UserDataDeletionService,
+        '_delete_scoped_filesystem_paths',
+        lambda *args, **kwargs: ([], [], ['simulated filesystem failure']),
+    )
+    result = UserDataDeletionService(
+        config.db_path,
+        config.storage_dir,
+    ).delete_user_database(telegram_id=USER_A)
+
+    assert result.filesystem_errors == ('simulated filesystem failure',)
+    assert AccessControlService(config.db_path).get_authorized_user(USER_A).status == AUTHORIZED_STATUS_DELETED_DATABASE
+    with pytest.raises(ApiSessionError):
+        ApiSessionService(config.db_path).authenticate_access(credentials.access_token)
+    with pytest.raises(ApiEnrollmentError):
+        ApiEnrollmentService(config.db_path).exchange(pending.enrollment_secret)
 
 
 def test_exact_confirmation_deletes_only_current_user_data_and_marks_deleted_database(tmp_path: Path) -> None:
@@ -402,6 +602,7 @@ def test_exact_confirmation_deletes_only_current_user_data_and_marks_deleted_dat
         path.write_bytes(b'contract')
     invoice_a_id = _setup_business_data(config, USER_A, contract_path=contract_a)
     invoice_b_id = _setup_business_data(config, USER_B, contract_path=contract_b)
+    assert _count(config.db_path, 'SELECT COUNT(*) FROM principal') == 0
 
     for path in (
         tmp_path / 'invoices' / str(USER_A) / '20260025.pdf',
@@ -435,6 +636,7 @@ def test_exact_confirmation_deletes_only_current_user_data_and_marks_deleted_dat
     assert _count(config.db_path, 'SELECT COUNT(*) FROM invoice_item WHERE invoice_id = ?', (invoice_b_id,)) == 1
     assert _count(config.db_path, 'SELECT COUNT(*) FROM invoice_number_settings WHERE supplier_telegram_id = ?', (USER_A,)) == 0
     assert _count(config.db_path, 'SELECT COUNT(*) FROM confirmed_semantic_alias WHERE supplier_telegram_id = ?', (USER_A,)) == 0
+    assert _count(config.db_path, 'SELECT COUNT(*) FROM principal') == 0
     assert not (tmp_path / 'invoices' / str(USER_A)).exists()
     assert (tmp_path / 'invoices' / str(USER_B)).exists()
     assert not (tmp_path / 'workspaces' / f'telegram-{USER_A}').exists()

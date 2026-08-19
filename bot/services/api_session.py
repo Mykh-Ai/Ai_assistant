@@ -221,6 +221,22 @@ class ApiSessionService:
                 raise ApiSessionError('api_access_invalid')
             connection.commit()
 
+    @staticmethod
+    def revoke_all_for_principal_in_connection(
+        connection: sqlite3.Connection,
+        *,
+        principal_id: str,
+        now: datetime | None = None,
+    ) -> int:
+        """Revoke a principal's sessions without owning the caller's transaction."""
+
+        normalized_principal_id = _principal_id(principal_id)
+        return connection.execute(
+            'UPDATE api_session SET revoked_at = ? '
+            'WHERE principal_id = ? AND revoked_at IS NULL',
+            (_utc_now(now).isoformat(), normalized_principal_id),
+        ).rowcount
+
     def list_sessions_for_telegram_user(
         self,
         telegram_id: int,
@@ -436,6 +452,22 @@ def _session_id(value: str) -> str:
         )
     ):
         raise ApiSessionError('api_session_not_found')
+    return normalized
+
+
+def _principal_id(value: str) -> str:
+    normalized = str(value).strip()
+    if (
+        not normalized.startswith('prn_')
+        or len(normalized) < 36
+        or len(normalized) > 128
+        or any(
+            not character.isascii()
+            or not (character.isalnum() or character in '_-')
+            for character in normalized
+        )
+    ):
+        raise ApiSessionError('api_principal_invalid')
     return normalized
 
 

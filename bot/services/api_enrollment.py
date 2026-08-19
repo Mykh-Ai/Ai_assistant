@@ -183,6 +183,30 @@ class ApiEnrollmentService:
                 raise ApiEnrollmentError('api_enrollment_not_pending')
             connection.commit()
 
+    @staticmethod
+    def revoke_pending_for_principal_in_connection(
+        connection: sqlite3.Connection,
+        *,
+        principal_id: str,
+        now: datetime | None = None,
+    ) -> int:
+        """Revoke pending enrollment without owning the caller's transaction."""
+
+        normalized_principal_id = _bounded_identifier(
+            principal_id,
+            field='principal_id',
+        )
+        return connection.execute(
+            'UPDATE api_enrollment SET status = ?, revoked_at = ? '
+            'WHERE principal_id = ? AND status = ?',
+            (
+                'revoked',
+                _utc_now(now).isoformat(),
+                normalized_principal_id,
+                'pending',
+            ),
+        ).rowcount
+
     def list_status_for_telegram_user(
         self,
         telegram_id: int,

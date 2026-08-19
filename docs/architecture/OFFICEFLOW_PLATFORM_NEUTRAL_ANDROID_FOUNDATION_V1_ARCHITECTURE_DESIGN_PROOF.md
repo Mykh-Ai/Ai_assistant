@@ -801,13 +801,15 @@ The approved Stage A was implemented without material design variance:
 - allowlisted invoice/contact/session/workspace responses and confined persisted-PDF streaming;
 - exact workspace-root PDF ownership, with only a database-proven single-workspace numeric legacy-owner root accepted and ambiguous/foreign legacy paths rejected;
 - administrator-safe session inventory and tenant-bound session-id revocation without principal/token/hash exposure;
+- approved account-reset integration that atomically revokes the actor principal's sessions and pending enrollments with the existing business reset and `deleted_database` state, while retaining identity continuity and unchanged temporary-block semantics;
 - no business mutation, AI/STT/LMM, external service, Telegram send, callback, FSM, or polling lifecycle change.
 
 Evidence is recorded in
 `docs/evals/OFFICEFLOW_PLATFORM_NEUTRAL_ANDROID_FOUNDATION_V1_acceptance_proof.md`.
-The implementation-specific focused suite passed 39 tests, the shared
+The implementation-specific focused suite passed 40 tests, the existing
+account-reset/addendum suite passed 12 tests, the shared
 access/workspace/tenant regression passed 64 tests, and the full repository
-suite passed 2601 tests plus 7 subtests after the PR #104 blocker repair.
+suite passed 2605 tests plus 7 subtests after the PR #104 blocker/addendum repair.
 `python -m compileall -q bot` and `git diff --check` also passed.
 Existing-data fixture bootstrap proves
 the additive schema preserves existing business rows, relationships, workspace

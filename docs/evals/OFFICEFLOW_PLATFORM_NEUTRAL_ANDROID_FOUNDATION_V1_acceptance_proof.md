@@ -7,6 +7,11 @@ Conversation Acceptance Proof is not applicable because Stage A adds no
 canonical business action, conversation route, callback, confirmation, or FSM.
 It does not invent a conversation trace.
 
+The approved credential-revocation addendum extends only the side effects of
+the already-existing, exact-confirmed `delete_user_database` journey. Its
+evidence below exercises that unchanged Telegram confirmation/FSM boundary; it
+does not present the journey as a new Stage A conversation action.
+
 The implemented boundary is a controlled administrator enrollment flow, opaque
 server-side API sessions, and membership-validated read-only workspace,
 invoice, contact, and persisted-PDF projections. The Android application is not
@@ -18,14 +23,17 @@ credential change, external-service call, Telegram send, or AI call occurred.
 
 ## Validation summary
 
-- New Stage A focused suite: `39 passed` across
+- New Stage A focused suite: `40 passed` across
   `tests/test_officeflow_api_identity.py`,
   `tests/test_officeflow_api_http.py`, and
   `tests/test_officeflow_api_schema_and_boundaries.py`.
+- Existing account-reset/addendum suite: `12 passed` in
+  `tests/test_delete_user_database_flow.py`; combined targeted proof:
+  `52 passed`.
 - Shared access/workspace/tenant owner regression: `64 passed` across the
   existing access, tenant, workspace, invoice, contact, and architecture-boundary
   suites.
-- Final full repository regression: `2601 passed, 7 subtests passed in 167.08s`.
+- Final full repository regression: `2605 passed, 7 subtests passed in 176.81s`.
 - Static validation: `python -m compileall -q bot` and `git diff --check` pass.
 
 ## Scenario 1 — controlled enrollment happy path
@@ -259,7 +267,7 @@ credential change, external-service call, Telegram send, or AI call occurred.
 - Workspace scope: existing Telegram workspace resolution semantics remain unchanged.
 - Response: existing Telegram contracts remain green.
 - Final state: polling runtime has no import/lifecycle dependency on `officeflow_api_app`.
-- Test/evidence reference: full `2601 passed, 7 subtests passed`; shared `64 passed`; `test_api_import_boundary_excludes_telegram_fsm_ai_and_external_services` verifies `bot.main` does not import the API app.
+- Test/evidence reference: full `2605 passed, 7 subtests passed`; shared `64 passed`; `test_api_import_boundary_excludes_telegram_fsm_ai_and_external_services` verifies `bot.main` does not import the API app.
 - Result: pass.
 
 ## Scenario 18 — Product Truth capability question
@@ -274,6 +282,151 @@ credential change, external-service call, Telegram send, or AI call occurred.
 - Final state: no `first_party_android_client` or other Android capability id exists in the registry.
 - Test/evidence reference: `test_stage_a_does_not_invent_android_product_truth_support`; repository diff contains no InfoHelp/Product Truth runtime edit.
 - Result: pass as required negative-space evidence; runtime Product Truth synchronization remains explicitly deferred.
+
+## Approved account-reset credential-revocation addendum
+
+### A1 — exact-confirmed delete with session and pending enrollment
+
+- Precondition: active authorized Telegram actor, business data, one consumed enrollment/session, one pending enrollment, and an active Telegram principal mapping.
+- Exact HTTP/CLI entry: existing `/vymazat_databazu` handler followed by exact typed `vymazať databázu` confirmation.
+- Authorization result: unchanged Telegram authorization and exact-confirmation boundary permit the existing destructive action.
+- Python service owner: `UserDataDeletionService`, using bounded in-connection helpers owned by `PrincipalIdentityService`, `ApiSessionService`, and `ApiEnrollmentService`.
+- DB/session effect or no-effect: one `BEGIN IMMEDIATE` transaction revokes all non-revoked sessions and pending enrollments for the resolved principal, deletes the existing scoped business rows, and marks `deleted_database` before commit.
+- Workspace scope: existing actor-owned workspace deletion scope; `principal_id` is used only for credential rows.
+- Response: existing successful deletion response, minimally synchronized to state that first-party API credentials are invalidated.
+- Final state: business reset committed; session and pending enrollment terminal; principal/external identity retained; FSM cleared.
+- Test/evidence reference: `test_exact_delete_terminalizes_only_target_api_credentials_and_fresh_enrollment_works`, `test_exact_confirmation_deletes_only_current_user_data_and_marks_deleted_database`.
+- Result: pass.
+
+### A2 — old access and refresh never revive
+
+- Precondition: A1 completed; raw pre-delete access and refresh credentials retained by the test.
+- Exact HTTP/CLI entry: session authentication/refresh before and after later administrator re-approval.
+- Authorization result: both credentials are rejected from permanent session revocation, not merely current access status.
+- Python service owner: `ApiSessionService` and current `AccessControlService` checks.
+- DB/session effect or no-effect: failed use does not rotate or reactivate the old session.
+- Workspace scope: none reached.
+- Response: bounded credential failure.
+- Final state: old session remains `revoked` after re-approval.
+- Test/evidence reference: `test_exact_delete_terminalizes_only_target_api_credentials_and_fresh_enrollment_works`.
+- Result: pass.
+
+### A3 — old pending enrollment never revives
+
+- Precondition: A1 completed with the old raw pending enrollment secret retained.
+- Exact HTTP/CLI entry: enrollment exchange after deletion and again after re-approval.
+- Authorization result: terminal `revoked` status rejects the secret.
+- Python service owner: `ApiEnrollmentService`.
+- DB/session effect or no-effect: no session is inserted and the enrollment is not reopened.
+- Workspace scope: none.
+- Response: bounded invalid enrollment failure.
+- Final state: old enrollment remains revoked with its revocation timestamp.
+- Test/evidence reference: `test_exact_delete_terminalizes_only_target_api_credentials_and_fresh_enrollment_works`.
+- Result: pass.
+
+### A4 — fresh enrollment after re-approval
+
+- Precondition: deleted actor has been explicitly re-approved; all pre-delete credentials remain terminal.
+- Exact HTTP/CLI entry: new administrator enrollment issuance and exchange.
+- Authorization result: current active authorization permits a new, explicit trust event using the retained principal mapping.
+- Python service owner: `ApiEnrollmentService`, `PrincipalIdentityService`, `ApiSessionService`.
+- DB/session effect or no-effect: a distinct enrollment and new active session are created; no old row is reactivated.
+- Workspace scope: none until later protected reads.
+- Response: fresh opaque credentials returned once.
+- Final state: one new active session coexists with the permanently revoked pre-delete session.
+- Test/evidence reference: `test_exact_delete_terminalizes_only_target_api_credentials_and_fresh_enrollment_works`.
+- Result: pass.
+
+### A5 — legacy user without API identity
+
+- Precondition: authorized actor and business data, with zero principal/external identity/session/enrollment rows.
+- Exact HTTP/CLI entry: existing exact-confirmed delete journey.
+- Authorization result: unchanged existing confirmation succeeds; missing API identity is accepted.
+- Python service owner: `UserDataDeletionService` and `PrincipalIdentityService` lookup.
+- DB/session effect or no-effect: existing business reset and `deleted_database` commit; no principal is created as a deletion side effect.
+- Workspace scope: existing actor-owned deletion scope.
+- Response: unchanged successful deletion result.
+- Final state: business data deleted, access removed, principal table still empty.
+- Test/evidence reference: `test_exact_confirmation_deletes_only_current_user_data_and_marks_deleted_database`.
+- Result: pass.
+
+### A6 — unrelated principal isolation
+
+- Precondition: users A and B each have distinct principals, sessions, pending enrollments, and business state.
+- Exact HTTP/CLI entry: exact-confirmed delete for A.
+- Authorization result: Telegram subject resolves only A's existing principal.
+- Python service owner: principal/session/enrollment in-connection helpers plus `UserDataDeletionService`.
+- DB/session effect or no-effect: only A's credentials and business rows are terminalized/deleted; B's rows are untouched.
+- Workspace scope: A's existing deletion scope only.
+- Response: successful deletion for A without foreign detail.
+- Final state: B's access token remains valid and B's pending enrollment remains pending.
+- Test/evidence reference: `test_exact_delete_terminalizes_only_target_api_credentials_and_fresh_enrollment_works`, existing tenant assertions in `test_exact_confirmation_deletes_only_current_user_data_and_marks_deleted_database`.
+- Result: pass.
+
+### A7 — wrong confirmation and cancel have no credential effect
+
+- Precondition: active session and pending enrollment while the existing delete FSM is active.
+- Exact HTTP/CLI entry: wrong typed confirmation, or existing global cancel aliases.
+- Authorization result: destructive confirmation is not satisfied.
+- Python service owner: existing handler/state-control boundary; `UserDataDeletionService` is not executed.
+- DB/session effect or no-effect: zero business, access, session, or enrollment change.
+- Workspace scope: none deleted.
+- Response: existing exact-text retry or cancellation response.
+- Final state: access token remains usable; pending enrollment remains pending.
+- Test/evidence reference: `test_wrong_typed_confirmation_does_not_delete_or_revoke`, `test_delete_database_global_cancel_aliases_clear_state_without_deletion`.
+- Result: pass.
+
+### A8 — voice remains insufficient for final confirmation
+
+- Precondition: active session/pending enrollment and `waiting_exact_confirmation` FSM state.
+- Exact HTTP/CLI entry: voice message in the final destructive state.
+- Authorization result: typed-only precision guard rejects voice before STT and before deletion.
+- Python service owner: existing `voice.py` state guard.
+- DB/session effect or no-effect: no business, credential, access, or FSM-clear effect.
+- Workspace scope: none deleted.
+- Response: existing typed-confirmation instruction.
+- Final state: session active and enrollment pending.
+- Test/evidence reference: `test_voice_in_final_confirmation_state_never_deletes_or_calls_stt`.
+- Result: pass.
+
+### A9 — database failure rolls back atomically
+
+- Precondition: active business/access/credential state; injected database failure after credential UPDATEs but before commit.
+- Exact HTTP/CLI entry: direct existing `UserDataDeletionService.delete_user_database` owner invoked by the exact-confirmed handler contract.
+- Authorization result: execution entered only after the caller's existing confirmation boundary; injected DB failure aborts it.
+- Python service owner: `UserDataDeletionService` transaction and credential in-connection helpers.
+- DB/session effect or no-effect: connection close rolls back session/enrollment updates, business deletes, and access mutation together; filesystem cleanup is never called.
+- Workspace scope: attempted actor-owned reset only.
+- Response: exception propagates to the existing failure boundary; no partial success is recorded.
+- Final state: supplier/access/session/pending enrollment remain unchanged.
+- Test/evidence reference: `test_delete_database_failure_rolls_back_business_access_and_api_credentials`.
+- Result: pass.
+
+### A10 — partial local-file cleanup cannot resurrect credentials
+
+- Precondition: database reset can commit; filesystem owner returns a bounded cleanup error afterward.
+- Exact HTTP/CLI entry: exact-confirmed account reset/service execution.
+- Authorization result: normal existing destructive authorization.
+- Python service owner: `UserDataDeletionService` DB phase followed by its existing filesystem cleanup owner.
+- DB/session effect or no-effect: committed business/access/session/enrollment state remains terminal; filesystem failure is reported only in the result.
+- Workspace scope: existing scoped cleanup targets.
+- Response: existing partial-files outcome with truthful API-credential invalidation wording.
+- Final state: `deleted_database`, revoked session/enrollment, and bounded filesystem error; no rollback/resurrection.
+- Test/evidence reference: `test_partial_filesystem_failure_keeps_account_and_credentials_terminal`.
+- Result: pass.
+
+### A11 — temporary block behavior remains non-terminal
+
+- Precondition: valid session for an active user.
+- Exact HTTP/CLI entry: ordinary administrator block, protected API authentication, then ordinary re-approval.
+- Authorization result: current access state denies while blocked.
+- Python service owner: `AccessControlService` and `OfficeFlowApiContextService`.
+- DB/session effect or no-effect: block does not set `api_session.revoked_at`; no enrollment is terminalized.
+- Workspace scope: protected workspace resolution is not reached while blocked.
+- Response: bounded unauthorized while blocked; the same session authenticates after re-approval.
+- Final state: temporary-block semantics remain distinct from account reset.
+- Test/evidence reference: `test_temporary_block_denies_without_terminalizing_session`.
+- Result: pass.
 
 ## Existing-data and rollout gate
 
