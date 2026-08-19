@@ -159,6 +159,6 @@ class OfficeFlowApiClientTest {
     private fun errorResponse(status: Int, code: String) = MockResponse()
         .setResponseCode(status)
         .setHeader("Content-Type", "application/json")
-        .setBody("""{"error":{"code":"$code"}}""
+        .setBody("""{"error":{"code":"$code"}}"""
         )
 }
