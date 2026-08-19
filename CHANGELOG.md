@@ -1,5 +1,6 @@
 # Changelog
 
+- Added the approved docs-only `OFFICEFLOW_PLATFORM_NEUTRAL_ANDROID_FOUNDATION_V1` architecture design proof for the transition from Telegram-first UI to a platform-neutral OfficeFlow backend with a future first-party Android client. The approved Stage A is intentionally limited to additive internal principal/external-identity mapping, administrator-issued single-use enrollment, opaque hashed API sessions, and membership-validated read-only workspace/invoice/contact/PDF HTTP access through a separate `aiohttp` process. Existing `workspace_id` tenant isolation remains canonical; Telegram business FSM/actions/callbacks and all business mutations remain unchanged. This changelog entry does not claim Android runtime support, public signup, shared cross-channel FSM ownership, or any implemented API/schema change; those remain pending implementation and acceptance proof.
 - Fixed Gmail OAuth refresh failure classification. Google Auth `RefreshError`
   with bounded provider code `invalid_grant` now becomes
   `GmailReadonlyNeedsReauth`, allowing the existing scheduler to mark the
