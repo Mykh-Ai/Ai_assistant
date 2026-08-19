@@ -812,9 +812,11 @@ the debug APK plus checksum as artifact `9385867828`; the downloaded APK
 matched SHA-256
 `aded96b7cbf7db88c29b9ba771dec112699dd328ffe46478050df5d4561dcc0a`.
 The current host still lacks an emulator/device, so instrumentation and the real
-app entry journey were not executed. The implementation checkpoint remains
-`runtime_not_proven` for device runtime and may advance only after that
-evidence is attached.
+app entry journey were not executed. Together with the unchanged
+clock-sensitive full-suite failure recorded below, the implementation checkpoint
+remains `runtime_not_proven`; it may advance only after device evidence is
+attached and full regression evidence is green or the baseline failure is
+separately resolved.
 
 Focused Python/shared-boundary evidence is `95 passed`. The full suite reached
 `2612 passed, 7 subtests passed, 1 failed`; the single unchanged work-time test

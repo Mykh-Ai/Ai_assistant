@@ -24,9 +24,11 @@ checksum as artifact
 (artifact id `9385867828`). The downloaded APK matched its published SHA-256:
 `aded96b7cbf7db88c29b9ba771dec112699dd328ffe46478050df5d4561dcc0a`.
 The implementation host still has no emulator/device, so the checked-in
-instrumentation tests and real app entry journey were not executed. This
-artifact therefore remains `runtime_not_proven` for device runtime only. No
-production API deployment is required or claimed.
+instrumentation tests and real app entry journey were not executed. The full
+Python suite also has the unchanged clock-sensitive failure recorded below.
+This artifact therefore remains `runtime_not_proven` for device runtime and a
+fully green repository regression. No production API deployment is required or
+claimed.
 
 ## Architecture and negative-space evidence
 
@@ -102,9 +104,11 @@ production API deployment is required or claimed.
 
 Final acceptance remains `runtime_not_proven` until at least the real
 entry/AndroidKeyStore instrumentation journey executes in an Android-capable
-environment. The debug build, JVM suite, lint, APK checksum, and artifact path
-are proven by GitHub Actions run `32309125355`; device behavior must not be
-inferred from those host-side checks alone.
+environment and the repository full-suite evidence is green or the unchanged
+clock-sensitive baseline test is separately resolved. The debug build, JVM
+suite, lint, APK checksum, and artifact path are proven by GitHub Actions run
+`32309125355`; device behavior must not be inferred from those host-side
+checks alone.
 
 Python evidence on this checkpoint: focused Stage B/shared-boundary suite
 `95 passed`; full repository suite `2612 passed, 7 subtests passed, 1 failed`.
