@@ -16,12 +16,17 @@ Telegram conversation trace is invented.
 
 The repository contains deterministic Android JVM tests, AndroidKeyStore and
 entry-surface instrumentation tests, Python backend/security regressions, a
-reproducible Gradle wrapper, and a GitHub Actions debug-APK workflow. The current
-implementation environment has JDK 17 but no Android SDK, emulator, device, or
-working Java access to Maven repositories. Consequently the checked-in
-instrumentation tests and real app entry journey were not executed locally.
-This artifact must remain `runtime_not_proven` until CI/build and emulator/device
-evidence are attached. No production API deployment is required or claimed.
+reproducible Gradle wrapper, and a GitHub Actions debug-APK workflow. GitHub
+Actions run `32309125355` passed `:app:testDebugUnitTest`,
+`:app:lintDebug`, and `:app:assembleDebug`, then uploaded the APK and
+checksum as artifact
+`officeflow-android-debug-b03b2812eba89f5395bfd35851be5f55b0894052`
+(artifact id `9385867828`). The downloaded APK matched its published SHA-256:
+`aded96b7cbf7db88c29b9ba771dec112699dd328ffe46478050df5d4561dcc0a`.
+The implementation host still has no emulator/device, so the checked-in
+instrumentation tests and real app entry journey were not executed. This
+artifact therefore remains `runtime_not_proven` for device runtime only. No
+production API deployment is required or claimed.
 
 ## Architecture and negative-space evidence
 
@@ -95,10 +100,11 @@ evidence are attached. No production API deployment is required or claimed.
   **NO**. Play Store/release signing: **NO**.
 - Telegram remains the current production end-user runtime.
 
-Final acceptance remains `runtime_not_proven` until the debug build/JVM suite
-and at least the real entry/AndroidKeyStore instrumentation journey execute in
-an Android-capable environment. Passing that gate may update this artifact to
-`safe_to_commit`; it must not be inferred from source inspection alone.
+Final acceptance remains `runtime_not_proven` until at least the real
+entry/AndroidKeyStore instrumentation journey executes in an Android-capable
+environment. The debug build, JVM suite, lint, APK checksum, and artifact path
+are proven by GitHub Actions run `32309125355`; device behavior must not be
+inferred from those host-side checks alone.
 
 Python evidence on this checkpoint: focused Stage B/shared-boundary suite
 `95 passed`; full repository suite `2612 passed, 7 subtests passed, 1 failed`.

@@ -806,10 +806,15 @@ There is no route or schema change.
 Evidence is mapped in
 `docs/evals/OFFICEFLOW_ANDROID_READ_ONLY_SHELL_V1_acceptance_proof.md`.
 Deterministic JVM and instrumentation test sources, the reproducible Gradle
-wrapper, and GitHub Actions debug-APK workflow are checked in. The current host
-lacks Android SDK/emulator/device and its Java dependency downloads are blocked,
-so local Android build/instrumentation execution was not claimed. This status may
-advance to `safe_to_commit` only after real build/test evidence is attached.
+wrapper, and GitHub Actions debug-APK workflow are checked in. GitHub Actions run
+`32309125355` passed JVM tests, lint, and `:app:assembleDebug`, and uploaded
+the debug APK plus checksum as artifact `9385867828`; the downloaded APK
+matched SHA-256
+`aded96b7cbf7db88c29b9ba771dec112699dd328ffe46478050df5d4561dcc0a`.
+The current host still lacks an emulator/device, so instrumentation and the real
+app entry journey were not executed. The implementation checkpoint remains
+`runtime_not_proven` for device runtime and may advance only after that
+evidence is attached.
 
 Focused Python/shared-boundary evidence is `95 passed`. The full suite reached
 `2612 passed, 7 subtests passed, 1 failed`; the single unchanged work-time test
