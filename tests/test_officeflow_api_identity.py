@@ -17,6 +17,7 @@ from bot.services.principal_identity import PrincipalIdentityError, PrincipalIde
 
 
 USER_ID = 750_001
+OTHER_USER_ID = 750_002
 ADMIN_ID = 750_999
 
 
@@ -279,6 +280,94 @@ def test_current_access_revocation_invalidates_existing_session(
         ApiSessionService(db_path).rotate_refresh(credentials.refresh_token)
 
 
+def test_admin_session_list_and_revoke_are_target_scoped_and_secret_free(
+    tmp_path: Path,
+) -> None:
+    db_path = _active_db(tmp_path)
+    AccessControlService(db_path).approve_user(
+        telegram_id=OTHER_USER_ID,
+        approved_by=ADMIN_ID,
+        role='user',
+    )
+    enrollment = ApiEnrollmentService(db_path)
+
+    first_issue = enrollment.issue_for_authorized_telegram_user(
+        telegram_id=USER_ID,
+        device_label='Lost phone',
+    )
+    first = enrollment.exchange(first_issue.enrollment_secret)
+    second_issue = enrollment.issue_for_authorized_telegram_user(
+        telegram_id=USER_ID,
+        device_label='Kept phone',
+    )
+    second = enrollment.exchange(second_issue.enrollment_secret)
+    other_issue = enrollment.issue_for_authorized_telegram_user(
+        telegram_id=OTHER_USER_ID,
+        device_label='Other tenant phone',
+    )
+    other = enrollment.exchange(other_issue.enrollment_secret)
+    sessions = ApiSessionService(db_path)
+
+    listed = sessions.list_sessions_for_telegram_user(USER_ID)
+    serialized = json.dumps([record.__dict__ for record in listed])
+    assert [record.device_label for record in listed] == ['Kept phone', 'Lost phone']
+    assert all(record.status == 'active' for record in listed)
+    for forbidden in (
+        'principal_id',
+        'access_token',
+        'refresh_token',
+        'access_token_hash',
+        'refresh_token_hash',
+        first.access_token,
+        first.refresh_token,
+        other.access_token,
+    ):
+        assert forbidden not in serialized
+
+    lost_session_id = next(
+        record.session_id for record in listed if record.device_label == 'Lost phone'
+    )
+    kept_session_id = next(
+        record.session_id for record in listed if record.device_label == 'Kept phone'
+    )
+    revoked = sessions.revoke_session_for_telegram_user(
+        telegram_id=USER_ID,
+        session_id=lost_session_id,
+    )
+    repeated = sessions.revoke_session_for_telegram_user(
+        telegram_id=USER_ID,
+        session_id=lost_session_id,
+    )
+    assert revoked.status == repeated.status == 'revoked'
+    assert revoked.revoked_at == repeated.revoked_at
+    with pytest.raises(ApiSessionError):
+        sessions.authenticate_access(first.access_token)
+    with pytest.raises(ApiSessionError):
+        sessions.rotate_refresh(first.refresh_token)
+    assert sessions.authenticate_access(second.access_token)
+    assert sessions.authenticate_access(other.access_token)
+
+    with pytest.raises(ApiSessionError, match='api_session_not_found'):
+        sessions.revoke_session_for_telegram_user(
+            telegram_id=OTHER_USER_ID,
+            session_id=kept_session_id,
+        )
+    assert sessions.authenticate_access(second.access_token)
+
+    AccessControlService(db_path).block_user(
+        telegram_id=USER_ID,
+        decided_by=ADMIN_ID,
+    )
+    blocked_target = sessions.revoke_session_for_telegram_user(
+        telegram_id=USER_ID,
+        session_id=kept_session_id,
+    )
+    assert blocked_target.status == 'revoked'
+    assert [record.device_label for record in sessions.list_sessions_for_telegram_user(OTHER_USER_ID)] == [
+        'Other tenant phone'
+    ]
+
+
 def test_admin_cli_issues_once_lists_safely_and_revokes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -308,13 +397,52 @@ def test_admin_cli_issues_once_lists_safely_and_revokes(
     assert 'secret_hash' not in status_output
     assert 'principal_id' not in status_output
 
+    credentials = ApiEnrollmentService(db_path).exchange(raw_secret)
+    assert api_access_cli_main(['sessions', '--telegram-id', str(USER_ID)]) == 0
+    sessions_output = capsys.readouterr().out
+    sessions = json.loads(sessions_output)['sessions']
+    assert len(sessions) == 1
+    assert sessions[0]['device_label'] == 'Pilot device'
+    assert sessions[0]['status'] == 'active'
+    assert sessions[0]['session_id'].startswith('ses_')
+    for forbidden in (
+        'principal_id',
+        'access_token',
+        'refresh_token',
+        'hash',
+        credentials.access_token,
+        credentials.refresh_token,
+    ):
+        assert forbidden not in sessions_output
+
     assert api_access_cli_main(
-        ['revoke-enrollment', '--enrollment-id', issued['enrollment_id']]
+        [
+            'revoke-session',
+            '--telegram-id',
+            str(USER_ID),
+            '--session-id',
+            sessions[0]['session_id'],
+        ]
+    ) == 0
+    revoked_session_output = capsys.readouterr().out
+    revoked_session = json.loads(revoked_session_output)
+    assert revoked_session['session_id'] == sessions[0]['session_id']
+    assert revoked_session['status'] == 'revoked'
+    assert 'principal_id' not in revoked_session_output
+    assert 'token' not in revoked_session_output
+    with pytest.raises(ApiSessionError):
+        ApiSessionService(db_path).authenticate_access(credentials.access_token)
+
+    outstanding = ApiEnrollmentService(db_path).issue_for_authorized_telegram_user(
+        telegram_id=USER_ID
+    )
+    assert api_access_cli_main(
+        ['revoke-enrollment', '--enrollment-id', outstanding.enrollment_id]
     ) == 0
     revoked = json.loads(capsys.readouterr().out)
     assert revoked == {
-        'enrollment_id': issued['enrollment_id'],
+        'enrollment_id': outstanding.enrollment_id,
         'status': 'revoked',
     }
     with pytest.raises(ApiEnrollmentError):
-        ApiEnrollmentService(db_path).exchange(raw_secret)
+        ApiEnrollmentService(db_path).exchange(outstanding.enrollment_secret)

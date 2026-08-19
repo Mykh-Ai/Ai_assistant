@@ -18,14 +18,14 @@ credential change, external-service call, Telegram send, or AI call occurred.
 
 ## Validation summary
 
-- New Stage A focused suite: `36 passed` across
+- New Stage A focused suite: `39 passed` across
   `tests/test_officeflow_api_identity.py`,
   `tests/test_officeflow_api_http.py`, and
   `tests/test_officeflow_api_schema_and_boundaries.py`.
 - Shared access/workspace/tenant owner regression: `64 passed` across the
   existing access, tenant, workspace, invoice, contact, and architecture-boundary
   suites.
-- Final full repository regression: `2598 passed, 7 subtests passed in 183.68s`.
+- Final full repository regression: `2601 passed, 7 subtests passed in 167.08s`.
 - Static validation: `python -m compileall -q bot` and `git diff --check` pass.
 
 ## Scenario 1 — controlled enrollment happy path
@@ -78,6 +78,19 @@ credential change, external-service call, Telegram send, or AI call occurred.
 - Response: new opaque access/refresh credentials; no hashes or identity assertions.
 - Final state: old access/refresh credentials invalid; exactly one rotated session row.
 - Test/evidence reference: `test_access_expiry_refresh_rotation_restart_revoke_and_replay`, `test_concurrent_refresh_fails_closed`, `test_http_enrollment_exchange_refresh_rotation_and_replay`.
+- Result: pass.
+
+### Administrative session revocation contract
+
+- Precondition: administrator is handling a lost device; the target has multiple sessions and may already be blocked.
+- Exact HTTP/CLI entry: `python -m bot.cli.officeflow_api_access sessions --telegram-id <target>` followed by `revoke-session --telegram-id <target> --session-id <opaque-id>`.
+- Authorization result: operational administrator CLI binds the opaque session id to the exact server-resolved Telegram external identity; a foreign user's session id is indistinguishable from not found.
+- Python service owner: `ApiSessionService`.
+- DB/session effect or no-effect: only the selected `api_session.revoked_at` is set; repeated revocation is idempotent; no enrollment or business row changes.
+- Workspace scope: none; the operation is principal/session infrastructure and cannot grant business access.
+- Response: opaque session id, device label, timestamps, and `active`/`expired`/`revoked` status only; no principal, Telegram id, token, or hash.
+- Final state: selected access and refresh credentials fail; other same-user and foreign-user sessions remain unchanged.
+- Test/evidence reference: `test_admin_session_list_and_revoke_are_target_scoped_and_secret_free`, `test_admin_cli_issues_once_lists_safely_and_revokes`.
 - Result: pass.
 
 ## Scenario 5 — blocked/deleted user after token issuance
@@ -178,10 +191,10 @@ credential change, external-service call, Telegram send, or AI call occurred.
 - Authorization result: session, current access, membership, and scoped invoice ownership validate before file resolution.
 - Python service owner: `OfficeFlowReadService`, `WorkspaceInvoiceService`, `WorkspaceInvoicePdfStorageService`.
 - DB/session effect or no-effect: stream/read only; no PDF generation, path rewrite, or business mutation.
-- Workspace scope: exact owned workspace; resolved file must be an existing bounded `%PDF-` artifact under the configured invoice root.
-- Response: `application/pdf` bytes for valid ownership; bounded `404` for missing, unsafe, or foreign artifacts; no path disclosure.
+- Workspace scope: exact owned workspace; resolved file must use the current workspace's unique storage root and exact invoice filename. The numeric legacy-owner root is accepted only when database ownership maps that owner to exactly one workspace; flat/arbitrary or multi-workspace legacy roots fail closed.
+- Response: `application/pdf` bytes for valid ownership; bounded `404` for missing, unsafe, poisoned A-to-B, ambiguous legacy, or foreign artifacts; no path disclosure.
 - Final state: filesystem and business data unchanged.
-- Test/evidence reference: `test_owned_pdf_streams_but_missing_unsafe_and_foreign_fail_without_generation`, `test_missing_pdf_fails_boundedly_without_regeneration`.
+- Test/evidence reference: `test_owned_pdf_streams_but_missing_unsafe_and_foreign_fail_without_generation`, `test_missing_pdf_fails_boundedly_without_regeneration`, `test_poisoned_pdf_pointer_to_foreign_workspace_fails_closed`, `test_legacy_pdf_root_requires_unambiguous_owner_workspace`.
 - Result: pass.
 
 ## Scenario 13 — contacts read
@@ -246,7 +259,7 @@ credential change, external-service call, Telegram send, or AI call occurred.
 - Workspace scope: existing Telegram workspace resolution semantics remain unchanged.
 - Response: existing Telegram contracts remain green.
 - Final state: polling runtime has no import/lifecycle dependency on `officeflow_api_app`.
-- Test/evidence reference: full `2598 passed, 7 subtests passed`; shared `64 passed`; `test_api_import_boundary_excludes_telegram_fsm_ai_and_external_services` verifies `bot.main` does not import the API app.
+- Test/evidence reference: full `2601 passed, 7 subtests passed`; shared `64 passed`; `test_api_import_boundary_excludes_telegram_fsm_ai_and_external_services` verifies `bot.main` does not import the API app.
 - Result: pass.
 
 ## Scenario 18 — Product Truth capability question

@@ -799,13 +799,17 @@ The approved Stage A was implemented without material design variance:
 - current-access and workspace-membership validation on every protected business read;
 - request-only single-workspace defaulting, explicit multi-workspace selection requirement, and no `active_workspace_selection` write;
 - allowlisted invoice/contact/session/workspace responses and confined persisted-PDF streaming;
+- exact workspace-root PDF ownership, with only a database-proven single-workspace numeric legacy-owner root accepted and ambiguous/foreign legacy paths rejected;
+- administrator-safe session inventory and tenant-bound session-id revocation without principal/token/hash exposure;
 - no business mutation, AI/STT/LMM, external service, Telegram send, callback, FSM, or polling lifecycle change.
 
 Evidence is recorded in
 `docs/evals/OFFICEFLOW_PLATFORM_NEUTRAL_ANDROID_FOUNDATION_V1_acceptance_proof.md`.
-The implementation-specific focused suite passed 36 tests, the shared
+The implementation-specific focused suite passed 39 tests, the shared
 access/workspace/tenant regression passed 64 tests, and the full repository
-suite passed 2598 tests plus 7 subtests. Existing-data fixture bootstrap proves
+suite passed 2601 tests plus 7 subtests after the PR #104 blocker repair.
+`python -m compileall -q bot` and `git diff --check` also passed.
+Existing-data fixture bootstrap proves
 the additive schema preserves existing business rows, relationships, workspace
 ownership, and PDF pointers.
 

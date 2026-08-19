@@ -563,6 +563,108 @@ def test_missing_pdf_fails_boundedly_without_regeneration(tmp_path: Path) -> Non
     assert after == before
 
 
+def test_poisoned_pdf_pointer_to_foreign_workspace_fails_closed(
+    tmp_path: Path,
+) -> None:
+    seed = _seed(tmp_path)
+    foreign_pdf = (
+        seed.storage_dir
+        / 'invoices'
+        / seed.workspace_b.storage_key
+        / f'{seed.invoice_a.invoice_number}.pdf'
+    )
+    foreign_pdf.parent.mkdir(parents=True, exist_ok=True)
+    foreign_pdf.write_bytes(b'%PDF-1.4\nforeign workspace secret\n%%EOF\n')
+    with sqlite3.connect(seed.db_path) as connection:
+        connection.execute(
+            'UPDATE invoice SET pdf_path = ? WHERE id = ?',
+            (str(foreign_pdf), seed.invoice_a.id),
+        )
+        connection.commit()
+
+    status, body, headers = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+
+    assert status == 404
+    assert body == {'error': {'code': 'not_found'}}
+    assert b'foreign workspace secret' not in json.dumps(body).encode()
+    assert str(foreign_pdf) not in json.dumps(body)
+    assert str(foreign_pdf) not in json.dumps(headers)
+
+
+def test_legacy_pdf_root_requires_unambiguous_owner_workspace(
+    tmp_path: Path,
+) -> None:
+    seed = _seed(tmp_path)
+    legacy_actor_pdf = (
+        seed.storage_dir
+        / 'invoices'
+        / str(USER_A)
+        / f'{seed.invoice_a.invoice_number}.pdf'
+    )
+    legacy_actor_pdf.parent.mkdir(parents=True, exist_ok=True)
+    legacy_actor_pdf.write_bytes(b'%PDF-1.4\nunambiguous legacy owner\n%%EOF\n')
+    flat_legacy_pdf = (
+        seed.storage_dir
+        / 'invoices'
+        / f'{seed.invoice_a.invoice_number}.pdf'
+    )
+    flat_legacy_pdf.write_bytes(b'%PDF-1.4\nambiguous flat legacy\n%%EOF\n')
+    with sqlite3.connect(seed.db_path) as connection:
+        connection.execute(
+            'UPDATE invoice SET pdf_path = ? WHERE id = ?',
+            (str(legacy_actor_pdf), seed.invoice_a.id),
+        )
+        connection.commit()
+
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+    assert status == 200
+    assert body.startswith(b'%PDF-1.4\nunambiguous legacy owner')
+
+    with sqlite3.connect(seed.db_path) as connection:
+        connection.execute(
+            'UPDATE invoice SET pdf_path = ? WHERE id = ?',
+            (str(flat_legacy_pdf), seed.invoice_a.id),
+        )
+        connection.commit()
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+    assert status == 404
+    assert body == {'error': {'code': 'not_found'}}
+
+    WorkspaceProfileService(seed.db_path).create_profile(
+        actor_telegram_id=USER_A,
+        profile=_supplier(USER_A, 'Workspace A2'),
+        mode=CREATE_ADDITIONAL_WORKSPACE_PROFILE,
+        make_active=False,
+        workspace_id='ws_a2',
+        storage_key='ws_a2',
+    )
+    with sqlite3.connect(seed.db_path) as connection:
+        connection.execute(
+            'UPDATE invoice SET pdf_path = ? WHERE id = ?',
+            (str(legacy_actor_pdf), seed.invoice_a.id),
+        )
+        connection.commit()
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+    assert status == 404
+    assert body == {'error': {'code': 'not_found'}}
+
+
 @pytest.mark.parametrize(
     ('method', 'path'),
     [

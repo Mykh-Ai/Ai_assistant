@@ -43,6 +43,18 @@ class ApiSessionCredentials:
     device_label: str | None
 
 
+@dataclass(frozen=True)
+class ApiSessionAdminRecord:
+    session_id: str
+    device_label: str | None
+    created_at: str
+    last_seen_at: str | None
+    access_expires_at: str
+    refresh_expires_at: str
+    revoked_at: str | None
+    status: str
+
+
 class ApiSessionService:
     def __init__(
         self,
@@ -209,6 +221,79 @@ class ApiSessionService:
                 raise ApiSessionError('api_access_invalid')
             connection.commit()
 
+    def list_sessions_for_telegram_user(
+        self,
+        telegram_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> list[ApiSessionAdminRecord]:
+        subject = _telegram_subject(telegram_id)
+        current = _utc_now(now)
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                _SESSION_SELECT
+                + ' WHERE EXISTS ('
+                'SELECT 1 FROM principal_external_identity e '
+                'JOIN principal p ON p.principal_id = e.principal_id '
+                'WHERE e.principal_id = api_session.principal_id '
+                'AND e.provider = ? AND e.subject = ?'
+                ') ORDER BY created_at DESC, session_id',
+                (TELEGRAM_PROVIDER, subject),
+            ).fetchall()
+        return [_admin_record(_row_to_session(row), now=current) for row in rows]
+
+    def revoke_session_for_telegram_user(
+        self,
+        *,
+        telegram_id: int,
+        session_id: str,
+        now: datetime | None = None,
+    ) -> ApiSessionAdminRecord:
+        subject = _telegram_subject(telegram_id)
+        normalized_session_id = _session_id(session_id)
+        current = _utc_now(now)
+        with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute(
+                _SESSION_SELECT
+                + ' WHERE session_id = ? AND EXISTS ('
+                'SELECT 1 FROM principal_external_identity e '
+                'JOIN principal p ON p.principal_id = e.principal_id '
+                'WHERE e.principal_id = api_session.principal_id '
+                'AND e.provider = ? AND e.subject = ?'
+                ')',
+                (normalized_session_id, TELEGRAM_PROVIDER, subject),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                raise ApiSessionError('api_session_not_found')
+            record = _row_to_session(row)
+            if record.revoked_at is None:
+                cursor = connection.execute(
+                    'UPDATE api_session SET revoked_at = ? '
+                    'WHERE session_id = ? AND principal_id = ? AND revoked_at IS NULL',
+                    (
+                        current.isoformat(),
+                        record.session_id,
+                        record.principal_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    connection.rollback()
+                    raise ApiSessionError('api_session_not_found')
+                row = connection.execute(
+                    _SESSION_SELECT + ' WHERE session_id = ?',
+                    (record.session_id,),
+                ).fetchone()
+                if row is None:
+                    connection.rollback()
+                    raise ApiSessionError('api_session_not_found')
+                record = _row_to_session(row)
+            connection.commit()
+        return _admin_record(record, now=current)
+
     def touch_last_seen(
         self,
         *,
@@ -301,12 +386,57 @@ def _row_to_session(row: sqlite3.Row) -> ApiSessionRecord:
     )
 
 
+def _admin_record(
+    record: ApiSessionRecord,
+    *,
+    now: datetime,
+) -> ApiSessionAdminRecord:
+    if record.revoked_at is not None:
+        status = 'revoked'
+    elif _parse_utc(record.refresh_expires_at) <= now:
+        status = 'expired'
+    else:
+        status = 'active'
+    return ApiSessionAdminRecord(
+        session_id=record.session_id,
+        device_label=record.device_label,
+        created_at=record.created_at,
+        last_seen_at=record.last_seen_at,
+        access_expires_at=record.access_expires_at,
+        refresh_expires_at=record.refresh_expires_at,
+        revoked_at=record.revoked_at,
+        status=status,
+    )
+
+
 def _new_credential(prefix: str) -> str:
     return f'{prefix}_{secrets.token_urlsafe(32)}'
 
 
 def _opaque_id(prefix: str) -> str:
     return f'{prefix}_{secrets.token_urlsafe(24)}'
+
+
+def _telegram_subject(telegram_id: int) -> str:
+    if isinstance(telegram_id, bool) or not isinstance(telegram_id, int) or telegram_id <= 0:
+        raise ApiSessionError('telegram_identity_invalid')
+    return str(telegram_id)
+
+
+def _session_id(value: str) -> str:
+    normalized = str(value).strip()
+    if (
+        not normalized.startswith('ses_')
+        or len(normalized) < 36
+        or len(normalized) > 128
+        or any(
+            not character.isascii()
+            or not (character.isalnum() or character in '_-')
+            for character in normalized
+        )
+    ):
+        raise ApiSessionError('api_session_not_found')
+    return normalized
 
 
 def _utc_now(value: datetime | None = None) -> datetime:

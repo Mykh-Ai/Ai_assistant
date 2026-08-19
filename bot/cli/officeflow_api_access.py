@@ -10,7 +10,7 @@ import sqlite3
 import sys
 
 from bot.services.api_enrollment import ApiEnrollmentError, ApiEnrollmentService
-from bot.services.api_session import ApiSessionError
+from bot.services.api_session import ApiSessionError, ApiSessionService
 from bot.services.db import init_db
 from bot.services.principal_identity import PrincipalIdentityError
 
@@ -36,6 +36,13 @@ def _parser() -> argparse.ArgumentParser:
 
     status = subparsers.add_parser('status')
     status.add_argument('--telegram-id', type=int, required=True)
+
+    sessions = subparsers.add_parser('sessions')
+    sessions.add_argument('--telegram-id', type=int, required=True)
+
+    revoke_session = subparsers.add_parser('revoke-session')
+    revoke_session.add_argument('--telegram-id', type=int, required=True)
+    revoke_session.add_argument('--session-id', required=True)
     return parser
 
 
@@ -51,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         db_path = _db_path()
         init_db(db_path)
         service = ApiEnrollmentService(db_path)
+        sessions = ApiSessionService(db_path)
         if args.command == 'issue':
             issued = service.issue_for_authorized_telegram_user(
                 telegram_id=args.telegram_id,
@@ -70,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
                 'enrollment_id': args.enrollment_id,
                 'status': 'revoked',
             }
-        else:
+        elif args.command == 'status':
             result = {
                 'enrollments': [
                     asdict(item)
@@ -79,6 +87,22 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 ]
             }
+        elif args.command == 'sessions':
+            result = {
+                'sessions': [
+                    asdict(item)
+                    for item in sessions.list_sessions_for_telegram_user(
+                        args.telegram_id
+                    )
+                ]
+            }
+        else:
+            result = asdict(
+                sessions.revoke_session_for_telegram_user(
+                    telegram_id=args.telegram_id,
+                    session_id=args.session_id,
+                )
+            )
         print(
             json.dumps(
                 result,
