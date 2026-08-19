@@ -236,6 +236,56 @@ def _request(
     )
 
 
+def test_http_temporary_block_is_nonterminal_but_deleted_access_is_terminal(
+    tmp_path: Path,
+) -> None:
+    seed = _seed(tmp_path)
+    enrollment = ApiEnrollmentService(seed.db_path)
+    issued = enrollment.issue_for_authorized_telegram_user(
+        telegram_id=USER_A,
+        device_label='Block semantics',
+    )
+    credentials = enrollment.exchange(issued.enrollment_secret)
+    access = AccessControlService(seed.db_path)
+
+    access.block_user(telegram_id=USER_A, decided_by=ADMIN)
+    status, body, _ = _request(
+        seed,
+        'GET',
+        '/v1/session',
+        token=credentials.access_token,
+    )
+    assert status == 423
+    assert body == {'error': {'code': 'access_temporarily_unavailable'}}
+    status, body, _ = _request(
+        seed,
+        'POST',
+        '/v1/session/refresh',
+        json_body={'refresh_token': credentials.refresh_token},
+    )
+    assert status == 423
+    assert body == {'error': {'code': 'access_temporarily_unavailable'}}
+
+    access.approve_user(telegram_id=USER_A, approved_by=ADMIN, role='owner')
+    status, _, _ = _request(
+        seed,
+        'GET',
+        '/v1/session',
+        token=credentials.access_token,
+    )
+    assert status == 200
+
+    access.mark_deleted_database(telegram_id=USER_A)
+    status, body, _ = _request(
+        seed,
+        'GET',
+        '/v1/session',
+        token=credentials.access_token,
+    )
+    assert status == 401
+    assert body == {'error': {'code': 'unauthorized'}}
+
+
 def test_http_enrollment_exchange_refresh_rotation_and_replay(tmp_path: Path) -> None:
     seed = _seed(tmp_path)
     enrollment = ApiEnrollmentService(seed.db_path).issue_for_authorized_telegram_user(
@@ -380,8 +430,8 @@ def test_session_and_workspace_list_are_current_authorized_and_sanitized(
         decided_by=ADMIN,
     )
     status, body, _ = _request(seed, 'GET', '/v1/workspaces')
-    assert status == 401
-    assert body == {'error': {'code': 'unauthorized'}}
+    assert status == 423
+    assert body == {'error': {'code': 'access_temporarily_unavailable'}}
 
 
 def test_single_workspace_default_reads_without_selection_mutation(

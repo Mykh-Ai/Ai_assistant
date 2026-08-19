@@ -9,10 +9,15 @@ from typing import Awaitable, Callable
 from aiohttp import web
 
 from bot.services.api_enrollment import ApiEnrollmentError, ApiEnrollmentService
-from bot.services.api_session import ApiSessionError, ApiSessionService
+from bot.services.api_session import (
+    ApiSessionAccessTemporarilyUnavailable,
+    ApiSessionError,
+    ApiSessionService,
+)
 from bot.services.db import init_db
 from bot.services.officeflow_api_context import (
     AuthenticatedOfficeFlowApiContext,
+    OfficeFlowApiAccessTemporarilyUnavailable,
     OfficeFlowApiAuthorizationError,
     OfficeFlowApiContextService,
     OfficeFlowApiWorkspaceError,
@@ -115,6 +120,11 @@ async def _bounded_error_middleware(
         response = _error_response(404, 'workspace_not_found')
     except OfficeFlowReadNotFound:
         response = _error_response(404, 'not_found')
+    except (
+        OfficeFlowApiAccessTemporarilyUnavailable,
+        ApiSessionAccessTemporarilyUnavailable,
+    ):
+        response = _error_response(423, 'access_temporarily_unavailable')
     except (OfficeFlowApiAuthorizationError, ApiSessionError):
         response = _error_response(401, 'unauthorized')
     except ApiEnrollmentError:

@@ -49,6 +49,7 @@ _PRODUCT_TRUTH_OVERVIEW_IDS = (
     'accounting_export',
     'bank_cashflow_tax_analytics',
     'invoice_pdf_custom_template',
+    'first_party_android_client',
     'delete_user_database',
     'work_time_tracking',
     'runtime_issue_intake',
@@ -320,6 +321,12 @@ _SLOVAK_CAPABILITY_COPY = {
         'limitation': 'Hlas môže spustiť varovanie, ale finálne vymazanie vyžaduje presnú napísanú frázu.',
         'safe_next': 'Ak to chcete naozaj urobiť, použite bezpečnostný tok a postupujte podľa presnej výzvy.',
     },
+    'first_party_android_client': {
+        'title': 'Aplikácia OfficeFlow pre Android',
+        'summary': 'OfficeFlow má vlastnú Android aplikáciu pre kontrolovaný read-only pilot so správcovským pripojením.',
+        'limitation': 'Aplikácia zobrazuje firemné profily, vystavené faktúry, existujúce PDF a kontakty. Nevytvára ani neupravuje faktúry či kontakty, nemá asistenta, hlas, upload ani účtovné doklady. Produkčný API endpoint ešte nie je nasadený, preto živý prístup z telefónu vyžaduje samostatne aktivovaný HTTPS pilot. Telegram zostáva aktuálnym produkčným používateľským runtime.',
+        'safe_next': 'Správca musí vydať jednorazový pripájací kód a samostatne aktivovať schválený HTTPS API pilot; dovtedy aplikácia nie je živou produkčnou službou.',
+    },
 }
 _SLOVAK_OVERVIEW_TITLES = {
     'create_invoice': 'vytvorenie faktúry',
@@ -354,6 +361,7 @@ _SLOVAK_OVERVIEW_TITLES = {
     'bank_cashflow_tax_analytics': 'banková, cashflow, DPH a daňová analytika',
     'invoice_pdf_custom_template': 'vlastná PDF šablóna faktúry',
     'delete_user_database': 'vymazanie používateľskej databázy',
+    'first_party_android_client': 'read-only aplikácia OfficeFlow pre Android',
 }
 
 _HELP_CUES = {
@@ -849,6 +857,8 @@ def classify_info_help_capability(
         return 'code_agent_handoff'
     if _mentions_voice_limit(normalized, tokens):
         return 'voice_invoice_intake'
+    if _mentions_android_client(normalized, tokens):
+        return 'first_party_android_client'
     if _mentions_business_profiles(normalized, tokens):
         return 'business_profiles'
     if _mentions_delete_database_safety(normalized, tokens):
@@ -1184,6 +1194,15 @@ def _mentions_voice_limit(normalized: str, tokens: set[str]) -> bool:
     if tokens.intersection({'fakturu', 'faktura', 'invoice', 'iban', 'email', 'cislo', 'suma', 'presne'}):
         return True
     return bool(tokens.intersection({'mozem', 'da', 'ako', 'vies', 'viete'}))
+
+
+def _mentions_android_client(normalized: str, tokens: set[str]) -> bool:
+    return (
+        any(token.startswith('android') for token in tokens)
+        or 'android aplikac' in normalized
+        or 'aplikacia officeflow' in normalized
+        or 'officeflow app' in normalized
+    )
 
 
 def _mentions_business_profiles(normalized: str, tokens: set[str]) -> bool:

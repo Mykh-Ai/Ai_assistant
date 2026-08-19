@@ -275,12 +275,17 @@ def test_app_factory_exposes_only_approved_stage_a_routes(tmp_path: Path) -> Non
     }
 
 
-def test_stage_a_does_not_invent_android_product_truth_support() -> None:
+def test_stage_b_registers_only_truthful_partial_android_capability() -> None:
     capability_ids = {capability.capability_id for capability in list_capabilities()}
 
-    assert 'first_party_android_client' not in capability_ids
-    assert not {capability_id for capability_id in capability_ids if 'android' in capability_id}
-    assert (
-        get_capability('first_party_android_client').product_status
-        == ProductTruthStatus.UNKNOWN
+    assert {capability_id for capability_id in capability_ids if 'android' in capability_id} == {
+        'first_party_android_client'
+    }
+    capability = get_capability('first_party_android_client')
+    assert capability.product_status == ProductTruthStatus.PARTIAL
+    assert capability.capability.requires_admin is True
+    assert capability.capability.requires_setup is True
+    assert any(
+        'not deployed' in limitation
+        for limitation in capability.capability.current_limitations
     )

@@ -794,6 +794,7 @@ The approved Stage A was implemented without material design variance:
 - additive `principal`, `principal_external_identity`, `api_enrollment`, and `api_session` schema with fail-closed shape/constraint/index validation;
 - lazy administrator-issued Telegram mapping and hashed, expiring, single-use enrollment;
 - opaque hashed access/refresh sessions, atomic refresh rotation, replay rejection, current-access revocation, persisted restart-safe lookup, and current-session revoke;
+- bounded 423 `access_temporarily_unavailable` for an otherwise-valid session while the current authorized user is temporarily `blocked`, preserving the approved ordinary block/unblock non-terminal lifecycle; invalid, expired, revoked, deleted-database, and other inactive states remain terminal 401;
 - a separate `python -m bot.officeflow_api_app` aiohttp process whose focused configuration does not require `BOT_TOKEN`;
 - exactly the approved session/workspace/invoice/detail/PDF/contact route surface;
 - current-access and workspace-membership validation on every protected business read;

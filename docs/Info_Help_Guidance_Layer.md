@@ -1043,6 +1043,22 @@ API evidence showed a valid unregistered-business-need answer may exceed the
 previous 8-second boundary. It still has no retry, secondary model, confidence
 gate, or execution authority; timeout/transport failure remains fail-closed.
 
+### Android read-only client truth — Stage B, 2026-08-19
+
+Capability/how-to questions mentioning the OfficeFlow Android application map
+deterministically to Product Truth capability `first_party_android_client` and
+use the canonical Slovak copy. The answer states `partial`: administrator
+enrollment, read-only profiles/outgoing invoices/existing PDFs/contacts, no
+Android mutations/assistant/voice/upload/accounting-document screen, and no
+deployed production API endpoint. It directs live access to a separately
+approved HTTPS pilot rollout and keeps Telegram as the current production
+runtime.
+
+This answer path creates no enrollment, session, workspace, invoice, contact,
+customization, or other business effect. It must never claim full Android
+support, public signup, offline canonical data, production availability, or
+Telegram replacement.
+
 ### Primary-bundle ownership repair - 2026-08-05
 
 This amendment supersedes the earlier punctuation-, mutation-, correction-, and

@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from bot.services.access_control import AUTHORIZED_STATUS_ACTIVE, AccessControlService
+from bot.services.access_control import (
+    AUTHORIZED_STATUS_ACTIVE,
+    AUTHORIZED_STATUS_BLOCKED,
+    AccessControlService,
+)
 from bot.services.api_session import ApiSessionError, ApiSessionRecord, ApiSessionService
 from bot.services.principal_identity import PrincipalIdentityError, PrincipalIdentityService
 from bot.services.workspace_context import (
@@ -14,6 +18,10 @@ from bot.services.workspace_context import (
 
 
 class OfficeFlowApiAuthorizationError(RuntimeError):
+    pass
+
+
+class OfficeFlowApiAccessTemporarilyUnavailable(OfficeFlowApiAuthorizationError):
     pass
 
 
@@ -56,6 +64,10 @@ class OfficeFlowApiContextService:
         except (ApiSessionError, PrincipalIdentityError) as exc:
             raise OfficeFlowApiAuthorizationError('api_unauthorized') from exc
         user = self._access.get_authorized_user(telegram_id)
+        if user is not None and user.status == AUTHORIZED_STATUS_BLOCKED:
+            raise OfficeFlowApiAccessTemporarilyUnavailable(
+                'api_access_temporarily_unavailable'
+            )
         if user is None or user.status != AUTHORIZED_STATUS_ACTIVE:
             raise OfficeFlowApiAuthorizationError('api_unauthorized')
         try:

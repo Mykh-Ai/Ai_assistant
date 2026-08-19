@@ -793,6 +793,26 @@ Missing or failed tax data never clears saved DIČ/IČ DPH. Email, IBAN, contact
 
 Forbidden claims: monitoring is active merely because code exists; registry data is always current; every contact can be checked without valid IČO; updates happen automatically; declining changes invoices; or approved contact updates rewrite previously issued invoices/PDFs.
 
+### First-party Android read-only client — Stage B, 2026-08-19
+
+`first_party_android_client` is `partial`, `requires_admin`, and
+`requires_setup`. OfficeFlow now has a first-party Android read-only client for
+a controlled pilot. After administrator-issued one-time enrollment it can show
+the user's currently accessible business profiles, outgoing invoices, existing
+invoice PDFs, and contacts through the Stage A API.
+
+The production OfficeFlow API endpoint is not deployed by Stage B. Live phone
+access therefore requires a separately approved HTTPS pilot rollout. Telegram
+remains the current production end-user runtime until such rollout is proven.
+Android does not create/edit/delete/pay/send invoices, mutate contacts, upload
+documents, run text/voice assistant or work-time mutations, show accounting
+documents, provide a public signup, or keep a canonical offline business mirror.
+
+Forbidden claims include that all OfficeFlow functions work on Android, that
+Telegram is no longer needed, that Android can create invoices or has full
+offline access, that anyone can register, or that the app is already live for
+production users.
+
 ### Runtime issue explicit prefixes - 2026-07-31
 
 For an authorized administrator, text or STT beginning with the first
