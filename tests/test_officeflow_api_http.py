@@ -782,6 +782,71 @@ def test_legacy_pdf_root_rejects_shared_persisted_pointer(
     assert body == {'error': {'code': 'not_found'}}
 
 
+def test_legacy_pdf_root_rejects_same_filename_with_different_pointer(
+    tmp_path: Path,
+) -> None:
+    seed = _seed(tmp_path)
+    legacy_actor_pdf = (
+        seed.storage_dir
+        / 'invoices'
+        / str(USER_A)
+        / f'{seed.invoice_a.invoice_number}.pdf'
+    )
+    legacy_actor_pdf.parent.mkdir(parents=True, exist_ok=True)
+    legacy_actor_pdf.write_bytes(b'%PDF-1.4\nfilename collision must fail closed\n%%EOF\n')
+    workspace_a2 = WorkspaceProfileService(seed.db_path).create_profile(
+        actor_telegram_id=USER_A,
+        profile=_supplier(USER_A, 'Workspace A2'),
+        mode=CREATE_ADDITIONAL_WORKSPACE_PROFILE,
+        make_active=False,
+        workspace_id='ws_a2',
+        storage_key='ws_a2',
+    )
+    contact_a2 = WorkspaceContactService(seed.db_path).create_or_replace(
+        workspace_a2,
+        _contact(USER_A, workspace_a2.workspace_id, 'Customer A2'),
+    )
+    invoice_a2 = WorkspaceInvoiceService(seed.db_path).create_invoice_with_items(
+        workspace_a2,
+        contact_id=int(contact_a2.id),
+        issue_date='2026-08-03',
+        delivery_date='2026-08-03',
+        due_date='2026-08-17',
+        due_days=14,
+        total_amount=100,
+        currency='EUR',
+        status='created',
+        items=[_item()],
+        invoice_number='20260002',
+    )
+    colliding_filename_pointer = (
+        seed.storage_dir
+        / 'invoices'
+        / workspace_a2.storage_key
+        / legacy_actor_pdf.name
+    )
+    assert str(colliding_filename_pointer) != str(legacy_actor_pdf)
+    assert colliding_filename_pointer.name == legacy_actor_pdf.name
+    with sqlite3.connect(seed.db_path) as connection:
+        connection.executemany(
+            'UPDATE invoice SET pdf_path = ? WHERE id = ?',
+            (
+                (str(legacy_actor_pdf), seed.invoice_a.id),
+                (str(colliding_filename_pointer), invoice_a2.id),
+            ),
+        )
+        connection.commit()
+
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+
+    assert status == 404
+    assert body == {'error': {'code': 'not_found'}}
+
+
 @pytest.mark.parametrize(
     ('method', 'path'),
     [
