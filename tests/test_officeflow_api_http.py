@@ -17,7 +17,10 @@ from bot.services.db import init_db
 from bot.services.invoice_service import CreateInvoiceItemPayload
 from bot.services.supplier_service import SupplierProfile
 from bot.services.workspace_contact_service import WorkspaceContactService
-from bot.services.workspace_invoice_pdf_storage import WorkspaceInvoicePdfStorageService
+from bot.services.workspace_invoice_pdf_storage import (
+    MAX_API_INVOICE_PDF_BYTES,
+    WorkspaceInvoicePdfStorageService,
+)
 from bot.services.workspace_invoice_service import WorkspaceInvoiceService
 from bot.services.workspace_profile_service import (
     CREATE_ADDITIONAL_WORKSPACE_PROFILE,
@@ -513,7 +516,8 @@ def test_owned_pdf_streams_but_missing_unsafe_and_foreign_fail_without_generatio
     )
     assert status == 200
     assert isinstance(body, bytes) and body.startswith(b'%PDF-')
-    assert headers['Content-Type'].startswith('application/pdf')
+    assert headers['Content-Type'] == 'application/pdf'
+    assert int(headers['Content-Length']) == len(body)
     assert str(seed.storage_dir) not in json.dumps(dict(headers))
 
     foreign = _request(
@@ -563,6 +567,37 @@ def test_missing_pdf_fails_boundedly_without_regeneration(tmp_path: Path) -> Non
     assert after == before
 
 
+def test_invalid_and_oversized_pdf_fail_boundedly(tmp_path: Path) -> None:
+    seed = _seed(tmp_path)
+    with sqlite3.connect(seed.db_path) as connection:
+        pointer = Path(
+            connection.execute(
+                'SELECT pdf_path FROM invoice WHERE id = ?',
+                (seed.invoice_a.id,),
+            ).fetchone()[0]
+        )
+
+    pointer.write_bytes(b'not-a-pdf')
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+    assert status == 404
+    assert body == {'error': {'code': 'not_found'}}
+
+    with pointer.open('wb') as handle:
+        handle.write(b'%PDF-')
+        handle.truncate(MAX_API_INVOICE_PDF_BYTES + 1)
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+    assert status == 404
+    assert body == {'error': {'code': 'not_found'}}
+
+
 def test_poisoned_pdf_pointer_to_foreign_workspace_fails_closed(
     tmp_path: Path,
 ) -> None:
@@ -595,7 +630,7 @@ def test_poisoned_pdf_pointer_to_foreign_workspace_fails_closed(
     assert str(foreign_pdf) not in json.dumps(headers)
 
 
-def test_legacy_pdf_root_requires_unambiguous_owner_workspace(
+def test_legacy_pdf_root_requires_unambiguous_invoice_file_ownership(
     tmp_path: Path,
 ) -> None:
     seed = _seed(tmp_path)
@@ -642,7 +677,7 @@ def test_legacy_pdf_root_requires_unambiguous_owner_workspace(
     assert status == 404
     assert body == {'error': {'code': 'not_found'}}
 
-    WorkspaceProfileService(seed.db_path).create_profile(
+    workspace_a2 = WorkspaceProfileService(seed.db_path).create_profile(
         actor_telegram_id=USER_A,
         profile=_supplier(USER_A, 'Workspace A2'),
         mode=CREATE_ADDITIONAL_WORKSPACE_PROFILE,
@@ -661,6 +696,153 @@ def test_legacy_pdf_root_requires_unambiguous_owner_workspace(
         'GET',
         f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
     )
+    assert status == 200
+    assert body.startswith(b'%PDF-1.4\nunambiguous legacy owner')
+
+    contact_a2 = WorkspaceContactService(seed.db_path).create_or_replace(
+        workspace_a2,
+        _contact(USER_A, workspace_a2.workspace_id, 'Customer A2'),
+    )
+    WorkspaceInvoiceService(seed.db_path).create_invoice_with_items(
+        workspace_a2,
+        contact_id=int(contact_a2.id),
+        issue_date='2026-08-03',
+        delivery_date='2026-08-03',
+        due_date='2026-08-17',
+        due_days=14,
+        total_amount=100,
+        currency='EUR',
+        status='created',
+        items=[_item()],
+        invoice_number=seed.invoice_a.invoice_number,
+    )
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+    assert status == 404
+    assert body == {'error': {'code': 'not_found'}}
+
+
+def test_legacy_pdf_root_rejects_shared_persisted_pointer(
+    tmp_path: Path,
+) -> None:
+    seed = _seed(tmp_path)
+    legacy_actor_pdf = (
+        seed.storage_dir
+        / 'invoices'
+        / str(USER_A)
+        / f'{seed.invoice_a.invoice_number}.pdf'
+    )
+    legacy_actor_pdf.parent.mkdir(parents=True, exist_ok=True)
+    legacy_actor_pdf.write_bytes(b'%PDF-1.4\nshared pointer must fail closed\n%%EOF\n')
+    workspace_a2 = WorkspaceProfileService(seed.db_path).create_profile(
+        actor_telegram_id=USER_A,
+        profile=_supplier(USER_A, 'Workspace A2'),
+        mode=CREATE_ADDITIONAL_WORKSPACE_PROFILE,
+        make_active=False,
+        workspace_id='ws_a2',
+        storage_key='ws_a2',
+    )
+    contact_a2 = WorkspaceContactService(seed.db_path).create_or_replace(
+        workspace_a2,
+        _contact(USER_A, workspace_a2.workspace_id, 'Customer A2'),
+    )
+    invoice_a2 = WorkspaceInvoiceService(seed.db_path).create_invoice_with_items(
+        workspace_a2,
+        contact_id=int(contact_a2.id),
+        issue_date='2026-08-03',
+        delivery_date='2026-08-03',
+        due_date='2026-08-17',
+        due_days=14,
+        total_amount=100,
+        currency='EUR',
+        status='created',
+        items=[_item()],
+        invoice_number='20260002',
+    )
+    with sqlite3.connect(seed.db_path) as connection:
+        connection.executemany(
+            'UPDATE invoice SET pdf_path = ? WHERE id = ?',
+            (
+                (str(legacy_actor_pdf), seed.invoice_a.id),
+                (str(legacy_actor_pdf), invoice_a2.id),
+            ),
+        )
+        connection.commit()
+
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+
+    assert status == 404
+    assert body == {'error': {'code': 'not_found'}}
+
+
+def test_legacy_pdf_root_rejects_same_filename_with_different_pointer(
+    tmp_path: Path,
+) -> None:
+    seed = _seed(tmp_path)
+    legacy_actor_pdf = (
+        seed.storage_dir
+        / 'invoices'
+        / str(USER_A)
+        / f'{seed.invoice_a.invoice_number}.pdf'
+    )
+    legacy_actor_pdf.parent.mkdir(parents=True, exist_ok=True)
+    legacy_actor_pdf.write_bytes(b'%PDF-1.4\nfilename collision must fail closed\n%%EOF\n')
+    workspace_a2 = WorkspaceProfileService(seed.db_path).create_profile(
+        actor_telegram_id=USER_A,
+        profile=_supplier(USER_A, 'Workspace A2'),
+        mode=CREATE_ADDITIONAL_WORKSPACE_PROFILE,
+        make_active=False,
+        workspace_id='ws_a2',
+        storage_key='ws_a2',
+    )
+    contact_a2 = WorkspaceContactService(seed.db_path).create_or_replace(
+        workspace_a2,
+        _contact(USER_A, workspace_a2.workspace_id, 'Customer A2'),
+    )
+    invoice_a2 = WorkspaceInvoiceService(seed.db_path).create_invoice_with_items(
+        workspace_a2,
+        contact_id=int(contact_a2.id),
+        issue_date='2026-08-03',
+        delivery_date='2026-08-03',
+        due_date='2026-08-17',
+        due_days=14,
+        total_amount=100,
+        currency='EUR',
+        status='created',
+        items=[_item()],
+        invoice_number='20260002',
+    )
+    colliding_filename_pointer = (
+        seed.storage_dir
+        / 'invoices'
+        / workspace_a2.storage_key
+        / legacy_actor_pdf.name
+    )
+    assert str(colliding_filename_pointer) != str(legacy_actor_pdf)
+    assert colliding_filename_pointer.name == legacy_actor_pdf.name
+    with sqlite3.connect(seed.db_path) as connection:
+        connection.executemany(
+            'UPDATE invoice SET pdf_path = ? WHERE id = ?',
+            (
+                (str(legacy_actor_pdf), seed.invoice_a.id),
+                (str(colliding_filename_pointer), invoice_a2.id),
+            ),
+        )
+        connection.commit()
+
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+
     assert status == 404
     assert body == {'error': {'code': 'not_found'}}
 
