@@ -171,6 +171,8 @@ def test_pilot_signing_is_isolated_from_pull_request_builds_and_pinned() -> None
     assert 'OFFICEFLOW_PILOT_KEY_ALIAS' in pilot_job
     assert 'OFFICEFLOW_PILOT_KEY_PASSWORD' in pilot_job
     assert '${RUNNER_TEMP}/officeflow-pilot-signing.p12' in pilot_job
+    assert '--print-certs-pem' in pilot_job
+    assert 'openssl x509' in pilot_job
     assert 'if: always()' in pilot_job
     assert '3835035c2df22b22406a00c359cc1a03e54f61852c302ed7c6392702a9d8e6fe' in pilot_job
     assert 'observed_signing_certificate_sha256=%s' in pilot_job

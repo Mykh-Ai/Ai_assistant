@@ -122,11 +122,17 @@ jobs:
           printf 'configured_api_base_url=%s\nemulator_api_base_url_absent=true\n' "${API_BASE_URL}" > app/build/outputs/apk/debug/app-debug.endpoint-evidence.txt
           apksigner_path="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "${apksigner_path}"
-          actual_fingerprint="$("${apksigner_path}" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | awk -F ': ' '/Signer #1 certificate SHA-256 digest:/ {print tolower($2); exit}' | tr -d '[:space:]')"
+          cert_pem="${RUNNER_TEMP}/officeflow-pilot-signing-cert.pem"
+          "${apksigner_path}" verify --print-certs-pem app/build/outputs/apk/debug/app-debug.apk \
+            | awk '/-----BEGIN CERTIFICATE-----/ {capture=1} capture {print} /-----END CERTIFICATE-----/ {exit}' \
+            > "${cert_pem}"
+          grep -q '^-----BEGIN CERTIFICATE-----$' "${cert_pem}"
+          actual_fingerprint="$(openssl x509 -in "${cert_pem}" -outform DER | sha256sum | cut -d' ' -f1)"
           test -n "${actual_fingerprint}"
           printf 'observed_signing_certificate_sha256=%s\n' "${actual_fingerprint}"
           test "${actual_fingerprint}" = "${PILOT_CERT_SHA256}"
           printf 'signing_certificate_sha256=%s\nstable_pilot_signing_verified=true\n' "${actual_fingerprint}" > app/build/outputs/apk/debug/app-debug.signing-evidence.txt
+          rm -f "${cert_pem}"
 
       - name: Generate APK checksum
         working-directory: android
@@ -146,4 +152,4 @@ jobs:
 
       - name: Remove restored signing key
         if: always()
-        run: rm -f "${RUNNER_TEMP}/officeflow-pilot-signing.p12"
+        run: rm -f "${RUNNER_TEMP}/officeflow-pilot-signing.p12" "${RUNNER_TEMP}/officeflow-pilot-signing-cert.pem"
