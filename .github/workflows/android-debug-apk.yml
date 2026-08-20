@@ -6,6 +6,12 @@ on:
       - "android/**"
       - ".github/workflows/android-debug-apk.yml"
   workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: Exact HTTPS base URL for a bounded real-phone pilot debug APK
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -38,20 +44,57 @@ jobs:
           test "$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)" = "2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046"
           chmod +x gradlew
 
+      - name: Validate optional pilot API base URL
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+        run: |
+          python -c 'import os, sys; value = os.environ.get("API_BASE_URL", ""); invalid = any(char in value for char in ("\r", "\n", "\x00")); sys.exit("api_base_url contains CR, LF, or NUL") if invalid else None; sys.exit("api_base_url must start with https://") if value and not value.startswith("https://") else None; sys.exit("api_base_url is not the approved OfficeFlow pilot endpoint") if value and value != "https://officeflow-pilot-api.zevsflow.sk" else None'
+
       - name: Run JVM tests, lint, and assemble debug APK
         working-directory: android
-        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+        run: |
+          gradle_args=()
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${API_BASE_URL}" ]]; then
+            gradle_args+=("-POFFICEFLOW_DEBUG_API_BASE_URL=${API_BASE_URL}")
+          fi
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug "${gradle_args[@]}"
+
+      - name: Prove generated pilot endpoint configuration
+        if: github.event_name == 'workflow_dispatch' && inputs.api_base_url != ''
+        working-directory: android
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+        run: |
+          build_config="$(find app/build/generated/source/buildConfig/debug -name BuildConfig.java -print -quit)"
+          test -n "${build_config}"
+          BUILD_CONFIG_PATH="${build_config}" python -c 'import os, pathlib, sys; text = pathlib.Path(os.environ["BUILD_CONFIG_PATH"]).read_text(encoding="utf-8"); expected = os.environ["API_BASE_URL"]; sys.exit("generated BuildConfig does not contain the approved pilot endpoint") if expected not in text else None; sys.exit("generated BuildConfig still contains the emulator endpoint") if "http://10.0.2.2:8081" in text else None'
+          printf 'configured_api_base_url=%s\nemulator_api_base_url_absent=true\n' "${API_BASE_URL}" > app/build/outputs/apk/debug/app-debug.endpoint-evidence.txt
 
       - name: Generate APK checksum
         working-directory: android
         run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
 
+      - name: Resolve artifact name
+        id: artifact-name
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${API_BASE_URL}" ]]; then
+            echo "value=officeflow-android-pilot-${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "value=officeflow-android-debug-${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Upload debug APK and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: officeflow-android-debug-${{ github.sha }}
+          name: ${{ steps.artifact-name.outputs.value }}
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/apk/debug/app-debug.apk.sha256
+            android/app/build/outputs/apk/debug/app-debug.endpoint-evidence.txt
           if-no-files-found: error
           retention-days: 14

@@ -1,3 +1,24 @@
+# 2026-08-20 - OfficeFlow Android real-phone pilot APK packaging
+
+- Reconfirmed Draft PR #105 on exact Stage B branch SHA
+  `5e07d6b390e558b0f2ee553676c35f72fba7afb7`; the approved architecture proof
+  remains `ready_for_handoff`, acceptance remains `runtime_not_proven`, and no
+  material design variance or Stage A route change was introduced.
+- Extended only the debug-APK GitHub Actions packaging boundary with an optional
+  `workflow_dispatch` API base URL. Pull-request builds retain the emulator
+  default; a supplied dispatch value rejects CR/LF/NUL, requires HTTPS, and is
+  restricted to the separately verified OfficeFlow pilot hostname.
+- Pilot dispatch passes the public build value through
+  `OFFICEFLOW_DEBUG_API_BASE_URL`, runs JVM tests, lint, and debug assembly,
+  verifies generated `BuildConfig` contains the approved HTTPS endpoint and not
+  `http://10.0.2.2:8081`, and publishes a pilot-named debug APK, checksum, and
+  endpoint-evidence file. No hostname was added to Android application source.
+- A previous debug APK install/start on a real Samsung phone is recorded only as
+  bounded observational evidence. Enrollment and the authenticated read journey
+  remain unproven, so the verdict is unchanged. No server, Cloudflare, database,
+  business architecture, release signing, Play Store, merge, deployment, or
+  enrollment action is part of this packaging task.
+
 # 2026-08-19 - OfficeFlow Android read-only shell V1 Stage B implementation
 
 - Started from exact `origin/main` SHA `94fdf26b47c7218825c0618455e65d14d688eff8`; read the approved Stage B/Stage A proofs, acceptance evidence, handoff/evaluation/doctrine/truth/InfoHelp/TZ/framing contracts, recent log/changelog, Stage A API/session/workspace/PDF owners, and current Product Truth/InfoHelp rendering owners. The Stage B proof verdict is `ready_for_handoff`; no Android project existed at preflight.

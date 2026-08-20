@@ -56,8 +56,15 @@ An HTTPS development endpoint can be supplied without changing source:
   -POFFICEFLOW_DEBUG_API_BASE_URL=https://approved-test-api.example
 ```
 
-Release/pilot builds have no source-controlled production hostname and fail
-unless an HTTPS endpoint is explicitly supplied at build time:
+The GitHub Actions `workflow_dispatch` input `api_base_url` is optional. When it
+is supplied, the workflow accepts only the separately approved OfficeFlow pilot
+HTTPS endpoint, passes it through `OFFICEFLOW_DEBUG_API_BASE_URL`, and verifies
+the generated debug `BuildConfig` before uploading an
+`officeflow-android-pilot-<GITHUB_SHA>` artifact. Pull-request builds retain the
+emulator default.
+
+Release builds have no source-controlled production hostname and fail unless an
+HTTPS endpoint is explicitly supplied at build time:
 
 ```bash
 ./gradlew :app:assembleRelease \
@@ -70,10 +77,11 @@ credentials must never be committed or passed as ordinary Gradle properties.
 
 ## Current rollout truth
 
-The production OfficeFlow API is not deployed or exposed by Stage B. The app
-source and debug artifact support a controlled read-only pilot, but live phone
-access requires a separately approved HTTPS API rollout and administrator-issued
-one-time enrollment. Telegram remains the current production end-user runtime.
+A dedicated public HTTPS boundary for the controlled OfficeFlow Android pilot
+has been deployed and proven separately from Stage B. No pilot hostname is
+committed into Android application source, no enrollment has been issued, and
+the real-phone authenticated journey is still not proven. Telegram remains the
+current production end-user runtime for business workflows.
 
 The app calls only the nine approved Stage A routes for enrollment, session
 refresh/revoke/status, workspace listing, outgoing invoice list/detail/PDF, and

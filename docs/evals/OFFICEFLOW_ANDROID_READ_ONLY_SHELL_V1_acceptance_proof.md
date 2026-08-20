@@ -6,6 +6,32 @@ Approved design: `docs/architecture/OFFICEFLOW_ANDROID_READ_ONLY_SHELL_V1_ARCHIT
 
 Overall verdict: `runtime_not_proven`
 
+## Real-phone pilot APK preparation — 2026-08-20
+
+- A previous debug APK was installed and started successfully on a real Samsung
+  phone. This is bounded observational evidence for installation and process
+  start only; it does not prove enrollment, authenticated session handling, or
+  any read journey.
+- The dedicated public Stage A HTTPS boundary was proven separately at
+  `https://officeflow-pilot-api.zevsflow.sk`, including valid TLS, HTTP-to-HTTPS
+  redirection, and unauthenticated `401`/`405`/`404` boundaries. That rollout did
+  not issue an enrollment or mutate business data.
+- The bounded GitHub Actions pilot build uses workflow input rather than an
+  application-source hostname. It passes the exact verified HTTPS URL as
+  `OFFICEFLOW_DEBUG_API_BASE_URL`, runs JVM tests, lint, and debug assembly, and
+  verifies the generated debug `BuildConfig` contains the pilot URL and not the
+  emulator default before publishing the pilot-named APK artifact.
+- The resulting pilot artifact is a debug APK for controlled real-phone
+  acceptance. It is not a release, production-signed, Play Store, or general
+  distribution build.
+- Enrollment has not been issued. The real-phone authenticated journey —
+  enrollment, restart/session restore, workspace selection, invoice/contact
+  reads, PDF rendering, and logout — remains unproven.
+
+The acceptance verdict therefore remains `runtime_not_proven` until the real
+phone completes the required enrollment and read journeys. The public endpoint
+and pilot build configuration do not independently advance that verdict.
+
 ## Scope and evidence boundary
 
 Stage B is a first-party, administrator-enrolled Android **read-only** client
