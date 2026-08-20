@@ -93,6 +93,12 @@ prove any pending C1 device scenario.
 - `python -m compileall -q bot`: pass.
 - `git diff --check`: pass.
 - Stable-signed local pilot assembly and `apksigner` certificate pin: pass.
+- GitHub stable-signed pilot run `32385806345` on exact code/workflow SHA
+  `a19b45f7aa01d288410580b94a88202a09545c03`: pass. Downloaded artifact id
+  `9412994306` matched APK SHA-256
+  `52c8fd682d6f6696637df58937a0dc05c5e2a742f7db68249260e733699f818a`,
+  the approved endpoint evidence, and the pinned signer under independent local
+  verification.
 
 The host-built debug APK is build evidence only. Compose instrumentation remains
 authored for 1.3/1.5/2.0 font scale and long profile/contact/detail content, but

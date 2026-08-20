@@ -29,6 +29,13 @@ Overall verdict: `runtime_not_proven`
   certificate SHA-256 is pinned to
   `3835035c2df22b22406a00c359cc1a03e54f61852c302ed7c6392702a9d8e6fe`.
   A local forced assembly and `apksigner` verification matched that pin.
+- GitHub Actions run `32385806345` on exact code/workflow SHA
+  `a19b45f7aa01d288410580b94a88202a09545c03` passed the protected-environment
+  approval, Android tests/lint/build, endpoint proof, PEM/DER signer pin,
+  checksum, artifact upload, and always-run key cleanup. Downloaded artifact id
+  `9412994306` matched APK SHA-256
+  `52c8fd682d6f6696637df58937a0dc05c5e2a742f7db68249260e733699f818a`
+  and the pinned signer under independent local verification.
 - The resulting pilot artifact is a debug APK for controlled real-phone
   acceptance. It is not a release, production-signed, Play Store, or general
   distribution build.
