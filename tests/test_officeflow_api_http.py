@@ -563,7 +563,8 @@ def test_owned_pdf_streams_but_missing_unsafe_and_foreign_fail_without_generatio
     )
     assert status == 200
     assert isinstance(body, bytes) and body.startswith(b'%PDF-')
-    assert headers['Content-Type'].startswith('application/pdf')
+    assert headers['Content-Type'] == 'application/pdf'
+    assert int(headers['Content-Length']) == len(body)
     assert str(seed.storage_dir) not in json.dumps(dict(headers))
 
     foreign = _request(
@@ -645,7 +646,7 @@ def test_poisoned_pdf_pointer_to_foreign_workspace_fails_closed(
     assert str(foreign_pdf) not in json.dumps(headers)
 
 
-def test_legacy_pdf_root_requires_unambiguous_owner_workspace(
+def test_legacy_pdf_root_requires_unambiguous_invoice_file_ownership(
     tmp_path: Path,
 ) -> None:
     seed = _seed(tmp_path)
@@ -692,7 +693,7 @@ def test_legacy_pdf_root_requires_unambiguous_owner_workspace(
     assert status == 404
     assert body == {'error': {'code': 'not_found'}}
 
-    WorkspaceProfileService(seed.db_path).create_profile(
+    workspace_a2 = WorkspaceProfileService(seed.db_path).create_profile(
         actor_telegram_id=USER_A,
         profile=_supplier(USER_A, 'Workspace A2'),
         mode=CREATE_ADDITIONAL_WORKSPACE_PROFILE,
@@ -706,6 +707,31 @@ def test_legacy_pdf_root_requires_unambiguous_owner_workspace(
             (str(legacy_actor_pdf), seed.invoice_a.id),
         )
         connection.commit()
+    status, body, _ = _request(
+        seed,
+        'GET',
+        f'/v1/invoices/{seed.invoice_a.id}/pdf?workspace_id=ws_a',
+    )
+    assert status == 200
+    assert body.startswith(b'%PDF-1.4\nunambiguous legacy owner')
+
+    contact_a2 = WorkspaceContactService(seed.db_path).create_or_replace(
+        workspace_a2,
+        _contact(USER_A, workspace_a2.workspace_id, 'Customer A2'),
+    )
+    WorkspaceInvoiceService(seed.db_path).create_invoice_with_items(
+        workspace_a2,
+        contact_id=int(contact_a2.id),
+        issue_date='2026-08-03',
+        delivery_date='2026-08-03',
+        due_date='2026-08-17',
+        due_days=14,
+        total_amount=100,
+        currency='EUR',
+        status='created',
+        items=[_item()],
+        invoice_number=seed.invoice_a.invoice_number,
+    )
     status, body, _ = _request(
         seed,
         'GET',

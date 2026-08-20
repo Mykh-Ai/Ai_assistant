@@ -133,8 +133,12 @@ class OfficeFlowApiClient(
                 if (declared > MAX_PDF_BYTES) {
                     return@withContext ApiResult.ProtocolFailure("pdf_too_large")
                 }
-                target.parentFile?.mkdirs()
-                val temporary = File(target.parentFile, target.name + ".partial")
+                val parent = target.parentFile
+                    ?: return@withContext ApiResult.ProtocolFailure("pdf_store_failed")
+                if ((!parent.exists() && !parent.mkdirs()) || !parent.isDirectory) {
+                    return@withContext ApiResult.ProtocolFailure("pdf_store_failed")
+                }
+                val temporary = File(parent, target.name + ".partial")
                 try {
                     body.byteStream().use { input ->
                         temporary.outputStream().use { output ->

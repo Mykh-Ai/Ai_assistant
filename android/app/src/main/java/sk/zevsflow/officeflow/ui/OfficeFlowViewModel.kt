@@ -55,8 +55,12 @@ sealed interface PdfUiState {
     data object Idle : PdfUiState
     data object Loading : PdfUiState
     data class Ready(val file: File) : PdfUiState
-    data class Error(val message: String) : PdfUiState
+    data class Error(val failure: PdfFailure) : PdfUiState
 }
+
+enum class PdfFailureKind { NOT_AVAILABLE, NETWORK, INVALID_RESPONSE, RENDERING }
+
+data class PdfFailure(val kind: PdfFailureKind, val message: String)
 
 class OfficeFlowViewModel(private val container: AppContainer) : ViewModel() {
     private val _root = MutableStateFlow<RootState>(RootState.Loading)
@@ -203,7 +207,7 @@ class OfficeFlowViewModel(private val container: AppContainer) : ViewModel() {
                 is SessionResult.Success -> _pdf.value = PdfUiState.Ready(result.value)
                 else -> {
                     handleSessionResult(result)
-                    _pdf.value = PdfUiState.Error("PDF nie je dostupné.")
+                    _pdf.value = PdfUiState.Error(pdfFailureFor(result))
                 }
             }
         }
@@ -298,3 +302,49 @@ internal fun detailFailureFor(result: SessionResult<*>): DetailFailure = when (r
         "Požiadavku sa nepodarilo dokončiť.",
     )
 }
+
+internal fun pdfFailureFor(result: SessionResult<*>): PdfFailure = when (result) {
+    is SessionResult.Failure -> when (result.message) {
+        "not_found", "workspace_not_found" -> PdfFailure(
+            PdfFailureKind.NOT_AVAILABLE,
+            "PDF pre túto faktúru nie je dostupné.",
+        )
+        "network_unavailable" -> PdfFailure(
+            PdfFailureKind.NETWORK,
+            "PDF sa nepodarilo stiahnuť. Skontrolujte internet a skúste to znova.",
+        )
+        "pdf_body_missing",
+        "pdf_content_type_invalid",
+        "pdf_too_large",
+        "pdf_signature_invalid",
+        "pdf_store_failed" -> PdfFailure(
+            PdfFailureKind.INVALID_RESPONSE,
+            "Server neposlal platný PDF dokument.",
+        )
+        else -> PdfFailure(
+            PdfFailureKind.INVALID_RESPONSE,
+            "PDF odpoveď sa nepodarilo bezpečne spracovať.",
+        )
+    }
+    SessionResult.RefreshUncertain -> PdfFailure(
+        PdfFailureKind.NETWORK,
+        "Obnovenie relácie sa nedá bezpečne potvrdiť.",
+    )
+    SessionResult.EnrollmentRequired -> PdfFailure(
+        PdfFailureKind.NOT_AVAILABLE,
+        "Vyžaduje sa nové pripojenie.",
+    )
+    SessionResult.TemporarilyBlocked -> PdfFailure(
+        PdfFailureKind.NOT_AVAILABLE,
+        "Prístup je dočasne zablokovaný.",
+    )
+    is SessionResult.Success -> PdfFailure(
+        PdfFailureKind.INVALID_RESPONSE,
+        "PDF odpoveď sa nepodarilo bezpečne spracovať.",
+    )
+}
+
+internal fun pdfRenderingFailure(): PdfFailure = PdfFailure(
+    PdfFailureKind.RENDERING,
+    "PDF sa nepodarilo zobraziť na tomto zariadení.",
+)

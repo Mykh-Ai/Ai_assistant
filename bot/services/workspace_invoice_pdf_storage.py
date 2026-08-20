@@ -70,7 +70,7 @@ class WorkspaceInvoicePdfStorageService:
         )
         allowed_parents = {workspace_root}
         legacy_actor_root = invoice_root / str(invoice.supplier_telegram_id)
-        if self._legacy_actor_root_is_unambiguous(context, invoice):
+        if self._legacy_actor_path_is_unambiguous(context, invoice):
             allowed_parents.add(legacy_actor_root.resolve())
         raw_path = Path(pointer)
         candidates = (
@@ -107,29 +107,49 @@ class WorkspaceInvoicePdfStorageService:
             return resolved
         raise WorkspaceInvoicePdfStorageError('invoice_pdf_unavailable')
 
-    def _legacy_actor_root_is_unambiguous(
+    def _legacy_actor_path_is_unambiguous(
         self,
         context: WorkspaceContext,
         invoice: InvoiceRecord,
     ) -> bool:
-        """Permit the old numeric owner root only for one provable workspace."""
+        """Permit one legacy owner-root file only when its row remains unique."""
 
         if invoice.supplier_telegram_id <= 0:
             return False
+        expected_filename = (
+            _safe_path_segment(invoice.invoice_number, field='invoice_number')
+            + '.pdf'
+        )
+        persisted_pointer = str(invoice.pdf_path or '').strip()
         with managed_connection(self._db_path) as connection:
+            connection.row_factory = sqlite3.Row
             rows = connection.execute(
-                'SELECT workspace_id FROM supplier WHERE telegram_id = ? '
-                'UNION SELECT workspace_id FROM invoice '
+                'SELECT id, workspace_id, invoice_number, pdf_path FROM invoice '
                 'WHERE supplier_telegram_id = ?',
-                (
-                    invoice.supplier_telegram_id,
-                    invoice.supplier_telegram_id,
-                ),
+                (invoice.supplier_telegram_id,),
             ).fetchall()
-        workspace_ids = {
-            str(row[0]) if row[0] is not None else None for row in rows
-        }
-        return workspace_ids == {context.workspace_id}
+        matching_number_rows = [
+            row for row in rows
+            if str(row['invoice_number']) == invoice.invoice_number
+        ]
+        if len(matching_number_rows) != 1:
+            return False
+        matching = matching_number_rows[0]
+        if (
+            int(matching['id']) != invoice.id
+            or str(matching['workspace_id']) != context.workspace_id
+        ):
+            return False
+        for row in rows:
+            if int(row['id']) == invoice.id:
+                continue
+            other_pointer = str(row['pdf_path'] or '').strip()
+            if other_pointer == persisted_pointer:
+                return False
+            normalized_name = other_pointer.replace('\\', '/').rsplit('/', 1)[-1]
+            if normalized_name == expected_filename:
+                return False
+        return True
 
     def persist_path(
         self,

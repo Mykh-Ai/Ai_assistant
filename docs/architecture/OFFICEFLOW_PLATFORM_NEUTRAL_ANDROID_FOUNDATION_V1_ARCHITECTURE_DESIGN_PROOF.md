@@ -800,7 +800,7 @@ The approved Stage A was implemented without material design variance:
 - current-access and workspace-membership validation on every protected business read;
 - request-only single-workspace defaulting, explicit multi-workspace selection requirement, and no `active_workspace_selection` write;
 - allowlisted invoice/contact/session/workspace responses and confined persisted-PDF streaming;
-- exact workspace-root PDF ownership, with only a database-proven single-workspace numeric legacy-owner root accepted and ambiguous/foreign legacy paths rejected;
+- exact workspace-root PDF ownership, with a numeric legacy-owner file accepted only when the persisted invoice row, invoice number, filename, and pointer remain unique to the requested workspace; duplicate-number, shared-pointer, flat, arbitrary, and foreign legacy paths are rejected;
 - administrator-safe session inventory and tenant-bound session-id revocation without principal/token/hash exposure;
 - approved account-reset integration that atomically revokes the actor principal's sessions and pending enrollments with the existing business reset and `deleted_database` state, while retaining identity continuity and unchanged temporary-block semantics;
 - no business mutation, AI/STT/LMM, external service, Telegram send, callback, FSM, or polling lifecycle change.

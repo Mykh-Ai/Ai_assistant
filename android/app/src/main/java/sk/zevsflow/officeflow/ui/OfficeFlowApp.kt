@@ -65,6 +65,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import java.io.File
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import sk.zevsflow.officeflow.data.Contact
@@ -588,62 +590,98 @@ private fun PdfScreen(invoiceId: Long, nav: NavHostController, viewModel: Office
     when (val state = file) {
         PdfUiState.Idle, PdfUiState.Loading -> LoadingScreen()
         is PdfUiState.Error -> MessageScreen(
-            state.message,
+            state.failure.message,
             "Skúsiť znova" to { viewModel.loadPdf(invoiceId) },
             "Späť" to { nav.popBackStack() },
         )
-        is PdfUiState.Ready -> PdfPage(state.file)
+        is PdfUiState.Ready -> PdfPage(
+            state.file,
+            retry = { viewModel.loadPdf(invoiceId) },
+            back = { nav.popBackStack() },
+        )
     }
 }
 
 @Composable
-private fun PdfPage(file: File) {
+private fun PdfPage(file: File, retry: () -> Unit, back: () -> Unit) {
     var pageIndex by remember(file) { mutableStateOf(0) }
-    val rendered by produceState<RenderedPdfPage?>(initialValue = null, file, pageIndex) {
-        value = withContext(Dispatchers.IO) {
-            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-                PdfRenderer(descriptor).use { renderer ->
-                    if (renderer.pageCount < 1) return@use null
-                    val boundedIndex = pageIndex.coerceIn(0, renderer.pageCount - 1)
-                    renderer.openPage(boundedIndex).use { page ->
-                        val scale = minOf(
-                            2f,
-                            MAX_PDF_RENDER_DIMENSION.toFloat() / page.width.coerceAtLeast(1),
-                            MAX_PDF_RENDER_DIMENSION.toFloat() / page.height.coerceAtLeast(1),
-                        )
-                        val bitmap = Bitmap.createBitmap(
-                            (page.width * scale).toInt().coerceAtLeast(1),
-                            (page.height * scale).toInt().coerceAtLeast(1),
-                            Bitmap.Config.ARGB_8888,
-                        ).also { page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) }
-                        RenderedPdfPage(bitmap, boundedIndex, renderer.pageCount)
+    val rendered by produceState<PdfRenderState>(
+        initialValue = PdfRenderState.Loading,
+        file,
+        pageIndex,
+    ) {
+        value = try {
+            withContext(Dispatchers.IO) {
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                    PdfRenderer(descriptor).use { renderer ->
+                        if (renderer.pageCount < 1) return@use PdfRenderState.Error
+                        val boundedIndex = pageIndex.coerceIn(0, renderer.pageCount - 1)
+                        renderer.openPage(boundedIndex).use { page ->
+                            val scale = minOf(
+                                2f,
+                                MAX_PDF_RENDER_DIMENSION.toFloat() / page.width.coerceAtLeast(1),
+                                MAX_PDF_RENDER_DIMENSION.toFloat() / page.height.coerceAtLeast(1),
+                            )
+                            val bitmap = Bitmap.createBitmap(
+                                (page.width * scale).toInt().coerceAtLeast(1),
+                                (page.height * scale).toInt().coerceAtLeast(1),
+                                Bitmap.Config.ARGB_8888,
+                            ).also {
+                                page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            }
+                            PdfRenderState.Ready(
+                                RenderedPdfPage(bitmap, boundedIndex, renderer.pageCount)
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (_: IOException) {
+            PdfRenderState.Error
+        } catch (error: RuntimeException) {
+            if (error is CancellationException) throw error
+            PdfRenderState.Error
+        }
+    }
+    val ready = rendered as? PdfRenderState.Ready
+    DisposableEffect(ready?.page?.bitmap) { onDispose { ready?.page?.bitmap?.recycle() } }
+    Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        when (val state = rendered) {
+            PdfRenderState.Loading -> LoadingScreen()
+            PdfRenderState.Error -> MessageScreen(
+                pdfRenderingFailure().message,
+                "Skúsiť znova" to retry,
+                "Späť" to back,
+            )
+            is PdfRenderState.Ready -> {
+                val page = state.page
+                Image(
+                    page.bitmap.asImageBitmap(),
+                    contentDescription = "Strana ${page.index + 1} PDF",
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = { pageIndex -= 1 }, enabled = page.index > 0) {
+                        Text("Predchádzajúca")
+                    }
+                    Text("${page.index + 1} / ${page.count}")
+                    TextButton(onClick = { pageIndex += 1 }, enabled = page.index + 1 < page.count) {
+                        Text("Ďalšia")
                     }
                 }
             }
         }
     }
-    DisposableEffect(rendered?.bitmap) { onDispose { rendered?.bitmap?.recycle() } }
-    Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        val page = rendered
-        if (page == null) {
-            LoadingScreen()
-        } else {
-            Image(
-                page.bitmap.asImageBitmap(),
-                contentDescription = "Strana ${page.index + 1} PDF",
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-            )
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = { pageIndex -= 1 }, enabled = page.index > 0) { Text("Predchádzajúca") }
-                Text("${page.index + 1} / ${page.count}")
-                TextButton(onClick = { pageIndex += 1 }, enabled = page.index + 1 < page.count) { Text("Ďalšia") }
-            }
-        }
-    }
+}
+
+private sealed interface PdfRenderState {
+    data object Loading : PdfRenderState
+    data object Error : PdfRenderState
+    data class Ready(val page: RenderedPdfPage) : PdfRenderState
 }
 
 private data class RenderedPdfPage(val bitmap: Bitmap, val index: Int, val count: Int)

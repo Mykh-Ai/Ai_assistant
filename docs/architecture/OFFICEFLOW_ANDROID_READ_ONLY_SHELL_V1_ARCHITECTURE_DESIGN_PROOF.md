@@ -461,6 +461,7 @@ No edit/delete/pay/send controls.
 - do not treat the temporary copy as canonical storage;
 - delete temporary material when it is no longer needed;
 - do not expose arbitrary server/filesystem paths.
+- distinguish bounded not-available, network, invalid-response, and local-rendering failures without showing raw paths or server internals.
 
 ### Contacts
 
@@ -662,6 +663,10 @@ Expected: Stage A PDF endpoint only; app-private render; no path disclosure; tem
 ### S19 — PDF 404/missing
 
 Expected: bounded unavailable state; no client-side filename/path guessing and no regeneration.
+
+Network, invalid `application/pdf`/`%PDF-` response, and local `PdfRenderer`
+failure remain separate sanitized states; none may weaken the 25 MB or
+app-private-storage boundary.
 
 ### S20 — contacts
 

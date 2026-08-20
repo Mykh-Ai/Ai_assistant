@@ -129,6 +129,23 @@ class OfficeFlowApiClientTest {
         assertEquals("Bearer access", request.getHeader("Authorization"))
     }
 
+    @Test fun pdfAcceptsUnknownLengthAndAtomicallyCreatesPrivateTargetParent() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "application/pdf")
+                .setChunkedBody("%PDF-1.4\nchunked fixture\n%%EOF\n", 4)
+        )
+        val privateParent = File(temporary.root, "new-private-cache")
+        val target = File(privateParent, "invoice.pdf")
+
+        val result = api.downloadInvoicePdf("access", "ws-a", 8, target)
+
+        assertEquals(ApiResult.Success(target), result)
+        assertTrue(target.isFile)
+        assertFalse(File(privateParent, "invoice.pdf.partial").exists())
+        assertEquals("/v1/invoices/8/pdf?workspace_id=ws-a", server.takeRequest().path)
+    }
+
     @Test fun pdfRejectsMissingWrongTypeBadSignatureAndDeclaredOversize() = runTest {
         server.enqueue(errorResponse(404, "not_found"))
         server.enqueue(MockResponse().setHeader("Content-Type", "text/plain").setBody("not pdf"))
