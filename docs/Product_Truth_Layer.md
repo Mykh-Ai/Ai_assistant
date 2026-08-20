@@ -793,6 +793,33 @@ Missing or failed tax data never clears saved DIČ/IČ DPH. Email, IBAN, contact
 
 Forbidden claims: monitoring is active merely because code exists; registry data is always current; every contact can be checked without valid IČO; updates happen automatically; declining changes invoices; or approved contact updates rewrite previously issued invoices/PDFs.
 
+### First-party Android read-only client — controlled pilot and C1, 2026-08-20
+
+`first_party_android_client` is `partial`, `requires_admin`, and
+`requires_setup`. OfficeFlow has a first-party Android read-only client for a
+controlled administrator-enrolled HTTPS pilot. Enrollment, authenticated
+session use, multiple business profiles, outgoing invoice listing, and contacts
+were proven on one authorized Samsung pilot device.
+
+The controlled HTTPS pilot endpoint is active. C1 implements a Home with exactly
+`Faktúry`, `Bločky`, `Kontakty`, `Pracovný čas`, `Analytika`, and `InfoHelp`,
+with `Hlas / Chat` shown separately. Only `Existujúce faktúry` and
+`Existujúce kontakty` use the current read API. The new Home build and the
+nullable invoice-item-unit repair still require a new APK and real-device
+acceptance; invoice detail/PDF, restart restoration, profile switching, and
+logout are not yet proven after C1.
+
+Android does not create/edit/delete/pay/send invoices, mutate contacts, upload
+documents, execute Bločky/work-time/analytics/InfoHelp, run text/voice/chat,
+provide a public signup, or keep a canonical offline business mirror. Telegram
+remains the production runtime for business actions Android does not support.
+
+Forbidden claims include that all OfficeFlow functions work on Android, that a
+visible Home domain means its actions are implemented, that Telegram is no
+longer needed, that Android can create invoices or has full offline access, that
+anyone can register, or that one controlled pilot proves general production
+availability.
+
 ### Runtime issue explicit prefixes - 2026-07-31
 
 For an authorized administrator, text or STT beginning with the first

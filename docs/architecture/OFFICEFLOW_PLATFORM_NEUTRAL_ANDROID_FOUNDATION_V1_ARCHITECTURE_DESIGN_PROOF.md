@@ -794,12 +794,13 @@ The approved Stage A was implemented without material design variance:
 - additive `principal`, `principal_external_identity`, `api_enrollment`, and `api_session` schema with fail-closed shape/constraint/index validation;
 - lazy administrator-issued Telegram mapping and hashed, expiring, single-use enrollment;
 - opaque hashed access/refresh sessions, atomic refresh rotation, replay rejection, current-access revocation, persisted restart-safe lookup, and current-session revoke;
+- bounded 423 `access_temporarily_unavailable` for an otherwise-valid session while the current authorized user is temporarily `blocked`, preserving the approved ordinary block/unblock non-terminal lifecycle; invalid, expired, revoked, deleted-database, and other inactive states remain terminal 401;
 - a separate `python -m bot.officeflow_api_app` aiohttp process whose focused configuration does not require `BOT_TOKEN`;
 - exactly the approved session/workspace/invoice/detail/PDF/contact route surface;
 - current-access and workspace-membership validation on every protected business read;
 - request-only single-workspace defaulting, explicit multi-workspace selection requirement, and no `active_workspace_selection` write;
 - allowlisted invoice/contact/session/workspace responses and confined persisted-PDF streaming;
-- exact workspace-root PDF ownership, with only a database-proven single-workspace numeric legacy-owner root accepted and ambiguous/foreign legacy paths rejected;
+- exact workspace-root PDF ownership, with a numeric legacy-owner file accepted only when the persisted invoice row, invoice number, filename, and pointer remain unique to the requested workspace; duplicate-number, shared-pointer, flat, arbitrary, and foreign legacy paths are rejected;
 - administrator-safe session inventory and tenant-bound session-id revocation without principal/token/hash exposure;
 - approved account-reset integration that atomically revokes the actor principal's sessions and pending enrollments with the existing business reset and `deleted_database` state, while retaining identity continuity and unchanged temporary-block semantics;
 - no business mutation, AI/STT/LMM, external service, Telegram send, callback, FSM, or polling lifecycle change.

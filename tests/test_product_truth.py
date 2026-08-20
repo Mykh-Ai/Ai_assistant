@@ -48,6 +48,7 @@ REQUIRED_MVP_CAPABILITY_IDS = {
     'code_agent_handoff',
     'self_learning_aliases',
     'info_help',
+    'first_party_android_client',
 }
 
 NOT_SUPPORTED_CAPABILITY_IDS = {
@@ -210,6 +211,23 @@ def test_access_request_and_invoice_draft_records_exist() -> None:
     assert entries['invoice_draft_edit_flow'].status == ProductTruthStatus.SUPPORTED
     assert 'edit/approve/cancel' in entries['invoice_draft_edit_flow'].summary_for_user
     assert 'tests/test_decision_callbacks.py' in entries['invoice_draft_edit_flow'].test_refs
+
+
+def test_android_client_truth_is_partial_admin_pilot_with_bounded_device_evidence() -> None:
+    entry = _registry_by_id()['first_party_android_client']
+
+    assert entry.status == ProductTruthStatus.PARTIAL
+    assert entry.requires_admin is True
+    assert entry.requires_setup is True
+    assert entry.supported_channels == ('android_read_only_ui',)
+    assert 'android_text_assistant' in entry.unsupported_channels
+    limitations = ' '.join(entry.current_limitations)
+    assert 'controlled HTTPS pilot endpoint is active' in limitations
+    assert 'real-device acceptance' in limitations
+    assert 'no public signup' in limitations.lower()
+    assert 'Telegram remains' in limitations
+    assert 'Android can create invoices.' in entry.forbidden_claims
+    assert 'The Android app is already live for production users.' in entry.forbidden_claims
 
 
 def test_invoice_due_date_reminders_record_is_partial_automatic_runtime() -> None:

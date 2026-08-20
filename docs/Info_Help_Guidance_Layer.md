@@ -1043,6 +1043,25 @@ API evidence showed a valid unregistered-business-need answer may exceed the
 previous 8-second boundary. It still has no retry, secondary model, confidence
 gate, or execution authority; timeout/transport failure remains fail-closed.
 
+### Android read-only client truth — controlled pilot and C1, 2026-08-20
+
+Capability/how-to questions mentioning the OfficeFlow Android application map
+deterministically to Product Truth capability `first_party_android_client` and
+use the canonical Slovak copy. The answer states `partial`: the controlled HTTPS
+pilot is active and enrollment/session, multiple profiles, invoice listing, and
+contacts were proven on one authorized Samsung device. C1 Home and the nullable
+invoice-detail repair are code-complete but await a new APK/device check; detail,
+PDF, restart, profile switch, and logout must not be claimed as newly proven.
+Home domains outside existing invoice/contact reads are structure-only
+unavailable entries with no Android mutation, assistant, voice/chat, upload,
+accounting-document, work-time, analytics, or InfoHelp execution. Telegram
+remains the runtime for unsupported business actions.
+
+This answer path creates no enrollment, session, workspace, invoice, contact,
+customization, or other business effect. It must never claim full Android
+support, public signup, offline canonical data, general production availability,
+or Telegram replacement.
+
 ### Primary-bundle ownership repair - 2026-08-05
 
 This amendment supersedes the earlier punctuation-, mutation-, correction-, and

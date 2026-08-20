@@ -7,7 +7,10 @@ from pathlib import Path
 import secrets
 import sqlite3
 
-from bot.services.access_control import AUTHORIZED_STATUS_ACTIVE
+from bot.services.access_control import (
+    AUTHORIZED_STATUS_ACTIVE,
+    AUTHORIZED_STATUS_BLOCKED,
+)
 from bot.services.db import managed_connection
 from bot.services.principal_identity import IDENTITY_STATUS_ACTIVE, TELEGRAM_PROVIDER
 
@@ -18,6 +21,12 @@ MAX_CREDENTIAL_LENGTH = 160
 
 
 class ApiSessionError(RuntimeError):
+    pass
+
+
+class ApiSessionAccessTemporarilyUnavailable(ApiSessionError):
+    """The credential is still active, but current account access is blocked."""
+
     pass
 
 
@@ -358,19 +367,24 @@ def _require_current_active_authorization(
     principal_id: str,
 ) -> int:
     rows = connection.execute(
-        'SELECT e.subject FROM principal_external_identity e '
+        'SELECT e.subject, a.status FROM principal_external_identity e '
         'JOIN principal p ON p.principal_id = e.principal_id '
         'JOIN authorized_users a ON CAST(a.telegram_id AS TEXT) = e.subject '
         'WHERE e.principal_id = ? AND e.provider = ? AND e.status = ? '
-        'AND a.status = ? ORDER BY e.identity_id LIMIT 2',
+        'ORDER BY e.identity_id LIMIT 2',
         (
             principal_id,
             TELEGRAM_PROVIDER,
             IDENTITY_STATUS_ACTIVE,
-            AUTHORIZED_STATUS_ACTIVE,
         ),
     ).fetchall()
     if len(rows) != 1:
+        raise ApiSessionError('api_principal_not_authorized')
+    if str(rows[0][1]) == AUTHORIZED_STATUS_BLOCKED:
+        raise ApiSessionAccessTemporarilyUnavailable(
+            'api_access_temporarily_unavailable'
+        )
+    if str(rows[0][1]) != AUTHORIZED_STATUS_ACTIVE:
         raise ApiSessionError('api_principal_not_authorized')
     try:
         telegram_id = int(str(rows[0][0]))

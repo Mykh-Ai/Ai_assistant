@@ -1,0 +1,155 @@
+name: OfficeFlow Android APK
+
+on:
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-debug-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-debug:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            android/*.gradle.kts
+            android/gradle/wrapper/gradle-wrapper.properties
+            android/app/build.gradle.kts
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Verify Gradle wrapper checksum and mode
+        working-directory: android
+        run: |
+          test "$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)" = "2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046"
+          chmod +x gradlew
+
+      - name: Run JVM tests, lint, and assemble debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+      - name: Generate APK checksum
+        working-directory: android
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
+
+      - name: Upload debug APK and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: officeflow-android-debug-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  android-pilot:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: android-pilot-signing
+    env:
+      API_BASE_URL: https://officeflow-pilot-api.zevsflow.sk
+      PILOT_CERT_SHA256: 3835035c2df22b22406a00c359cc1a03e54f61852c302ed7c6392702a9d8e6fe
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            android/*.gradle.kts
+            android/gradle/wrapper/gradle-wrapper.properties
+            android/app/build.gradle.kts
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Verify Gradle wrapper checksum and mode
+        working-directory: android
+        run: |
+          test "$(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -d' ' -f1)" = "2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046"
+          chmod +x gradlew
+
+      - name: Restore protected pilot signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.OFFICEFLOW_PILOT_KEYSTORE_B64 }}
+        run: |
+          test -n "${KEYSTORE_B64}"
+          umask 077
+          printf '%s' "${KEYSTORE_B64}" | base64 --decode > "${RUNNER_TEMP}/officeflow-pilot-signing.p12"
+          test -s "${RUNNER_TEMP}/officeflow-pilot-signing.p12"
+          chmod 600 "${RUNNER_TEMP}/officeflow-pilot-signing.p12"
+
+      - name: Run JVM tests, lint, and assemble stable-signed pilot APK
+        working-directory: android
+        env:
+          OFFICEFLOW_PILOT_KEYSTORE_PATH: ${{ runner.temp }}/officeflow-pilot-signing.p12
+          OFFICEFLOW_PILOT_KEYSTORE_PASSWORD: ${{ secrets.OFFICEFLOW_PILOT_KEYSTORE_PASSWORD }}
+          OFFICEFLOW_PILOT_KEY_ALIAS: ${{ secrets.OFFICEFLOW_PILOT_KEY_ALIAS }}
+          OFFICEFLOW_PILOT_KEY_PASSWORD: ${{ secrets.OFFICEFLOW_PILOT_KEY_PASSWORD }}
+        run: |
+          test -n "${OFFICEFLOW_PILOT_KEYSTORE_PASSWORD}"
+          test -n "${OFFICEFLOW_PILOT_KEY_ALIAS}"
+          test -n "${OFFICEFLOW_PILOT_KEY_PASSWORD}"
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug \
+            "-POFFICEFLOW_DEBUG_API_BASE_URL=${API_BASE_URL}"
+
+      - name: Prove generated endpoint and signing certificate
+        working-directory: android
+        run: |
+          build_config="$(find app/build/generated/source/buildConfig/debug -name BuildConfig.java -print -quit)"
+          test -n "${build_config}"
+          BUILD_CONFIG_PATH="${build_config}" python -c 'import os, pathlib, sys; text = pathlib.Path(os.environ["BUILD_CONFIG_PATH"]).read_text(encoding="utf-8"); expected = os.environ["API_BASE_URL"]; sys.exit("generated BuildConfig does not contain the approved pilot endpoint") if expected not in text else None; sys.exit("generated BuildConfig still contains the emulator endpoint") if "http://10.0.2.2:8081" in text else None'
+          printf 'configured_api_base_url=%s\nemulator_api_base_url_absent=true\n' "${API_BASE_URL}" > app/build/outputs/apk/debug/app-debug.endpoint-evidence.txt
+          apksigner_path="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "${apksigner_path}"
+          cert_pem="${RUNNER_TEMP}/officeflow-pilot-signing-cert.pem"
+          "${apksigner_path}" verify --print-certs-pem app/build/outputs/apk/debug/app-debug.apk \
+            | awk '/-----BEGIN CERTIFICATE-----/ {capture=1} capture {print} /-----END CERTIFICATE-----/ {exit}' \
+            > "${cert_pem}"
+          grep -q '^-----BEGIN CERTIFICATE-----$' "${cert_pem}"
+          actual_fingerprint="$(openssl x509 -in "${cert_pem}" -outform DER | sha256sum | cut -d' ' -f1)"
+          test -n "${actual_fingerprint}"
+          printf 'observed_signing_certificate_sha256=%s\n' "${actual_fingerprint}"
+          test "${actual_fingerprint}" = "${PILOT_CERT_SHA256}"
+          printf 'signing_certificate_sha256=%s\nstable_pilot_signing_verified=true\n' "${actual_fingerprint}" > app/build/outputs/apk/debug/app-debug.signing-evidence.txt
+          rm -f "${cert_pem}"
+
+      - name: Generate APK checksum
+        working-directory: android
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
+
+      - name: Upload stable-signed pilot APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: officeflow-android-pilot-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+            android/app/build/outputs/apk/debug/app-debug.endpoint-evidence.txt
+            android/app/build/outputs/apk/debug/app-debug.signing-evidence.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove restored signing key
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/officeflow-pilot-signing.p12" "${RUNNER_TEMP}/officeflow-pilot-signing-cert.pem"

@@ -199,10 +199,10 @@ credential change, external-service call, Telegram send, or AI call occurred.
 - Authorization result: session, current access, membership, and scoped invoice ownership validate before file resolution.
 - Python service owner: `OfficeFlowReadService`, `WorkspaceInvoiceService`, `WorkspaceInvoicePdfStorageService`.
 - DB/session effect or no-effect: stream/read only; no PDF generation, path rewrite, or business mutation.
-- Workspace scope: exact owned workspace; resolved file must use the current workspace's unique storage root and exact invoice filename. The numeric legacy-owner root is accepted only when database ownership maps that owner to exactly one workspace; flat/arbitrary or multi-workspace legacy roots fail closed.
+- Workspace scope: exact owned workspace; resolved file must use the current workspace's unique storage root and exact invoice filename. A numeric legacy-owner file is accepted for a multi-workspace actor only when the persisted invoice row, invoice number, filename, and pointer are unique to the requested workspace. Duplicate-number/shared-pointer, flat/arbitrary, and foreign legacy paths fail closed.
 - Response: `application/pdf` bytes for valid ownership; bounded `404` for missing, unsafe, poisoned A-to-B, ambiguous legacy, or foreign artifacts; no path disclosure.
 - Final state: filesystem and business data unchanged.
-- Test/evidence reference: `test_owned_pdf_streams_but_missing_unsafe_and_foreign_fail_without_generation`, `test_missing_pdf_fails_boundedly_without_regeneration`, `test_poisoned_pdf_pointer_to_foreign_workspace_fails_closed`, `test_legacy_pdf_root_requires_unambiguous_owner_workspace`.
+- Test/evidence reference: `test_owned_pdf_streams_but_missing_unsafe_and_foreign_fail_without_generation`, `test_missing_pdf_fails_boundedly_without_regeneration`, `test_poisoned_pdf_pointer_to_foreign_workspace_fails_closed`, `test_legacy_pdf_root_requires_unambiguous_invoice_file_ownership`.
 - Result: pass.
 
 ## Scenario 13 — contacts read

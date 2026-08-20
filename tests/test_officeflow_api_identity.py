@@ -11,7 +11,11 @@ import pytest
 from bot.services.access_control import AccessControlService
 from bot.cli.officeflow_api_access import main as api_access_cli_main
 from bot.services.api_enrollment import ApiEnrollmentError, ApiEnrollmentService
-from bot.services.api_session import ApiSessionError, ApiSessionService
+from bot.services.api_session import (
+    ApiSessionAccessTemporarilyUnavailable,
+    ApiSessionError,
+    ApiSessionService,
+)
 from bot.services.db import init_db
 from bot.services.officeflow_api_context import (
     OfficeFlowApiAuthorizationError,
@@ -300,6 +304,8 @@ def test_temporary_block_denies_without_terminalizing_session(
     access.block_user(telegram_id=USER_ID, decided_by=ADMIN_ID)
     with pytest.raises(OfficeFlowApiAuthorizationError):
         context.authenticate_access(credentials.access_token)
+    with pytest.raises(ApiSessionAccessTemporarilyUnavailable):
+        ApiSessionService(db_path).rotate_refresh(credentials.refresh_token)
     listed = ApiSessionService(db_path).list_sessions_for_telegram_user(USER_ID)
     assert len(listed) == 1
     assert listed[0].status == 'active'
@@ -307,6 +313,8 @@ def test_temporary_block_denies_without_terminalizing_session(
 
     access.approve_user(telegram_id=USER_ID, approved_by=ADMIN_ID, role='owner')
     assert context.authenticate_access(credentials.access_token).telegram_id == USER_ID
+    rotated = ApiSessionService(db_path).rotate_refresh(credentials.refresh_token)
+    assert rotated.refresh_token != credentials.refresh_token
 
 
 def test_admin_session_list_and_revoke_are_target_scoped_and_secret_free(

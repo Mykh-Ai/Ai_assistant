@@ -461,6 +461,7 @@ No edit/delete/pay/send controls.
 - do not treat the temporary copy as canonical storage;
 - delete temporary material when it is no longer needed;
 - do not expose arbitrary server/filesystem paths.
+- distinguish bounded not-available, network, invalid-response, and local-rendering failures without showing raw paths or server internals.
 
 ### Contacts
 
@@ -663,6 +664,10 @@ Expected: Stage A PDF endpoint only; app-private render; no path disclosure; tem
 
 Expected: bounded unavailable state; no client-side filename/path guessing and no regeneration.
 
+Network, invalid `application/pdf`/`%PDF-` response, and local `PdfRenderer`
+failure remain separate sanitized states; none may weaken the 25 MB or
+app-private-storage boundary.
+
 ### S20 — contacts
 
 Expected: exact workspace contacts only; read-only UI.
@@ -779,3 +784,52 @@ Final verdict:
 `ready_for_handoff`
 
 The product owner approved this Stage B architecture. An implementation prompt may be written from this proof, but it must implement only the Android read-only shell and must not infer Stage C business mutations, shared FSM architecture, accounting-document backend routes, production deployment, or broader Android capability.
+
+---
+
+## 17. Stage B Implementation Checkpoint — 2026-08-19
+
+Implementation checkpoint verdict: `runtime_not_proven`.
+
+The approved one-module Android read-only shell is implemented under `android/`
+with the frozen application id and route set. It includes administrator
+enrollment, AndroidKeyStore/no-backup credential storage, one serialized refresh
+owner with persisted ambiguous-refresh stop state, local-only validated
+workspace selection, invoice list/detail/items/PDF, contacts, and truthful
+session revoke/logout. It adds no Android business action/FSM, business route or
+mutation, AI/STT/LMM, offline business database, accounting-document screen, or
+production deployment.
+
+One approved-design contradiction was surfaced rather than silently redesigned:
+Stage A's identical 401 response for ordinary block and terminal session loss
+could not preserve S25. With explicit product-owner direction to continue, the
+smallest compatibility repair now returns bounded 423
+`access_temporarily_unavailable` for current `blocked` on protected access and
+refresh; terminal invalid/revoked/expired/deleted/inactive states remain 401.
+There is no route or schema change.
+
+Evidence is mapped in
+`docs/evals/OFFICEFLOW_ANDROID_READ_ONLY_SHELL_V1_acceptance_proof.md`.
+Deterministic JVM and instrumentation test sources, the reproducible Gradle
+wrapper, and GitHub Actions debug-APK workflow are checked in. GitHub Actions run
+`32309125355` passed JVM tests, lint, and `:app:assembleDebug`, and uploaded
+the debug APK plus checksum as artifact `9385867828`; the downloaded APK
+matched SHA-256
+`aded96b7cbf7db88c29b9ba771dec112699dd328ffe46478050df5d4561dcc0a`.
+The current host still lacks an emulator/device, so instrumentation and the real
+app entry journey were not executed. Together with the unchanged
+clock-sensitive full-suite failure recorded below, the implementation checkpoint
+remains `runtime_not_proven`; it may advance only after device evidence is
+attached and full regression evidence is green or the baseline failure is
+separately resolved.
+
+Focused Python/shared-boundary evidence is `95 passed`. The full suite reached
+`2612 passed, 7 subtests passed, 1 failed`; the single unchanged work-time test
+uses a fixed 07:00 open time with the real current clock and reproduced an
+end-before-start failure when executed before 07:00. No work-time/FSM owner was
+modified. `python -m compileall -q bot` and `git diff --check` passed.
+
+Rollout remains **not deployed**: no production database/migration, server,
+Cloudflare/public API, secret, enrollment, phone install, Play Store, or release
+signing change occurred. Telegram remains the current production end-user
+runtime.

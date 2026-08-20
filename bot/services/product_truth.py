@@ -1184,6 +1184,61 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         forbidden_claims=('I learned a new product capability.', 'Learned aliases can enable unsupported features.'),
     ),
     _capability(
+        capability_id='first_party_android_client',
+        title='OfficeFlow first-party Android client',
+        domain='client_platforms',
+        status=ProductTruthStatus.PARTIAL,
+        summary_for_user=(
+            'OfficeFlow has a first-party Android read-only client for a controlled '
+            'administrator-enrolled HTTPS pilot. Enrollment, session use, multiple '
+            'business profiles, outgoing invoice listing, and contacts have been proven '
+            'on one authorized Samsung pilot device.'
+        ),
+        current_limitations=(
+            'The controlled HTTPS pilot endpoint is active. The new Home/domain navigation and nullable invoice-detail repair are implemented but still require a new APK and real-device acceptance; invoice detail/PDF, restart restoration, profile switching, and logout are not yet proven after C1.',
+            'Android cannot create, edit, delete, pay, or send invoices; mutate contacts; upload documents; run InfoHelp, assistant, or voice/chat; change work time; show accounting documents; or execute analytics in C1.',
+            'There is no public signup, background synchronization, or offline canonical business database. Telegram remains the production runtime for business actions that Android does not support.',
+        ),
+        runtime_owner='android/app/src/main/java/sk/zevsflow/officeflow',
+        linked_handlers=(
+            'android/app/src/main/java/sk/zevsflow/officeflow/ui/OfficeFlowApp.kt',
+            'android/app/src/main/java/sk/zevsflow/officeflow/ui/OfficeFlowNavigation.kt',
+            'android/app/src/main/java/sk/zevsflow/officeflow/network/OfficeFlowApiClient.kt',
+        ),
+        truth_source_refs=(
+            'docs/architecture/OFFICEFLOW_ANDROID_READ_ONLY_SHELL_V1_ARCHITECTURE_DESIGN_PROOF.md',
+            'docs/architecture/OFFICEFLOW_ANDROID_HOME_TOP_LEVEL_NAVIGATION_V2_ARCHITECTURE_DESIGN_PROOF.md',
+            'docs/evals/OFFICEFLOW_ANDROID_READ_ONLY_SHELL_V1_acceptance_proof.md',
+            'docs/evals/OFFICEFLOW_ANDROID_HOME_TOP_LEVEL_NAVIGATION_V2_acceptance_proof.md',
+            'android/README.md',
+        ),
+        test_refs=(
+            'android/app/src/test/java/sk/zevsflow/officeflow/SessionCoordinatorTest.kt',
+            'android/app/src/test/java/sk/zevsflow/officeflow/OfficeFlowApiClientTest.kt',
+            'android/app/src/test/java/sk/zevsflow/officeflow/OfficeFlowNavigationTest.kt',
+            'tests/test_officeflow_android_stage_b_boundaries.py',
+        ),
+        safe_next_steps=(
+            'Use the administrator-enrolled pilot only with the approved HTTPS endpoint and validate each new APK on an authorized pilot device.',
+            'Use the Android app only for read-only business profiles, outgoing invoices/PDFs, and contacts; continue business mutations in Telegram.',
+        ),
+        requires_setup=True,
+        requires_admin=True,
+        setup_state_keys=('android_app_installed', 'officeflow_api_https_pilot_endpoint'),
+        forbidden_claims=(
+            'All OfficeFlow functions work on Android.',
+            'Telegram is no longer needed.',
+            'Android can create invoices.',
+            'Android has full offline access.',
+            'Anyone can register in the Android app.',
+            'The Android app is already live for production users.',
+        ),
+        supported_channels=('android_read_only_ui',),
+        unsupported_channels=('android_text_assistant', 'android_voice', 'android_business_mutation'),
+        last_verified_at='2026-08-19',
+        notes_for_agents='Stage B source/client proof only. Production API deployment and real-phone remote pilot remain separate approval gates.',
+    ),
+    _capability(
         capability_id='runtime_issue_intake',
         title='Runtime issue intake',
         domain='admin',
