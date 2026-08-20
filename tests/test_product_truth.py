@@ -213,7 +213,7 @@ def test_access_request_and_invoice_draft_records_exist() -> None:
     assert 'tests/test_decision_callbacks.py' in entries['invoice_draft_edit_flow'].test_refs
 
 
-def test_android_client_truth_is_partial_admin_pilot_and_not_live_deployment() -> None:
+def test_android_client_truth_is_partial_admin_pilot_with_bounded_device_evidence() -> None:
     entry = _registry_by_id()['first_party_android_client']
 
     assert entry.status == ProductTruthStatus.PARTIAL
@@ -222,7 +222,8 @@ def test_android_client_truth_is_partial_admin_pilot_and_not_live_deployment() -
     assert entry.supported_channels == ('android_read_only_ui',)
     assert 'android_text_assistant' in entry.unsupported_channels
     limitations = ' '.join(entry.current_limitations)
-    assert 'not deployed' in limitations
+    assert 'controlled HTTPS pilot endpoint is active' in limitations
+    assert 'real-device acceptance' in limitations
     assert 'no public signup' in limitations.lower()
     assert 'Telegram remains' in limitations
     assert 'Android can create invoices.' in entry.forbidden_claims

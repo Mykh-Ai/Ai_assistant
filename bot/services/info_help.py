@@ -323,9 +323,9 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'first_party_android_client': {
         'title': 'Aplikácia OfficeFlow pre Android',
-        'summary': 'OfficeFlow má vlastnú Android aplikáciu pre kontrolovaný read-only pilot so správcovským pripojením.',
-        'limitation': 'Aplikácia zobrazuje firemné profily, vystavené faktúry, existujúce PDF a kontakty. Nevytvára ani neupravuje faktúry či kontakty, nemá asistenta, hlas, upload ani účtovné doklady. Produkčný API endpoint ešte nie je nasadený, preto živý prístup z telefónu vyžaduje samostatne aktivovaný HTTPS pilot. Telegram zostáva aktuálnym produkčným používateľským runtime.',
-        'safe_next': 'Správca musí vydať jednorazový pripájací kód a samostatne aktivovať schválený HTTPS API pilot; dovtedy aplikácia nie je živou produkčnou službou.',
+        'summary': 'OfficeFlow má vlastnú Android aplikáciu pre kontrolovaný read-only HTTPS pilot so správcovským pripojením; prihlásenie, firemné profily, zoznam faktúr a kontakty boli overené na jednom autorizovanom Samsung zariadení.',
+        'limitation': 'C1 pridáva Domov so šiestimi oblasťami a opravuje spracovanie detailu faktúry, ale nový APK ešte potrebuje reálne overenie detailu/PDF, reštartu, zmeny profilu a odhlásenia. Nevytvára ani neupravuje faktúry či kontakty a nespúšťa Bločky, pracovný čas, analytiku, InfoHelp, hlas/chat, upload ani iné business akcie. Telegram zostáva runtime pre nepodporované akcie.',
+        'safe_next': 'Použite iba správcom pripojené pilotné zariadenie a po novom APK overte read-only detail/PDF; všetky business zmeny naďalej robte cez Telegram.',
     },
 }
 _SLOVAK_OVERVIEW_TITLES = {

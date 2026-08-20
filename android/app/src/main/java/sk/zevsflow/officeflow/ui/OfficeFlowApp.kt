@@ -7,12 +7,17 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -21,14 +26,17 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -46,12 +54,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -65,7 +76,7 @@ import sk.zevsflow.officeflow.data.Workspace
 fun OfficeFlowApp(viewModel: OfficeFlowViewModel) {
     val root by viewModel.root.collectAsState()
     when (val state = root) {
-        RootState.Loading -> LoadingScreen()
+        RootState.Loading -> LoadingScreen(Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
         is RootState.Enrollment -> EnrollmentScreen(state.message, viewModel::enroll)
         is RootState.WorkspacePicker -> WorkspacePickerScreen(
             state.workspaces,
@@ -92,7 +103,10 @@ fun OfficeFlowApp(viewModel: OfficeFlowViewModel) {
 }
 
 @Composable
-private fun LoadingScreen() = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+private fun LoadingScreen(modifier: Modifier = Modifier) = Box(
+    modifier.fillMaxSize(),
+    contentAlignment = Alignment.Center,
+) {
     CircularProgressIndicator()
 }
 
@@ -100,7 +114,11 @@ private fun LoadingScreen() = Box(Modifier.fillMaxSize(), contentAlignment = Ali
 private fun EnrollmentScreen(message: String?, connect: (String) -> Unit) {
     var secret by remember { mutableStateOf("") }
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         Text("OfficeFlow", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
@@ -140,10 +158,19 @@ private fun WorkspacePickerScreen(
     choose: (Workspace) -> Unit,
     logout: () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(20.dp),
+    ) {
         Text("Vyberte firemný profil", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(16.dp))
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(
+            Modifier.weight(1f),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             items(workspaces, key = { it.workspaceId }) { workspace ->
                 Card(onClick = { choose(workspace) }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
@@ -153,7 +180,7 @@ private fun WorkspacePickerScreen(
                 }
             }
         }
-        TextButton(onClick = logout) { Text("Odhlásiť") }
+        TextButton(onClick = logout, modifier = Modifier.fillMaxWidth()) { Text("Odhlásiť") }
     }
 }
 
@@ -161,57 +188,136 @@ private fun WorkspacePickerScreen(
 @Composable
 private fun ReadShell(root: RootState.Ready, viewModel: OfficeFlowViewModel) {
     val nav = rememberNavController()
+    val backStack by nav.currentBackStackEntryAsState()
+    val currentRoute = backStack?.destination?.route
     var confirmLogout by remember { mutableStateOf(false) }
+    var showAccountMenu by remember { mutableStateOf(false) }
     val notice by viewModel.notice.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(notice) {
-        notice?.let { snackbar.showSnackbar(it); viewModel.clearNotice() }
+        notice?.let {
+            snackbar.showSnackbar(it)
+            viewModel.clearNotice()
+        }
     }
     Scaffold(
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("OfficeFlow")
-                        Text(root.workspace.displayName, style = MaterialTheme.typography.labelMedium)
+                title = { Text("OfficeFlow", maxLines = 1) },
+                navigationIcon = {
+                    if (currentRoute != null && currentRoute != HOME_ROUTE) {
+                        IconButton(
+                            onClick = { nav.popBackStack() },
+                            modifier = Modifier.semantics { contentDescription = "Späť" },
+                        ) { Text("‹", style = MaterialTheme.typography.headlineMedium) }
                     }
                 },
                 actions = {
-                    TextButton(onClick = viewModel::showWorkspacePicker) { Text("Profil") }
-                    TextButton(onClick = { confirmLogout = true }) { Text("Odhlásiť") }
+                    Box {
+                        TextButton(onClick = { showAccountMenu = true }) { Text("Menu") }
+                        DropdownMenu(
+                            expanded = showAccountMenu,
+                            onDismissRequest = { showAccountMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Zmeniť profil") },
+                                onClick = {
+                                    showAccountMenu = false
+                                    viewModel.showWorkspacePicker()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Odhlásiť") },
+                                onClick = {
+                                    showAccountMenu = false
+                                    confirmLogout = true
+                                },
+                            )
+                        }
+                    }
                 },
             )
         },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = currentRoute(nav) == "invoices",
-                    onClick = { nav.navigate("invoices") { launchSingleTop = true } },
-                    icon = { Text("F") },
-                    label = { Text("Faktúry") },
-                )
-                NavigationBarItem(
-                    selected = currentRoute(nav) == "contacts",
-                    onClick = { nav.navigate("contacts") { launchSingleTop = true } },
-                    icon = { Text("K") },
-                    label = { Text("Kontakty") },
-                )
-            }
-        },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        NavHost(nav, startDestination = "invoices", modifier = Modifier.padding(padding)) {
-            composable("invoices") { InvoiceListScreen(root.workspace, nav, viewModel) }
-            composable("contacts") { ContactsScreen(root.workspace, viewModel) }
+        NavHost(
+            navController = nav,
+            startDestination = HOME_ROUTE,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding),
+        ) {
+            composable(HOME_ROUTE) {
+                HomeScreen(
+                    workspace = root.workspace,
+                    openDomain = { nav.navigate(domainRoute(it)) },
+                    openVoiceChat = { nav.navigate("voice-chat-unavailable") },
+                    changeProfile = viewModel::showWorkspacePicker,
+                    logout = { confirmLogout = true },
+                )
+            }
+            composable("domain/{domainId}") { entry ->
+                val domain = businessDomain(entry.arguments?.getString("domainId"))
+                if (domain == null) {
+                    BoundedUnavailableScreen(
+                        title = "Táto oblasť nie je dostupná.",
+                        onBack = { nav.popBackStack() },
+                        onHome = { nav.goHome() },
+                    )
+                } else {
+                    DomainScreen(
+                        domain = domain,
+                        openSublevel = { sublevel ->
+                            when (sublevel.availability) {
+                                C1Availability.EXISTING_INVOICES -> nav.navigate(INVOICE_LIST_ROUTE)
+                                C1Availability.EXISTING_CONTACTS -> nav.navigate(CONTACT_LIST_ROUTE)
+                                C1Availability.UNAVAILABLE -> nav.navigate(
+                                    unavailableRoute(domain.id, sublevel.id)
+                                )
+                            }
+                        },
+                        onHome = { nav.goHome() },
+                    )
+                }
+            }
+            composable("domain/{domainId}/unavailable/{sublevelId}") { entry ->
+                val domainId = entry.arguments?.getString("domainId")
+                val sublevelId = entry.arguments?.getString("sublevelId")
+                val sublevel = businessSublevel(domainId, sublevelId)
+                BoundedUnavailableScreen(
+                    title = sublevel?.label ?: "Táto funkcia",
+                    message = "Táto funkcia zatiaľ nie je dostupná v Android aplikácii. Momentálne ju môžete použiť v Telegram OfficeFlow.",
+                    onBack = { nav.popBackStack() },
+                    onHome = { nav.goHome() },
+                )
+            }
+            composable("voice-chat-unavailable") {
+                BoundedUnavailableScreen(
+                    title = VOICE_CHAT_LABEL,
+                    message = "Hlas a chat budú dostupné v ďalšej fáze.",
+                    onBack = { nav.popBackStack() },
+                    onHome = { nav.goHome() },
+                )
+            }
+            composable(INVOICE_LIST_ROUTE) { InvoiceListScreen(root.workspace, nav, viewModel) }
+            composable(CONTACT_LIST_ROUTE) { ContactsScreen(root.workspace, viewModel) }
             composable("invoice/{id}") { entry ->
                 val id = entry.arguments?.getString("id")?.toLongOrNull()
-                if (id == null) MessageScreen("Faktúra nie je dostupná.")
-                else InvoiceDetailScreen(root.workspace, id, nav, viewModel)
+                if (id == null) {
+                    MessageScreen("Faktúra nie je dostupná.", "Späť" to { nav.popBackStack() })
+                } else {
+                    InvoiceDetailScreen(root.workspace, id, nav, viewModel)
+                }
             }
             composable("invoice/{id}/pdf") { entry ->
                 val id = entry.arguments?.getString("id")?.toLongOrNull()
-                if (id == null) MessageScreen("PDF nie je dostupné.")
-                else PdfScreen(id, viewModel)
+                if (id == null) {
+                    MessageScreen("PDF nie je dostupné.", "Späť" to { nav.popBackStack() })
+                } else {
+                    PdfScreen(id, nav, viewModel)
+                }
             }
         }
     }
@@ -220,26 +326,149 @@ private fun ReadShell(root: RootState.Ready, viewModel: OfficeFlowViewModel) {
             onDismissRequest = { confirmLogout = false },
             title = { Text("Odhlásiť sa?") },
             text = { Text("Lokálna relácia a výber profilu sa odstránia. Firemné údaje sa nemenia.") },
-            confirmButton = { TextButton(onClick = { confirmLogout = false; viewModel.signOut() }) { Text("Odhlásiť") } },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmLogout = false
+                    viewModel.signOut()
+                }) { Text("Odhlásiť") }
+            },
             dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Zrušiť") } },
         )
     }
 }
 
+private fun NavHostController.goHome() {
+    navigate(HOME_ROUTE) {
+        popUpTo(HOME_ROUTE)
+        launchSingleTop = true
+    }
+}
+
 @Composable
-private fun currentRoute(nav: NavHostController): String? =
-    nav.currentBackStackEntryFlow.collectAsState(initial = nav.currentBackStackEntry).value?.destination?.route
+internal fun HomeScreen(
+    workspace: Workspace,
+    openDomain: (String) -> Unit,
+    openVoiceChat: () -> Unit,
+    changeProfile: () -> Unit,
+    logout: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Text("Domov", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Vyberte oblasť, v ktorej chcete pokračovať.")
+        }
+        item { ActiveProfileCard(workspace, changeProfile, logout) }
+        item { Text("Oblasti OfficeFlow", style = MaterialTheme.typography.titleLarge) }
+        items(C1_BUSINESS_DOMAINS, key = BusinessDomain::id) { domain ->
+            Card(onClick = { openDomain(domain.id) }, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(domain.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Zobraziť možnosti", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        item {
+            Spacer(Modifier.height(6.dp))
+            Text("Univerzálny kanál", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            OutlinedCard(onClick = openVoiceChat, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(VOICE_CHAT_LABEL, fontWeight = FontWeight.SemiBold)
+                    Text("Hlas a chat budú dostupné v ďalšej fáze.")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveProfileCard(workspace: Workspace, changeProfile: () -> Unit, logout: () -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text("Aktívny profil", style = MaterialTheme.typography.labelLarge)
+            Text(workspace.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Rola: ${workspace.role}", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(onClick = changeProfile, modifier = Modifier.fillMaxWidth()) { Text("Zmeniť profil") }
+            TextButton(onClick = logout, modifier = Modifier.fillMaxWidth()) { Text("Odhlásiť") }
+        }
+    }
+}
+
+@Composable
+private fun DomainScreen(domain: BusinessDomain, openSublevel: (BusinessSublevel) -> Unit, onHome: () -> Unit) {
+    if (domain.sublevels.isEmpty()) {
+        BoundedUnavailableScreen(
+            title = domain.label,
+            message = "Táto informačná oblasť zatiaľ nie je dostupná v Android aplikácii.",
+            onBack = onHome,
+            onHome = onHome,
+        )
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item { Text(domain.label, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        items(domain.sublevels, key = BusinessSublevel::id) { sublevel ->
+            Card(onClick = { openSublevel(sublevel) }, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(sublevel.label, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (sublevel.availability == C1Availability.UNAVAILABLE) "V Androide zatiaľ nedostupné"
+                        else "Dostupné v read-only režime",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+        item { TextButton(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("Domov") } }
+    }
+}
+
+@Composable
+private fun BoundedUnavailableScreen(
+    title: String,
+    message: String = "Táto funkcia zatiaľ nie je dostupná v Android aplikácii.",
+    onBack: () -> Unit,
+    onHome: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(12.dp))
+        Text(message)
+        Spacer(Modifier.height(20.dp))
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Späť") }
+        TextButton(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("Domov") }
+    }
+}
 
 @Composable
 private fun InvoiceListScreen(workspace: Workspace, nav: NavHostController, viewModel: OfficeFlowViewModel) {
     val state by viewModel.invoices.collectAsState()
     LaunchedEffect(workspace.workspaceId) { viewModel.loadInvoices() }
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Text("Vystavené faktúry", style = MaterialTheme.typography.headlineSmall)
-        Text("Profil: ${workspace.displayName}", style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.height(8.dp))
-        if (state.loading && state.items.isEmpty()) LoadingScreen()
-        else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            Text("Existujúce faktúry", style = MaterialTheme.typography.headlineSmall)
+            Text("Profil: ${workspace.displayName}", style = MaterialTheme.typography.labelMedium)
+        }
+        if (state.loading && state.items.isEmpty()) {
+            item { LoadingScreen(Modifier.height(160.dp)) }
+        } else {
             items(state.items, key = { it.id }) { invoice ->
                 InvoiceCard(invoice) { nav.navigate("invoice/${invoice.id}") }
             }
@@ -258,7 +487,7 @@ private fun InvoiceListScreen(workspace: Workspace, nav: NavHostController, view
 }
 
 @Composable
-private fun InvoiceCard(invoice: InvoiceSummary, open: () -> Unit) {
+internal fun InvoiceCard(invoice: InvoiceSummary, open: () -> Unit) {
     Card(onClick = open, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
             Text("Faktúra ${invoice.invoiceNumber}", fontWeight = FontWeight.SemiBold)
@@ -270,32 +499,29 @@ private fun InvoiceCard(invoice: InvoiceSummary, open: () -> Unit) {
 }
 
 @Composable
-private fun InvoiceDetailScreen(
-    workspace: Workspace,
-    invoiceId: Long,
-    nav: NavHostController,
-    viewModel: OfficeFlowViewModel,
-) {
+private fun InvoiceDetailScreen(workspace: Workspace, invoiceId: Long, nav: NavHostController, viewModel: OfficeFlowViewModel) {
     val detail by viewModel.detail.collectAsState()
     LaunchedEffect(invoiceId, workspace.workspaceId) { viewModel.loadInvoice(invoiceId) }
     when (val state = detail) {
         DetailState.Idle, DetailState.Loading -> LoadingScreen()
-        is DetailState.Error -> MessageScreen(state.message)
-        is DetailState.Ready -> InvoiceDetailContent(state.invoice) {
-            nav.navigate("invoice/$invoiceId/pdf")
-        }
+        is DetailState.Error -> MessageScreen(
+            state.failure.message,
+            "Skúsiť znova" to { viewModel.loadInvoice(invoiceId) },
+            "Späť" to { nav.popBackStack() },
+        )
+        is DetailState.Ready -> InvoiceDetailContent(state.invoice) { nav.navigate("invoice/$invoiceId/pdf") }
     }
 }
 
 @Composable
-private fun InvoiceDetailContent(invoice: InvoiceDetail, openPdf: () -> Unit) {
+internal fun InvoiceDetailContent(invoice: InvoiceDetail, openPdf: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Text("Faktúra ${invoice.invoiceNumber}", style = MaterialTheme.typography.headlineSmall)
         Text(invoice.customer?.name ?: "Odberateľ neuvedený")
         Spacer(Modifier.height(12.dp))
         LabelValue("Vystavenie", invoice.issueDate)
         LabelValue("Dodanie", invoice.deliveryDate)
-        LabelValue("Splatnosť", invoice.dueDate)
+        LabelValue("Splatnosť", "${invoice.dueDate} (${invoice.dueDays} dní)")
         LabelValue("Stav", invoice.status)
         LabelValue("Suma", "${money(invoice.totalAmount)} ${invoice.currency}")
         Spacer(Modifier.height(18.dp))
@@ -304,7 +530,9 @@ private fun InvoiceDetailContent(invoice: InvoiceDetail, openPdf: () -> Unit) {
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text(item.description, fontWeight = FontWeight.Medium)
             item.detail?.takeIf(String::isNotBlank)?.let { Text(it) }
-            Text("${item.quantity} ${item.unit} × ${money(item.unitPrice)} = ${money(item.totalPrice)}")
+            val unit = item.unit?.takeIf(String::isNotBlank) ?: "jednotka neuvedená"
+            Text("${item.quantity} $unit")
+            Text("${money(item.unitPrice)} × ${item.quantity} = ${money(item.totalPrice)}")
         }
         Spacer(Modifier.height(20.dp))
         Button(onClick = openPdf, modifier = Modifier.fillMaxWidth()) { Text("Zobraziť PDF") }
@@ -315,26 +543,19 @@ private fun InvoiceDetailContent(invoice: InvoiceDetail, openPdf: () -> Unit) {
 private fun ContactsScreen(workspace: Workspace, viewModel: OfficeFlowViewModel) {
     val state by viewModel.contacts.collectAsState()
     LaunchedEffect(workspace.workspaceId) { viewModel.loadContacts() }
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Text("Kontakty", style = MaterialTheme.typography.headlineSmall)
-        Text("Profil: ${workspace.displayName}", style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.height(8.dp))
-        if (state.loading) LoadingScreen()
-        else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(state.items, key = Contact::id) { contact ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text(contact.name, fontWeight = FontWeight.SemiBold)
-                        ContactLine("IČO", contact.ico)
-                        ContactLine("DIČ", contact.dic)
-                        ContactLine("IČ DPH", contact.icDph)
-                        ContactLine("Adresa", contact.address)
-                        ContactLine("Email", contact.email)
-                        ContactLine("IBAN", contact.iban)
-                        ContactLine("Kontaktná osoba", contact.contactPerson)
-                    }
-                }
-            }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            Text("Existujúce kontakty", style = MaterialTheme.typography.headlineSmall)
+            Text("Profil: ${workspace.displayName}", style = MaterialTheme.typography.labelMedium)
+        }
+        if (state.loading) {
+            item { LoadingScreen(Modifier.height(160.dp)) }
+        } else {
+            items(state.items, key = Contact::id) { contact -> ContactCard(contact) }
             item {
                 if (state.items.isEmpty() && state.error == null) Text("Žiadne kontakty.")
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -344,13 +565,33 @@ private fun ContactsScreen(workspace: Workspace, viewModel: OfficeFlowViewModel)
 }
 
 @Composable
-private fun PdfScreen(invoiceId: Long, viewModel: OfficeFlowViewModel) {
+internal fun ContactCard(contact: Contact) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text(contact.name, fontWeight = FontWeight.SemiBold)
+            ContactLine("IČO", contact.ico)
+            ContactLine("DIČ", contact.dic)
+            ContactLine("IČ DPH", contact.icDph)
+            ContactLine("Adresa", contact.address)
+            ContactLine("Email", contact.email)
+            ContactLine("IBAN", contact.iban)
+            ContactLine("Kontaktná osoba", contact.contactPerson)
+        }
+    }
+}
+
+@Composable
+private fun PdfScreen(invoiceId: Long, nav: NavHostController, viewModel: OfficeFlowViewModel) {
     val file by viewModel.pdf.collectAsState()
     LaunchedEffect(invoiceId) { viewModel.loadPdf(invoiceId) }
     DisposableEffect(invoiceId) { onDispose(viewModel::releasePdf) }
     when (val state = file) {
         PdfUiState.Idle, PdfUiState.Loading -> LoadingScreen()
-        is PdfUiState.Error -> MessageScreen(state.message)
+        is PdfUiState.Error -> MessageScreen(
+            state.message,
+            "Skúsiť znova" to { viewModel.loadPdf(invoiceId) },
+            "Späť" to { nav.popBackStack() },
+        )
         is PdfUiState.Ready -> PdfPage(state.file)
     }
 }
@@ -374,18 +615,14 @@ private fun PdfPage(file: File) {
                             (page.width * scale).toInt().coerceAtLeast(1),
                             (page.height * scale).toInt().coerceAtLeast(1),
                             Bitmap.Config.ARGB_8888,
-                        ).also {
-                            page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        }
+                        ).also { page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) }
                         RenderedPdfPage(bitmap, boundedIndex, renderer.pageCount)
                     }
                 }
             }
         }
     }
-    DisposableEffect(rendered?.bitmap) {
-        onDispose { rendered?.bitmap?.recycle() }
-    }
+    DisposableEffect(rendered?.bitmap) { onDispose { rendered?.bitmap?.recycle() } }
     Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         val page = rendered
         if (page == null) {
@@ -410,33 +647,41 @@ private fun PdfPage(file: File) {
 }
 
 private data class RenderedPdfPage(val bitmap: Bitmap, val index: Int, val count: Int)
-
 private const val MAX_PDF_RENDER_DIMENSION = 4096
 
 @Composable
 private fun LabelValue(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label)
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium)
         Text(value, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
 private fun ContactLine(label: String, value: String?) {
-    value?.takeIf(String::isNotBlank)?.let { Text("$label: $it") }
+    value?.takeIf(String::isNotBlank)?.let {
+        Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall)
+            Text(it)
+        }
+    }
 }
 
 @Composable
-private fun MessageScreen(message: String, vararg actions: Pair<String, () -> Unit>) {
+internal fun MessageScreen(message: String, vararg actions: Pair<String, () -> Unit>) {
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(message)
         actions.forEach { (label, action) ->
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(onClick = action) { Text(label) }
+            OutlinedButton(onClick = action, modifier = Modifier.fillMaxWidth()) { Text(label) }
         }
     }
 }

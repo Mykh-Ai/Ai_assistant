@@ -1190,31 +1190,36 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         status=ProductTruthStatus.PARTIAL,
         summary_for_user=(
             'OfficeFlow has a first-party Android read-only client for a controlled '
-            'administrator-enrolled pilot. It can show accessible business profiles, '
-            'outgoing invoices, existing invoice PDFs, and contacts.'
+            'administrator-enrolled HTTPS pilot. Enrollment, session use, multiple '
+            'business profiles, outgoing invoice listing, and contacts have been proven '
+            'on one authorized Samsung pilot device.'
         ),
         current_limitations=(
-            'The production OfficeFlow API endpoint is not deployed by this implementation; live phone access requires a separately approved HTTPS pilot rollout.',
-            'Android cannot create, edit, delete, pay, or send invoices; mutate contacts; upload documents; run the assistant or voice; change work time; or show accounting documents in Stage B.',
-            'There is no public signup, background synchronization, or offline canonical business database. Telegram remains the current production end-user runtime until a later rollout proves otherwise.',
+            'The controlled HTTPS pilot endpoint is active. The new Home/domain navigation and nullable invoice-detail repair are implemented but still require a new APK and real-device acceptance; invoice detail/PDF, restart restoration, profile switching, and logout are not yet proven after C1.',
+            'Android cannot create, edit, delete, pay, or send invoices; mutate contacts; upload documents; run InfoHelp, assistant, or voice/chat; change work time; show accounting documents; or execute analytics in C1.',
+            'There is no public signup, background synchronization, or offline canonical business database. Telegram remains the production runtime for business actions that Android does not support.',
         ),
         runtime_owner='android/app/src/main/java/sk/zevsflow/officeflow',
         linked_handlers=(
             'android/app/src/main/java/sk/zevsflow/officeflow/ui/OfficeFlowApp.kt',
+            'android/app/src/main/java/sk/zevsflow/officeflow/ui/OfficeFlowNavigation.kt',
             'android/app/src/main/java/sk/zevsflow/officeflow/network/OfficeFlowApiClient.kt',
         ),
         truth_source_refs=(
             'docs/architecture/OFFICEFLOW_ANDROID_READ_ONLY_SHELL_V1_ARCHITECTURE_DESIGN_PROOF.md',
+            'docs/architecture/OFFICEFLOW_ANDROID_HOME_TOP_LEVEL_NAVIGATION_V2_ARCHITECTURE_DESIGN_PROOF.md',
             'docs/evals/OFFICEFLOW_ANDROID_READ_ONLY_SHELL_V1_acceptance_proof.md',
+            'docs/evals/OFFICEFLOW_ANDROID_HOME_TOP_LEVEL_NAVIGATION_V2_acceptance_proof.md',
             'android/README.md',
         ),
         test_refs=(
             'android/app/src/test/java/sk/zevsflow/officeflow/SessionCoordinatorTest.kt',
             'android/app/src/test/java/sk/zevsflow/officeflow/OfficeFlowApiClientTest.kt',
+            'android/app/src/test/java/sk/zevsflow/officeflow/OfficeFlowNavigationTest.kt',
             'tests/test_officeflow_android_stage_b_boundaries.py',
         ),
         safe_next_steps=(
-            'An administrator first issues a one-time enrollment code and a separately approved HTTPS OfficeFlow API pilot endpoint must be active.',
+            'Use the administrator-enrolled pilot only with the approved HTTPS endpoint and validate each new APK on an authorized pilot device.',
             'Use the Android app only for read-only business profiles, outgoing invoices/PDFs, and contacts; continue business mutations in Telegram.',
         ),
         requires_setup=True,

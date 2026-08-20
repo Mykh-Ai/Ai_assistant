@@ -69,7 +69,7 @@ data class InvoiceItem(
     val description: String,
     val detail: String? = null,
     val quantity: Double,
-    val unit: String,
+    val unit: String? = null,
     @SerialName("unit_price") val unitPrice: Double,
     @SerialName("total_price") val totalPrice: Double,
 )

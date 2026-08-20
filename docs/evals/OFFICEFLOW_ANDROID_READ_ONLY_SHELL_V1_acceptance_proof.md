@@ -8,10 +8,10 @@ Overall verdict: `runtime_not_proven`
 
 ## Real-phone pilot APK preparation — 2026-08-20
 
-- A previous debug APK was installed and started successfully on a real Samsung
-  phone. This is bounded observational evidence for installation and process
-  start only; it does not prove enrollment, authenticated session handling, or
-  any read journey.
+- A debug APK was installed and started successfully on an authorized Samsung
+  pilot phone. Administrator enrollment was consumed successfully, the
+  authenticated session reached multiple workspace choices, and invoice-list
+  and contact-list reads were observed on that device.
 - The dedicated public Stage A HTTPS boundary was proven separately at
   `https://officeflow-pilot-api.zevsflow.sk`, including valid TLS, HTTP-to-HTTPS
   redirection, and unauthenticated `401`/`405`/`404` boundaries. That rollout did
@@ -24,13 +24,18 @@ Overall verdict: `runtime_not_proven`
 - The resulting pilot artifact is a debug APK for controlled real-phone
   acceptance. It is not a release, production-signed, Play Store, or general
   distribution build.
-- Enrollment has not been issued. The real-phone authenticated journey —
-  enrollment, restart/session restore, workspace selection, invoice/contact
-  reads, PDF rendering, and logout — remains unproven.
+- The real-device invoice-list tap exposed a concrete protocol defect before the
+  detail could render: production-shaped legacy invoice items may return
+  `unit: null`, while the Stage B Android model required a non-null string. C1
+  makes only that response field nullable and keeps the server contract/schema
+  unchanged. The repaired detail, PDF rendering, restart/session restoration,
+  profile switch, and logout still require the new C1 APK on-device check.
 
-The acceptance verdict therefore remains `runtime_not_proven` until the real
-phone completes the required enrollment and read journeys. The public endpoint
-and pilot build configuration do not independently advance that verdict.
+The acceptance verdict therefore remains `runtime_not_proven`: enrollment,
+session use, multiple profiles, invoice listing, and contacts now have bounded
+single-device evidence, but the repaired detail/PDF and remaining lifecycle
+journeys do not. The public endpoint and build configuration do not prove those
+missing paths.
 
 ## Scope and evidence boundary
 

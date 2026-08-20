@@ -18,6 +18,16 @@ API_CLIENT = (
     ANDROID
     / 'app/src/main/java/sk/zevsflow/officeflow/network/OfficeFlowApiClient.kt'
 )
+APP_SOURCE = (
+    ANDROID / 'app/src/main/java/sk/zevsflow/officeflow/ui/OfficeFlowApp.kt'
+)
+NAVIGATION_SOURCE = (
+    ANDROID
+    / 'app/src/main/java/sk/zevsflow/officeflow/ui/OfficeFlowNavigation.kt'
+)
+MODELS_SOURCE = (
+    ANDROID / 'app/src/main/java/sk/zevsflow/officeflow/data/Models.kt'
+)
 
 
 def _android_text() -> str:
@@ -25,6 +35,8 @@ def _android_text() -> str:
         path.read_text(encoding='utf-8')
         for path in sorted(ANDROID.rglob('*'))
         if path.is_file()
+        and 'build' not in path.parts
+        and '.gradle' not in path.parts
         and path.suffix in {'.kt', '.kts', '.xml', '.properties'}
     )
 
@@ -68,6 +80,62 @@ def test_android_negative_space_has_no_business_mutation_or_ai_stack() -> None:
     api_source = API_CLIENT.read_text(encoding='utf-8').lower()
     assert api_source.count('.post(') == 1  # one builder used by enrollment/refresh
     assert len(re.findall(r'\.url\(url\("/v1/session"\)\)\s*\.delete\(\)', api_source)) == 1
+
+
+def test_c1_home_uses_frozen_domains_without_flat_bottom_navigation() -> None:
+    navigation = NAVIGATION_SOURCE.read_text(encoding='utf-8')
+    app = APP_SOURCE.read_text(encoding='utf-8')
+
+    domain_labels = re.findall(
+        r'BusinessDomain\(\s*id = "[^"]+",\s*label = "([^"]+)"',
+        navigation,
+    )
+    assert domain_labels == [
+        'Faktúry',
+        'Bločky',
+        'Kontakty',
+        'Pracovný čas',
+        'Analytika',
+        'InfoHelp',
+    ]
+    assert 'startDestination = HOME_ROUTE' in app
+    assert 'NavigationBar' not in app
+    assert 'VOICE_CHAT_LABEL = "Hlas / Chat"' in navigation
+    assert 'label = "Doklady"' not in navigation
+    assert 'label = "Bločky/Doklady"' not in navigation
+
+
+def test_c1_unavailable_domains_have_no_network_owner_and_no_microphone_permission() -> None:
+    navigation = NAVIGATION_SOURCE.read_text(encoding='utf-8')
+    app = APP_SOURCE.read_text(encoding='utf-8')
+    manifest = (ANDROID / 'app/src/main/AndroidManifest.xml').read_text(
+        encoding='utf-8'
+    )
+
+    assert navigation.count('availability = C1Availability.EXISTING_INVOICES') == 1
+    assert navigation.count('availability = C1Availability.EXISTING_CONTACTS') == 1
+    assert 'RECORD_AUDIO' not in manifest
+    assert 'C1Availability.UNAVAILABLE -> nav.navigate' in app
+    assert 'Hlas a chat budú dostupné v ďalšej fáze.' in app
+
+
+def test_c1_responsive_and_nullable_detail_boundaries_are_explicit() -> None:
+    app = APP_SOURCE.read_text(encoding='utf-8')
+    models = MODELS_SOURCE.read_text(encoding='utf-8')
+    smoke = (
+        ANDROID
+        / 'app/src/androidTest/java/sk/zevsflow/officeflow/ResponsiveC1SmokeTest.kt'
+    ).read_text(encoding='utf-8')
+
+    assert 'val unit: String? = null' in models
+    assert 'jednotka neuvedená' in app
+    assert 'contentWindowInsets = ScaffoldDefaults.contentWindowInsets' in app
+    assert '.consumeWindowInsets(padding)' in app
+    assert 'assertHomeAtFontScale(1.3f)' in smoke
+    assert 'assertHomeAtFontScale(1.5f)' in smoke
+    assert 'assertHomeAtFontScale(2f)' in smoke
+    assert 'longContactFieldsRemainReachableAtLargeFontScale' in smoke
+    assert 'performScrollTo()' in smoke
 
 
 def test_release_network_and_backup_policy_fail_closed() -> None:
@@ -125,7 +193,8 @@ def test_android_product_truth_and_slovak_infohelp_are_bounded_and_side_effect_f
 
     assert response is not None
     assert 'čiastočné' in response
-    assert 'Produkčný API endpoint ešte nie je nasadený' in response
+    assert 'overené na jednom autorizovanom Samsung zariadení' in response
+    assert 'nový APK ešte potrebuje reálne overenie' in response
     assert 'Nevytvára ani neupravuje faktúry' in response
     assert before == after
 

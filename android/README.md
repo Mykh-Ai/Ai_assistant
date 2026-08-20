@@ -79,9 +79,17 @@ credentials must never be committed or passed as ordinary Gradle properties.
 
 A dedicated public HTTPS boundary for the controlled OfficeFlow Android pilot
 has been deployed and proven separately from Stage B. No pilot hostname is
-committed into Android application source, no enrollment has been issued, and
-the real-phone authenticated journey is still not proven. Telegram remains the
-current production end-user runtime for business workflows.
+committed into Android application source. Administrator enrollment,
+authenticated session use, multiple profiles, invoice listing, and contacts
+were proven on one authorized Samsung pilot device. The C1 Home build and
+nullable invoice-detail repair still require a new APK/device check; detail/PDF,
+restart restoration, profile switching, and logout are not yet proven after C1.
+Telegram remains the runtime for business actions not supported on Android.
+
+C1 starts at `Domov`, shows exactly the six approved business domains, and keeps
+`Hlas / Chat` separate. Only `Faktúry -> Existujúce faktúry` and
+`Kontakty -> Existujúce kontakty` are network-capable. Other domain actions are
+truthful local unavailable states with no hidden network or business effect.
 
 The app calls only the nine approved Stage A routes for enrollment, session
 refresh/revoke/status, workspace listing, outgoing invoice list/detail/PDF, and

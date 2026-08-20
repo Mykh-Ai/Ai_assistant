@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -83,6 +84,34 @@ class OfficeFlowApiClientTest {
         )
     }
 
+    @Test fun productionShapedInvoiceDetailAcceptsNullableLegacyFields() = runTest {
+        server.enqueue(jsonResponse(invoiceDetailJson(unit = null, customer = false)))
+
+        val result = api.getInvoice("access-secret", "ws-a", 7)
+
+        assertTrue(result is ApiResult.Success)
+        val invoice = (result as ApiResult.Success).value.invoice
+        assertNull(invoice.customer)
+        assertEquals(1, invoice.items.size)
+        assertNull(invoice.items.single().unit)
+        assertEquals("August", invoice.items.single().detail)
+        assertEquals("/v1/invoices/7?workspace_id=ws-a", server.takeRequest().path)
+    }
+
+    @Test fun invoiceDetailRetryKeepsTheSameExplicitWorkspaceScope() = runTest {
+        server.enqueue(errorResponse(404, "not_found"))
+        server.enqueue(jsonResponse(invoiceDetailJson()))
+
+        assertEquals(
+            ApiResult.HttpFailure(404, "not_found"),
+            api.getInvoice("access-secret", "ws-a", 7),
+        )
+        assertTrue(api.getInvoice("access-secret", "ws-a", 7) is ApiResult.Success)
+
+        assertEquals("/v1/invoices/7?workspace_id=ws-a", server.takeRequest().path)
+        assertEquals("/v1/invoices/7?workspace_id=ws-a", server.takeRequest().path)
+    }
+
     @Test fun pdfRequiresCorrectTypeSignatureAndPrivateCallerTarget() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200)
@@ -148,8 +177,11 @@ class OfficeFlowApiClientTest {
     private fun invoiceListJson() =
         """{"workspace_id":"ws-a","invoices":[{"id":7,"invoice_number":"20260007","issue_date":"2026-08-01","delivery_date":"2026-08-01","due_date":"2026-08-15","due_days":14,"total_amount":100.0,"currency":"EUR","status":"created","customer":{"id":2,"name":"Customer"}}],"limit":50,"offset":0}"""
 
-    private fun invoiceDetailJson() =
-        """{"workspace_id":"ws-a","invoice":{"id":7,"invoice_number":"20260007","issue_date":"2026-08-01","delivery_date":"2026-08-01","due_date":"2026-08-15","due_days":14,"total_amount":100.0,"currency":"EUR","status":"created","customer":{"id":2,"name":"Customer"},"items":[{"description":"Work","detail":"August","quantity":2.0,"unit":"hour","unit_price":50.0,"total_price":100.0}]}}"""
+    private fun invoiceDetailJson(unit: String? = "hour", customer: Boolean = true): String {
+        val customerJson = if (customer) "{\"id\":2,\"name\":\"Customer\"}" else "null"
+        val unitJson = unit?.let { "\"$it\"" } ?: "null"
+        return """{"workspace_id":"ws-a","invoice":{"id":7,"invoice_number":"20260007","issue_date":"2026-08-01","delivery_date":"2026-08-01","due_date":"2026-08-15","due_days":14,"total_amount":100.0,"currency":"EUR","status":"created","customer":$customerJson,"items":[{"description":"Work","detail":"August","quantity":2.0,"unit":$unitJson,"unit_price":50.0,"total_price":100.0}]}}"""
+    }
 
     private fun jsonResponse(body: String) = MockResponse()
         .setResponseCode(200)

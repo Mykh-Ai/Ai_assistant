@@ -286,6 +286,10 @@ def test_stage_b_registers_only_truthful_partial_android_capability() -> None:
     assert capability.capability.requires_admin is True
     assert capability.capability.requires_setup is True
     assert any(
-        'not deployed' in limitation
+        'controlled HTTPS pilot endpoint is active' in limitation
+        for limitation in capability.capability.current_limitations
+    )
+    assert any(
+        'real-device acceptance' in limitation
         for limitation in capability.capability.current_limitations
     )

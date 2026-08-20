@@ -44,8 +44,12 @@ sealed interface DetailState {
     data object Idle : DetailState
     data object Loading : DetailState
     data class Ready(val invoice: InvoiceDetail) : DetailState
-    data class Error(val message: String) : DetailState
+    data class Error(val failure: DetailFailure) : DetailState
 }
+
+enum class DetailFailureKind { NOT_AVAILABLE, NETWORK, PROTOCOL, UNEXPECTED }
+
+data class DetailFailure(val kind: DetailFailureKind, val message: String)
 
 sealed interface PdfUiState {
     data object Idle : PdfUiState
@@ -170,7 +174,7 @@ class OfficeFlowViewModel(private val container: AppContainer) : ViewModel() {
                 is SessionResult.Success -> _detail.value = DetailState.Ready(result.value)
                 else -> {
                     handleSessionResult(result)
-                    _detail.value = DetailState.Error(messageFor(result))
+                    _detail.value = DetailState.Error(detailFailureFor(result))
                 }
             }
         }
@@ -256,4 +260,41 @@ class OfficeFlowViewModel(private val container: AppContainer) : ViewModel() {
         releasePdf()
         super.onCleared()
     }
+}
+
+internal fun detailFailureFor(result: SessionResult<*>): DetailFailure = when (result) {
+    is SessionResult.Failure -> when (result.message) {
+        "not_found", "workspace_not_found" -> DetailFailure(
+            DetailFailureKind.NOT_AVAILABLE,
+            "Faktúra nie je v tomto profile dostupná.",
+        )
+        "network_unavailable" -> DetailFailure(
+            DetailFailureKind.NETWORK,
+            "Pripojenie sa nepodarilo. Skontrolujte internet a skúste to znova.",
+        )
+        "response_invalid", "response_too_large" -> DetailFailure(
+            DetailFailureKind.PROTOCOL,
+            "Odpoveď servera sa nepodarilo bezpečne spracovať.",
+        )
+        else -> DetailFailure(
+            DetailFailureKind.UNEXPECTED,
+            "Požiadavku sa nepodarilo dokončiť.",
+        )
+    }
+    SessionResult.EnrollmentRequired -> DetailFailure(
+        DetailFailureKind.UNEXPECTED,
+        "Vyžaduje sa nové pripojenie.",
+    )
+    SessionResult.TemporarilyBlocked -> DetailFailure(
+        DetailFailureKind.UNEXPECTED,
+        "Prístup je dočasne zablokovaný.",
+    )
+    SessionResult.RefreshUncertain -> DetailFailure(
+        DetailFailureKind.NETWORK,
+        "Obnovenie relácie sa nedá bezpečne potvrdiť.",
+    )
+    is SessionResult.Success -> DetailFailure(
+        DetailFailureKind.UNEXPECTED,
+        "Požiadavku sa nepodarilo dokončiť.",
+    )
 }
