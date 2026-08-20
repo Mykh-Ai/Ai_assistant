@@ -56,12 +56,34 @@ An HTTPS development endpoint can be supplied without changing source:
   -POFFICEFLOW_DEBUG_API_BASE_URL=https://approved-test-api.example
 ```
 
-The GitHub Actions `workflow_dispatch` input `api_base_url` is optional. When it
-is supplied, the workflow accepts only the separately approved OfficeFlow pilot
-HTTPS endpoint, passes it through `OFFICEFLOW_DEBUG_API_BASE_URL`, and verifies
-the generated debug `BuildConfig` before uploading an
-`officeflow-android-pilot-<GITHUB_SHA>` artifact. Pull-request builds retain the
-emulator default.
+Pull-request builds use the ordinary ephemeral debug certificate and retain the
+emulator default. A manual GitHub Actions run uses the fixed, separately
+approved OfficeFlow pilot HTTPS endpoint and the protected
+`android-pilot-signing` environment. It verifies the generated `BuildConfig`
+and the pinned public signing-certificate SHA-256 before uploading an
+`officeflow-android-pilot-<GITHUB_SHA>` artifact.
+
+## Stable pilot signing and upgrades
+
+Pilot APKs are signed with one long-lived key held outside Git. GitHub receives
+the encrypted keystore and its credentials only as protected environment
+secrets; the workflow restores the keystore under the runner's temporary
+directory, passes credentials to Gradle through environment variables, and
+removes the restored file even after failure. Pull-request jobs do not reference
+the signing environment or its secrets.
+
+The APK contains the public signing certificate and signature, never the
+private key or keystore password. The pinned pilot certificate SHA-256 is:
+
+`3835035c2df22b22406a00c359cc1a03e54f61852c302ed7c6392702a9d8e6fe`
+
+The first APK signed by this certificate requires one final uninstall of the
+older ephemeral-debug build, followed by install and administrator enrollment.
+After that, later pilot APKs with the same application ID and certificate can
+be installed as updates. Android then retains app-private data and the
+AndroidKeyStore-backed OfficeFlow session. Clearing app data, uninstalling,
+changing phones, server-side revocation, or session expiry still requires a new
+enrollment.
 
 Release builds have no source-controlled production hostname and fail unless an
 HTTPS endpoint is explicitly supplied at build time:
@@ -71,7 +93,8 @@ HTTPS endpoint is explicitly supplied at build time:
   -POFFICEFLOW_API_BASE_URL=https://approved-pilot-api.example
 ```
 
-The URL is public build configuration, never an API secret. Enrollment codes,
+The URL and public certificate fingerprint are public build metadata, never API
+secrets. Enrollment codes,
 access tokens, refresh tokens, signing keys, production host secrets, and other
 credentials must never be committed or passed as ordinary Gradle properties.
 

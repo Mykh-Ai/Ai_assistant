@@ -75,14 +75,24 @@ are exercised, including invoice detail/PDF, restart-to-Home, profile switching,
 large font/long text, back navigation, and logout. Presence of unavailable Home
 domains must not be interpreted as functional Android parity.
 
+The C1 pilot packaging now uses one pinned controlled-pilot signing certificate
+instead of the GitHub runner's per-build debug certificate. The public
+certificate SHA-256 is
+`3835035c2df22b22406a00c359cc1a03e54f61852c302ed7c6392702a9d8e6fe`.
+One final uninstall/install/enrollment is required to cross from the previous
+ephemeral signer; subsequent same-signer APK updates preserve app-private data
+and the AndroidKeyStore session. This fixes update continuity only and does not
+prove any pending C1 device scenario.
+
 ## Validation checkpoint
 
 - Android main, JVM-test, and instrumentation-test source compilation: pass.
 - `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: pass.
 - Focused Product Truth/API/Android boundary regression: `45 passed`.
-- Full repository regression: `2616 passed, 7 subtests passed`.
+- Full repository regression: `2617 passed, 7 subtests passed`.
 - `python -m compileall -q bot`: pass.
 - `git diff --check`: pass.
+- Stable-signed local pilot assembly and `apksigner` certificate pin: pass.
 
 The host-built debug APK is build evidence only. Compose instrumentation remains
 authored for 1.3/1.5/2.0 font scale and long profile/contact/detail content, but

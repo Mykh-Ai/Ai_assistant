@@ -28,6 +28,7 @@ NAVIGATION_SOURCE = (
 MODELS_SOURCE = (
     ANDROID / 'app/src/main/java/sk/zevsflow/officeflow/data/Models.kt'
 )
+ANDROID_WORKFLOW = ROOT / '.github/workflows/android-debug-apk.yml'
 
 
 def _android_text() -> str:
@@ -153,6 +154,36 @@ def test_release_network_and_backup_policy_fail_closed() -> None:
     assert 'android:allowBackup="false"' in main_manifest
     assert '<domain includeSubdomains="false">10.0.2.2</domain>' in debug_network
     assert debug_network.count('<domain ') == 1
+
+
+def test_pilot_signing_is_isolated_from_pull_request_builds_and_pinned() -> None:
+    workflow = ANDROID_WORKFLOW.read_text(encoding='utf-8')
+    build = (ANDROID / 'app/build.gradle.kts').read_text(encoding='utf-8')
+
+    debug_job, pilot_job = workflow.split('  android-pilot:', maxsplit=1)
+    assert "if: github.event_name == 'pull_request'" in debug_job
+    assert 'environment: android-pilot-signing' not in debug_job
+    assert 'secrets.OFFICEFLOW_PILOT_' not in debug_job
+    assert "if: github.event_name == 'workflow_dispatch'" in pilot_job
+    assert 'environment: android-pilot-signing' in pilot_job
+    assert 'OFFICEFLOW_PILOT_KEYSTORE_B64' in pilot_job
+    assert 'OFFICEFLOW_PILOT_KEYSTORE_PASSWORD' in pilot_job
+    assert 'OFFICEFLOW_PILOT_KEY_ALIAS' in pilot_job
+    assert 'OFFICEFLOW_PILOT_KEY_PASSWORD' in pilot_job
+    assert '${RUNNER_TEMP}/officeflow-pilot-signing.p12' in pilot_job
+    assert 'if: always()' in pilot_job
+    assert '3835035c2df22b22406a00c359cc1a03e54f61852c302ed7c6392702a9d8e6fe' in pilot_job
+    assert 'stable_pilot_signing_verified=true' in pilot_job
+
+    for variable in (
+        'OFFICEFLOW_PILOT_KEYSTORE_PATH',
+        'OFFICEFLOW_PILOT_KEYSTORE_PASSWORD',
+        'OFFICEFLOW_PILOT_KEY_ALIAS',
+        'OFFICEFLOW_PILOT_KEY_PASSWORD',
+    ):
+        assert f'environmentVariable("{variable}")' in build
+    assert 'pilotSigningInputCount == 0 ||' in build
+    assert 'signingConfig = signingConfigs.getByName("pilot")' in build
 
 
 def test_secure_store_uses_keystore_no_backup_and_contains_no_plaintext_fallback() -> None:

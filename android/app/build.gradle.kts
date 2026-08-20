@@ -16,6 +16,28 @@ val releaseApiUrl = providers.gradleProperty("OFFICEFLOW_API_BASE_URL")
     ?.trim()
     ?.trimEnd('/')
 
+val pilotKeystorePath = providers.environmentVariable("OFFICEFLOW_PILOT_KEYSTORE_PATH")
+    .orNull
+    ?.trim()
+val pilotKeystorePassword = providers.environmentVariable("OFFICEFLOW_PILOT_KEYSTORE_PASSWORD")
+    .orNull
+val pilotKeyAlias = providers.environmentVariable("OFFICEFLOW_PILOT_KEY_ALIAS")
+    .orNull
+    ?.trim()
+val pilotKeyPassword = providers.environmentVariable("OFFICEFLOW_PILOT_KEY_PASSWORD")
+    .orNull
+val pilotSigningInputs = listOf(
+    pilotKeystorePath,
+    pilotKeystorePassword,
+    pilotKeyAlias,
+    pilotKeyPassword,
+)
+val pilotSigningInputCount = pilotSigningInputs.count { !it.isNullOrBlank() }
+require(pilotSigningInputCount == 0 || pilotSigningInputCount == pilotSigningInputs.size) {
+    "Pilot signing requires all OFFICEFLOW_PILOT_KEYSTORE_* and OFFICEFLOW_PILOT_KEY_* environment variables."
+}
+val pilotSigningEnabled = pilotSigningInputCount == pilotSigningInputs.size
+
 fun quoted(value: String): String = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 fun validateDebugUrl(value: String) {
@@ -54,11 +76,25 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    signingConfigs {
+        if (pilotSigningEnabled) {
+            create("pilot") {
+                storeFile = file(requireNotNull(pilotKeystorePath))
+                storePassword = requireNotNull(pilotKeystorePassword)
+                keyAlias = requireNotNull(pilotKeyAlias)
+                keyPassword = requireNotNull(pilotKeyPassword)
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             buildConfigField("String", "OFFICEFLOW_API_BASE_URL", quoted(debugApiUrl))
+            if (pilotSigningEnabled) {
+                signingConfig = signingConfigs.getByName("pilot")
+            }
         }
         release {
             isMinifyEnabled = false

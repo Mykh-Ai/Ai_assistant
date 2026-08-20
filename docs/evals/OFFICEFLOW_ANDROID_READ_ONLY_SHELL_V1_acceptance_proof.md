@@ -16,11 +16,19 @@ Overall verdict: `runtime_not_proven`
   `https://officeflow-pilot-api.zevsflow.sk`, including valid TLS, HTTP-to-HTTPS
   redirection, and unauthenticated `401`/`405`/`404` boundaries. That rollout did
   not issue an enrollment or mutate business data.
-- The bounded GitHub Actions pilot build uses workflow input rather than an
-  application-source hostname. It passes the exact verified HTTPS URL as
-  `OFFICEFLOW_DEBUG_API_BASE_URL`, runs JVM tests, lint, and debug assembly, and
-  verifies the generated debug `BuildConfig` contains the pilot URL and not the
-  emulator default before publishing the pilot-named APK artifact.
+- The bounded GitHub Actions pilot build uses workflow configuration rather
+  than an application-source hostname. The manual pilot job passes the exact
+  verified HTTPS URL as `OFFICEFLOW_DEBUG_API_BASE_URL`, runs JVM tests, lint,
+  and debug assembly, and verifies the generated debug `BuildConfig` contains
+  the pilot URL and not the emulator default before publishing the pilot-named
+  APK artifact.
+- The manual pilot job is isolated behind the required-reviewer
+  `android-pilot-signing` environment and the exact pilot branch. Pull-request
+  builds cannot reference its secrets. The protected keystore is restored only
+  under runner-temporary storage, removed on every exit, and its public
+  certificate SHA-256 is pinned to
+  `3835035c2df22b22406a00c359cc1a03e54f61852c302ed7c6392702a9d8e6fe`.
+  A local forced assembly and `apksigner` verification matched that pin.
 - The resulting pilot artifact is a debug APK for controlled real-phone
   acceptance. It is not a release, production-signed, Play Store, or general
   distribution build.
@@ -30,6 +38,11 @@ Overall verdict: `runtime_not_proven`
   makes only that response field nullable and keeps the server contract/schema
   unchanged. The repaired detail, PDF rendering, restart/session restoration,
   profile switch, and logout still require the new C1 APK on-device check.
+- Crossing from the earlier ephemeral GitHub debug signer requires one final
+  uninstall/install/enrollment. Later pilot APKs with the same application id
+  and pinned signer can update in place and preserve app-private data and the
+  AndroidKeyStore session. Uninstall, clear-data, a different device, revocation,
+  or session-policy expiry still requires enrollment.
 
 The acceptance verdict therefore remains `runtime_not_proven`: enrollment,
 session use, multiple profiles, invoice listing, and contacts now have bounded
