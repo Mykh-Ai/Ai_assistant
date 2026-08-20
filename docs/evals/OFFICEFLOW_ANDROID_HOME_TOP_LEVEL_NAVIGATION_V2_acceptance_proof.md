@@ -113,8 +113,16 @@ prove any pending C1 device scenario.
 - C1 PDF repair focused API suite: `20 passed`.
 - C1 PDF repair full repository regression: `2617 passed, 7 subtests passed`.
 - C1 PDF repair `python -m compileall -q bot` and `git diff --check`: pass.
-- C1 PDF repair Android JDK 17 JVM/lint/assemble and stable-signed artifact:
-  pending the existing GitHub workflow; the local host exposes Java 8 only.
+- C1 PDF repair PR run `32395879671`: JDK 17 Android JVM tests, lint, and
+  debug assembly pass.
+- C1 PDF repair stable-pilot run `32396113507` on exact code/workflow SHA
+  `4b4d249859865c6ab85344a31e7757bb6e7e28e7`: JVM tests, lint, stable-signed
+  assembly, exact HTTPS endpoint proof, pinned-certificate proof, checksum,
+  artifact upload, and signing-key cleanup pass. Artifact id `9416786993` has
+  APK SHA-256
+  `8c41ceef7fd9ee2e641433fca80be82400f6fa3957dc9de7ced16cdbab3717b8` and
+  certificate SHA-256
+  `3835035c2df22b22406a00c359cc1a03e54f61852c302ed7c6392702a9d8e6fe`.
 - Android main, JVM-test, and instrumentation-test source compilation: pass.
 - `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`: pass.
 - Focused Product Truth/API/Android boundary regression: `45 passed`.
