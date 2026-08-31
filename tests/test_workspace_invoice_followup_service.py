@@ -14,6 +14,13 @@ from bot.handlers.invoice_followup import (
     invoice_followup_callback,
 )
 from bot.services.access_control import AccessControlService
+from bot.services.archive_job_service import ARCHIVE_JOB_RETRY_WAIT, ARCHIVE_JOB_UPLOADED
+from bot.services.archive_worker import (
+    ARCHIVE_ERROR_NOT_CONFIGURED,
+    ArchiveUploadNotConfiguredError,
+    ArchiveUploadResult,
+    ArchiveWorker,
+)
 from bot.services.contact_service import ContactProfile
 from bot.services.db import init_db
 from bot.services.invoice_analytics_dataset import InvoiceAnalyticsDatasetService
@@ -44,6 +51,26 @@ from bot.services.workspace_profile_service import (
 
 
 USER_ID = 90902
+
+
+class _DriveArchiveProvider:
+    def __init__(self, *, configured: bool = True) -> None:
+        self.configured = configured
+
+    def upload_file(
+        self,
+        *,
+        local_file_path: Path,
+        target_folder_path: str | None,
+        document_type: str,
+        metadata: dict[str, object],
+    ) -> ArchiveUploadResult:
+        if not self.configured:
+            raise ArchiveUploadNotConfiguredError('google_drive_not_configured')
+        return ArchiveUploadResult(
+            drive_file_id='workspace-drive-file',
+            drive_folder_id='workspace-drive-folder',
+        )
 
 
 def _supplier(name: str) -> SupplierProfile:
@@ -468,3 +495,71 @@ def test_workspace_drive_enqueue_uses_storage_key_and_real_workspace_id(
     )
     assert state is not None
     assert state.drive_archive_status == 'pending'
+
+
+def test_workspace_invoice_archive_worker_records_uploaded_state(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / 'bot.db'
+    init_db(db_path)
+    first, _second, first_invoice, _second_invoice = _setup(db_path)
+    storage = WorkspaceInvoicePdfStorageService(db_path, tmp_path / 'storage')
+    pdf_path = storage.target_path(first, invoice_number=first_invoice.invoice_number)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    pdf_path.write_bytes(b'%PDF-1.4 test')
+    storage.persist_path(first, invoice_id=int(first_invoice.id), pdf_path=pdf_path)
+    invoice = WorkspaceInvoiceService(db_path).get_by_id(first, int(first_invoice.id))
+    assert invoice is not None
+    config = replace(_config(db_path, tmp_path / 'storage'), google_drive_enabled=True)
+    request = InvoiceDriveArchiveService(config).request_after_paid_for_workspace(
+        first,
+        invoice=invoice,
+    )
+
+    result = ArchiveWorker(db_path, _DriveArchiveProvider()).process_one()
+
+    assert request.job is not None
+    assert result.status == ARCHIVE_JOB_UPLOADED
+    state = WorkspaceInvoiceFollowupService(db_path).get_state(
+        first,
+        invoice_id=int(first_invoice.id),
+    )
+    assert state is not None
+    assert state.drive_archive_status == 'uploaded'
+    assert pdf_path.exists()
+
+
+def test_workspace_invoice_archive_worker_records_retry_wait_without_legacy_error(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / 'bot.db'
+    init_db(db_path)
+    first, _second, first_invoice, _second_invoice = _setup(db_path)
+    storage = WorkspaceInvoicePdfStorageService(db_path, tmp_path / 'storage')
+    pdf_path = storage.target_path(first, invoice_number=first_invoice.invoice_number)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    pdf_path.write_bytes(b'%PDF-1.4 test')
+    storage.persist_path(first, invoice_id=int(first_invoice.id), pdf_path=pdf_path)
+    invoice = WorkspaceInvoiceService(db_path).get_by_id(first, int(first_invoice.id))
+    assert invoice is not None
+    config = replace(_config(db_path, tmp_path / 'storage'), google_drive_enabled=True)
+    request = InvoiceDriveArchiveService(config).request_after_paid_for_workspace(
+        first,
+        invoice=invoice,
+    )
+
+    result = ArchiveWorker(
+        db_path,
+        _DriveArchiveProvider(configured=False),
+    ).process_one()
+
+    assert request.job is not None
+    assert result.status == ARCHIVE_JOB_RETRY_WAIT
+    assert result.error_code == ARCHIVE_ERROR_NOT_CONFIGURED
+    state = WorkspaceInvoiceFollowupService(db_path).get_state(
+        first,
+        invoice_id=int(first_invoice.id),
+    )
+    assert state is not None
+    assert state.drive_archive_status == 'retry_wait'
+    assert pdf_path.exists()

@@ -17,12 +17,15 @@ from bot.services.accounting_document_archive_service import (
     AccountingDocumentArchiveServiceError,
 )
 from bot.services.archive_job_service import ArchiveJobRecord, ArchiveJobService
+from bot.services.db import managed_connection
 from bot.services.invoice_followup_service import (
     DRIVE_ARCHIVE_STATUS_FAILED,
     DRIVE_ARCHIVE_STATUS_RETRY_WAIT,
     DRIVE_ARCHIVE_STATUS_UPLOADED,
     InvoiceFollowupService,
 )
+from bot.services.workspace_context import WorkspaceContextService
+from bot.services.workspace_invoice_followup_service import WorkspaceInvoiceFollowupService
 
 
 ARCHIVE_WORKER_NOOP = "noop"
@@ -274,9 +277,9 @@ class ArchiveWorker:
             drive_folder_id=upload_result.drive_folder_id,
             uploaded_at=now,
         )
-        InvoiceFollowupService(self._db_path).record_drive_archive_status(
+        self._record_invoice_drive_archive_status(
+            job,
             invoice_id=invoice_id,
-            supplier_telegram_id=job.telegram_id,
             status=DRIVE_ARCHIVE_STATUS_UPLOADED,
             note="PDF faktury bol nahraty na Google Drive. Lokalny PDF ostava ulozeny v bote.",
         )
@@ -302,9 +305,9 @@ class ArchiveWorker:
             next_attempt_at=next_attempt_at,
             now=now,
         )
-        InvoiceFollowupService(self._db_path).record_drive_archive_status(
+        self._record_invoice_drive_archive_status(
+            job,
             invoice_id=invoice_id,
-            supplier_telegram_id=job.telegram_id,
             status=DRIVE_ARCHIVE_STATUS_RETRY_WAIT if updated_job.status == "retry_wait" else DRIVE_ARCHIVE_STATUS_FAILED,
             note="Archivacia PDF faktury na Google Drive zatial nepresla. Lokalny PDF ostava ulozeny v bote.",
         )
@@ -325,9 +328,9 @@ class ArchiveWorker:
     ) -> ArchiveWorkerResult:
         _log_worker_failure(job, error_code)
         updated_job = self._jobs.mark_failed(job.job_id, error_code=error_code, now=now)
-        InvoiceFollowupService(self._db_path).record_drive_archive_status(
+        self._record_invoice_drive_archive_status(
+            job,
             invoice_id=invoice_id,
-            supplier_telegram_id=job.telegram_id,
             status=DRIVE_ARCHIVE_STATUS_FAILED,
             note="Archivacia PDF faktury na Google Drive zlyhala. Lokalny PDF ostava ulozeny v bote.",
         )
@@ -336,6 +339,60 @@ class ArchiveWorker:
             job_id=job.job_id,
             archive_status=updated_job.status,
             error_code=error_code,
+        )
+
+    def _record_invoice_drive_archive_status(
+        self,
+        job: ArchiveJobRecord,
+        *,
+        invoice_id: int,
+        status: str,
+        note: str,
+    ) -> None:
+        with managed_connection(self._db_path) as connection:
+            columns = {
+                row[1] for row in connection.execute('PRAGMA table_info(invoice)')
+            }
+            workspace_column = 'workspace_id' if 'workspace_id' in columns else None
+            selected_columns = (
+                'workspace_id, supplier_telegram_id'
+                if workspace_column is not None
+                else 'supplier_telegram_id'
+            )
+            row = connection.execute(
+                f'SELECT {selected_columns} FROM invoice WHERE id = ?',
+                (invoice_id,),
+            ).fetchone()
+        if row is None:
+            raise ValueError('invoice_archive_job_invoice_missing')
+
+        persisted_workspace_id = row[0] if workspace_column is not None else None
+        persisted_telegram_id = int(row[1] if workspace_column is not None else row[0])
+        if persisted_telegram_id != job.telegram_id:
+            raise ValueError('invoice_archive_job_actor_mismatch')
+
+        if persisted_workspace_id is None:
+            InvoiceFollowupService(self._db_path).record_drive_archive_status(
+                invoice_id=invoice_id,
+                supplier_telegram_id=job.telegram_id,
+                status=status,
+                note=note,
+            )
+            return
+
+        workspace_id = str(persisted_workspace_id)
+        if workspace_id != job.workspace_id:
+            raise ValueError('invoice_archive_job_workspace_mismatch')
+        context = WorkspaceContextService(
+            self._db_path
+        ).resolve_for_background_workspace(workspace_id)
+        if context.actor_telegram_id != job.telegram_id:
+            raise ValueError('invoice_archive_job_actor_mismatch')
+        WorkspaceInvoiceFollowupService(self._db_path).record_drive_archive_status(
+            context,
+            invoice_id=invoice_id,
+            status=status,
+            note=note,
         )
 
     def _delete_uploaded_original_if_allowed(self, job: ArchiveJobRecord, archive_status: str) -> None:
