@@ -14,6 +14,10 @@ Implemented runtime paths:
 - confirmed receipts (`receipt`) upload to `FakturaBot/<year>/blocky/<year-month>/`;
 - confirmed incoming invoices (`incoming_invoice`) upload to `FakturaBot/<year>/prijate_faktury/<year-month>/`;
 - outgoing invoice PDFs (`invoice_pdf`) are enqueued only after a control event such as marking the invoice paid, then upload to `FakturaBot/<year>/faktury/<year-month>/`;
+- before recording an outgoing invoice upload result, workspace-scoped jobs
+  must match the invoice's persisted actor and immutable `workspace_id` and
+  must update follow-up state through `WorkspaceInvoiceFollowupService`; only
+  legacy invoices with a null persisted `workspace_id` use the legacy service;
 - invoice PDFs remain local in `storage/invoices/...` in this MVP;
 - receipt and incoming-invoice originals may be deleted only after upload success and DB state has been updated to `uploaded`; metadata JSON remains local.
 
@@ -83,7 +87,9 @@ deleted on failed upload.
 
 ## Test Evidence
 
-Focused no-network coverage lives in `tests/test_google_drive_service_account_archive.py`,
-`tests/test_archive_worker.py`, `tests/test_product_truth.py`, and
-`tests/test_info_help.py`. Unit tests use fake Drive services and must not call
-real Google APIs.
+Focused no-network coverage lives in
+`tests/test_google_drive_service_account_archive.py`,
+`tests/test_archive_worker.py`,
+`tests/test_workspace_invoice_followup_service.py`, `tests/test_product_truth.py`,
+and `tests/test_info_help.py`. Unit tests use fake Drive services and must not
+call real Google APIs.

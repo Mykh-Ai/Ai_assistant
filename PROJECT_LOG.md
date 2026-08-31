@@ -1,3 +1,43 @@
+# 2026-08-31 - Google Drive reauthorization and workspace archive-worker repair
+
+- Read-only production diagnosis found the shared owner Drive connection in
+  `needs_reauth` after Google rejected its refresh token with `invalid_grant`.
+  The grant had been created while the external OAuth application was still in
+  `Testing`; the application is now confirmed as `In production`, but changing
+  publishing status did not revive the already expired Drive grant.
+- The administrator completed fresh consent through the existing manual
+  localhost redirect. The browser's one-time OAuth `code` and `state` were
+  transferred to the FakturaBot server over SSH without printing or persisting
+  them in repository files, command arguments, logs, or chat. The new refresh
+  token was stored only through the configured encrypted token provider.
+- Before the token write, an online SQLite backup was created at
+  `/bot/backups/google-drive-reauth-20260831T170240Z/fakturabot.db`; its
+  `PRAGMA quick_check` returned `ok`. After the write, the live connection
+  reported `connected`, the configured root folder remained present, and the
+  live database again returned `quick_check=ok`.
+- A separate no-persistence refresh probe succeeded. The temporary local OAuth
+  payload and the browser tab containing the authorization code were removed
+  after the exchange.
+- Read-only queue inspection identified exactly three failed outgoing invoice
+  PDF jobs and one failed receipt job across two workspaces. All four failures
+  were bounded `google_drive_not_configured` outcomes and all four authoritative
+  local originals were still present.
+- Repaired `ArchiveWorker` invoice follow-up writes so a workspace-scoped job
+  verifies the persisted invoice actor and immutable workspace before using
+  `WorkspaceInvoiceFollowupService`. The legacy follow-up service is retained
+  only for invoices whose persisted `workspace_id` is null. This changes no
+  archive target, retention rule, OAuth behavior, schema, invoice content, or
+  active-workspace selection.
+- Added success and retry regression coverage for workspace invoice archive
+  jobs. Focused archive/invoice coverage passed (`134 passed`); the complete
+  suite passed (`2610 passed, 7 subtests passed`). Bytecode compilation and
+  `git diff --check` also passed.
+- At this checkpoint no Drive file/folder operation, archive-job retry,
+  accounting/invoice state repair, deployment, schema change, or remote
+  document mutation had yet been performed. The four failed jobs remained
+  unchanged pending the approved backup-backed production deployment and
+  requeue.
+
 # 2026-08-20 - OfficeFlow backend-only legacy PDF resolver hotfix
 
 - Started the dedicated `hotfix/officeflow-legacy-pdf-multi-workspace` branch directly from verified `origin/main` SHA `94fdf26b47c7218825c0618455e65d14d688eff8`. The approved backend repair was extracted from source evidence commit `4b4d249859865c6ab85344a31e7757bb6e7e28e7`; the commit itself and PR #105 were not cherry-picked, merged, or deployed.

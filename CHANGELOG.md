@@ -1,5 +1,13 @@
 # Changelog
 
+- Fixed Google Drive archive-worker status updates for workspace-scoped
+  outgoing invoice PDFs. The worker now verifies the invoice actor and
+  immutable workspace against the claimed archive job, records
+  `uploaded`/`retry_wait`/`failed` through the workspace-aware follow-up
+  service, and keeps the legacy service only for invoices whose persisted
+  `workspace_id` is null. The change does not alter archive targets, OAuth,
+  retention, schema, invoice content, or the user's active workspace.
+
 - Prepared a backend-only OfficeFlow hotfix for legacy invoice PDF reads by multi-workspace owners. A numeric-owner PDF may now stream only when its persisted invoice id/workspace, invoice number, filename, and pointer are uniquely attributable; duplicate numbers, shared pointers/filenames, foreign workspace paths, flat/arbitrary/escaped paths, missing files, oversized files, and invalid signatures remain bounded not-found failures. The patch moves or rewrites no data, adds no route/schema/migration, and changes no Android, Telegram/FSM, AI, Cloudflare, or production runtime state.
 
 - Implemented the approved OfficeFlow platform-neutral Stage A backend foundation: additive opaque principals with unique Telegram external-identity mappings, administrator-issued hashed one-time enrollment, opaque hashed access/refresh sessions with atomic refresh rotation and current-access revocation, and a separately startable bounded `aiohttp` application. The only business routes are membership-validated read-only workspace, invoice list/detail/PDF, and contact projections; responses are allowlisted. PDF reads now require the exact workspace storage root, while the numeric legacy-owner root is accepted only when its database ownership resolves to one workspace; poisoned cross-workspace pointers and ambiguous flat/arbitrary legacy roots fail closed. Administrator CLI tooling safely lists opaque session metadata and revokes one tenant-bound session by session id without exposing principal, token, or hash data. The approved account-reset addendum is also implemented: exact-confirmed `/vymazat_databazu` permanently revokes all sessions and pending enrollments for the actor's retained principal in the same SQLite transaction as the existing business reset and `deleted_database` state; ordinary block/unblock remains non-terminal. Added fail-closed schema validation, safe CLI issuance/status/revocation, existing-data preservation coverage, tenant/negative-route/FSM/AI/account-reset regressions, and synchronized acceptance proof. This code is not deployed, adds no public route or production migration, does not implement an Android application or Android business workflows, and does not replace Telegram.
