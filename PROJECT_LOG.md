@@ -32,11 +32,31 @@
   jobs. Focused archive/invoice coverage passed (`134 passed`); the complete
   suite passed (`2610 passed, 7 subtests passed`). Bytecode compilation and
   `git diff --check` also passed.
-- At this checkpoint no Drive file/folder operation, archive-job retry,
-  accounting/invoice state repair, deployment, schema change, or remote
-  document mutation had yet been performed. The four failed jobs remained
-  unchanged pending the approved backup-backed production deployment and
-  requeue.
+- PR #107 was merged and production was fast-forwarded from `94fdf26` to
+  `8dee082`; the FakturaBot image was rebuilt and polling restarted normally.
+  The server checkout remained clean and no environment or secret file was
+  changed.
+- A final fail-closed audit verified exactly the same four failed jobs, two
+  immutable workspaces, one connected owner Drive binding, four present local
+  originals, valid target shapes and matching persisted invoice/document
+  ownership. The audit also confirmed the old worker defect had left two
+  invoice follow-up rows at `pending` while their jobs were already `failed`;
+  the repair normalized these rows during the bounded requeue.
+- With only the bot container stopped, an online SQLite backup plus copies and
+  SHA-256 manifest of all four originals were created at
+  `/bot/backups/google-drive-requeue-20260831T174920Z/`. Its database
+  `quick_check` returned `ok`. One transaction reset only those four jobs to a
+  fresh `pending` attempt cycle and synchronized their dependent archive
+  states; the bot was then restarted.
+- All four jobs reached `uploaded`. Google Drive API readback verified all four
+  remote files as not trashed with matching names, parent folders, and byte
+  sizes, and verified all four target folders. The three invoice PDFs remain
+  local. The receipt original was deleted only after confirmed upload according
+  to the existing retention policy and remains recoverable from the backup.
+  Final live SQLite `quick_check` was `ok`, the production checkout was clean,
+  and recent logs contained no error, traceback, or archive-worker failure
+  markers. Temporary repair/readback scripts were removed from the server and
+  container.
 
 # 2026-08-20 - OfficeFlow backend-only legacy PDF resolver hotfix
 
