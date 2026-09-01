@@ -1,5 +1,13 @@
 # Changelog
 
+- Corrected workspace-scoped outgoing invoice PDF archive targets from the
+  shared `YYYY/faktury/YYYY-MM` tree to
+  `<workspace.drive_folder_name>/YYYY/faktury/YYYY-MM`. The target is derived
+  from the persisted invoice-bound `WorkspaceContext`, remains immutable after
+  enqueue, and is isolated across profiles. Legacy null-workspace invoices keep
+  their compatibility target; local PDF storage, retention, OAuth, schema,
+  scheduler, and worker behavior are unchanged.
+
 - Fixed Google Drive archive-worker status updates for workspace-scoped
   outgoing invoice PDFs. The worker now verifies the invoice actor and
   immutable workspace against the claimed archive job, records

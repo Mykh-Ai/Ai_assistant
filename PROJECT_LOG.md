@@ -1,3 +1,31 @@
+# 2026-09-01 - Workspace-scoped outgoing invoice Drive folder repair
+
+- Confirmed the reported production organization defect against current code:
+  receipts and incoming invoices already used the persisted business-profile
+  Drive folder, while workspace-scoped outgoing invoice PDFs still used the
+  legacy shared `YYYY/faktury/YYYY-MM` target. The previous recovery verified
+  the files against that stale target and therefore did not prove correct
+  multi-profile organization.
+- Changed only workspace-scoped outgoing invoice enqueue to persist
+  `<workspace.drive_folder_name>/YYYY/faktury/YYYY-MM`. Legacy invoices with a
+  null persisted workspace retain their compatibility path. Active profile
+  selection is not consulted after the invoice-bound context is supplied.
+- Added regression-first coverage for exact first-profile target, distinct
+  second-profile target, and immutability after active-profile switching. The
+  two tests failed on the old shared target and passed after the repair.
+- Focused Drive/workspace/Product Truth/InfoHelp coverage passed (`194 passed`)
+  and the relevant workspace/Product Truth/InfoHelp rerun passed (`146 passed`).
+  `compileall` and `git diff --check` passed. The complete repository run
+  reached `2610 passed, 7 subtests passed` with one repeatable unrelated
+  pre-existing work-time routing failure; no work-time source or test is
+  touched by this patch.
+- This checkpoint changes no production state yet. The approved production
+  repair remains migration-sensitive: audit the exact three uploaded PDFs,
+  snapshot SQLite and local invoice storage, verify current remote parents and
+  destination folders, move each file by adding only its verified destination
+  parent and removing only its verified source parent, synchronize only the
+  matching archive-job target/folder rows, and perform Drive API readback.
+
 # 2026-08-31 - Google Drive reauthorization and workspace archive-worker repair
 
 - Read-only production diagnosis found the shared owner Drive connection in

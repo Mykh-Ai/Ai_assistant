@@ -901,8 +901,9 @@ Required wording boundaries:
 
 - say it requires admin setup, OAuth client credentials, `GOOGLE_TOKEN_CRYPTO_SECRET`, an encrypted owner refresh token, and a personal My Drive root folder id;
 - say it is single-owner only, not per-client OAuth and not full SaaS Drive sync;
-- say newly confirmed receipts and incoming invoices use the owning workspace's
-  persisted separate Drive folder and immutable queued target;
+- say newly queued workspace-scoped outgoing invoice PDFs, confirmed receipts,
+  and incoming invoices use the owning workspace's persisted separate Drive
+  folder and immutable queued target;
 - say local save may succeed while upload is pending/unavailable, metadata stays
   local, and existing remote files are not migrated automatically;
 - say service-account mode is unsupported for personal My Drive unless Workspace/Shared Drive is explicitly configured later;

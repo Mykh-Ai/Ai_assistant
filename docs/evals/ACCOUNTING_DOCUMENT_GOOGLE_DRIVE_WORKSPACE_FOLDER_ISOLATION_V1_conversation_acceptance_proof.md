@@ -210,21 +210,25 @@ credential is recorded here.
 - Boundary: fake provider/local filesystem.
 - Result: pass, receipt and incoming-invoice retention tests.
 
-## 13. Existing invoice-PDF archive journey
+## 13. Workspace-scoped invoice-PDF archive journey
 
 - Precondition: existing outgoing invoice PDF/control-event job.
 - Input/event: existing mark-paid/archive worker journey.
 - Bound workspace: existing invoice ownership contract.
 - Python owner: `InvoiceDriveArchiveService` and worker.
-- Expected target: existing `YYYY/faktury/YYYY-MM` target.
-- Actual target: unchanged; no accounting workspace prefix injected.
+- Expected target: `<workspace.drive_folder_name>/YYYY/faktury/YYYY-MM`.
+- Actual target: exact persisted owning-profile target; a later active-profile
+  switch does not retarget the first job, and a second profile receives a
+  different first folder segment.
 - Side effect: existing upload/state behavior only.
 - Retention: local invoice PDF always kept.
 - Idempotency/retry: existing tests remain green.
 - Final state: existing contract.
 - User-visible response: existing invoice wording.
 - Boundary: fake provider.
-- Result: pass, invoice-PDF archive and retention tests.
+- Result: pass,
+  `test_workspace_drive_enqueue_separates_invoice_targets_by_profile` plus
+  invoice-PDF archive and retention tests.
 
 ## 14. Existing receipt intake UX
 

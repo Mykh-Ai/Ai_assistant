@@ -14,7 +14,11 @@ from bot.handlers.invoice_followup import (
     invoice_followup_callback,
 )
 from bot.services.access_control import AccessControlService
-from bot.services.archive_job_service import ARCHIVE_JOB_RETRY_WAIT, ARCHIVE_JOB_UPLOADED
+from bot.services.archive_job_service import (
+    ARCHIVE_JOB_RETRY_WAIT,
+    ARCHIVE_JOB_UPLOADED,
+    ArchiveJobService,
+)
 from bot.services.archive_worker import (
     ARCHIVE_ERROR_NOT_CONFIGURED,
     ArchiveUploadNotConfiguredError,
@@ -489,12 +493,56 @@ def test_workspace_drive_enqueue_uses_storage_key_and_real_workspace_id(
     assert result.job.workspace_id == first.workspace_id
     assert result.job.telegram_id == USER_ID
     assert result.job.local_file_path == str(pdf_path)
+    assert result.job.target_folder_path == 'First/2026/faktury/2026-06'
     state = WorkspaceInvoiceFollowupService(db_path).get_state(
         first,
         invoice_id=int(first_invoice.id),
     )
     assert state is not None
     assert state.drive_archive_status == 'pending'
+
+
+def test_workspace_drive_enqueue_separates_invoice_targets_by_profile(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / 'bot.db'
+    init_db(db_path)
+    first, second, first_invoice, second_invoice = _setup(db_path)
+    storage = WorkspaceInvoicePdfStorageService(db_path, tmp_path / 'storage')
+    first_pdf = storage.target_path(first, invoice_number=first_invoice.invoice_number)
+    second_pdf = storage.target_path(second, invoice_number=second_invoice.invoice_number)
+    for context, invoice_id, pdf_path in (
+        (first, int(first_invoice.id), first_pdf),
+        (second, int(second_invoice.id), second_pdf),
+    ):
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        pdf_path.write_bytes(b'%PDF-1.4 test')
+        storage.persist_path(context, invoice_id=invoice_id, pdf_path=pdf_path)
+    invoices = WorkspaceInvoiceService(db_path)
+    first_record = invoices.get_by_id(first, int(first_invoice.id))
+    second_record = invoices.get_by_id(second, int(second_invoice.id))
+    assert first_record is not None
+    assert second_record is not None
+    config = replace(_config(db_path, tmp_path / 'storage'), google_drive_enabled=True)
+    archive = InvoiceDriveArchiveService(config)
+
+    first_request = archive.request_after_paid_for_workspace(
+        first,
+        invoice=first_record,
+    )
+    assert first_request.job is not None
+    WorkspaceContextService(db_path).set_active_workspace(USER_ID, second.workspace_id)
+    persisted_first = ArchiveJobService(db_path).get_job(first_request.job.job_id)
+    second_request = archive.request_after_paid_for_workspace(
+        second,
+        invoice=second_record,
+    )
+
+    assert second_request.job is not None
+    assert persisted_first is not None
+    assert persisted_first.target_folder_path == 'First/2026/faktury/2026-06'
+    assert second_request.job.target_folder_path == 'Second/2026/faktury/2026-06'
+    assert first_request.job.target_folder_path != second_request.job.target_folder_path
 
 
 def test_workspace_invoice_archive_worker_records_uploaded_state(
