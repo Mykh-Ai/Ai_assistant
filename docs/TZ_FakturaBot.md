@@ -1545,10 +1545,11 @@ Runtime behavior:
 
 - confirmed receipts and incoming invoices already saved through the accounting
   document intake outbox can be uploaded by the archive worker;
-- receipt originals go to `FakturaBot/<year>/blocky/<year-month>/`;
-- incoming invoice originals go to `FakturaBot/<year>/prijate_faktury/<year-month>/`;
+- receipt originals go to `FakturaBot/<workspace.drive_folder_name>/<year>/blocky/<year-month>/`;
+- incoming invoice originals go to `FakturaBot/<workspace.drive_folder_name>/<year>/prijate_faktury/<year-month>/`;
 - outgoing invoice PDFs are enqueued only after a control event such as marking
-  the invoice paid and go to `FakturaBot/<year>/faktury/<year-month>/`;
+  the invoice paid and, for workspace-scoped invoices, go to
+  `FakturaBot/<workspace.drive_folder_name>/<year>/faktury/<year-month>/`;
 - local invoice PDFs remain stored locally and are not deleted in this MVP;
 - confirmed accounting metadata JSON remains local;
 - receipt/incoming originals are deleted only after successful upload and DB
@@ -1651,7 +1652,7 @@ Implementation status: `implemented / fully tested / deployed at runtime commit 
 New confirmed receipt and incoming-invoice archive jobs persist an immutable
 relative target below the configured owner Drive root:
 
-`<workspace.drive_folder_name>/<YYYY>/<blocky|prijate_faktury>/<YYYY-MM>`
+`<workspace.drive_folder_name>/<YYYY>/<blocky|prijate_faktury|faktury>/<YYYY-MM>`
 
 The confirmed FSM-bound `WorkspaceContext` supplies canonical `workspace_id`,
 `storage_key`, and `drive_folder_name`. The local save remains authoritative;
@@ -1660,8 +1661,10 @@ original and metadata intact. Retry and duplicate enqueue reuse the persisted
 job target and never consult a later active profile selection.
 
 This changes no schema, local accounting layout, OAuth connection, scheduler,
-worker count, invoice-PDF path, or historical remote file. Existing Drive files
-are not moved. Before deployment, the read-only accounting Drive target audit
+worker count, or local invoice-PDF path. The 2026-09-01 outgoing-invoice repair
+extends the same persisted workspace folder boundary to new workspace-scoped
+invoice archive jobs; historical remote movement remains a separately approved
+migration. Before deployment, the read-only accounting Drive target audit
 must report zero blockers for active `pending`, `uploading`, and `retry_wait`
 receipt/incoming-invoice jobs.
 

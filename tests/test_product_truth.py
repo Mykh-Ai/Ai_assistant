@@ -351,6 +351,7 @@ def test_google_drive_invoice_storage_record_is_partial_owner_oauth() -> None:
     assert entry.requires_admin is True
     assert 'google_drive_archive_scheduler.py' in (entry.runtime_owner or '')
     assert 'not per-client OAuth' in entry.current_limitations[0]
+    assert 'owning business profile Drive folder' in entry.current_limitations[1]
     assert 'generated PDFs remain stored locally' in entry.current_limitations[1]
     assert 'Receipts and incoming invoices' in entry.current_limitations[2]
     assert any('owning workspace persisted Drive folder' in value for value in entry.current_limitations)
@@ -371,7 +372,7 @@ def test_google_drive_invoice_storage_product_truth_is_partial_owner_oauth() -> 
     assert result.capability is not None
     assert result.capability.status == ProductTruthStatus.PARTIAL
     assert result.capability.runtime_owner is not None
-    assert result.capability.last_verified_at == '2026-08-02'
+    assert result.capability.last_verified_at == '2026-09-01'
     assert answer is not None
 
 

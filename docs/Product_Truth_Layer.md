@@ -688,8 +688,9 @@ not a static claim that every account or deployment is connected.
 - uploads consume the owner Google account quota;
 - uploads confirmed receipts, incoming invoice originals, and selected outgoing
   invoice PDFs through the archive worker;
-- persists immutable workspace-specific targets for newly confirmed receipts
-  and incoming invoices below each workspace `drive_folder_name`;
+- persists immutable workspace-specific targets for newly queued outgoing
+  invoice PDFs, confirmed receipts, and incoming invoices below each workspace
+  `drive_folder_name`;
 - does not migrate or move existing remote Drive files automatically;
 - enqueues outgoing invoice PDFs only after a control event such as mark-paid;
 - keeps local invoice PDFs; no invoice PDF deletion is implemented;

@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from bot.config import Config
+from bot.services.accounting_document_archive_path import (
+    normalize_relative_drive_target_path,
+    validate_workspace_drive_folder_name,
+)
 from bot.services.archive_job_service import ArchiveJobRecord, ArchiveJobService
 from bot.services.google_drive_archive_stub import GoogleDriveArchiveStubService
 from bot.services.invoice_followup_service import (
@@ -130,7 +134,10 @@ class InvoiceDriveArchiveService:
             document_type='invoice_pdf',
             local_file_path=invoice.pdf_path,
             metadata_path=None,
-            target_folder_path=_invoice_target_folder_path(invoice.issue_date),
+            target_folder_path=_workspace_invoice_target_folder_path(
+                workspace_drive_folder_name=context.drive_folder_name,
+                issue_date=invoice.issue_date,
+            ),
             invoice_storage_key=context.storage_key,
         )
         state = followup.record_drive_archive_status(
@@ -160,3 +167,16 @@ def _invoice_target_folder_path(issue_date: str) -> str:
         year = "unknown"
         month = "unknown"
     return f"{year}/faktury/{year}-{month}"
+
+
+def _workspace_invoice_target_folder_path(
+    *,
+    workspace_drive_folder_name: str,
+    issue_date: str,
+) -> str:
+    workspace_folder = validate_workspace_drive_folder_name(
+        workspace_drive_folder_name
+    )
+    return normalize_relative_drive_target_path(
+        f"{workspace_folder}/{_invoice_target_folder_path(issue_date)}"
+    )

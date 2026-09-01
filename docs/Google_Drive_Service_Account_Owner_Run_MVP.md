@@ -11,9 +11,9 @@ personal My Drive root folder. Uploads consume the owner Google account quota.
 
 Implemented runtime paths:
 
-- confirmed receipts (`receipt`) upload to `FakturaBot/<year>/blocky/<year-month>/`;
-- confirmed incoming invoices (`incoming_invoice`) upload to `FakturaBot/<year>/prijate_faktury/<year-month>/`;
-- outgoing invoice PDFs (`invoice_pdf`) are enqueued only after a control event such as marking the invoice paid, then upload to `FakturaBot/<year>/faktury/<year-month>/`;
+- confirmed receipts (`receipt`) upload to `FakturaBot/<workspace.drive_folder_name>/<year>/blocky/<year-month>/`;
+- confirmed incoming invoices (`incoming_invoice`) upload to `FakturaBot/<workspace.drive_folder_name>/<year>/prijate_faktury/<year-month>/`;
+- workspace-scoped outgoing invoice PDFs (`invoice_pdf`) are enqueued only after a control event such as marking the invoice paid, then upload to `FakturaBot/<workspace.drive_folder_name>/<year>/faktury/<year-month>/`; legacy null-workspace invoice jobs retain their compatibility target;
 - before recording an outgoing invoice upload result, workspace-scoped jobs
   must match the invoice's persisted actor and immutable `workspace_id` and
   must update follow-up state through `WorkspaceInvoiceFollowupService`; only

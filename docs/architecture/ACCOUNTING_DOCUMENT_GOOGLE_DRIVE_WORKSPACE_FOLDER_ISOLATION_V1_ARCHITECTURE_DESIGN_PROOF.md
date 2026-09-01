@@ -110,8 +110,8 @@ enqueue failure remains internal and bounded.
 
 Capability id remains `google_drive_invoice_storage` with partial owner OAuth
 archive semantics. Guidance may state that one configured owner connection is
-shared while receipts and incoming invoices use separate workspace folder
-trees. It must also state that upload is asynchronous, local save may succeed
+shared while receipts, incoming invoices, and workspace-scoped outgoing
+invoice PDFs use separate workspace folder trees. It must also state that upload is asynchronous, local save may succeed
 while Drive is pending/unavailable, configured cleanup may remove only the
 uploaded original, metadata remains local, and historical remote files are not
 automatically migrated.
@@ -123,7 +123,7 @@ deletion, Gmail, bank-statement, or full SaaS sync support.
 ## 13. Negative-Space And Regression Contract
 
 Do not change classification, extraction, categories, duplicate detection,
-preview/save/cancel UX, local storage layout, invoice-PDF paths/retention,
+preview/save/cancel UX, local storage layout, local invoice-PDF paths/retention,
 mark-paid, OAuth/token storage, connection commands, worker count, scheduler,
 contacts, invoices, work-time, profile switching, Gmail, or bank behavior.
 
