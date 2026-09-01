@@ -1,3 +1,28 @@
+# 2026-09-01 - Legacy outgoing invoices 20260008 and 20260009 Drive recovery
+
+- A production read-only follow-up found that invoices `20260008` and
+  `20260009` for workspace `SZČO Mykhailo Alieksieienko` were paid and their
+  local PDFs were present, but both remained at the historical
+  `stub_not_uploaded` state and had never received archive jobs. Exact-name
+  Drive search confirmed zero remote copies.
+- Both invoices were issued in June 2026, so their canonical Drive destination
+  is `SZČO Mykhailo Alieksieienko/2026/faktury/2026-06`, not a July folder.
+- The first bounded repair attempt stopped before any queue or Drive write when
+  the current workspace path validator correctly rejected the two legacy
+  numeric-owner local PDF paths. The bot restarted automatically.
+- After confirming no unrelated active archive jobs or destination conflicts,
+  the successful repair backed up SQLite and both PDFs at
+  `/bot/backups/invoice-drive-missing-8-9-20260901T203145Z`, copied both PDFs
+  into the canonical workspace-scoped local directory without deleting their
+  legacy originals, and updated exactly the two persisted `pdf_path` values.
+- The normal workspace archive service then created and processed exactly two
+  jobs. Google Drive and database readback verified both jobs as `uploaded`,
+  exactly one remote copy of each filename, one canonical destination folder,
+  and the final folder contents `20260007.pdf`, `20260008.pdf`, and
+  `20260009.pdf`. Database `quick_check` returned `ok`, the active archive queue
+  was empty, both production services were running, and recent logs contained
+  no error, traceback, or archive-worker failure markers.
+
 # 2026-09-01 - Workspace-scoped outgoing invoice Drive folder repair
 
 - Confirmed the reported production organization defect against current code:
