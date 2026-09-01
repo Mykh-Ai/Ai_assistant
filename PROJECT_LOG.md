@@ -19,12 +19,27 @@
   reached `2610 passed, 7 subtests passed` with one repeatable unrelated
   pre-existing work-time routing failure; no work-time source or test is
   touched by this patch.
-- This checkpoint changes no production state yet. The approved production
-  repair remains migration-sensitive: audit the exact three uploaded PDFs,
-  snapshot SQLite and local invoice storage, verify current remote parents and
-  destination folders, move each file by adding only its verified destination
-  parent and removing only its verified source parent, synchronize only the
-  matching archive-job target/folder rows, and perform Drive API readback.
+- PR #109 was merged and production was deployed at
+  `c7e435b6a0a3df06eb3f372c57e52e8139dd40be`. The production checkout remained
+  clean and the `bot` and `cloudflared` services restarted successfully.
+- The approved bounded repair first completed a no-write audit of exactly three
+  previously uploaded invoice PDFs across two workspaces. It verified all
+  three authoritative local files and source Drive parents, found no existing
+  destination conflicts, and planned five missing destination folder segments.
+- Before mutation, an online SQLite backup, the complete local invoice storage
+  snapshot, source manifest, and rollback instructions were stored at
+  `/bot/backups/invoice-drive-folder-repair-20260901T174620Z`. Database
+  `quick_check` returned `ok`.
+- The repair moved exactly three Drive files into their immutable
+  profile-specific paths and updated exactly three matching archive-job rows in
+  one database transaction. Post-write Drive API and database readback verified
+  all three files, all three jobs, exact new parents, and zero remaining old
+  parent memberships; the final database `quick_check` returned `ok`.
+- No invoice PDF was regenerated, duplicated, or deleted. The now-empty legacy
+  generic Drive folder tree was retained because its deletion was outside the
+  approved repair scope. Temporary repair scripts were removed locally, from
+  the server host, and from the bot container. Recent production logs contained
+  no error, traceback, or archive-worker failure markers.
 
 # 2026-08-31 - Google Drive reauthorization and workspace archive-worker repair
 
