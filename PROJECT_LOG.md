@@ -1,3 +1,25 @@
+# 2026-09-02 - Missing legacy invoice 20260005 Drive recovery
+
+- Post-migration visual review exposed one additional legacy omission:
+  `20260005` existed for `SZČO Mykhailo Alieksieienko`, its local PDF was
+  present and payment state was `paid`, but follow-up remained
+  `stub_requested_after_paid`, no `invoice_pdf` archive job had ever existed,
+  and exact-name Drive search returned zero copies. It was therefore outside
+  the annual-folder migration inventory, which intentionally covered uploaded
+  jobs only.
+- With no active archive jobs and no remote filename conflict, the bot was
+  stopped and SQLite plus the exact local PDF were backed up at
+  `/bot/backups/invoice-drive-missing-5-20260902T185159Z`. The legacy local
+  original was retained; its canonical workspace-local copy/path was repaired
+  where required.
+- The existing production runtime created and processed exactly one normal
+  workspace archive job targeting
+  `SZČO Mykhailo Alieksieienko/2026/faktury`. Independent database and Drive
+  readback verified one remote `20260005.pdf`, exact annual parent, matching
+  file size, `uploaded` job/follow-up state, and SQLite `quick_check=ok`.
+  Both production services were running and recent logs contained no error,
+  traceback, or archive-worker failure markers. No runtime code changed.
+
 # 2026-09-02 - Annual outgoing-invoice Drive folders
 
 - Approved product/storage decision: outgoing invoice PDFs for each business
