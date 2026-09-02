@@ -491,7 +491,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         summary_for_user='Owner Google Drive archive is available as a partial owner OAuth integration for a single configured owner account.',
         current_limitations=(
             'This is not per-client OAuth or SaaS Drive sync; one owner Google account authorizes once through the owner OAuth bootstrap and uploads consume the owner account quota.',
-            'Outgoing invoice PDFs are only enqueued after a control event such as marking the invoice paid; workspace-scoped jobs use the owning business profile Drive folder and generated PDFs remain stored locally in the bot.',
+            'Outgoing invoice PDFs are only enqueued after a control event such as marking the invoice paid; workspace-scoped jobs use one annual faktury folder inside the owning business profile Drive folder, without month subfolders, and generated PDFs remain stored locally in the bot.',
             'Receipts and incoming invoices can be uploaded from the confirmed archive outbox when Drive is enabled and configured.',
             'Each newly queued workspace-scoped outgoing invoice PDF, receipt, or incoming invoice uses the owning workspace persisted Drive folder; upload remains asynchronous and a successful local save does not claim Drive success.',
             'Accounting metadata remains local, failed or pending uploads preserve the original, and existing remote files are not migrated automatically.',
@@ -517,7 +517,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'Service-account mode works with personal My Drive.',
             'I deleted the local invoice PDF after upload.',
         ),
-        last_verified_at='2026-09-01',
+        last_verified_at='2026-09-02',
     ),
     _capability(
         capability_id='google_drive_invoice_archive_after_due_date',
@@ -529,7 +529,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'The upload runs through the archive worker and requires GOOGLE_DRIVE_ENABLED=1, owner OAuth credentials, encrypted refresh token storage, and a personal My Drive root folder id.',
             'If Drive is disabled or not configured, the old local stub remains honest and no upload is claimed.',
             'Invoice PDFs are not deleted locally in this MVP; failed uploads keep the local PDF available in Telegram.',
-            'Workspace-scoped outgoing invoice PDFs use the persisted owning business profile Drive folder and do not consult a later active profile selection.',
+            'Workspace-scoped outgoing invoice PDFs use one annual faktury folder under the persisted owning business profile Drive folder, without month subfolders, and do not consult a later active profile selection.',
             'This is not SaaS multi-client Drive, not per-client OAuth, and not bank-confirmed settlement.',
             'Service-account mode is unsupported for personal My Drive unless a future Google Workspace/Shared Drive setup is explicitly configured.',
         ),

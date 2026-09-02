@@ -13,7 +13,7 @@ Implemented runtime paths:
 
 - confirmed receipts (`receipt`) upload to `FakturaBot/<workspace.drive_folder_name>/<year>/blocky/<year-month>/`;
 - confirmed incoming invoices (`incoming_invoice`) upload to `FakturaBot/<workspace.drive_folder_name>/<year>/prijate_faktury/<year-month>/`;
-- workspace-scoped outgoing invoice PDFs (`invoice_pdf`) are enqueued only after a control event such as marking the invoice paid, then upload to `FakturaBot/<workspace.drive_folder_name>/<year>/faktury/<year-month>/`; legacy null-workspace invoice jobs retain their compatibility target;
+- workspace-scoped outgoing invoice PDFs (`invoice_pdf`) are enqueued only after a control event such as marking the invoice paid, then upload to `FakturaBot/<workspace.drive_folder_name>/<year>/faktury/`; all outgoing invoices for the profile and year share that folder, and legacy null-workspace invoice jobs use the same year/type shape without a workspace segment;
 - before recording an outgoing invoice upload result, workspace-scoped jobs
   must match the invoice's persisted actor and immutable `workspace_id` and
   must update follow-up state through `WorkspaceInvoiceFollowupService`; only
@@ -71,7 +71,8 @@ separate connection key from the administrator's Telegram id. The interactive
 redirect. Where that callback UX is not configured, use the manual owner
 bootstrap above.
 
-The bot creates/finds the year/type/month folders under the configured root
+The bot creates/finds year/type/month folders for receipts, incoming invoices,
+and bank statements, while outgoing invoices stop at the annual `faktury`
 folder. If OAuth credentials, encrypted token, folder id, dependency, quota, or
 access is missing, jobs stay retryable/failed boundedly; local files are not
 deleted on failed upload.

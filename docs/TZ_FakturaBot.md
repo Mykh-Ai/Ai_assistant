@@ -1549,7 +1549,8 @@ Runtime behavior:
 - incoming invoice originals go to `FakturaBot/<workspace.drive_folder_name>/<year>/prijate_faktury/<year-month>/`;
 - outgoing invoice PDFs are enqueued only after a control event such as marking
   the invoice paid and, for workspace-scoped invoices, go to
-  `FakturaBot/<workspace.drive_folder_name>/<year>/faktury/<year-month>/`;
+  `FakturaBot/<workspace.drive_folder_name>/<year>/faktury/`; all invoices for
+  that profile and year share the folder without month subfolders;
 - local invoice PDFs remain stored locally and are not deleted in this MVP;
 - confirmed accounting metadata JSON remains local;
 - receipt/incoming originals are deleted only after successful upload and DB
@@ -1652,7 +1653,13 @@ Implementation status: `implemented / fully tested / deployed at runtime commit 
 New confirmed receipt and incoming-invoice archive jobs persist an immutable
 relative target below the configured owner Drive root:
 
-`<workspace.drive_folder_name>/<YYYY>/<blocky|prijate_faktury|faktury>/<YYYY-MM>`
+Receipts and incoming invoices keep monthly targets:
+
+`<workspace.drive_folder_name>/<YYYY>/<blocky|prijate_faktury>/<YYYY-MM>`
+
+Outgoing invoices use one annual folder per profile:
+
+`<workspace.drive_folder_name>/<YYYY>/faktury`
 
 The confirmed FSM-bound `WorkspaceContext` supplies canonical `workspace_id`,
 `storage_key`, and `drive_folder_name`. The local save remains authoritative;

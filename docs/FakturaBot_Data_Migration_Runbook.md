@@ -192,6 +192,20 @@ Required before implementation:
 
 Do not implement cross-tenant fallback reads as a substitute for migration.
 
+### Outgoing invoice Drive annual-folder migration
+
+The current outgoing-invoice Drive target is
+`<workspace.drive_folder_name>/<YYYY>/faktury`. A migration from the earlier
+monthly shape must inventory every uploaded `invoice_pdf` job and remote file,
+prove its workspace/profile and issue year from SQLite, reject duplicate-name
+conflicts, back up SQLite and local invoice originals, and then move the remote
+file by adding the verified annual folder parent and removing only its verified
+monthly parent. Update only the matching archive-job target and folder id.
+
+Delete an old month folder only after Drive readback proves it is inside the
+expected profile/year `faktury` folder and contains no remaining files or
+subfolders. Never recursively delete a non-empty or unverified Drive folder.
+
 ## Multi-Workspace Business Profiles V1 Tooling
 
 Current local implementation provides read-only audit/dry-run planning and an explicitly gated apply/rollback path:

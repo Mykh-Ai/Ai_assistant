@@ -595,7 +595,10 @@ current code before runtime claims:
   separate implementation with data sources, validation rules, Product Truth,
   and tests proves otherwise;
 - invoice PDF generation: supported in current invoice flow;
-- Google Drive invoice storage/archive: partial owner OAuth runtime integration when configured; not full SaaS/per-client Drive sync;
+- Google Drive invoice storage/archive: partial owner OAuth runtime integration
+  when configured; workspace-scoped outgoing PDFs are grouped by owning profile
+  and issue year in one `faktury` folder without month subfolders; not full
+  SaaS/per-client Drive sync;
 - SMS sending: unsupported unless later runtime code proves otherwise;
 - real outbound invoice email sending: unsupported unless later runtime code
   proves otherwise;

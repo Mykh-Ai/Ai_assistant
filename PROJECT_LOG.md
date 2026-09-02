@@ -1,3 +1,30 @@
+# 2026-09-02 - Annual outgoing-invoice Drive folders
+
+- Approved product/storage decision: outgoing invoice PDFs for each business
+  profile and issue year use one annual Drive target,
+  `<workspace.drive_folder_name>/<YYYY>/faktury`, without month subfolders.
+  Receipt, incoming-invoice, and bank-statement monthly organization is
+  unchanged.
+- The runtime path owner now derives the annual target for both workspace and
+  legacy-null-workspace enqueue. Profile isolation remains bound to the
+  immutable persisted `WorkspaceContext`; local PDF paths, retention, invoice
+  data, payment state, OAuth, worker behavior, Telegram/FSM routing, and DB
+  schema are unchanged. AI maturity and self-learning are not applicable.
+- Regression-first evidence showed three expected failures on the old monthly
+  target and passed after the focused path change. Focused Drive/archive,
+  Product Truth, and InfoHelp coverage passed (`203 passed`); the complete
+  repository suite passed (`2612 passed, 7 subtests passed`). `compileall` and
+  `git diff --check` passed.
+- Production dry-run was read-only and returned SQLite `quick_check=ok`, 10
+  uploaded invoice jobs, 10 verified file moves, 10 bounded archive-job target
+  updates, seven monthly folders removable only after becoming empty, zero
+  unmanaged monthly children, zero conflicts, and zero blockers. Five older
+  rows retain a legacy shared-path string while their verified Drive parent is
+  already the correct profile-specific month folder; the migration accepts
+  that exact bounded variance and no cross-profile fallback.
+- Runtime deployment, production backup, Drive moves, DB updates, and empty
+  month-folder deletion are not yet recorded as complete in this checkpoint.
+
 # 2026-09-01 - Legacy outgoing invoices 20260008 and 20260009 Drive recovery
 
 - A production read-only follow-up found that invoices `20260008` and

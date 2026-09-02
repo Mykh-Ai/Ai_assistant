@@ -731,6 +731,8 @@ potvrdene doklady a podporovane bankove vypisy. Kontrolovany produkcny pilot
 uz preukazal stav uploaded, ale stav konkretneho uctu sa overuje cez
 /google_drive_status. Lokalne ulozenie este neznamena uspesny upload;
 metadata ostavaju lokalne a stare Drive subory sa automaticky nepresuvaju.
+Odchadzajuce faktury sa ukladaju po profile a roku do jednej priecinka
+`faktury`, bez mesacnych podpriecinkov.
 Nie je to per-client OAuth ani SaaS synchronizacia. Ak pripojenie nie je
 connected, nastavenie vyzaduje spravcu, OAuth credentials, sifrovany refresh
 token, root folder id a zapnuty worker.
