@@ -216,7 +216,7 @@ credential is recorded here.
 - Input/event: existing mark-paid/archive worker journey.
 - Bound workspace: existing invoice ownership contract.
 - Python owner: `InvoiceDriveArchiveService` and worker.
-- Expected target: `<workspace.drive_folder_name>/YYYY/faktury/YYYY-MM`.
+- Expected target: `<workspace.drive_folder_name>/YYYY/faktury`.
 - Actual target: exact persisted owning-profile target; a later active-profile
   switch does not retarget the first job, and a second profile receives a
   different first folder segment.

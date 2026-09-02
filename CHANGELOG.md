@@ -1,5 +1,13 @@
 # Changelog
 
+- Simplified workspace-scoped outgoing invoice Google Drive storage to
+  `<workspace.drive_folder_name>/YYYY/faktury`: all invoices for one business
+  profile and year now share one folder, without monthly subfolders. Receipts,
+  incoming invoices, and bank statements retain their existing monthly
+  organization. Existing uploaded invoice files and archive-job targets require
+  the separately backed up and verified Drive migration recorded in
+  `PROJECT_LOG.md`.
+
 - Corrected workspace-scoped outgoing invoice PDF archive targets from the
   shared `YYYY/faktury/YYYY-MM` tree to
   `<workspace.drive_folder_name>/YYYY/faktury/YYYY-MM`. The target is derived

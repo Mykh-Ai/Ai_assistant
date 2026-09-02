@@ -372,7 +372,7 @@ def test_google_drive_invoice_storage_product_truth_is_partial_owner_oauth() -> 
     assert result.capability is not None
     assert result.capability.status == ProductTruthStatus.PARTIAL
     assert result.capability.runtime_owner is not None
-    assert result.capability.last_verified_at == '2026-09-01'
+    assert result.capability.last_verified_at == '2026-09-02'
     assert answer is not None
 
 

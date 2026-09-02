@@ -197,13 +197,15 @@ Implemented:
 Folder policy for invoice PDFs:
 
 ```text
-FakturaBot/<workspace.drive_folder_name>/<issue-year>/faktury/<issue-year>-<issue-month>/
+FakturaBot/<workspace.drive_folder_name>/<issue-year>/faktury/
 ```
 
 The folder name comes from the persisted `WorkspaceContext` bound to the
 invoice. The enqueue target is immutable and must not consult a later active
-profile selection. Legacy invoices whose persisted `workspace_id` is null keep
-the pre-workspace compatibility target.
+profile selection. All outgoing invoices for one profile and issue year share
+that annual `faktury` folder; invoice archive paths do not create month
+subfolders. Legacy invoices whose persisted `workspace_id` is null retain the
+same year/type shape without a workspace segment.
 
 Still not implemented:
 

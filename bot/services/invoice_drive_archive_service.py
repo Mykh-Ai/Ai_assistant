@@ -162,11 +162,9 @@ class InvoiceDriveArchiveService:
 
 def _invoice_target_folder_path(issue_date: str) -> str:
     year = issue_date[:4]
-    month = issue_date[5:7] if len(issue_date) >= 7 else "01"
-    if not (year.isdigit() and len(year) == 4 and month.isdigit() and len(month) == 2):
+    if not (year.isdigit() and len(year) == 4):
         year = "unknown"
-        month = "unknown"
-    return f"{year}/faktury/{year}-{month}"
+    return f"{year}/faktury"
 
 
 def _workspace_invoice_target_folder_path(

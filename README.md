@@ -411,7 +411,9 @@ Google Drive owner OAuth archive:
 - uploads consume the owner Google account quota in personal My Drive;
 - confirmed receipts upload under `FakturaBot/<year>/blocky/<year-month>/`;
 - confirmed incoming invoices upload under `FakturaBot/<year>/prijate_faktury/<year-month>/`;
-- outgoing invoice PDFs are enqueued after mark-paid/control events under `FakturaBot/<year>/faktury/<year-month>/`;
+- workspace-scoped outgoing invoice PDFs are enqueued after mark-paid/control
+  events under `FakturaBot/<workspace.drive_folder_name>/<year>/faktury/`, with
+  all invoices for the profile and year in that one folder;
 - local outgoing invoice PDFs are not deleted in this MVP;
 - receipt/incoming originals may be deleted only after upload success and DB state `uploaded`; metadata JSON stays local;
 - service-account mode is unsupported for personal My Drive unless a future Google Workspace/Shared Drive setup is explicitly configured;

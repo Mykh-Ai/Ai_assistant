@@ -30,7 +30,11 @@ from bot.services.db import init_db
 from bot.services.invoice_analytics_dataset import InvoiceAnalyticsDatasetService
 from bot.services.invoice_followup_service import InvoiceFollowupService
 from bot.services.invoice_followup_scheduler import send_due_invoice_followups_once
-from bot.services.invoice_drive_archive_service import InvoiceDriveArchiveService
+from bot.services.invoice_drive_archive_service import (
+    InvoiceDriveArchiveService,
+    _invoice_target_folder_path,
+    _workspace_invoice_target_folder_path,
+)
 from bot.services.invoice_service import CreateInvoiceItemPayload
 from bot.services.supplier_service import SupplierProfile
 from bot.services.workspace_contact_service import WorkspaceContactService
@@ -493,7 +497,7 @@ def test_workspace_drive_enqueue_uses_storage_key_and_real_workspace_id(
     assert result.job.workspace_id == first.workspace_id
     assert result.job.telegram_id == USER_ID
     assert result.job.local_file_path == str(pdf_path)
-    assert result.job.target_folder_path == 'First/2026/faktury/2026-06'
+    assert result.job.target_folder_path == 'First/2026/faktury'
     state = WorkspaceInvoiceFollowupService(db_path).get_state(
         first,
         invoice_id=int(first_invoice.id),
@@ -540,9 +544,22 @@ def test_workspace_drive_enqueue_separates_invoice_targets_by_profile(
 
     assert second_request.job is not None
     assert persisted_first is not None
-    assert persisted_first.target_folder_path == 'First/2026/faktury/2026-06'
-    assert second_request.job.target_folder_path == 'Second/2026/faktury/2026-06'
+    assert persisted_first.target_folder_path == 'First/2026/faktury'
+    assert second_request.job.target_folder_path == 'Second/2026/faktury'
     assert first_request.job.target_folder_path != second_request.job.target_folder_path
+
+
+def test_invoice_drive_target_groups_by_profile_and_year_without_month_folder() -> None:
+    assert _invoice_target_folder_path('2026-01-05') == '2026/faktury'
+    assert _invoice_target_folder_path('2026-12-31') == '2026/faktury'
+    assert _workspace_invoice_target_folder_path(
+        workspace_drive_folder_name='First',
+        issue_date='2026-01-05',
+    ) == 'First/2026/faktury'
+    assert _workspace_invoice_target_folder_path(
+        workspace_drive_folder_name='First',
+        issue_date='2026-12-31',
+    ) == 'First/2026/faktury'
 
 
 def test_workspace_invoice_archive_worker_records_uploaded_state(
