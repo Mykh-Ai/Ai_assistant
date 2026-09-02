@@ -22,8 +22,22 @@
   rows retain a legacy shared-path string while their verified Drive parent is
   already the correct profile-specific month folder; the migration accepts
   that exact bounded variance and no cross-profile fallback.
-- Runtime deployment, production backup, Drive moves, DB updates, and empty
-  month-folder deletion are not yet recorded as complete in this checkpoint.
+- PR #112 was merged and production was deployed at
+  `bf34f342694c5ee7864c58591b417e553f3e78b5`. The server's existing GitHub
+  HTTPS credential was unavailable, so the exact complete-history merged
+  commit was delivered through a locally verified Git bundle and fast-forwarded
+  without changing server credentials or repository history.
+- With the bot stopped, the migration revalidated the clean plan and created a
+  SQLite plus complete local invoice/workspace-storage backup at
+  `/bot/backups/invoice-drive-annual-folders-20260902T183457Z`. It then moved
+  exactly 10 remote invoice PDFs into the two profile-specific annual
+  `2026/faktury` folders, updated exactly 10 matching uploaded archive-job
+  target/folder rows, and deleted exactly seven verified-empty month folders.
+- Independent post-write Drive/database audit classified all 10 jobs as already
+  annual, with zero active jobs, remaining moves, monthly folders, unmanaged
+  children, conflicts, or blockers. SQLite `quick_check` returned `ok`; the bot
+  and Cloudflare Tunnel were running, the production checkout was clean, and
+  recent logs contained no error, traceback, or archive-worker failure markers.
 
 # 2026-09-01 - Legacy outgoing invoices 20260008 and 20260009 Drive recovery
 
