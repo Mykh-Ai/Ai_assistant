@@ -9948,3 +9948,22 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   is now fixed deterministically without weakening runtime rules. The repeated
   complete repository suite passed (`2708 passed, 7 subtests passed`), as did
   `compileall` and `git diff --check`.
+- PR #115 was merged to `main` as `32dd6827835db70688bbad06835c8ee1f93001bb`
+  and deployed through the production compose runbook. The rebuilt
+  `fakturabot` container started polling successfully; Cloudflare remained up,
+  and startup logs showed no error or traceback.
+- Before the separately approved persisted-data repair, the bot was stopped
+  and the actual bind-mounted SQLite file was copied to
+  `/bot/backups/work-time-day-55-20260910T032458Z/fakturabot.db`; source and
+  backup SHA-256 matched
+  `e765edfeef43b7a45ab12a5a6022cad227a4492ae26be5b7840c954b871193cd`.
+  The first attempted host path was detected as an unrelated zero-byte
+  placeholder by the hash gate and was never used for apply; the Docker mount
+  was resolved to `/bot/repo/data/storage/fakturabot.db` before continuing.
+- The bounded repair revalidated exactly work-time day `id=55`, date
+  2026-09-09, open start 13:25, one matching `open` event, and workspace/actor
+  ownership. One transaction changed that row to start 07:10, end 13:40,
+  `closed`, 390 gross minutes, the configured 30-minute lunch snapshot, and
+  360 net minutes, then appended `repair_close`. Independent readback returned
+  event history `open -> repair_close`, `PRAGMA quick_check=ok`, and no second
+  same-day row was created. No other production DB/storage data was changed.

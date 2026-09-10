@@ -2,7 +2,7 @@
 
 Date: 2026-09-10
 
-Status: `implemented_local`; `work_time_tracking` remains `partial`.
+Status: `deployed`; `work_time_tracking` remains `partial`.
 
 ## Accepted journeys
 
@@ -35,10 +35,11 @@ Status: `implemented_local`; `work_time_tracking` remains `partial`.
 
 ## Scope boundary
 
-No schema or storage migration, live-row repair, deployment, payroll logic,
-closed-row editor, or multi-shift support is included. The erroneous
-production row observed on 2026-09-09 remains unchanged pending separately
-approved backup/dry-run repair and deployment work.
+No schema/storage migration, payroll logic, general closed-row editor, or
+multi-shift support is included. After separate explicit approval, PR #115 was
+merged and deployed as `32dd682`; the single confirmed 2026-09-09 incident row
+was repaired only after a stopped-bot content-matching SQLite backup and exact
+precondition audit. The repair is recorded in `PROJECT_LOG.md` and is not a
+general editing capability.
 
-Verdict: `passed_local`; production deployment and live-row repair remain
-separately gated.
+Verdict: `passed_and_deployed`.
