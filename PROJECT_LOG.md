@@ -9900,3 +9900,51 @@ Add a lightweight read-only `/blocky` command for recent confirmed receipts/inco
   FakturaBot logs contained no matching repair/scheduler/archive error. Original
   bytes, transaction content, Gmail state, and accounting/invoice business state
   were unchanged.
+# 2026-09-10 - Work-time explicit arrival and open-day duration close repair
+
+- Read the mandatory AI/user-facing contracts, server runbook, current
+  work-time code/tests, and the relevant historical `PROJECT_LOG.md` decisions
+  before implementation. Live read-only evidence from 2026-09-09 showed STT
+  preserved `Запиши приход на роботу в 7.10`, top-level routing selected
+  `open_work_day`, but the service stored only an open row at 13:25. A later
+  six-worked-hours request selected `add_work_time_entry` and did not close it.
+- Constraints preserved from earlier repairs: the business clock is
+  `Europe/Bratislava`; omitted open time means current time; an explicit open
+  time must be used and confirmed; dotted close input such as `16.07` remains
+  ambiguous; `close_now` requires explicit now intent; duration is confirmed
+  net worked time; unknown/invalid/cancel paths never write; voice stays a
+  transport without business phrase dictionaries; Python owns validation and
+  persistence through workspace-scoped services.
+- Implemented `open_at_time` as a bounded slot mode of the existing
+  `open_work_day` action. Explicit today's arrival enters a new
+  approve/edit/cancel preview and corrected-time FSM state; omitted time keeps
+  immediate current-business-time opening. Python and `WorkTimeService` reject
+  future or different-date explicit starts before SQLite writes.
+- Made `add_work_time_entry` state-aware: if the bound workspace already has an
+  open day, a resolved close duration reuses the existing close preview and
+  closes that row with the confirmed net minutes instead of attempting a
+  conflicting second row. Standalone manual duration behavior is unchanged
+  when no row is open.
+- Registered the existing manual/close and new open preview contexts in the
+  shared DecisionResolver fallback. This closes an older incomplete central
+  registration without adding handler-local confirmation parsing. Text,
+  voice, and decision callbacks converge on the same work-time handlers.
+- Touched scopes: routing, bounded LLM slot extraction, FSM, shared
+  confirmation, voice/callback convergence, workspace-scoped DB writes,
+  Product Truth, user docs, architecture and UX evals. No schema/storage
+  migration, server write, deployment, production data repair, payroll,
+  closed-row editing, multiple shifts, or self-learning hook was added.
+  Capability status remains `partial`; AI maturity remains bounded extraction
+  plus deterministic Python validation/confirmation, not autonomous learning.
+- Product journey proof covers explicit `7:10`/`7.10`, omitted-time current
+  opening, future-time recovery, and closing one existing row with six net
+  hours. Product claims are backed by current handlers/services, Canonical
+  Action Registry, In-Action Registry, TZ, Product Truth, focused tests, and
+  the conversation acceptance proof.
+- Focused service/routing/DecisionResolver verification passed (`829 passed`),
+  voice/callback/top-level routing verification passed (`335 passed`), and
+  Product Truth/InfoHelp verification passed (`131 passed`). The first full
+  run exposed one pre-existing wall-clock-dependent close-now test; its clock
+  is now fixed deterministically without weakening runtime rules. The repeated
+  complete repository suite passed (`2708 passed, 7 subtests passed`), as did
+  `compileall` and `git diff --check`.

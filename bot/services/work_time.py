@@ -164,11 +164,17 @@ class WorkTimeService:
         *,
         telegram_id: int,
         now: datetime | None = None,
+        start_datetime: datetime | None = None,
         source_message_id: int | None = None,
     ) -> WorkTimeOperationResult:
         current = _local_now(now)
-        work_date = current.date().isoformat()
-        start_value = _format_time(current.time())
+        explicit_start = _local_now(start_datetime) if start_datetime is not None else current
+        if explicit_start.date() != current.date():
+            return WorkTimeOperationResult(ok=False, reason='invalid_start_date')
+        if explicit_start > current:
+            return WorkTimeOperationResult(ok=False, reason='future_start_time')
+        work_date = explicit_start.date().isoformat()
+        start_value = _format_time(explicit_start.time())
         with managed_connection(self.db_path) as connection:
             open_day = self.get_open_day(telegram_id=telegram_id, connection=connection)
             if open_day is not None:
@@ -931,6 +937,26 @@ def parse_duration_entry_candidate(text: str, *, today: date | None = None) -> W
         close_mode='manual_duration',
     )
 
+
+def parse_open_start_candidate(text: str, *, today: date | None = None) -> WorkTimeCandidate | None:
+    """Strict no-LLM fallback for one explicit arrival clock value.
+
+    Dotted clock values are accepted only for opening a day. The close parser
+    intentionally keeps dotted values ambiguous because they may be dates.
+    """
+    normalized = _normalize(text)
+    matches = re.findall(r'\b(\d{1,2})(?::|\.)(\d{2})\b', normalized)
+    if len(matches) != 1:
+        return None
+    start = _parse_match_time(matches[0])
+    if start is None:
+        return None
+    return WorkTimeCandidate(
+        work_date=today or work_time_local_date(),
+        start_time=start,
+        close_mode='open_at_time',
+    )
+
 def parse_close_candidate(text: str, *, open_day: WorkTimeDay, today: date | None = None) -> WorkTimeCandidate | None:
     normalized = _normalize(text)
     work_date = date.fromisoformat(open_day.work_date)
@@ -1004,11 +1030,15 @@ async def resolve_work_time_entry_candidate(
     model: str,
     today: date | None = None,
     open_day: WorkTimeDay | None = None,
+    operation: str | None = None,
 ) -> WorkTimeCandidate | None:
     cleaned = user_input_text.strip()
     if not cleaned or not api_key or not api_key.startswith('sk-'):
         return None
     current = today or work_time_local_date()
+    operation_kind = operation or ('close' if open_day is not None else 'manual')
+    if operation_kind not in {'open', 'close', 'manual'}:
+        return None
     try:
         client = AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
@@ -1022,8 +1052,10 @@ async def resolve_work_time_entry_candidate(
                         'You are a bounded slot extractor for OfficeFlow work-time tracking. '
                         'Return strict JSON only. Supported input languages are Slovak, Ukrainian, Russian, English, and mixed STT-noisy text. '
                         'Extract only candidate work-time slots; never claim anything was saved. '
-                        'Allowed shape: {"canonical":"work_time_entry","mode":"manual_range|manual_duration|close_at_time|close_with_duration|close_now|unknown","date":"YYYY-MM-DD|null","start_time":"HH:MM|null","end_time":"HH:MM|null","duration_minutes":<integer|null>} '
+                        'Allowed shape: {"canonical":"work_time_entry","mode":"open_at_time|manual_range|manual_duration|close_at_time|close_with_duration|close_now|unknown","date":"YYYY-MM-DD|null","start_time":"HH:MM|null","end_time":"HH:MM|null","duration_minutes":<integer|null>} '
                         'or {"canonical":"unknown"}. '
+                        'The operation_kind supplied by Python is authoritative. For operation_kind=open, use open_at_time only when the user states an explicit arrival/start clock time; never return a close or manual mode. '
+                        'For operation_kind=close, return only close_at_time, close_with_duration, close_now, or unknown. For operation_kind=manual, return only manual_range, manual_duration, or unknown. '
                         'Use mode=close_now only when the user clearly says closing now/teraz/now/zaraz/sejcas or equivalent. '
                         'Use mode=close_at_time only when closing an already open day by exact end time. Use mode=close_with_duration only when closing an open day by worked duration. '
                         'Use mode=manual_range when the user gives a standalone work interval with start and end time. Use mode=manual_duration only when the user gives a standalone total duration. '
@@ -1037,14 +1069,15 @@ async def resolve_work_time_entry_candidate(
                     'role': 'user',
                     'content': json.dumps(
                         {
-                            'context_name': 'work_time_slot_extraction',
+                            'context_name': 'work_time_open_slot_extraction' if operation_kind == 'open' else 'work_time_slot_extraction',
+                            'operation_kind': operation_kind,
                             'today_iso': current.isoformat(),
                             'open_day_date': open_day.work_date if open_day else None,
                             'open_day_start_time': open_day.start_time if open_day else None,
                             'user_input_text': cleaned,
                             'expected_output': {
                                 'canonical': 'work_time_entry or unknown',
-                                'mode': 'manual_range, manual_duration, close_at_time, close_with_duration, close_now, or unknown',
+                                'mode': 'open_at_time, manual_range, manual_duration, close_at_time, close_with_duration, close_now, or unknown',
                                 'date': 'YYYY-MM-DD or null',
                                 'start_time': 'HH:MM or null',
                                 'end_time': 'HH:MM or null',
@@ -1069,6 +1102,7 @@ async def resolve_work_time_entry_candidate(
         'close_at_time',
         'close_with_duration',
         'close_now',
+        'open_at_time',
     }:
         return None
 
@@ -1080,7 +1114,22 @@ async def resolve_work_time_entry_candidate(
     end_time = _parse_llm_hhmm(parsed.get('end_time'))
     duration_minutes = _parse_llm_duration(parsed.get('duration_minutes'))
 
-    if open_day is not None:
+    if operation_kind == 'open':
+        if (
+            mode == 'open_at_time'
+            and candidate_date == current
+            and start_time is not None
+            and end_time is None
+            and duration_minutes is None
+        ):
+            return WorkTimeCandidate(
+                work_date=candidate_date,
+                start_time=start_time,
+                close_mode='open_at_time',
+            )
+        return None
+
+    if operation_kind == 'close' and open_day is not None:
         candidate_date = date.fromisoformat(open_day.work_date)
         if mode == 'close_now':
             return WorkTimeCandidate(work_date=candidate_date, close_mode='close_now', needs_confirmation=False)
@@ -1090,6 +1139,8 @@ async def resolve_work_time_entry_candidate(
             return WorkTimeCandidate(work_date=candidate_date, end_time=end_time, close_mode='close_at_time')
         return None
 
+    if operation_kind != 'manual':
+        return None
     if mode == 'manual_range' and start_time is not None and end_time is not None:
         return WorkTimeCandidate(work_date=candidate_date, start_time=start_time, end_time=end_time, close_mode='manual_range')
     if mode == 'manual_duration' and duration_minutes is not None:

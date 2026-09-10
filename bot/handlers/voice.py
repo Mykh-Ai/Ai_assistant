@@ -76,6 +76,8 @@ from bot.handlers.work_time import (
     work_time_manual_range_input,
     work_time_missing_days_choice,
     work_time_open_day_conflict_choice,
+    work_time_open_input,
+    work_time_open_preview_confirm,
 )
 from bot.handlers.supplier import ServiceAliasStates
 from bot.services.active_fsm_guard import handle_active_fsm_text_update, touch_active_fsm_activity
@@ -436,6 +438,18 @@ async def handle_voice(
                 state=state,
                 config=config,
                 decision_text=recognized_text,
+            )
+        elif current_state == WorkTimeStates.waiting_open_input.state:
+            await work_time_open_input(
+                message=text_message,
+                state=state,
+                config=config,
+            )
+        elif current_state == WorkTimeStates.waiting_open_preview_confirm.state:
+            await work_time_open_preview_confirm(
+                message=text_message,
+                state=state,
+                config=config,
             )
         elif current_state == WorkTimeStates.waiting_manual_range_input.state:
             await work_time_manual_range_input(

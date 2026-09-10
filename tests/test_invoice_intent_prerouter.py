@@ -1145,6 +1145,52 @@ def test_process_invoice_text_top_level_work_time_report_hint_uses_positive_exam
     assert 'delete stored work-time records' in report_hint['not_this']
     assert 'generate_work_time_report' in captured['allowed_actions']
 
+
+def test_process_invoice_text_passes_explicit_arrival_text_to_open_work_day(tmp_path: Path, monkeypatch) -> None:
+    captured_resolver: dict = {}
+    captured_open: dict = {}
+
+    async def _resolver(**kwargs):
+        captured_resolver.update(kwargs)
+        return 'open_work_day'
+
+    async def _start_open(**kwargs):
+        captured_open.update(kwargs)
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    monkeypatch.setattr('bot.handlers.invoice.start_open_work_day', _start_open)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('Запиши приход на роботу в 7.10.')
+    state = _DummyState()
+
+    asyncio.run(process_invoice_text(message=message, state=state, config=config, invoice_text=message.text))
+
+    assert captured_open['text'] == message.text
+    open_hint = captured_resolver['action_hints']['open_work_day']
+    assert 'omitted time means the current Bratislava business time' in open_hint['meaning']
+    assert 'Запиши приход на роботу в 7.10' in open_hint['positive_examples']
+    assert 'manual full time range with both start and end' in open_hint['not_this']
+
+
+def test_process_invoice_text_close_hint_includes_worked_duration_semantics(tmp_path: Path, monkeypatch) -> None:
+    captured: dict = {}
+
+    async def _resolver(**kwargs):
+        captured.update(kwargs)
+        return 'unknown'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _resolver)
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    message = _authorized_message('закрий мені сьогодні 6 відпрацьованих годин')
+
+    asyncio.run(process_invoice_text(message=message, state=_DummyState(), config=config, invoice_text=message.text))
+
+    close_hint = captured['action_hints']['close_work_day']
+    assert 'by total duration' in close_hint['meaning']
+    assert 'закрий мені сьогодні 6 відпрацьованих годин' in close_hint['positive_examples']
+
 def test_process_invoice_text_passes_llm_report_period_slot_to_work_time(tmp_path: Path, monkeypatch) -> None:
     captured_resolver: dict = {}
     captured_report: dict = {}

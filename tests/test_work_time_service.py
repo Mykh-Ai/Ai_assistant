@@ -22,6 +22,7 @@ from bot.services.work_time import (
     parse_lunch_break_minutes,
     parse_explicit_month,
     parse_manual_range_candidate,
+    parse_open_start_candidate,
     parse_report_month,
     resolve_work_time_entry_candidate,
     _format_duration,
@@ -564,6 +565,90 @@ def test_llm_slot_extractor_accepts_cyrillic_natural_range(monkeypatch) -> None:
     assert _WorkTimeSlotOpenAIFake.last_payload is not None
     prompt = _WorkTimeSlotOpenAIFake.last_payload
     assert prompt['today_iso'] == '2026-07-03'
+
+
+def test_open_start_parser_accepts_colon_and_dot_without_changing_close_parser() -> None:
+    colon = parse_open_start_candidate('Zapíš príchod o 7:10', today=date(2026, 9, 9))
+    dotted = parse_open_start_candidate('Запиши приход на роботу в 7.10.', today=date(2026, 9, 9))
+
+    assert colon is not None
+    assert colon.start_time == time(7, 10)
+    assert colon.close_mode == 'open_at_time'
+    assert dotted is not None
+    assert dotted.start_time == time(7, 10)
+    assert dotted.close_mode == 'open_at_time'
+
+    open_day = WorkTimeDay(1, 1001, '2026-09-09', '07:10', None, None, 'open', 'opened_live', None)
+    assert parse_close_candidate('16.07', open_day=open_day) is None
+
+
+def test_llm_slot_extractor_open_operation_accepts_only_open_at_time(monkeypatch) -> None:
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'open_at_time',
+            'date': '2026-09-09',
+            'start_time': '07:10',
+            'end_time': None,
+            'duration_minutes': None,
+        }
+    )
+
+    candidate = asyncio.run(
+        resolve_work_time_entry_candidate(
+            user_input_text='Запиши приход на роботу в 7.10.',
+            api_key='sk-test',
+            model='gpt-4o',
+            today=date(2026, 9, 9),
+            operation='open',
+        )
+    )
+
+    assert candidate is not None
+    assert candidate.start_time == time(7, 10)
+    assert candidate.close_mode == 'open_at_time'
+    assert _WorkTimeSlotOpenAIFake.last_payload is not None
+    assert _WorkTimeSlotOpenAIFake.last_payload['operation_kind'] == 'open'
+    assert _WorkTimeSlotOpenAIFake.last_payload['context_name'] == 'work_time_open_slot_extraction'
+
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'manual_duration',
+            'date': '2026-09-09',
+            'start_time': None,
+            'end_time': None,
+            'duration_minutes': 360,
+        }
+    )
+    assert asyncio.run(
+        resolve_work_time_entry_candidate(
+            user_input_text='6 hodin',
+            api_key='sk-test',
+            model='gpt-4o',
+            today=date(2026, 9, 9),
+            operation='open',
+        )
+    ) is None
+
+
+def test_service_rejects_future_explicit_open_time_without_write(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / 'work_time.db'
+    init_db(db_path)
+    monkeypatch.setattr(
+        'bot.services.work_time._runtime_now_utc',
+        lambda: datetime(2026, 9, 9, 11, 25, tzinfo=UTC),
+    )
+
+    result = WorkTimeService(db_path).open_day(
+        telegram_id=1001,
+        start_datetime=datetime(2026, 9, 9, 17, 0),
+    )
+
+    assert result.ok is False
+    assert result.reason == 'future_start_time'
+    assert WorkTimeService(db_path).get_open_day(telegram_id=1001) is None
 
 
 def test_close_parser_requires_explicit_now_or_strict_value() -> None:

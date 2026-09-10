@@ -188,3 +188,11 @@ Do not:
 - call Level 2+ complete without Product Truth/InfoHelp scenarios;
 - accept PDF/layout changes without rendered review or regression evidence;
 - store secrets or private customer data in eval artifacts.
+# 2026-09-10 work-time explicit arrival and duration close
+
+Conversation acceptance evidence for preserving an explicit arrival time,
+retaining the current-time default when omitted, and closing an already-open
+day with a confirmed net duration is recorded in
+`docs/evals/WORK_TIME_EXPLICIT_OPEN_AND_OPEN_DURATION_CLOSE_conversation_acceptance_proof.md`.
+The artifact also locks the older dotted-close ambiguity and explicit-only
+close-now safeguards against regression.

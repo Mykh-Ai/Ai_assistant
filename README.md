@@ -232,9 +232,9 @@ invoice/accounting data. Receipt, expense, and incoming-invoice analytics are ha
 `work_time_tracking` is implemented as a partial OfficeFlow MVP for simple user-scoped work-time evidence.
 
 Supported top-level actions:
-- `open_work_day` - start the current work day;
-- `close_work_day` - close the open day with a preview-confirmed end time or duration;
-- `add_work_time_entry` - add one preview-confirmed manual interval or duration-only total;
+- `open_work_day` - start the current work day at the current Bratislava business time when no time is stated, or preview and confirm an explicitly stated arrival time such as `7:10`/`7.10`;
+- `close_work_day` - close the open day with a preview-confirmed end time or net worked duration;
+- `add_work_time_entry` - add one preview-confirmed manual interval or duration-only total; when the current day is already open, a duration-only request closes that row instead of creating a conflicting second row;
 - `generate_work_time_report` - generate a monthly Excel report;
 - `update_work_time_lunch_break` - set, change, or disable the fixed lunch-break deduction used in reports;
 - `delete_work_time_month` - delete stored work-time rows for one selected month after preview and confirmation.

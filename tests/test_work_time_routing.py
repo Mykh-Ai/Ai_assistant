@@ -18,6 +18,7 @@ from bot.handlers.work_time import (
     start_delete_work_time_month,
     start_generate_work_time_report,
     start_update_work_time_lunch_break,
+    start_open_work_day,
     work_time_delete_month_confirm,
     work_time_lunch_break_initial_choice,
     work_time_lunch_break_update_confirm,
@@ -26,6 +27,8 @@ from bot.handlers.work_time import (
     work_time_close_input,
     work_time_manual_range_confirm,
     work_time_manual_range_input,
+    work_time_open_input,
+    work_time_open_preview_confirm,
 )
 from bot.services.db import init_db
 from bot.services.info_help import build_product_truth_guidance
@@ -671,6 +674,113 @@ def test_unknown_close_input_does_not_close_open_day(tmp_path: Path) -> None:
     assert 'Napiste cas odchodu alebo trvanie' in message.answers[-1]
 
 
+def test_open_day_with_explicit_dotted_arrival_previews_and_saves_that_time(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    monkeypatch.setattr('bot.services.work_time.work_time_local_now', lambda value=None: value if value is not None else datetime(2026, 9, 9, 13, 25))
+    monkeypatch.setattr('bot.handlers.work_time.work_time_local_now', lambda value=None: datetime(2026, 9, 9, 13, 25))
+    state = _DummyState()
+    message = _DummyMessage('Запиши приход на роботу в 7.10.')
+
+    asyncio.run(start_open_work_day(message=message, state=state, config=config, text=message.text))
+
+    assert state.current_state == WorkTimeStates.waiting_open_preview_confirm.state
+    assert WorkTimeService(config.db_path).get_open_day(telegram_id=1001) is None
+    assert 'Prichod: 07:10' in message.answers[-1]
+    assert message.reply_markups[-1] is not None
+
+    asyncio.run(
+        work_time_open_preview_confirm(
+            message=_DummyMessage('schvalit'),
+            state=state,
+            config=config,
+            canonical_decision='approve',
+        )
+    )
+
+    day = WorkTimeService(config.db_path).get_open_day(telegram_id=1001)
+    assert day is not None
+    assert day.start_time == '07:10'
+    assert state.current_state is None
+
+
+def test_open_day_without_arrival_keeps_current_time_behavior(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    monkeypatch.setattr('bot.services.work_time.work_time_local_now', lambda value=None: value if value is not None else datetime(2026, 9, 9, 13, 25))
+    monkeypatch.setattr('bot.handlers.work_time.work_time_local_now', lambda value=None: datetime(2026, 9, 9, 13, 25))
+    state = _DummyState()
+    message = _DummyMessage('Zacinam pracovny den')
+
+    asyncio.run(start_open_work_day(message=message, state=state, config=config, text=message.text))
+
+    day = WorkTimeService(config.db_path).get_open_day(telegram_id=1001)
+    assert day is not None
+    assert day.start_time == '13:25'
+    assert state.current_state is None
+
+
+def test_future_open_arrival_keeps_recoverable_input_state_without_write(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    monkeypatch.setattr('bot.services.work_time.work_time_local_now', lambda value=None: value if value is not None else datetime(2026, 9, 9, 13, 25))
+    monkeypatch.setattr('bot.handlers.work_time.work_time_local_now', lambda value=None: datetime(2026, 9, 9, 13, 25))
+    state = _DummyState()
+    message = _DummyMessage('Zapíš príchod o 17:00')
+
+    asyncio.run(start_open_work_day(message=message, state=state, config=config, text=message.text))
+
+    assert WorkTimeService(config.db_path).get_open_day(telegram_id=1001) is None
+    assert state.current_state == WorkTimeStates.waiting_open_input.state
+    assert 'buducnosti' in message.answers[-1]
+
+    correction = _DummyMessage('07:10')
+    asyncio.run(work_time_open_input(message=correction, state=state, config=config))
+    assert state.current_state == WorkTimeStates.waiting_open_preview_confirm.state
+    assert 'Prichod: 07:10' in correction.answers[-1]
+
+
+def test_duration_entry_closes_existing_open_day_instead_of_conflicting(monkeypatch, tmp_path: Path) -> None:
+    config = replace(_config(tmp_path), openai_api_key='sk-test')
+    init_db(config.db_path)
+    service = WorkTimeService(config.db_path)
+    assert service.open_day(telegram_id=1001, now=datetime(2026, 9, 9, 7, 10)).ok
+    _WorkTimeSlotOpenAIFake.output = json.dumps(
+        {
+            'canonical': 'work_time_entry',
+            'mode': 'close_with_duration',
+            'date': None,
+            'start_time': None,
+            'end_time': None,
+            'duration_minutes': 360,
+        }
+    )
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+    state = _DummyState()
+    message = _DummyMessage('Запиши мені сьогодні працівний день, 6 працівних годін.')
+
+    asyncio.run(start_add_work_time_entry(message=message, state=state, config=config, text=message.text))
+
+    assert state.current_state == WorkTimeStates.waiting_close_preview_confirm.state
+    assert len(service.list_days_for_month(telegram_id=1001, year=2026, month=9)) == 1
+    assert 'Prichod: 07:10' in message.answers[-1]
+    assert 'Hodiny: 6:00' in message.answers[-1]
+
+    asyncio.run(
+        work_time_close_preview_confirm(
+            message=_DummyMessage('schvalit'),
+            state=state,
+            config=config,
+            canonical_decision='approve',
+        )
+    )
+    day = service.get_day(telegram_id=1001, work_date='2026-09-09')
+    assert day is not None
+    assert day.status == 'closed'
+    assert day.total_minutes == 360
+    assert len(service.list_days_for_month(telegram_id=1001, year=2026, month=9)) == 1
+
+
 def test_close_command_with_ambiguous_dot_time_keeps_state_and_accepts_plain_hhmm(tmp_path: Path) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
@@ -694,7 +804,11 @@ def test_close_command_with_ambiguous_dot_time_keeps_state_and_accepts_plain_hhm
     assert 'Odchod: 16:07' in second.answers[-1]
     assert second.reply_markups[-1] is not None
 
-def test_explicit_close_now_closes_open_day(tmp_path: Path) -> None:
+def test_explicit_close_now_closes_open_day(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        'bot.services.work_time.work_time_local_now',
+        lambda value=None: value if value is not None else datetime(2026, 7, 3, 17, 0),
+    )
     config = _config(tmp_path)
     init_db(config.db_path)
     service = WorkTimeService(config.db_path)
