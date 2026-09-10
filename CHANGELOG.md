@@ -1,5 +1,7 @@
 # Changelog
 
+- Fixed OfficeFlow work-time opening and open-day duration completion. `open_work_day` now preserves an explicitly stated arrival such as `7:10`/`7.10` through a Python-validated approve/edit/cancel preview, while an omitted time still opens immediately at the current Bratislava business time. When a bound day is already open, an `add_work_time_entry` request for six worked hours now converges on the existing close-duration preview and closes the same row with 360 confirmed net minutes. Existing ambiguous dotted close input, explicit-only close-now, lunch math, workspace isolation, and no-write-on-unknown safeguards remain covered. This local change does not repair production data or deploy the bot.
+
 - Simplified workspace-scoped outgoing invoice Google Drive storage to
   `<workspace.drive_folder_name>/YYYY/faktury`: all invoices for one business
   profile and year now share one folder, without monthly subfolders. Receipts,

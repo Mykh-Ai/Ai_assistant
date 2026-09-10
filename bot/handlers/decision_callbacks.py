@@ -43,6 +43,7 @@ from bot.handlers.work_time import (
     work_time_manual_range_confirm,
     work_time_missing_days_choice,
     work_time_open_day_conflict_choice,
+    work_time_open_preview_confirm,
 )
 from bot.services.active_fsm_guard import (
     ACTIVE_FSM_EXPIRED_MESSAGE,
@@ -349,6 +350,19 @@ async def _dispatch_decision_token(
         DECISION_CANCEL,
     }:
         await work_time_manual_range_confirm(
+            message=message,
+            state=state,
+            config=config,
+            canonical_decision=token,
+        )
+        return True
+
+    if current_state == WorkTimeStates.waiting_open_preview_confirm.state and token in {
+        DECISION_APPROVE,
+        DECISION_EDIT,
+        DECISION_CANCEL,
+    }:
+        await work_time_open_preview_confirm(
             message=message,
             state=state,
             config=config,

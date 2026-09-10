@@ -1188,6 +1188,9 @@ def _fallback_bounded_confirmation_reply(
             'customization_request_preview',
             'customization_request_admin_response_preview',
             'work_time_lunch_break_update_confirm',
+            'work_time_manual_range_preview',
+            'work_time_close_preview',
+            'work_time_open_preview',
         }
         and _is_stt_ano_noise(normalized)
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
@@ -1237,6 +1240,9 @@ def _fallback_bounded_confirmation_reply(
             'customization_request_preview',
             'customization_request_admin_response_preview',
             'work_time_lunch_break_update_confirm',
+            'work_time_manual_range_preview',
+            'work_time_close_preview',
+            'work_time_open_preview',
         }
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):
@@ -1291,6 +1297,9 @@ def _fallback_bounded_confirmation_reply(
             'customization_request_preview',
             'customization_request_admin_response_preview',
             'work_time_lunch_break_update_confirm',
+            'work_time_manual_range_preview',
+            'work_time_close_preview',
+            'work_time_open_preview',
         }:
             cancel_values = {
                 'zrusit',
@@ -1697,6 +1706,9 @@ async def resolve_bounded_confirmation_reply(
             'customization_request_preview',
             'customization_request_admin_response_preview',
             'work_time_lunch_break_update_confirm',
+            'work_time_manual_range_preview',
+            'work_time_close_preview',
+            'work_time_open_preview',
         }
         and expected_reply_type in {'draft_review_decision', 'postpdf_decision'}
     ):

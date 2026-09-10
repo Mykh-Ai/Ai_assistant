@@ -17,6 +17,7 @@ from bot.handlers.decision_callbacks import (
     invoice_edit_callback,
 )
 from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
+from bot.handlers.work_time import WorkTimeStates
 from bot.keyboards.decision import (
     DECISION_APPROVE,
     DECISION_CANCEL,
@@ -110,6 +111,29 @@ class _DummyState:
 
     async def get_state(self):
         return self.current_state
+
+
+def test_work_time_open_preview_button_dispatches_to_shared_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _handler(**kwargs) -> None:
+        calls.append(kwargs['canonical_decision'])
+
+    monkeypatch.setattr('bot.handlers.decision_callbacks.work_time_open_preview_confirm', _handler)
+    state = _DummyState(current_state=WorkTimeStates.waiting_open_preview_confirm.state)
+
+    handled = asyncio.run(
+        _dispatch_decision_token(
+            token=DECISION_APPROVE,
+            current_state=WorkTimeStates.waiting_open_preview_confirm.state,
+            message=_DummyMessage(),
+            state=state,
+            config=_config(tmp_path),
+        )
+    )
+
+    assert handled is True
+    assert calls == ['approve']
 
 
 def _config(tmp_path: Path) -> Config:

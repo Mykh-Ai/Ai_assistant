@@ -652,3 +652,19 @@ only after the primary bundle selects a help/recovery kind or returns
 classifies the message as help/confusion. A trailing question mark is not a
 routing signal. InfoHelp confidence is telemetry only and has no threshold or
 execution authority.
+# Work-time explicit-open slot boundary
+
+For the existing `open_work_day` action, Python passes `operation_kind=open`
+to the bounded work-time slot extractor. The only executable structured mode
+for a stated arrival is `open_at_time`, with today's business date and one
+`HH:MM` start. Python rejects future/different-date candidates, previews the
+exact value, and writes only after the shared approve/edit/cancel decision.
+When the user states no start time, Python retains the deterministic current
+`Europe/Bratislava` business-time default.
+
+For `operation_kind=close`, only `close_at_time`, `close_with_duration`, and an
+explicit `close_now` are valid. For `operation_kind=manual`, only
+`manual_range` and `manual_duration` are valid. If `add_work_time_entry`
+arrives while a workspace-bound day is open and resolves to a duration close,
+Python converges it onto the existing close preview/service; the model never
+selects or performs the write.

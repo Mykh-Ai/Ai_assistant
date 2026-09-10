@@ -1436,6 +1436,54 @@ def test_voice_work_time_lunch_break_initial_choice_routes_to_shared_handler(mon
     assert calls == ['ano']
 
 
+def test_voice_work_time_open_input_routes_to_shared_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return '7:10'
+
+    async def _handler(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.work_time_open_input', _handler)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(WorkTimeStates.waiting_open_input.state),
+        )
+    )
+
+    assert calls == ['7:10']
+
+
+def test_voice_work_time_open_preview_routes_to_shared_handler(monkeypatch, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    async def _stt(*args, **kwargs) -> str:
+        return 'schvalit'
+
+    async def _handler(**kwargs) -> None:
+        calls.append(kwargs['message'].text)
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.handlers.voice.work_time_open_preview_confirm', _handler)
+
+    asyncio.run(
+        handle_voice(
+            _DummyMessage(),
+            _DummyBot(),
+            _config(tmp_path),
+            _DummyState(WorkTimeStates.waiting_open_preview_confirm.state),
+        )
+    )
+
+    assert calls == ['schvalit']
+
+
 def test_voice_work_time_lunch_break_value_routes_to_value_handler(monkeypatch, tmp_path: Path) -> None:
     calls: list[str] = []
 

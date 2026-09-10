@@ -1585,11 +1585,13 @@ Implemented runtime slice:
 - top-level actions `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, `update_work_time_lunch_break`, and `delete_work_time_month`;
 - Telegram text and voice entry through the existing bounded top-level action router;
 - work-time runtime `now`/`today`/`yesterday`/default report month uses `OFFICEFLOW_TIMEZONE`, default `Europe/Bratislava`, not the server/container UTC clock;
+- `open_work_day` uses the current Bratislava business time only when the user omits a start time; an explicit today's arrival such as `7:10` or `7.10` is Python-validated, previewed, and saved only after shared approve/edit/cancel confirmation;
 - `/dochadzka` help command;
 - additive SQLite storage in `work_time_days`, `work_time_events`, and `work_time_settings` scoped by `telegram_id`; `delete_work_time_month` removes only the current user's rows/events for the selected month after preview confirmation;
 - additive `work_time_days` columns for gross minutes, lunch-break snapshot, net-duration override, and close input mode; existing rows are not rewritten;
 - first report asks once whether lunch break should be deducted; later `update_work_time_lunch_break` changes or disables the fixed deduction after preview confirmation;
 - preview-confirmed manual time ranges, close-time/duration decisions, lunch-break changes, and monthly deletion through shared DecisionResolver paths;
+- when a day is already open, a request handled as `add_work_time_entry` that states a worked duration is converged onto the existing close-duration preview and closes that row with the confirmed net minutes instead of attempting a second same-day row;
 - monthly Excel report generation with all days, Sunday highlighting, and net total hours after configured lunch deduction.
 
 Explicitly out of scope:

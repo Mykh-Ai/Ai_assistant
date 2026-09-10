@@ -4770,11 +4770,24 @@ async def process_invoice_text(
                 'not_this': ['create outgoing invoice from voice content', 'manually edit a receipt'],
             },
             _OPEN_WORK_DAY_INTENT: {
-                'meaning': 'user wants to start/open today work-time attendance day; Python records current local start time only after authorization',
-                'not_this': ['invoice creation', 'report generation', 'manual full time range'],
+                'meaning': (
+                    'user wants to start/open today work-time attendance day; when the user explicitly states an arrival/start clock time, '
+                    'the work-time owner validates and previews that time, while an omitted time means the current Bratislava business time'
+                ),
+                'positive_examples': [
+                    'začínam pracovný deň',
+                    'Запиши прихід на роботу о 7:10',
+                    'Запиши приход на роботу в 7.10',
+                ],
+                'not_this': ['invoice creation', 'report generation', 'manual full time range with both start and end', 'closing an already open day'],
             },
             _CLOSE_WORK_DAY_INTENT: {
                 'meaning': 'user wants to close the currently open work day now, at an explicit end clock time, or by total duration',
+                'positive_examples': [
+                    'zatvor pracovný deň teraz',
+                    'uzavri dnes 6 odpracovaných hodín',
+                    'закрий мені сьогодні 6 відпрацьованих годин',
+                ],
                 'not_this': ['create invoice', 'monthly report', 'manual full range without an open day'],
             },
             _ADD_WORK_TIME_ENTRY_INTENT: {
@@ -5035,7 +5048,7 @@ async def process_invoice_text(
         await cmd_accounting_document_intake(message=message, state=state)
         return
     if top_level_intent == _OPEN_WORK_DAY_INTENT:
-        await start_open_work_day(message=message, state=state, config=config)
+        await start_open_work_day(message=message, state=state, config=config, text=invoice_text)
         return
     if top_level_intent == _CLOSE_WORK_DAY_INTENT:
         await start_close_work_day(message=message, state=state, config=config, text=invoice_text)
