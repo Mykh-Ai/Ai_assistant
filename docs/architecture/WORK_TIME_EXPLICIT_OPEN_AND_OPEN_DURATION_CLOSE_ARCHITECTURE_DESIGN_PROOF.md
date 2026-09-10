@@ -199,5 +199,9 @@ Implementation evidence: focused service/routing/DecisionResolver coverage passe
 passed`). Full repository evidence is recorded in the acceptance proof and
 `PROJECT_LOG.md`.
 
-Verdict: `implemented_local`; production deployment and the live-row repair
-remain separately gated and out of scope.
+Post-implementation operational note: after separate explicit approval, PR
+#115 was merged and deployed as `32dd682`. The single incident row was repaired
+under its own stopped-bot backup, exact-precondition, transaction, event-audit,
+and readback gates; this does not expand the general runtime capability.
+
+Verdict: `implemented_and_deployed`.
