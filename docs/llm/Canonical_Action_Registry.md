@@ -2,14 +2,15 @@
 
 Purpose: evidence-based inventory of currently existing user-facing actions/flows as of 2026-05-06.
 
-2026-10-14 working-tree semantic boundary repair: the existing `open_work_day`
+2026-10-14 semantic boundary repair, deployed as `f5f605e`: the existing `open_work_day`
 hint treats personal arrival shorthand (`Запиши мне приход`, `Запиши мені
 приход`, `Zapíš mi príchod`) as arrival at work even when "at work" is omitted.
 The existing `add_receipt` hint requires an accounting-document intent and
 excludes arrival and financial receipt alone. Explicit money/income/payment
 context is excluded from work-day opening; no financial action is invented.
-Actions, slots and owners are unchanged; status remains partial. Live model
-recognition and production deployment of this hint repair are not yet proven.
+Actions, slots and owners are unchanged; status remains partial. Nine bounded
+real-model probes passed after deploy; real audio/interactive Telegram
+acceptance remains unproven.
 
 ## Legend
 - **Category**: `top-level user-facing action` | `bootstrap/admin/setup flow`

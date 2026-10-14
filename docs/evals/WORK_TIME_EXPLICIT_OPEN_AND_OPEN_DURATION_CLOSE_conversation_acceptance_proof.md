@@ -93,3 +93,49 @@ the expected actions. Fresh-FSM safe switching remains the documented gap.
 
 Verdict for this addendum: `runtime_not_proven` (local payload and execution
 checks pass; live semantic recognition/deployment remain unproven).
+
+### Deployment and real-model follow-up, 2026-10-14
+
+The user explicitly authorized deployment. Runtime commit `f5f605e` was
+published and deployed through the private runbook, with a consistent SQLite
+backup and retained prior image at
+`/bot/backups/arrival-routing-20261014T091913Z`. Startup/polling succeeded;
+Cloudflare stayed up; schema and all business-table counts matched the backup,
+SQLite quick_check returned ok, and the invoice/InfoHelp/Product Truth source
+hashes matched the running image.
+
+The actual deployed `process_invoice_text` supplied its primary bundle kwargs
+to a capture function that deliberately aborted before dispatch. Then the
+real resolver/OpenAI boundary was invoked with those same allowed actions and
+hints for nine synthetic requests. No business handler, FSM mutation, DB write
+or Telegram send ran in these probes. The non-admin bundle was used; input
+was already text, so STT/audio and authorization middleware were outside this
+probe. Every result used `resolution_source=llm_bundle`, and OpenAI returned
+`response.model=gpt-4o-2024-08-06` with configured `gpt-4o`.
+
+| Probe | Actual result | Expected result | Result |
+|---|---|---|---|
+| `Запиши мне приход.` (two separate calls) | `open_work_day` twice | `open_work_day` | pass |
+| `Запиши мені приход.` | `open_work_day` | `open_work_day` | pass |
+| `Zapíš mi príchod.` | `open_work_day` | `open_work_day` | pass |
+| `Додай чек.` | `add_receipt` | `add_receipt` | pass |
+| `Pridaj bloček.` | `add_receipt` | `add_receipt` | pass |
+| `Запиши приход денег.` | `unknown` | `unknown` | pass |
+| `Zaznamenaj príjem peňazí.` | `unknown` | `unknown` | pass |
+| `Запиши приход на роботу в 7.10` | `open_work_day` | `open_work_day` | pass |
+
+Operational result: deployed, 9/9 bounded real-model probes passed. The earlier
+local-only verdict is superseded for model selection and deployment. A complete
+real-user audio/interactive Telegram journey remains `runtime_not_proven`;
+fresh-FSM safe switching remains out of scope.
+
+Separately approved operational recovery: after the user confirmed 07:07 and
+one notification, one workspace-scoped open-day row was inserted for
+2026-10-14 through the existing service in a single outer transaction, with
+open/manual-correction events. Other days/events remained unchanged; an
+independent mode=ro readback verified one open row, start 07:07, no end/total,
+both audit events and integrity_check=ok. A private Telegram notice was then
+accepted with the verified recipient/text; no incoming voice conversation was
+exercised. The data-repair backup and delivery receipt are retained under
+`/bot/backups/work-time-open-recovery-20261014T093148Z`; identifiers stay private.
+This operation adds no general repair/automatic-notification capability.

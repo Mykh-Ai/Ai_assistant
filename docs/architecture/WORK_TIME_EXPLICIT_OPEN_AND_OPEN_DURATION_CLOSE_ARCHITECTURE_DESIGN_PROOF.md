@@ -260,3 +260,11 @@ Local implementation follows this design (`design_matches_runtime`): focused
 537-test and full 2720-test/7-subtest runs passed. The conversation proof's
 2026-10-14 addendum records fixture versus real boundaries and the honest
 `runtime_not_proven` live/deployment verdict.
+
+Deployment follow-up: after explicit user approval, the scoped repair was
+committed/pushed as `f5f605e` and deployed on 2026-10-14. SQLite backup and
+rollback image were retained, post-start schema/table counts were preserved,
+and all three changed runtime source hashes matched the container. Nine real
+primary-bundle probes passed on GPT-4o; this proves the bounded model selection
+cases, not a real audio/interactive Telegram conversation. See the acceptance
+artifact's deployment follow-up for the remaining journey gap.

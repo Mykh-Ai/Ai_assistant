@@ -1,3 +1,63 @@
+# 2026-10-14 - Authorized arrival repair deployment, day recovery and notice
+
+- The user explicitly requested deployment and manual recovery of the missing
+  work-day opening, then confirmed 07:07 local time and sending one notice
+  after independent verification.
+- Published the tested arrival/receipt repair as
+  f5f605e5885bbe55e07c014248610a93bcd7d7ad and deployed through the private
+  runbook: clean checkout/expected old SHA, consistent SQLite backup, retained
+  rollback image, fast-forward main, build and restart only FakturaBot.
+  Cloudflare stayed up. Startup and polling succeeded without errors.
+- Deployment rollback artifacts:
+  /bot/backups/arrival-routing-20261014T091913Z and Docker tag
+  fakturabot:arrival-rollback-20261014t091913z. Post-deploy schema and every
+  business-table count matched the backup; quick_check was ok; all three
+  changed runtime source hashes matched the running container.
+- Bounded real-model deployment smoke used the deployed primary bundle with
+  full non-admin allowed actions/hints, aborting before business dispatch.
+  Nine of nine real OpenAI calls passed, including two independent repetitions
+  of Запиши мне приход, genuine receipt cases, money-receipt exclusions and
+  explicit arrival. Configured gpt-4o returned gpt-4o-2024-08-06; all results
+  were llm_bundle, not local fallback. No business effect or Telegram send
+  occurred in these model probes; real audio/incoming Telegram remains unproven.
+- Pre-deploy incident audit showed one active workspace, no today row and no
+  prior open day. Docker recreation removed old container stdout logs, so
+  recipient/workspace identity was revalidated against the unique two-day
+  work-time history fingerprint recorded in that earlier incident-actor audit
+  and the frozen deployment backup. Active authorization, membership and
+  matching supplier were independently checked; private scope plans retain
+  identifiers under mode 0600, never in repository docs or chat.
+- Before the approved data write, created a separate consistent SQLite backup
+  and restricted manifest at
+  /bot/backups/work-time-open-recovery-20261014T093148Z.
+  Current shape was zero rows for the actor/workspace/date and no open row;
+  target shape was one open 2026-10-14 row at 07:07 with no end/total. No
+  migration, schema, storage-path or original-document change was required.
+- One BEGIN IMMEDIATE transaction reused the workspace-bound WorkTimeService
+  open owner with its commit deferred to the outer transaction, added a
+  manual-recovery note and manual_correction audit event, and committed only
+  after all scope/count/value preconditions passed. Exactly one work_time_days
+  row and two events (open, manual_correction) were added; all other work days,
+  work-time events and other table counts remained unchanged.
+- Independent mode=ro readback found exactly one open day, start 07:07, end and
+  total NULL, both source-linked audit events, and integrity_check=ok.
+  Rollback is separately gated: use the backup for comparison and remove only
+  the newly created, still-unchanged scoped row/events if needed; never restore
+  a whole old database over later business activity.
+- After readback and rechecking authorization/scope/open state, sent exactly
+  one approved private Telegram notice through the bot. Telegram accepted it
+  and its returned recipient/text matched the verified actor/message.
+  Notification status/message receipt are retained in the private manifest;
+  no blind resend is allowed after an uncertain transport outcome.
+- Notice: Pracovny den na 14.10.2026 je otvoreny od 07:07. Ranny zaznam bol
+  doplneny. The actual delivered text uses Slovak diacritics.
+- Local runtime evidence remains 2720 tests and 7 subtests passed. Operational
+  changes required no new runtime code. Deployment docs, Product Truth,
+  canonical registry and acceptance evidence now distinguish deployed bounded
+  model proof from pending real incoming audio/Telegram acceptance.
+  This one authorized repair/notice is not a new automatic notification,
+  general data-repair, self-learning or adaptive-workflow capability.
+
 # 2026-10-14 - Scoped personal-arrival versus receipt semantic repair
 
 - User-authorized scope: strengthen the primary routing meaning of personal
