@@ -654,6 +654,15 @@ routing signal. InfoHelp confidence is telemetry only and has no threshold or
 execution authority.
 # Work-time explicit-open slot boundary
 
+The primary `open_work_day` and `add_receipt` hints separate arrival at work
+from an accounting source document. Personal short arrival requests such as
+`Запиши мне приход` mean attendance even without explicit "at work" words;
+explicit money/income/payment context does not. Financial receipt alone must
+not imply receipt upload. These are illustrative semantic hints, not a Python
+phrase whitelist. LLM-first selection, allowed actions and existing Python
+owners stay unchanged; no post-action second classifier or InfoHelp veto is
+introduced by the 2026-10-14 scoped repair.
+
 For the existing `open_work_day` action, Python passes `operation_kind=open`
 to the bounded work-time slot extractor. The only executable structured mode
 for a stated arrival is `open_at_time`, with today's business date and one

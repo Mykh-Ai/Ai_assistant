@@ -43,3 +43,53 @@ precondition audit. The repair is recorded in `PROJECT_LOG.md` and is not a
 general editing capability.
 
 Verdict: `passed_and_deployed`.
+
+## 2026-10-14 arrival-versus-receipt hint repair (local addendum)
+
+Design: section 17 of
+`docs/architecture/WORK_TIME_EXPLICIT_OPEN_AND_OPEN_DURATION_CLOSE_ARCHITECTURE_DESIGN_PROOF.md`,
+authorized by the user's request to strengthen personal arrival semantics.
+Environment: local working tree based on `91a0b1ce`; synthetic actor 1001,
+fresh FSM, temporary SQLite initialized with the current schema, controlled
+business clock 2026-10-14 07:07. This addendum is not deployed evidence.
+
+Public traces are executable in
+`tests/test_work_time_routing.py::test_arrival_receipt_boundary_public_entry_payload_and_effects`
+for each of text (`process_invoice_text`) and voice (`handle_voice`). Voice STT,
+primary OpenAI responses, no-time slot output and unknown-help responses are
+fixtures; the actual primary prompt serialization, allowed-action validation,
+Python dispatch, domain owner, SQLite effect and final FSM are real. The actor
+is already authorized at handler entry; authorization middleware is outside
+these traces and unchanged. No production calls or credentials are used.
+
+| Exact input, both channels | Fixture bundle result | Observed route/state/effect | Result |
+|---|---|---|---|
+| `Запиши мне приход.` | `open_work_day/business_action`, no time slot | Existing open owner -> one open row at 07:07 -> idle; repeated request leaves one row; synthetic other actor has no row | pass |
+| `Запиши мені приход.` | same | same | pass |
+| `Zapíš mi príchod.` | same | same | pass |
+| `Додай чек.` | `add_receipt/business_action` | Existing document-intake owner -> `waiting_upload`, asks for photo/PDF, zero work-day/invoice writes | pass |
+| `Запиши приход денег.` | `unknown/unknown` | Existing guidance owner -> idle, response, no work-day/invoice writes or attachment waiting state | pass |
+| `Zaznamenaj príjem peňazí.` | same | same | pass |
+
+Every trace checks unmodified input in the outbound primary payload, both
+action IDs plus unknown in allowed actions, arrival positive semantics and
+symmetric document/money exclusions. No reply/inline keyboard is created by
+these unchanged branches; final response markup is absent, fixture audio is
+removed, and no invoice or accounting-workspace directories are created.
+Unknown and receipt cases show no work-time row; all cases show zero invoices.
+Existing explicit-arrival, preview-confirmation, active-FSM and Product Truth
+tests cover unchanged neighboring journeys; this repair adds no new callback,
+confirmation, missing-slot, cancellation or unauthorized entry policy.
+
+Evidence: 12 new public-entry parameter cases passed. Combined focused
+work-time/service/voice/primary-routing/Product Truth/InfoHelp/FSM suite:
+537 passed. Full `python -m pytest -q`: 2720 passed, 7 subtests passed.
+Product Truth remains partial; guidance explains arrival at work and excludes
+money/receipt semantics. `git diff --check` passed.
+
+Real GPT-4o recognition, real audio STT, interactive Telegram and deployed
+acceptance were not run. Fixture outputs do not prove that GPT-4o now chooses
+the expected actions. Fresh-FSM safe switching remains the documented gap.
+
+Verdict for this addendum: `runtime_not_proven` (local payload and execution
+checks pass; live semantic recognition/deployment remain unproven).

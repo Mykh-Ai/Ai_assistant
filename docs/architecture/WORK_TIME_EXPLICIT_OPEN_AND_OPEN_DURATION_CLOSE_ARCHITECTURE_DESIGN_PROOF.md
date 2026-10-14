@@ -205,3 +205,58 @@ under its own stopped-bot backup, exact-precondition, transaction, event-audit,
 and readback gates; this does not expand the general runtime capability.
 
 Verdict: `implemented_and_deployed`.
+
+## 17. 2026-10-14 scoped arrival-versus-receipt semantic repair
+
+Task: prevent the observed `Запиши мне приход.` -> `add_receipt` misroute.
+The user explicitly authorized strengthening this semantic boundary. This is
+an extension/quality repair of existing `open_work_day` and `add_receipt`,
+not a new action, slot, FSM control, deterministic fast-path, or AI maturity
+upgrade. Work-time and document intake remain `partial`; risk is bounded to
+primary idle semantic selection and guidance. Current design matches the
+invoice action hints, voice convergence and existing domain owners.
+
+| Meaning / representative input | Expected primary result | Must not become |
+|---|---|---|
+| Personal arrival: `Запиши мне приход.`, `Запиши мені приход.`, `Запиши прихід.`, `Zapíš mi príchod.` | `open_work_day`, current business time when omitted | receipt upload or money receipt |
+| Explicit arrival: `Запиши приход на роботу в 7.10` | `open_work_day`, existing explicit-time preview | current-time substitution |
+| Explicit source document: `Додай чек`, `Добавь чек`, `Pridaj bloček` | `add_receipt`, existing photo/PDF waiting state | work-day opening |
+| Financial receipt only: `Запиши приход денег`, `Zaznamenaj príjem peňazí` | `unknown` when no existing allowed action owns the requested financial operation | attendance or inferred document upload |
+| Genuinely unclear arrival/income request | existing `unknown`/clarification route, no guessed write | inferred invoice, receipt or work day |
+
+Change only the two primary `action_hints`: explain personal arrival shorthand,
+provide illustrative SK/UK/RU examples and symmetric financial/document
+negative space. These are meaning examples, never Python aliases or phrase
+dictionaries. The existing LLM-first bundle and Python allowed-action
+validation remain authoritative; no second classifier or InfoHelp veto follows
+a valid action.
+
+Sections 5-11 above continue to own slots, entry/authorization, FSM, shared
+decisions, tenant isolation and effects. No-time open invokes the existing
+workspace-bound service and clears the state; explicit time uses existing
+preview confirmation; receipt intake waits for an attachment and never saves
+on this utterance alone. Active FSM still wins; safe switching and old draft
+restoration remain out of scope. No new keyboard/callback lifecycle is added.
+
+Product Truth / InfoHelp retain `work_time_tracking=partial` and explain
+arrival shorthand as attendance, never bank/cashflow recording or automatic
+time detection. Exact-time confirmation and all earlier forbidden claims
+remain. Broad action-alias learning is not implemented; this prompt repair
+does not store transcripts, aliases or new business data.
+
+Acceptance: inspect actual outbound primary payload from public text/voice
+entrypoints; prove original utterance transfer, allowed actions, both semantic
+boundaries, LLM-first routing and unchanged owner/side effects. Mocked model
+outputs must be disclosed: they prove payload plumbing and Python execution,
+not real GPT-4o recognition. Include genuine receipt and financial negative
+cases, existing explicit-time and active-FSM safety tests, Product Truth/help
+checks, and full repository tests. Live model/Telegram acceptance is a separate
+not-yet-proven gate. No DB/schema/storage migration or production data repair
+is needed; rollback restores these hints/guidance only, with no data rewrite.
+
+Design verdict for this authorized scope: `ready_for_handoff`.
+
+Local implementation follows this design (`design_matches_runtime`): focused
+537-test and full 2720-test/7-subtest runs passed. The conversation proof's
+2026-10-14 addendum records fixture versus real boundaries and the honest
+`runtime_not_proven` live/deployment verdict.

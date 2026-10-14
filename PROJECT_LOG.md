@@ -1,3 +1,140 @@
+# 2026-10-14 - Scoped personal-arrival versus receipt semantic repair
+
+- User-authorized scope: strengthen the primary routing meaning of personal
+  arrival shorthand, following the read-only incident/model audits below.
+  Design owner: section 17 of the existing work-time Architecture Design Proof,
+  verdict ready_for_handoff; current owners matched that design.
+- Reviewed the mandatory AI/Product Truth/LLM/action/in-action, DecisionResolver,
+  evaluation, self-learning, customization/handoff and implementation contracts,
+  relevant document-intake/access boundaries and current tests. Constraints:
+  LLM-first bounded actions, Python execution/validation, active FSM ownership,
+  no business dictionaries in voice.py, no unconfirmed semantic learning.
+- Updated only the open_work_day/add_receipt primary action hints: personal
+  short arrival means attendance even without explicit at-work words; document
+  intake requires an accounting-document intent; explicit money/income/payment
+  context is excluded from arrival and never invents receipt upload.
+  Examples remain illustrative semantics, not literal Python aliases.
+- Touched routing/LLM prompt, Product Truth/InfoHelp guidance, tests/evals and
+  docs/log. Existing slots, FSM/confirmation/callback/keyboards, STT transport,
+  tenant ownership, DB/schema/storage semantics, PDF, model selection and
+  server state are unchanged. No migration or production data repair is needed.
+  The broader fresh-FSM safe-switch proposal is outside this scoped repair.
+- Work-time and document intake remain partial. AI maturity remains bounded
+  semantic canonicalization with deterministic Python owners; no Level 4
+  action learning or other maturity upgrade is claimed. Payroll, financial
+  recording, automatic time detection and guaranteed recognition are not
+  claimed. Product claims are backed by current owners, Product Truth,
+  canonical registry and the local acceptance addendum.
+- Added 12 text/voice public-entry parameter cases for personal arrival,
+  genuine receipt and financial negative space. They inspect the actual
+  serialized primary payload and exercise real Python/temporary-SQLite
+  effects, final state, no receipt save and repeat-open idempotency. Model/STT,
+  no-time slot and unknown-help outputs are fixtures, explicitly disclosed;
+  these tests do not prove real GPT-4o recognition.
+- Validation: focused routing/service/voice/Product Truth/InfoHelp/FSM suite
+  passed (537 tests). Full `python -m pytest -q` passed with 2720 tests and
+  7 subtests in 420.82 seconds; `git diff --check` passed.
+- Updated Product Truth runtime guidance/docs, InfoHelp, TZ, action/LLM
+  contracts, existing design/acceptance artifacts, smoke cases and CHANGELOG.
+  No new canonical action, in-action decision or learned alias was introduced;
+  existing forbidden claims and safety gates were checked.
+- Status: locally implemented prompt/guidance repair; live model/audio,
+  interactive Telegram acceptance and deployment are not proven. No commit,
+  push, model change, server write or deployment was performed.
+
+# 2026-10-14 - Work-day opening incident: receipt misroute and fresh-FSM trap
+
+- Scope: authorized read-only production diagnosis and repair proposal.
+  No runtime, server state, business DB/storage, schema, deployment, or
+  semantic-learning change. Work-time remains `partial`; no AI maturity
+  upgrade or completed repair is claimed.
+- Reviewed AGENTS, the private server runbook, relevant AI/Product Truth,
+  LLM/action/in-action/DecisionResolver, FSM design/evaluation, self-learning,
+  customization/handoff, access, migration, and Document Intake contracts,
+  current owners/tests, and earlier work-time PROJECT_LOG decisions.
+- Production checkout and local HEAD were
+  `91a0b1cefc6cb1aa5638969325688bb25490ba17`. The bot was up for four weeks;
+  hashes of the running invoice, voice, active-FSM guard, and document-intake
+  sources matched the production checkout. No stale deployment was found.
+- At 07:07:14 Europe/Bratislava (05:07:14 UTC), STT produced
+  `Запиши мне приход.`. The primary LLM bundle then returned
+  `add_receipt/business_action`, not `open_work_day`, at 07:07:15.
+  STT and LLM requests succeeded with HTTP 200. This was an incorrect action
+  selection; the exact reason inside the model is not observable.
+- Python dispatched that valid registered action to document intake, which
+  clears the prior state and sets `AccountingDocumentIntakeStates:waiting_upload`.
+  Three subsequent voice transcripts, including the clear Slovak
+  `Otvor mi pracovný deň teraz.`, had no top-level bundle event. Current code
+  keeps fresh FSM ownership: navigation has no safe-switch outcome, and the
+  unhandled active voice state answers with a generic text-required message.
+  Text in waiting_upload instead repeats the photo/PDF request.
+- A SQLite URI `mode=ro` audit with `query_only=ON`, scoped internally to
+  the actor of the single incident event, found no 2026-10-14 work-time row
+  and no remaining open day. The 2026-10-12 and 2026-10-13 rows were closed.
+  Real actor/workspace identifiers and credentials were not recorded here.
+- Overnight Telegram rate-limit/Bad Gateway errors recovered at 01:12 UTC,
+  hours before the incident; there is no evidence they caused this failure.
+- Recurrence assessment: no earlier identical add_receipt misroute was found
+  among the retained structured work-time voice events from 2026-09-15 to
+  the audit. Similar `Запиши мені приход.` (09-18) and
+  `Запиши приход зараз.` (09-29) resolved to open_work_day. Noisy work-day
+  transcripts also returned unknown on 10-08 and 10-09. This supports a
+  recurring routing-quality class, not proof of repeated identical incidents.
+- Historical linkage: the 2026-07-09 Active FSM Navigation and Stale-State
+  Guard entry explicitly deferred safe switching from a fresh active flow.
+  The 07-04/07-10 work-time routing repairs and 09-10 explicit-arrival repair
+  addressed neighboring intents/slots, not this receipt-to-work-day sequence.
+- Local offline replay of the observed receipt dispatch followed by all three
+  voice transcripts reproduced waiting_upload and the generic text-required
+  reply without any top-level dispatch or business DB creation. A typed new
+  work-day request also stayed in upload; exact /cancel cleared the state.
+  This is the immediate recovery route; a new no-time open uses the later
+  current business time, not the failed 07:07 arrival.
+- Existing focused verification:
+  `python -m pytest -q tests/test_active_fsm_guard.py tests/test_voice_state_routing.py tests/test_work_time_routing.py`
+  -> 122 passed. No full suite, live LLM replay, or interactive Telegram
+  acceptance was performed; these green tests do not prove a repaired journey.
+- Proposed repair, not implemented: strengthen the primary bundle's semantic
+  boundary between arrival/start of work and accounting receipt intake, with
+  short SK/UK/RU and noisy-STT examples plus symmetric negative examples.
+  Genuinely ambiguous arrival/income wording must request bounded clarification
+  before entering a business flow. Do not hardcode a universal arrival alias,
+  add business phrase dictionaries to voice.py, or add an InfoHelp veto/second
+  classifier after a valid direct action.
+- Close the documented FSM gap initially for empty waiting_upload: a bounded
+  no-side-effect probe may propose a new supported action; a shared
+  DecisionResolver yes/no confirmation must precede discard/switch. Rejection
+  or unknown preserves the old state/data; approval revalidates actor/workspace
+  and invokes the existing owner once. Draft-bearing states need a separately
+  proven restore/cleanup contract. Always describe the current upload step,
+  expected attachment and /cancel escape instead of the generic voice prompt.
+- Acceptance gate for a future approved design: public text/voice entry replay
+  of this complete sequence, correct receipt negative cases, ambiguous
+  clarification, approve/decline/unknown switch, unauthorized/cross-workspace,
+  stale/duplicate callback and final keyboard cleanup; exactly one work-day row
+  only on the authorized path and no receipt save. Add state-before/after,
+  selected action, resolution source and recovery outcome telemetry without
+  raw transcripts or IDs. Update Product Truth, InfoHelp, registries and
+  conversation acceptance evidence together; then controlled Telegram smoke
+  before declaring the repair deployed. Broad action-alias learning is not
+  currently supported and must not be inferred from this incident.
+
+- Model verification follow-up: read only the named model settings from the
+  running container and Config: OPENAI_LLM_MODEL=gpt-4o and
+  OPENAI_STT_MODEL=whisper-1. The primary routing call passes that LLM name to
+  Chat Completions with temperature=0 and JSON-object output. Its diagnostics
+  do not retain response.model, so the exact provider-resolved snapshot of the
+  incident is unproven. The initial incorrect action was an LLM-bundle result;
+  later explicit open-day requests did not reach that primary resolver.
+- Official OpenAI documentation checked on 2026-10-14 marks GPT-4o deprecated,
+  with the 2024-08-06/2024-11-20 snapshots scheduled to shut down on
+  2027-01-14; whisper-1 is scheduled to shut down on 2027-02-26. Both remain
+  callable before shutdown; successful incident HTTP 200 calls corroborate
+  current access. Deprecation is not evidence of the cause of this misroute.
+  Source: https://developers.openai.com/api/docs/deprecations and
+  https://developers.openai.com/api/docs/models/gpt-4o . No model setting was
+  changed, no API comparison was run, and no migration is claimed.
+
 # 2026-09-02 - Missing legacy invoice 20260005 Drive recovery
 
 - Post-migration visual review exposed one additional legacy omission:

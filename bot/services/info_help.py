@@ -294,7 +294,7 @@ _SLOVAK_CAPABILITY_COPY = {
         'title': 'Evidencia pracovneho casu / Dochadzka',
         'summary': 'Evidencia pracovneho casu je podporovana ciastocne: bot vie otvorit a uzavriet pracovny den, doplnit potvrdeny casovy rozsah, nastavit odpocty obednej prestavky, vytvorit mesacny Excel vykaz a po potvrdeni vymazat ulozene zaznamy za vybrany mesiac.',
         'limitation': 'Nie je to mzdova dochadzka, vypocet mzdy, pravna HR evidencia, multi-zamestnanecka dochadzka ani export do uctovneho alebo mzdoveho softveru. Bot automaticky nevie, kedy ste pracovali; cas treba zadat alebo otvorit/uzavriet. Obedna prestavka je fixny pouzivatelsky odpocet pre vykazy, nie pravny payroll vypocet. Vymazanie mesiaca maze DB zaznamy dochadzky, nie on-demand Excel subory ako kanonicke data.',
-        'safe_next': 'Pouzite napriklad: zacinam pracovny den, zatvor den o 17:00, pracoval som dnes od 5:30 do 17:00, vytvor vykaz hodin za jun 2026, nastav obednu prestavku na 30 minut alebo vymaz dochadzku za jul 2026. Hlasom mozete zacat a ovladat tok; presne casy, zmena obeda aj mazanie mesiaca idu az po nahlade a potvrdeni.',
+        'safe_next': 'Pouzite napriklad: zacinam pracovny den alebo zapis mi prichod (prichod do prace), zatvor den o 17:00, pracoval som dnes od 5:30 do 17:00, vytvor vykaz hodin za jun 2026, nastav obednu prestavku na 30 minut alebo vymaz dochadzku za jul 2026. Prichod tu znamena prichod do prace, nie prijem penazi ani pridanie blocka. Hlasom mozete zacat a ovladat tok; presne casy, zmena obeda aj mazanie mesiaca idu az po nahlade a potvrdeni.',
     },
     'code_agent_handoff': {
         'title': 'Odovzdanie úlohy kódovaciemu agentovi',

@@ -4765,21 +4765,43 @@ async def process_invoice_text(
             _ADD_RECEIPT_INTENT: {
                 'meaning': (
                     'user wants to add/upload a new external accounting source document, such as a bloček, receipt, doklad, '
-                    'or incoming invoice; Python starts the existing upload-waiting FSM and asks for a photo or PDF next'
+                    'or incoming invoice; the intended object must be an accounting document, not a personal arrival or receipt of money. '
+                    'Python starts the existing upload-waiting FSM and asks for a photo or PDF next'
                 ),
-                'not_this': ['create outgoing invoice from voice content', 'manually edit a receipt'],
+                'positive_examples': ['Pridaj bloček', 'Додай чек', 'Добавь чек'],
+                'not_this': [
+                    'create outgoing invoice from voice content',
+                    'manually edit a receipt',
+                    'record my arrival/start of work, including Запиши мне приход or Запиши мені приход; use open_work_day',
+                    'record receipt of money, income, a payment or bank/cash movement without an explicit accounting-document upload request',
+                ],
             },
             _OPEN_WORK_DAY_INTENT: {
                 'meaning': (
-                    'user wants to start/open today work-time attendance day; when the user explicitly states an arrival/start clock time, '
+                    'user wants to start/open today work-time attendance day or record their arrival at work. '
+                    'A short personal arrival request such as Запиши мне приход, Запиши мені приход or Zapíš mi príchod '
+                    'means work attendance even when the words at work / на роботу are omitted; it does not request a receipt document. '
+                    'Explicit money, income, payment or bank/cash context instead describes a financial operation, not work attendance. '
+                    'When the user explicitly states an arrival/start clock time, '
                     'the work-time owner validates and previews that time, while an omitted time means the current Bratislava business time'
                 ),
                 'positive_examples': [
                     'začínam pracovný deň',
+                    'Zapíš mi príchod',
+                    'Запиши мне приход.',
+                    'Запиши мені приход.',
+                    'Запиши прихід.',
                     'Запиши прихід на роботу о 7:10',
                     'Запиши приход на роботу в 7.10',
                 ],
-                'not_this': ['invoice creation', 'report generation', 'manual full time range with both start and end', 'closing an already open day'],
+                'not_this': [
+                    'invoice creation',
+                    'report generation',
+                    'manual full time range with both start and end',
+                    'closing an already open day',
+                    'add/upload an accounting receipt, bloček, чек or incoming invoice; use add_receipt',
+                    'record receipt of money or income, including Запиши приход денег or Zaznamenaj príjem peňazí',
+                ],
             },
             _CLOSE_WORK_DAY_INTENT: {
                 'meaning': 'user wants to close the currently open work day now, at an explicit end clock time, or by total duration',

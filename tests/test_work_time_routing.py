@@ -4,6 +4,7 @@ from dataclasses import replace
 import asyncio
 import inspect
 import json
+import sqlite3
 from datetime import datetime, date
 from pathlib import Path
 
@@ -11,6 +12,8 @@ import pytest
 
 from bot.config import Config
 from bot.handlers import voice
+from bot.handlers.invoice import process_invoice_text
+from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
 from bot.handlers.work_time import (
     WorkTimeStates,
     start_add_work_time_entry,
@@ -67,6 +70,9 @@ class _DummyState:
 
     async def get_data(self) -> dict:
         return dict(self.data)
+
+    async def get_state(self) -> str | None:
+        return self.current_state
 
     async def clear(self) -> None:
         self.current_state = None
@@ -316,6 +322,119 @@ def test_top_level_work_time_delete_month_beats_invoice_delete_for_mixed_dochadz
         )
     ) == 'delete_existing_invoice'
 
+@pytest.mark.regression
+@pytest.mark.parametrize('input_channel', ['text', 'voice'])
+@pytest.mark.parametrize(
+    ('utterance', 'model_action'),
+    [
+        pytest.param('Запиши мне приход.', 'open_work_day', id='incident-arrival'),
+        pytest.param('Запиши мені приход.', 'open_work_day', id='uk-arrival'),
+        pytest.param('Zapíš mi príchod.', 'open_work_day', id='sk-arrival'),
+        pytest.param('Додай чек.', 'add_receipt', id='receipt'),
+        pytest.param('Запиши приход денег.', 'unknown', id='money-receipt'),
+        pytest.param('Zaznamenaj príjem peňazí.', 'unknown', id='sk-money-receipt'),
+    ],
+)
+def test_arrival_receipt_boundary_public_entry_payload_and_effects(
+    monkeypatch, tmp_path: Path, input_channel: str, utterance: str, model_action: str,
+) -> None:
+    # The model result is a fixture, not proof of real GPT-4o recognition.
+    # Exercise the actual outbound prompt and Python owner via text/voice.
+    primary_payloads: list[dict] = []
+
+    class _PrimaryModel:
+        def __init__(self, *, api_key: str) -> None:
+            self.chat = type('_Chat', (), {'completions': self})()
+
+        async def create(self, **kwargs):
+            payload = json.loads(kwargs['messages'][1]['content'])
+            primary_payloads.append(payload)
+            assert kwargs['model'] == 'gpt-4o'
+            assert kwargs['temperature'] == 0
+            return _FakeResponse(json.dumps({
+                'canonical_action': model_action,
+                'routing_kind': 'unknown' if model_action == 'unknown' else 'business_action',
+            }))
+
+    class _UnknownHelpModel:
+        def __init__(self, *, api_key: str) -> None:
+            self.chat = type('_Chat', (), {'completions': self})()
+
+        async def create(self, **kwargs):
+            return _FakeResponse(json.dumps({
+                'capability_id': 'unknown', 'topic_id': 'unknown',
+                'triage_class': 'unknown', 'confidence': 0,
+                'needs_clarification': False,
+            }))
+
+    class _VoiceBot:
+        async def get_file(self, file_id: str):
+            return type('_File', (), {'file_path': 'fixture.ogg'})()
+
+        async def download_file(self, file_path: str, destination: Path) -> None:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b'fixture')
+
+    async def _stt(*args, **kwargs) -> str:
+        return utterance
+
+    config = replace(_config(tmp_path), openai_api_key='sk-test')
+    init_db(config.db_path)
+    now = datetime(2026, 10, 14, 7, 7)
+    monkeypatch.setattr('bot.services.work_time.work_time_local_now', lambda value=None: value or now)
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _PrimaryModel)
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', _UnknownHelpModel)
+    monkeypatch.setattr(_WorkTimeSlotOpenAIFake, 'output', '{"canonical":"unknown"}')
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    state = _DummyState()
+    message = _DummyMessage(utterance)
+
+    async def _enter():
+        if input_channel == 'voice':
+            message.voice = type('_Voice', (), {'file_id': 'arrival-fixture'})()
+            await voice.handle_voice(message, _VoiceBot(), config, state)
+        else:
+            await process_invoice_text(message=message, state=state, config=config, invoice_text=utterance)
+
+    asyncio.run(_enter())
+    assert len(primary_payloads) == 1
+    payload = primary_payloads[0]
+    assert payload['user_input_text'] == utterance
+    assert {'open_work_day', 'add_receipt', 'unknown'} <= set(payload['allowed_actions'])
+    arrival = payload['action_hints']['open_work_day']
+    receipt = payload['action_hints']['add_receipt']
+    assert 'Запиши мне приход.' in arrival['positive_examples']
+    assert 'at work / на роботу are omitted' in arrival['meaning']
+    assert any('money' in item for item in arrival['not_this'])
+    assert any('record my arrival/start of work' in item for item in receipt['not_this'])
+    assert any('without an explicit accounting-document upload request' in item for item in receipt['not_this'])
+
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute('SELECT count(*) FROM work_time_days').fetchone()[0] == (model_action == 'open_work_day')
+        assert connection.execute('SELECT count(*) FROM invoice').fetchone()[0] == 0
+    if model_action == 'open_work_day':
+        service = WorkTimeService(config.db_path)
+        day = service.get_open_day(telegram_id=1001)
+        assert day is not None and day.start_time == '07:07'
+        assert service.get_open_day(telegram_id=1002) is None
+        assert state.current_state is None
+        assert 'Pracovny den je otvoreny' in message.answers[-1]
+        asyncio.run(_enter())
+        assert len(service.list_days_for_month(telegram_id=1001, year=2026, month=10)) == 1
+        assert state.current_state is None
+    elif model_action == 'add_receipt':
+        assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+        assert 'fotku alebo PDF' in message.answers[-1]
+    else:
+        assert state.current_state is None
+        assert message.answers
+    assert all(markup is None for markup in message.reply_markups)
+    assert not (tmp_path / 'invoices').exists()
+    assert not (tmp_path / 'workspaces').exists()
+    assert not list(tmp_path.rglob('*.ogg'))
+
+
 def test_product_truth_work_time_tracking_is_partial() -> None:
     payload = get_safe_answer_payload('work_time_tracking')
     result = get_capability('work_time_tracking')
@@ -336,6 +455,10 @@ def test_product_truth_work_time_tracking_is_partial() -> None:
 def test_info_help_answers_work_time_and_refuses_payroll_overclaim() -> None:
     answer = build_product_truth_guidance(user_input_text='Vie bot evidovat odpracovane hodiny?')
     assert answer is not None
+    assert 'zapis mi prichod' in answer.lower()
+    assert 'nie prijem penazi ani pridanie blocka' in answer.lower()
+    truth = get_safe_answer_payload('work_time_tracking')
+    assert any('financial income/payment recording is not part' in item for item in truth['current_limitations'])
     assert 'ciastocne' in answer.lower() or 'ciasto' in answer.lower()
     assert 'mzdova dochadzka' in answer.lower() or 'mzdova dochadzka' in answer.lower()
     assert 'vypocet mzdy' in answer.lower() or 'vypocet mzdy' in answer.lower()

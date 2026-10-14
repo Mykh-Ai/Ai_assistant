@@ -930,6 +930,7 @@ InfoHelp must answer work-time / dochadzka questions from Product Truth as `part
 Required wording boundaries:
 
 - say the bot can record a simple work day, close it, add a confirmed manual range, configure a fixed lunch-break deduction, and generate a monthly Excel report;
+- explain `Zapíš mi príchod` as arrival at work; without a stated time the existing open-day owner uses current business time. This is not receipt of money or adding a bloček, and financial wording must not imply attendance or an unrequested document;
 - say authorization/setup is required before business work-time state is written or deleted;
 - say exact times and lunch-break changes are preview-confirmed and Python-validated;
 - say reports show net hours after the configured lunch deduction; duration-only rows keep the user-confirmed net duration stable;
