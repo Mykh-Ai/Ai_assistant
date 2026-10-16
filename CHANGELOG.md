@@ -1,17 +1,18 @@
 # Changelog
 
-- Local explicit-time correction: a newer arrival/departure can replace one
+- Explicit-time correction deployed as `5a3f3f8`: a newer arrival/departure can replace one
   stored boundary after an old/new confirmation, preserving the other clock
   and closed status where appropriate. Existing historical dates are scoped;
   snapshot/event/lunch checks prevent stale overwrites, totals are recalculated
   and one audit event is appended. No-time repeats keep the old value. No
-  deployment or report/open model-selection fix is implied.
+  report/open model-selection fix is implied. Interactive Telegram acceptance
+  remains pending login; three real-model isolated provider/handler journeys passed.
 
-- Local recovery fix: a clear new executable text/voice request may replace a
+- Recovery fix deployed as `5a3f3f8`: a clear new executable text/voice request may replace a
   fresh empty receipt-upload wait through one existing primary action bundle.
   Upload processing, any draft/session data, unknown/help and model failure
-  preserve the source flow. Existing target confirmations remain. This is not
-  deployed and does not add general draft switching or saved-time editing.
+  preserve the source flow. Existing target confirmations remain. This does not add
+  general draft switching; saved-time correction is the separate change above.
 
 - Deployed the primary LLM arrival/receipt boundary repair as `f5f605e`: short personal arrival requests such as `Запиши мне приход` describe work-day opening, while explicit money/income/payment context is excluded and receipt intake requires a document intent. Product Truth, guidance and text/voice regressions are aligned. Nine bounded real GPT-4o routing probes passed after deploy; real audio/interactive Telegram acceptance remains pending.
 

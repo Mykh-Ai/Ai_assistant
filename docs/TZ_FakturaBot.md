@@ -1579,7 +1579,7 @@ Receipt date incident noted during Drive backfill:
 
 ## 2026-07-01 - OfficeFlow Work-Time / Dochadzka MVP
 
-2026-10-16 local explicit-time priority: a new exact arrival/departure can
+2026-10-16 explicit-time priority deployed as `5a3f3f8`: a new exact arrival/departure can
 correct one existing dated open/closed row after an old/new preview. An
 explicit historical date selects only its existing scoped row. Python keeps
 the other clock and id, keeps closed status for arrival edits, recalculates
@@ -1588,19 +1588,23 @@ duration only when the disclosed range change is confirmed. Snapshot, audit
 revision and lunch settings are checked atomically; one time_correction event
 is appended, with old events retained. No-time repetition does not overwrite.
 Reply-keyboard decisions reuse existing open/close DecisionResolver contexts;
-stale old inline cards cannot approve a correction. No schema/backfill/server
-write or deployment is performed. Missing-start duration-only records,
+stale old inline cards cannot approve a correction. No schema/backfill or
+customer record rewrite was part of deployment. Missing-start duration-only records,
 multiple shifts and guessed/future times remain outside this correction slice.
 
-2026-10-16 local recovery extension: before any file or draft exists, fresh
+2026-10-16 recovery extension deployed as `5a3f3f8`: before any file or draft exists, fresh
 empty receipt-upload waiting can yield to another explicit executable request
 (including work-day opening) through the existing primary model bundle once.
 Python proves emptiness and rechecks the snapshot under the upload boundary
 lock; processing begun, any non-activity data, unknown/help or model failure
 preserves the source. Existing target validation and confirmation remain.
-This is not general draft switching, existing work-time correction, or a
-deployed production change. Design and acceptance are in the corresponding
-EMPTY_ACCOUNTING_INTAKE_ACTION_SWITCH artifacts.
+This is not general draft switching; existing work-time correction is the
+separate change above. Design and acceptance are in the corresponding
+EMPTY_ACCOUNTING_INTAKE_ACTION_SWITCH artifacts. Three real-model isolated
+provider/handler journeys passed after deploy; Telegram getMe/polling passed,
+but interactive chat/audio acceptance is pending login. The noisy October16
+report phrase still selects open_work_day in a live probe; semantic root-cause
+remediation is unresolved and no-time opening still writes immediately.
 
 Current status: `partial`.
 

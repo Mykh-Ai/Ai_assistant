@@ -1,3 +1,47 @@
+# 2026-10-16 - Recovery changes deployed; interactive Telegram pending login
+
+- User authorized deployment and Telegram checking. Scoped runtime commit
+  5a3f3f8c4d59165aa60ad45e7e7929e411b13e3f was pushed and fast-forwarded on the clean server. Existing unrelated
+  Google/Gmail worktree docs/log additions and attachments were not committed.
+- Preserved private pre-recreate Docker logs, consistent live SQLite snapshot,
+  stopped-bot frozen snapshot, manifest/env hash and previous-image rollback tag
+  under /bot/backups/work-time-recovery-deploy-20261016T202649Z (directory0700, files0600). Built only bot; recreated it with
+  --no-deps --no-build. Cloudflared container identity remained unchanged.
+  No schema, backfill, credentials, access eligibility or customer data repair.
+- Deployment proof: running image688758c9641a, all146 tracked bot Python source
+  hashes match deployed SHA; running/no restarts, polling started, no startup
+  traceback/ERROR/TelegramConflictError. Telegram getMe succeeded for
+  @officeflow_sk_bot. This proves API/polling, not an inbound conversation.
+- Post-start RO audit: integrity_check=ok, schema identical, all work-time
+  table fingerprints unchanged against frozen snapshot (61 days/190 events).
+  Only Google service-binding last_attempt_at/last_successful_check_at/updated_at
+  changed with startup collection; binding rows preserved. Incident day remains
+  closed06:54-15:39 Europe/Bratislava, gross525/net495 with lunch30.
+- In the actual deployed container, real configured GPT-4o primary and slot
+  calls passed three journeys using a synthetic actor, MemoryStorage and a
+  temporary SQLite DB: closed arrival06:47->preview->approve06:54 preserving
+  end15:39/net495; closed end15:20 preview->cancel unchanged; actual fresh
+  empty receipt wait->new arrival06:55 preview->cancel unchanged. Shared
+  confirmations and keyboard cleanup executed; one synthetic correction event.
+  No customer DB dispatch, Telegram send, audio or second polling was used.
+- Eight additional exact-primary-payload no-dispatch live probes: seven clear
+  Slovak/Ukrainian/Russian arrival/correction/report inputs matched their
+  expected action. The incident STT text Зароби мені, будь ласка, працівний
+  вікас. STILL returned open_work_day instead of the desired unknown. This is
+  a reproduced unresolved semantic safety gap; do not claim the report/open
+  root cause fixed or that these recovery changes prevent every false opening.
+  Models remain gpt-4o/whisper-1; no automatic learning from these probes.
+- Interactive Telegram: no connector/session was available; opened Telegram
+  Web in Edge, which displayed QR login. Asked user asynchronously to sign in
+  and left that tab for handoff. Actual inbound chat, real audio and customer
+  conversation acceptance remain pending login; provider/handler probes are
+  not presented as Telegram acceptance. No unsolicited customer notification.
+- Product Truth/help already describe only the partial confirmed correction
+  and narrow empty-wait exception. Updated README/TZ/changelog/design/eval
+  evidence to distinguish deployed runtime from pending interactive acceptance.
+  Original local test run boundaries below remain accurate; no new runtime
+  delta or redundant full suite was introduced by deployment-only evidence.
+
 # 2026-10-16 - Authorized recovery deployment preflight
 
 - User explicitly requested deploying both prepared recovery changes and checking

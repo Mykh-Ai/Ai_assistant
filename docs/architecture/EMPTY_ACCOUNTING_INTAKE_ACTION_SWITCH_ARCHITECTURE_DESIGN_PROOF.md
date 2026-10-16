@@ -153,3 +153,9 @@ Design verdict: ready_for_handoff for this user-authorized narrow scope.
 Implementation follow-up: design_matches_runtime; local full suite passed
 2746 tests / 7 subtests. Live model/audio/Telegram acceptance is still
 runtime_not_proven; see the linked conversation acceptance proof.
+
+Deployment follow-up (2026-10-16): deployed as `5a3f3f8`, source-verified.
+Three isolated real-provider journeys passed; polling/getMe passed. Actual
+Telegram chat/audio remains pending login. The noisy report/open selection
+defect is reproduced, unresolved. See the acceptance proof deployment section;
+prior local-only verdicts describe their original evaluation stage.

@@ -1,6 +1,6 @@
 # Newer Explicit Work-Time Boundary — Conversation Acceptance Proof
 
-2026-10-16. Local uncommitted tree based on main 0df00f2 plus the separate
+Initial local evaluation on 2026-10-16, based on main 0df00f2 plus the separate
 empty-accounting-intake recovery patch. Design: section 19 of
 WORK_TIME_EXPLICIT_OPEN_AND_OPEN_DURATION_CLOSE_ARCHITECTURE_DESIGN_PROOF.md.
 Design verification: design_matches_runtime. Status: partial. No new AI
@@ -125,3 +125,27 @@ Verdict: runtime_not_proven for live semantic/Telegram acceptance; the local
 deterministic implementation is evaluated with disclosed model/STT fixtures.
 No production deployment, data repair or notification is implied. The report
 to opening model defect and general draft switching remain separate gaps.
+
+## Authorized deployment follow-up — 2026-10-16
+
+Runtime deployed: `5a3f3f8c4d59165aa60ad45e7e7929e411b13e3f`. Source verification matched all146 tracked
+bot Python files. Backup and frozen SQLite/log evidence: `/bot/backups/work-time-recovery-deploy-20261016T202649Z`.
+Bot-only rebuild/recreation; cloudflared and env unchanged. Polling/getMe passed,
+no startup error/conflict; schema and all work-time data unchanged, integrity ok.
+Incident interval readback:06:54-15:39, closed, gross525/net495 minutes.
+
+Actual configured GPT-4o passed three synthetic-actor/temporary-SQLite journeys
+in the deployed container with actual primary/slot calls: closed arrival edit
+06:47->06:54 approve; closed end15:20 preview/cancel; fresh empty receipt wait
+->arrival06:55 preview/cancel. Python FSM, confirmation and keyboard owners
+executed. This is live provider/handler evidence, not Telegram conversation.
+
+Eight exact-primary-payload probes:7 clear correction/arrival/report cases
+matched. Noisy incident text Зароби мені, будь ласка, працівний вікас. again
+returned open_work_day, not the desired unknown. The semantic safety defect
+remains reproduced; recovery capability does not prevent every false opening.
+
+Interactive Telegram and real audio: pending. Telegram Web requires QR login;
+user was asked to sign in and the page was left open. No customer notification
+or synthetic inbound getUpdates/polling was used. Verdict: deployed_partial,
+live provider/handler journeys pass; interactive Telegram runtime_not_proven.

@@ -421,3 +421,9 @@ Local implementation follow-up: design_matches_runtime; full run2782 tests/
 97/16/7-case checks. The correction Conversation Acceptance Proof records
 mocked model/STT boundaries and the runtime_not_proven live semantic/Telegram
 verdict. No production operation or deployment occurred.
+
+Deployment follow-up (2026-10-16): deployed as `5a3f3f8`, source-verified.
+Three isolated real-provider journeys passed; polling/getMe passed. Actual
+Telegram chat/audio remains pending login. The noisy report/open selection
+defect is reproduced, unresolved. See the acceptance proof deployment section;
+prior local-only verdicts describe their original evaluation stage.
