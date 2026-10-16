@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from dataclasses import replace
+
+import pytest
 
 from bot.config import Config
 from bot.handlers.invoice import CustomizationRequestStates
@@ -75,6 +78,208 @@ def _config(tmp_path: Path, *, api_key: str | None = None) -> Config:
 
 def _fresh_data() -> dict:
     return {ACTIVE_FSM_LAST_ACTIVITY_AT_KEY: datetime.now(UTC).isoformat()}
+
+
+@pytest.mark.parametrize('action,kind,source', [
+    ('unknown', 'unknown', 'llm_bundle'),
+    ('unknown', 'capability_or_howto', 'llm_bundle'),
+    ('unknown', 'contextual_help', 'llm_bundle'),
+    ('add_receipt', 'business_action', 'llm_bundle'),
+    ('edit_invoice', 'business_action', 'llm_bundle'),
+    ('send_invoice', 'business_action', 'llm_bundle'),
+    ('open_work_day', 'business_action', 'python_fallback_after_llm'),
+    ('invented_action', 'business_action', 'llm_bundle'),
+])
+def test_empty_upload_unresolved_or_nonexecutable_bundle_preserves_source(
+    tmp_path, monkeypatch, action, kind, source,
+) -> None:
+    from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
+
+    calls = []
+
+    async def _navigation(**kwargs):
+        return 'pass_through'
+
+    async def _primary(**kwargs):
+        calls.append(kwargs)
+        kwargs['diagnostics'].update(resolution_source=source, routing_kind=kind)
+        return action
+
+    monkeypatch.setattr('bot.services.active_fsm_guard.resolve_active_fsm_navigation', _navigation)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state, _fresh_data())
+    before = dict(state.data)
+    message = _DummyMessage('Vieš evidovať pracovný čas?')
+    handled = asyncio.run(handle_active_fsm_text_update(
+        message=message, state=state, config=_config(tmp_path),
+        text=message.text, input_channel='text',
+    ))
+    assert handled is False
+    assert len(calls) == 1
+    assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+    assert state.data == before
+    assert not state.cleared and not message.answers
+
+
+@pytest.mark.parametrize('extra', [
+    {'accounting_document_candidate': {}},
+    {'accounting_document_temp_original_path': ''},
+    {'accounting_document_upload_started': True},
+    {'intake_expires_at': 'future'},
+    {'unrecognized_metadata': None},
+])
+def test_nonempty_upload_never_calls_primary_or_clears(tmp_path, monkeypatch, extra) -> None:
+    from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
+
+    async def _navigation(**kwargs):
+        return 'pass_through'
+
+    async def _primary(**kwargs):
+        raise AssertionError('nonempty source belongs to its state handler')
+
+    monkeypatch.setattr('bot.services.active_fsm_guard.resolve_active_fsm_navigation', _navigation)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state, {**_fresh_data(), **extra})
+    before = dict(state.data)
+    message = _DummyMessage('Otvor pracovný deň')
+    assert asyncio.run(handle_active_fsm_text_update(
+        message=message, state=state, config=_config(tmp_path),
+        text=message.text, input_channel='text',
+    )) is False
+    assert state.data == before and not state.cleared
+
+
+def test_empty_upload_changed_during_primary_is_not_discarded(tmp_path, monkeypatch) -> None:
+    from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
+
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state, _fresh_data())
+
+    async def _navigation(**kwargs):
+        return 'pass_through'
+
+    async def _primary(**kwargs):
+        await state.update_data(accounting_document_upload_started=True)
+        kwargs['diagnostics'].update(resolution_source='llm_bundle', routing_kind='business_action')
+        return 'open_work_day'
+
+    monkeypatch.setattr('bot.services.active_fsm_guard.resolve_active_fsm_navigation', _navigation)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    message = _DummyMessage('Otvor pracovný deň')
+    assert asyncio.run(handle_active_fsm_text_update(
+        message=message, state=state, config=_config(tmp_path),
+        text=message.text, input_channel='text',
+    )) is False
+    assert state.data['accounting_document_upload_started'] is True
+    assert not state.cleared and not message.answers
+
+
+def test_empty_upload_model_outage_does_not_use_local_action(tmp_path, monkeypatch) -> None:
+    from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
+
+    class _Unavailable:
+        def __init__(self, **kwargs):
+            raise RuntimeError('unavailable')
+
+    async def _navigation(**kwargs):
+        return 'pass_through'
+
+    monkeypatch.setattr('bot.services.active_fsm_guard.resolve_active_fsm_navigation', _navigation)
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _Unavailable)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state, _fresh_data())
+    before = dict(state.data)
+    message = _DummyMessage('otvor pracovny den')
+    assert asyncio.run(handle_active_fsm_text_update(
+        message=message, state=state, config=_config(tmp_path, api_key='sk-test'),
+        text=message.text, input_channel='text',
+    )) is False
+    assert state.data == before and not state.cleared
+
+
+def test_empty_upload_claim_serializes_with_upload_across_fsm_contexts(tmp_path, monkeypatch) -> None:
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from bot.handlers.accounting_document_intake import (
+        AccountingDocumentIntakeStates, accounting_document_upload,
+        claim_empty_accounting_upload, empty_accounting_upload_snapshot,
+    )
+
+    async def _scenario():
+        storage = MemoryStorage()
+        key = StorageKey(bot_id=1, chat_id=123, user_id=123)
+        started, release = asyncio.Event(), asyncio.Event()
+
+        class _SlowClear(FSMContext):
+            async def clear(self):
+                started.set()
+                await release.wait()
+                await super().clear()
+
+        first = _SlowClear(storage=storage, key=key)
+        second = FSMContext(storage=storage, key=key)
+        foreign = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=456, user_id=456))
+        await first.set_state(AccountingDocumentIntakeStates.waiting_upload)
+        await first.set_data(_fresh_data())
+        snapshot = await empty_accounting_upload_snapshot(first)
+        assert await empty_accounting_upload_snapshot(foreign) is None
+        claim = asyncio.create_task(claim_empty_accounting_upload(first, snapshot))
+        await started.wait()
+        upload = asyncio.create_task(accounting_document_upload(
+            _DummyMessage('attachment'), second, _config(tmp_path), object(),
+        ))
+        await asyncio.sleep(0)
+        assert not upload.done()
+        release.set()
+        assert await claim is True
+        await upload  # Source is gone: no download, LMM or path creation.
+        assert await second.get_state() is None and await second.get_data() == {}
+        assert await foreign.get_data() == {}
+
+    asyncio.run(_scenario())
+
+
+def test_upload_started_before_candidate_blocks_empty_claim(tmp_path, monkeypatch) -> None:
+    from bot.handlers.accounting_document_intake import (
+        AccountingDocumentIntakeStates, accounting_document_upload,
+        claim_empty_accounting_upload, empty_accounting_upload_snapshot,
+    )
+
+    monkeypatch.setattr('bot.handlers.accounting_document_intake._extract_supported_attachment', lambda message: None)
+
+    async def _scenario():
+        state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state, _fresh_data())
+        before = await empty_accounting_upload_snapshot(state)
+        await accounting_document_upload(_DummyMessage('file'), state, _config(tmp_path), object())
+        assert state.data['accounting_document_upload_started'] is True
+        assert await empty_accounting_upload_snapshot(state) is None
+        assert await claim_empty_accounting_upload(state, before) is False
+        assert not state.cleared
+
+    asyncio.run(_scenario())
+
+
+@pytest.mark.parametrize('channel', ['text', 'voice'])
+def test_empty_upload_interrupt_still_requires_authorization(tmp_path, monkeypatch, channel) -> None:
+    from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates
+    from bot.services.authorization import TelegramUserAuthorizationMiddleware, UNAUTHORIZED_MESSAGE
+
+    config = replace(_config(tmp_path), allowed_telegram_user_ids=frozenset({USER_ID + 1}))
+    init_db(config.db_path)
+    state = _DummyState(AccountingDocumentIntakeStates.waiting_upload.state, _fresh_data())
+    message = _DummyMessage('Otvor pracovný deň' if channel == 'text' else '')
+    if channel == 'voice':
+        message.voice = type('_Voice', (), {'file_id': 'blocked'})()
+
+    async def _unexpected(*args, **kwargs):
+        raise AssertionError('unauthorized user must not reach guard/STT/primary/owner')
+
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _unexpected)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _unexpected)
+    asyncio.run(TelegramUserAuthorizationMiddleware()(
+        _unexpected, message, {'state': state, 'config': config},
+    ))
+    assert message.answers == [UNAUTHORIZED_MESSAGE]
+    assert state.current_state is None  # Existing access-rejection cleanup.
 
 
 def _stale_data(minutes: int = 60) -> dict:

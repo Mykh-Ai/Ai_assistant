@@ -139,3 +139,31 @@ accepted with the verified recipient/text; no incoming voice conversation was
 exercised. The data-repair backup and delivery receipt are retained under
 `/bot/backups/work-time-open-recovery-20261014T093148Z`; identifiers stay private.
 This operation adds no general repair/automatic-notification capability.
+
+## 2026-10-16 observed failed report/open sequence
+
+Production runtime remains the earlier deployed code. Private scoped evidence:
+`/bot/backups/work-time-1016-audit-20261016T142025Z/evidence.json`.
+
+| Actual input / business time | Actual action/effect before manual repair | Verdict |
+|---|---|---|
+| STT `Зароби мені, будь ласка, працівний вікас.` / 06:46:58 | `open_work_day`; persisted open at 06:47 instead of a report | fail |
+| STT `Я попросила працьовний виказ.` / 06:47:18 | `generate_work_time_report`; earlier accidental open remains | report route passes; recovery incomplete |
+| STT `Відкриття працьовного дня 6.54.` / 06:54:30 | `open_work_day`; row retains 06:47; slot/approval details not fully logged | requested arrival not reflected |
+| STT `Закрий мені працьовний день зараз.` / 15:39:20 | `close_work_day`; persisted correct end 15:39 | pass |
+
+A temporary service-level replay separately proved an already-open 06:47 day
+returns `already_open` and 06:47 when an explicit 06:54 start is requested.
+This replay is code-path evidence, not a real voice/model test. The earlier
+nine live semantic probes did not cover the noisy report or this sequence.
+
+User-authorized data repair was completed with a consistent SQLite backup at
+`/bot/backups/work-time-1016-correction-20261016T142233Z`, one guarded
+transaction and one appended correction event. Independent readback proves
+exactly one closed 06:54-15:39 row, 525 gross minutes, 495 net minutes under
+the unchanged 30-minute lunch policy, and integrity_check=ok. Other work-day
+rows and prior events were unchanged. No runtime patch/deployment or new
+notification was performed.
+
+Verdict: incident data repaired; report-to-open safety and existing-start
+correction remain `failed_runtime_acceptance`, not fixed by the data repair.

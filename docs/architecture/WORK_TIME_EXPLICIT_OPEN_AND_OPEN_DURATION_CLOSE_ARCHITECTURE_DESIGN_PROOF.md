@@ -268,3 +268,156 @@ and all three changed runtime source hashes matched the container. Nine real
 primary-bundle probes passed on GPT-4o; this proves the bounded model selection
 cases, not a real audio/interactive Telegram conversation. See the acceptance
 artifact's deployment follow-up for the remaining journey gap.
+
+## 18. 2026-10-16 report-to-open incident and unresolved recovery gap
+
+Live STT returned `Зароби мені, будь ласка, працівний вікас.` at 06:46:58
+Europe/Bratislava. The primary bundle selected `open_work_day`; its real open
+event at 06:47 proves the report request had a business side effect. The next
+`Я попросила працьовний виказ.` correctly selected the report, but did not undo
+the row. Explicit opening at 06:54 later resolved to the open action; the
+stored start remained 06:47. Close at 15:39 worked correctly.
+
+Current `WorkTimeService.open_day` same-day idempotency returns an existing
+row as `already_open` without applying a different explicit start. The
+explicit-open confirmation handler does not check requested versus returned
+start before reporting success. A local temporary-DB replay proves this
+behavior; the live slot/confirmation branch itself is not fully observable.
+Earlier explicit-time design/acceptance must not be generalized to editing
+an already-open or closed row.
+
+The 2026-10-14 arrival/receipt repair is insufficient evidence for report/open
+safety. A canonical token inside allowed_actions can still be semantically
+wrong. No-time opening currently commits immediately. STT context also lacks
+work-time domain vocabulary, though audio was not replayed and that omission
+is not established as the sole recognition cause.
+
+The approved manual repair corrected only the incident row to 06:54-15:39,
+preserving closed status, configured lunch and prior audit history. It adds no
+general editing capability and does not fix the runtime conversation.
+
+Proposed next design, not implemented: preserve one bounded primary resolver,
+improve report/open/close semantic negative space and STT vocabulary, require
+a shared DecisionResolver preview before any opening write, and handle an
+explicit different start on an existing open row with old/new preview and
+actor/workspace/row-version validation. Never report an applied start when
+the returned row differs. New keyboards, correction/cancel/stale handling,
+Product Truth/InfoHelp and persistence rollback must be designed together.
+No second free-form classifier, voice phrase dictionary or unconfirmed alias
+learning is implied.
+
+Acceptance must replay the actual noisy report, correction, explicit arrival
+and closing sequence from public text/voice routes; inject a wrong open action
+for a report and prove zero writes before confirmation. Include legitimate
+arrival/receipt/report negatives, existing-row and repeated approval behavior,
+workspace isolation, stale callbacks and final keyboard cleanup. The proposed
+flow requires an approved complete design before implementation.
+
+Verdict for that future runtime repair: `needs_architecture_revision`.
+
+## 19. Explicit newer time priority — authorized correction design, 2026-10-16
+
+### Identity, classification and truth
+
+The user requests that a new explicit arrival/departure supersede an erroneous
+stored boundary. Extend existing open_work_day / close_work_day and their
+preview/edit/cancel flows; no new business action or decision family. Status
+remains partial; bounded canonicalization plus Python validation, no learning
+upgrade. Runtime owner: handlers/work_time.py and WorkTimeService. Risk medium
+for user-confirmed single-row edits. This scope does not fix report/open model
+selection, require confirmation for every no-time opening, or implement general
+FSM switching. Existing empty-intake recovery remains separate.
+
+### Canonical/semantic/slot contract
+
+New explicit start on a stored dated open/closed row means change start only;
+new explicit end means change end only (or close that open row). Preserve the
+other clock and row id. A missing date means the current business date for
+opening; closing retains its bound open/continuation date, otherwise today.
+An explicit existing historical date may select only that same scoped row.
+No historical row is created by open. No-time open stays idempotent; closing
+now/duration does not silently rewrite an already closed row. Reports/help,
+unknown/invalid data, skipped/day-off and duration-only records without an
+actual start cannot become boundary corrections.
+
+Reuse open_at_time/close_at_time slots: date ISO, one HH:MM boundary. LLM owns
+bounded multilingual normalization, Python validates bounds and record scope.
+Correction-aware extraction preserves an explicit date instead of replacing it
+with the open row's date. Strict numeric no-LLM fallback stays structural and
+must not invent a historical target. Current timezone remains Bratislava.
+
+### Route, FSM, decisions and keyboards
+
+Authorized idle text/voice -> existing primary action -> shared work-time owner
+-> bounded slots -> scoped row -> old/new preview -> existing
+waiting_open_preview_confirm or waiting_close_preview_confirm. Corrections
+use the existing work_time_open_preview/work_time_close_preview
+approve_edit_cancel contexts and text/STT/reply-keyboard buttons. Correction
+previews intentionally use reply keyboards: generic old decision:* cards are
+rejected while a correction is pending because their message ownership cannot
+prove approval of this new snapshot. No new inline callback card is created.
+Edit returns
+to the respective input state and builds a fresh preview; unknown repeats the
+frozen old/new preview; cancel/terminal failure/success clear FSM and remove
+reply keyboard. The callback transport removes owned inline markup; forbidden
+callbacks retain existing no-edit behavior. Expiry/navigation remain shared.
+No clarification without its continuation state. A closed record remains
+closed when start changes. New start never clears an end or reopens a day.
+
+### Deterministic effects, snapshot and math
+
+Preview stores original full WorkTimeDay, scoped event revision, lunch settings,
+field and value. One BEGIN IMMEDIATE transaction revalidates actor/workspace,
+row id/date/content, event revision and lunch settings before updating only
+that row and appending one time_correction event. No-op confirmed values create
+no event. Stale/repeated approval cannot overwrite a later change. No success
+claims for an ignored requested time. Fresh-open preview also expects absence;
+a concurrently created row must yield conflict, not already_open success.
+
+Python validates existing start, dates not in future, boundary not in future,
+and end >= start. For a closed explicit range it recalculates gross/net using
+current configured lunch and stores explicit_end, clearing any prior duration
+override/snapshot; preview discloses this. Existing duration-only and duration
+closing behavior remains unchanged outside a confirmed explicit boundary edit.
+Origin/note and the unedited boundary are preserved; no old event is removed.
+
+### Persistence preflight and rollback
+
+Current shape: work_time_days plus events/settings, workspace/actor scoped.
+Proposed shape is identical: update one confirmed row, append one event. No
+schema migration, backfill, old-row batch rewrite, storage/path change or
+production operation. Audit/dry run is local temporary-DB replay of the
+incident and historical cases with exact before/after fields and events.
+Production deployment/repair still needs existing runbook backup/dry-run/
+rollback gates and approval; none is performed by this local task. Reverting
+code must retain correction rows/events; never restore a whole old DB over
+new business activity. Transaction failure rolls back row and audit together.
+
+### Product Truth, safety and acceptance
+
+work_time_tracking remains partial. Explain confirmed correction of one dated
+stored start/end, preserving the other clock. Explicitly exclude arbitrary
+multi-shift editing, payroll, missing-clock inference, future times and automatic
+corrections/learning. Update registries, Product Truth, Slovak InfoHelp, TZ and
+PROJECT_LOG. Source of claims is executable owners plus public-entry proof.
+
+Prove from public text/STT: stored 06:47 -> new 06:54 -> no pre-approval write
+-> approve -> 06:54; closed 06:47-15:39 -> start 06:54 -> 8:45 gross / 8:15
+net with lunch30; closed end correction 13:40 -> 13:10 preserves 07:10;
+historical explicit dates; no-time repeat keeps old clock; unknown/cancel/edit,
+invalid/future/reversed clocks; row/lunch change after preview; repeated/stale
+approval; injected event failure rolls back; tenant/workspace isolation;
+text/voice/button owner convergence and keyboards; old report/manual/duration
+journeys unchanged. Model/STT fixtures must be disclosed; no live quality claim.
+
+Design verdict: ready_for_handoff for this user-authorized correction slice.
+Current evidence: service.open_day already_open behavior, existing explicit-open
+and close FSM/DecisionResolver/voice/callback owners, October 16 and September
+9-11 PROJECT_LOG incidents, governing implementation/evaluation/migration
+contracts. The broader section 18 model safety proposal remains unresolved.
+
+Local implementation follow-up: design_matches_runtime; full run2782 tests/
+7 subtests passed, with final help-UI/raw-schema deltas covered by focused
+97/16/7-case checks. The correction Conversation Acceptance Proof records
+mocked model/STT boundaries and the runtime_not_proven live semantic/Telegram
+verdict. No production operation or deployment occurred.

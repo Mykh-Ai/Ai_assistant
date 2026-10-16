@@ -725,6 +725,13 @@ InfoHelp rendering rule:
 
 ### Current OfficeFlow Work-Time Product Truth - 2026-07-02
 
+2026-10-16 local source-flow recovery: fresh empty receipt-upload waiting may
+be replaced by a clear new executable text/voice request. Python verifies the
+empty source and the valid primary model business action before handoff.
+Unknown/help/model failure and every processing/draft/path/session key retain
+the source. This adds neither generic draft switching nor saved-time editing;
+work-time status remains partial and production deployment is not implied.
+
 `work_time_tracking` is `partial`, not fully `supported`.
 
 The implemented slice is a simple tenant/user-scoped work-time MVP:
@@ -732,6 +739,8 @@ The implemented slice is a simple tenant/user-scoped work-time MVP:
 - top-level canonical actions: `open_work_day`, `close_work_day`, `add_work_time_entry`, `generate_work_time_report`, `update_work_time_lunch_break`, and `delete_work_time_month`;
 - authorized users can open a work day, close it with a preview-confirmed time/duration, add a preview-confirmed manual range, configure a fixed lunch-break deduction, generate a monthly `.xlsx` report, and delete one selected month of stored records after destructive preview confirmation;
 - personal arrival shorthand such as `Запиши мне приход` or `Zapíš mi príchod` denotes work-day opening, even without explicit "at work" wording. Explicit money/income/payment context does not denote attendance, and arrival alone is not an accounting-document upload request. The 2026-10-14 primary LLM hint repair is deployed as `f5f605e`; nine bounded real GPT-4o routing probes passed, including two repetitions of the incident phrase. This is not a guarantee for arbitrary audio or a completed interactive Telegram journey;
+- production incident on 2026-10-16: a noisy report request became `open_work_day` and saved an unintended open row. A correct report does not undo it; primary report/open model safety remains unresolved. The audited deployed code also ignored a different repeated arrival; the local correction extension below addresses that recovery gap, with no deployment implied;
+- local 2026-10-16 extension: newer explicit arrival/departure may correct one existing dated open/closed row after old/new confirmation. Historical dates must identify an existing scoped row. The other clock and row id are retained; arrival edits do not reopen closed days. Snapshot/event revision/lunch checks fail closed if data changed. Range totals are recalculated using current lunch; a prior duration override is replaced only as disclosed in the preview. No-time, now/duration on a closed day, missing-start duration-only records and ambiguous input do not silently overwrite stored clocks;
 - the first monthly report asks once whether lunch break should be deducted; later lunch-break changes are preview-confirmed and can be disabled;
 - persisted state is additive SQLite tables `work_time_days`, `work_time_events`, and `work_time_settings`, scoped by `telegram_id`; existing rows are not rewritten;
 - `work_time_days` stores gross minutes, lunch-break snapshots, net-duration overrides, and close input mode where available; legacy rows remain readable;

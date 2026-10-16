@@ -1,5 +1,18 @@
 # Changelog
 
+- Local explicit-time correction: a newer arrival/departure can replace one
+  stored boundary after an old/new confirmation, preserving the other clock
+  and closed status where appropriate. Existing historical dates are scoped;
+  snapshot/event/lunch checks prevent stale overwrites, totals are recalculated
+  and one audit event is appended. No-time repeats keep the old value. No
+  deployment or report/open model-selection fix is implied.
+
+- Local recovery fix: a clear new executable text/voice request may replace a
+  fresh empty receipt-upload wait through one existing primary action bundle.
+  Upload processing, any draft/session data, unknown/help and model failure
+  preserve the source flow. Existing target confirmations remain. This is not
+  deployed and does not add general draft switching or saved-time editing.
+
 - Deployed the primary LLM arrival/receipt boundary repair as `f5f605e`: short personal arrival requests such as `Запиши мне приход` describe work-day opening, while explicit money/income/payment context is excluded and receipt intake requires a document intent. Product Truth, guidance and text/voice regressions are aligned. Nine bounded real GPT-4o routing probes passed after deploy; real audio/interactive Telegram acceptance remains pending.
 
 - Fixed and deployed OfficeFlow work-time opening and open-day duration completion in PR #115 / merge commit `32dd682`. `open_work_day` now preserves an explicitly stated arrival such as `7:10`/`7.10` through a Python-validated approve/edit/cancel preview, while an omitted time still opens immediately at the current Bratislava business time. When a bound day is already open, an `add_work_time_entry` request for six worked hours now converges on the existing close-duration preview and closes the same row with 360 confirmed net minutes. Existing ambiguous dotted close input, explicit-only close-now, lunch math, workspace isolation, and no-write-on-unknown safeguards remain covered. After an exact read-only audit and stopped-bot backup, the one confirmed incident row from 2026-09-09 was repaired to 07:10–13:40 with 360 net minutes and an audit event; no other work-time row was changed.

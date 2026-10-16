@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import asyncio
 import hashlib
 import logging
 from pathlib import Path
 from typing import Any
+from weakref import WeakValueDictionary
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
@@ -257,6 +259,43 @@ class AccountingDocumentIntakeStates(StatesGroup):
     waiting_similar_category_decision = State()
 
 
+_UPLOAD_STARTED_KEY = 'accounting_document_upload_started'
+_EMPTY_WAIT_ACTIVITY_KEYS = frozenset({
+    'active_fsm_started_at', 'active_fsm_last_activity_at', 'active_fsm_state',
+})
+_UPLOAD_BOUNDARY_LOCKS: WeakValueDictionary = WeakValueDictionary()
+
+
+def _upload_boundary_lock(state: FSMContext) -> asyncio.Lock:
+    # Different FSMContext instances for the same chat share this boundary.
+    key = (id(state.storage), state.key) if hasattr(state, 'key') else (id(state),)
+    lock = _UPLOAD_BOUNDARY_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _UPLOAD_BOUNDARY_LOCKS[key] = lock
+    return lock
+
+
+async def empty_accounting_upload_snapshot(state: FSMContext) -> dict | None:
+    async with _upload_boundary_lock(state):
+        if await state.get_state() != AccountingDocumentIntakeStates.waiting_upload.state:
+            return None
+        data = await state.get_data()
+        # Fail closed for every draft, path, session, processing or unknown key.
+        return data if set(data) <= _EMPTY_WAIT_ACTIVITY_KEYS else None
+
+
+async def claim_empty_accounting_upload(state: FSMContext, snapshot: dict) -> bool:
+    async with _upload_boundary_lock(state):
+        if await state.get_state() != AccountingDocumentIntakeStates.waiting_upload.state:
+            return False
+        data = await state.get_data()
+        if data != snapshot or not set(data) <= _EMPTY_WAIT_ACTIVITY_KEYS:
+            return False
+        await state.clear()
+        return True
+
+
 @router.message(Command('doklad', 'expense', 'intake', 'add_blocek', 'dodat_blocek'))
 async def cmd_accounting_document_intake(message: Message, state: FSMContext) -> None:
     if hasattr(message, 'from_user') and message.from_user is None:
@@ -272,8 +311,11 @@ async def cmd_accounting_document_intake(message: Message, state: FSMContext) ->
 
 @router.message(AccountingDocumentIntakeStates.waiting_upload, F.photo | F.document)
 async def accounting_document_upload(message: Message, state: FSMContext, config: Config, bot: Bot) -> None:
-    if await state.get_state() != AccountingDocumentIntakeStates.waiting_upload.state:
-        return
+    async with _upload_boundary_lock(state):
+        if await state.get_state() != AccountingDocumentIntakeStates.waiting_upload.state:
+            return
+        # Protect in-flight downloading/extraction before a candidate exists.
+        await state.update_data(**{_UPLOAD_STARTED_KEY: True})
 
     attachment = _extract_supported_attachment(message)
     if attachment is None:

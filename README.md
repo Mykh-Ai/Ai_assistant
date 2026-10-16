@@ -231,6 +231,15 @@ invoice/accounting data. Receipt, expense, and incoming-invoice analytics are ha
 
 `work_time_tracking` is implemented as a partial OfficeFlow MVP for simple user-scoped work-time evidence.
 
+Local explicit-time correction also supports requests such as `oprav dnesny
+prichod na 06:54` or `oprav odchod 9.9.2026 na 13:10`. Review the old/new
+range before confirming. The existing row and other clock are preserved;
+changing arrival does not reopen a closed day. Hours are recalculated using
+the configured lunch, with any replaced fixed-duration override disclosed.
+Historical dates must identify an existing scoped record with a stored
+arrival. No-time repeats do not silently change recorded clocks. This local
+extension does not imply production deployment or payroll/multi-shift support.
+
 Supported top-level actions:
 - `open_work_day` - start the current work day at the current Bratislava business time when no time is stated, or preview and confirm an explicitly stated arrival time such as `7:10`/`7.10`;
 - `close_work_day` - close the open day with a preview-confirmed end time or net worked duration;

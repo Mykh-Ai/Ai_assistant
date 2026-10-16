@@ -14,10 +14,10 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import FSInputFile, Message, Update
+from aiogram.types import FSInputFile, Message, ReplyKeyboardRemove, Update
 
 from bot.config import Config
-from bot.handlers.accounting_document_intake import cmd_accounting_document_intake
+from bot.handlers.accounting_document_intake import AccountingDocumentIntakeStates, cmd_accounting_document_intake
 from bot.handlers.accounting_documents import cmd_blocky
 from bot.handlers.contacts import start_add_contact_intake
 from bot.handlers.business_profiles import start_switch_business_profile
@@ -4530,17 +4530,24 @@ async def process_invoice_text(
     request_id: str | None = None,
     input_channel: str = 'text',
     telegram_update_id: int | None = None,
-) -> None:
+    empty_intake_snapshot: dict | None = None,
+) -> bool | None:
     flow_request_id = request_id or str(uuid4())
     message_id = getattr(message, 'message_id', None)
     top_level_diagnostics: dict[str, object] = {}
+
+    if empty_intake_snapshot is not None:
+        from bot.handlers.accounting_document_intake import empty_accounting_upload_snapshot
+
+        if await empty_accounting_upload_snapshot(state) != empty_intake_snapshot:
+            return False
 
     actor_telegram_id = getattr(getattr(message, 'from_user', None), 'id', None)
     runtime_issue_allowed = is_runtime_issue_admin(config, actor_telegram_id)
     runtime_issue_prefix_description = extract_runtime_issue_prefix_description(
         invoice_text
     )
-    if runtime_issue_prefix_description is not None:
+    if runtime_issue_prefix_description is not None and empty_intake_snapshot is None:
         if not runtime_issue_prefix_description:
             await message.answer(RUNTIME_ISSUE_USAGE)
             return
@@ -4615,6 +4622,17 @@ async def process_invoice_text(
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
         auxiliary_context={
+            **({
+                'current_state': AccountingDocumentIntakeStates.waiting_upload.state,
+                'empty_flow_interrupt': {
+                    'expected_input': 'photo/PDF attachment, not ordinary text values',
+                    'policy': (
+                        'Select a business_action only for a clear new executable request. '
+                        'Bare confirmations, values and unclear/noisy input are unknown. '
+                        'Capability/how-to questions do not start an action.'
+                    ),
+                },
+            } if empty_intake_snapshot is not None else {}),
             'business_timezone': work_time_timezone_name(),
             'current_business_date': work_time_local_date().isoformat(),
             'slot_defaults': {
@@ -4784,6 +4802,8 @@ async def process_invoice_text(
                     'Explicit money, income, payment or bank/cash context instead describes a financial operation, not work attendance. '
                     'When the user explicitly states an arrival/start clock time, '
                     'the work-time owner validates and previews that time, while an omitted time means the current Bratislava business time'
+                    '. A new explicit arrival may correct the start of the same dated stored open or closed day after old/new confirmation; '
+                    'it preserves any stored departure and does not reopen a closed day'
                 ),
                 'positive_examples': [
                     'začínam pracovný deň',
@@ -4793,6 +4813,8 @@ async def process_invoice_text(
                     'Запиши прихід.',
                     'Запиши прихід на роботу о 7:10',
                     'Запиши приход на роботу в 7.10',
+                    'Oprav dnesny prichod na 06:54',
+                    'Oprav prichod 9.9.2026 na 07:10',
                 ],
                 'not_this': [
                     'invoice creation',
@@ -4804,11 +4826,13 @@ async def process_invoice_text(
                 ],
             },
             _CLOSE_WORK_DAY_INTENT: {
-                'meaning': 'user wants to close the currently open work day now, at an explicit end clock time, or by total duration',
+                'meaning': 'user wants to close the currently open work day now, at an explicit end clock time, or by total duration; an explicit departure correction for a dated already closed day changes only that end time after old/new confirmation, preserving arrival',
                 'positive_examples': [
                     'zatvor pracovný deň teraz',
                     'uzavri dnes 6 odpracovaných hodín',
                     'закрий мені сьогодні 6 відпрацьованих годин',
+                    'Oprav dnesny odchod na 15:39',
+                    'Oprav odchod 9.9.2026 na 13:10',
                 ],
                 'not_this': ['create invoice', 'monthly report', 'manual full range without an open day'],
             },
@@ -4947,6 +4971,27 @@ async def process_invoice_text(
             ensure_ascii=False,
         )
     )
+    if empty_intake_snapshot is not None:
+        # A failed model call/local fallback cannot discard even an empty flow.
+        if (
+            top_level_diagnostics.get('resolution_source') != 'llm_bundle'
+            or top_level_diagnostics.get('routing_kind') != 'business_action'
+            or top_level_intent not in allowed_actions
+            or top_level_intent in {
+                _UNKNOWN_INVOICE_INTENT, _SEND_INVOICE_INTENT, _EDIT_INVOICE_INTENT,
+                _ADD_RECEIPT_INTENT, RUNTIME_ISSUE_ACTION,
+            }
+        ):
+            return False
+        from bot.handlers.accounting_document_intake import claim_empty_accounting_upload
+
+        if not await claim_empty_accounting_upload(state, empty_intake_snapshot):
+            return False
+        await message.answer(
+            'Čakanie na doklad som ukončil. Pokračujem vašou novou požiadavkou.',
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
     info_help_routing_diagnostics: dict[str, object] = {}
     if (
         contextual_info_help_v2_enabled(config, actor_telegram_id)

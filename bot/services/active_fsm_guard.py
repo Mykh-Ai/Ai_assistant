@@ -8,7 +8,7 @@ from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 
 from bot.config import Config
 from bot.services.active_fsm_descriptors import (
@@ -307,7 +307,9 @@ async def handle_active_fsm_text_update(
             await expire_active_fsm_state(message=message, state=state, config=config)
             return True
         await clear_current_state_safely(state=state, config=config)
-        await message.answer(ACTIVE_FSM_STALE_MESSAGE)
+        await message.answer(ACTIVE_FSM_STALE_MESSAGE, **(
+            {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None else {}
+        ))
         await _route_through_idle_top_level(
             message=message,
             state=state,
@@ -325,7 +327,9 @@ async def handle_active_fsm_text_update(
             return True
         if await _looks_like_top_level_request(text=text, config=config, current_state=current_state):
             await clear_current_state_safely(state=state, config=config)
-            await message.answer(ACTIVE_FSM_STALE_MESSAGE)
+            await message.answer(ACTIVE_FSM_STALE_MESSAGE, **(
+                {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None else {}
+            ))
             await _route_through_idle_top_level(
                 message=message,
                 state=state,
@@ -336,6 +340,28 @@ async def handle_active_fsm_text_update(
             )
             await touch_active_fsm_activity(state)
             return True
+
+    if not age.is_stale and not age.is_legacy_unknown_age:
+        from bot.handlers.accounting_document_intake import empty_accounting_upload_snapshot
+
+        snapshot = await empty_accounting_upload_snapshot(state)
+        if snapshot is not None:
+            from bot.handlers.invoice import process_invoice_text
+
+            result = await process_invoice_text(
+                message=message,
+                state=state,
+                config=config,
+                invoice_text=text,
+                request_id=request_id,
+                input_channel=input_channel,
+                telegram_update_id=telegram_update_id,
+                empty_intake_snapshot=snapshot,
+            )
+            # False means the source flow still owns this unresolved input.
+            if result is not False:
+                await touch_active_fsm_activity(state)
+                return True
 
     return False
 
@@ -376,9 +402,10 @@ async def touch_active_fsm_activity(state: FSMContext, *, now: datetime | None =
 
 
 async def expire_active_fsm_state(*, message: Message, state: FSMContext, config: Config) -> None:
+    correction = (await state.get_data()).get('work_time_boundary_change') is not None
     await _clear_owned_inline_keyboards(message=message, state=state)
     await clear_current_state_safely(state=state, config=config)
-    await message.answer(ACTIVE_FSM_EXPIRED_MESSAGE)
+    await message.answer(ACTIVE_FSM_EXPIRED_MESSAGE, **({'reply_markup': ReplyKeyboardRemove()} if correction else {}))
 
 
 async def clear_current_state_safely(*, state: FSMContext, config: Config) -> None:
@@ -454,6 +481,8 @@ async def _resolve_navigation_for_update(
 
 async def _execute_navigation(*, decision: str, message: Message, state: FSMContext, config: Config) -> None:
     await _clear_owned_inline_keyboards(message=message, state=state)
+    if decision != 'cancel_current_flow' and (await state.get_data()).get('work_time_boundary_change') is not None:
+        await message.answer('Opravu casu som ukoncil bez ulozenia.', reply_markup=ReplyKeyboardRemove())
     if decision == 'cancel_current_flow':
         from bot.handlers.state_control import cancel_current_state
 

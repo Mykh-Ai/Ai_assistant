@@ -5,7 +5,7 @@ import asyncio
 import inspect
 import json
 import sqlite3
-from datetime import datetime, date
+from datetime import UTC, datetime, date
 from pathlib import Path
 
 import pytest
@@ -34,6 +34,10 @@ from bot.handlers.work_time import (
     work_time_open_preview_confirm,
 )
 from bot.services.db import init_db
+from bot.services.active_fsm_guard import (
+    ACTIVE_FSM_LAST_ACTIVITY_AT_KEY,
+    ActiveFsmMessageMiddleware,
+)
 from bot.services.info_help import build_product_truth_guidance
 from bot.services.product_truth import get_capability, get_safe_answer_payload
 from bot.services.semantic_action_resolver import resolve_semantic_action
@@ -433,6 +437,143 @@ def test_arrival_receipt_boundary_public_entry_payload_and_effects(
     assert not (tmp_path / 'invoices').exists()
     assert not (tmp_path / 'workspaces').exists()
     assert not list(tmp_path.rglob('*.ogg'))
+
+
+@pytest.mark.parametrize('channel', ['text', 'voice'])
+@pytest.mark.parametrize('explicit,decision', [(True, 'approve'), (True, 'cancel'), (False, 'approve')])
+def test_empty_receipt_wait_switches_through_one_primary_bundle(
+    monkeypatch, tmp_path: Path, channel: str, explicit: bool, decision: str,
+) -> None:
+    utterance = 'Відкрий робочий день о 07:07.' if explicit else 'Відкрий робочий день зараз.'
+    payloads: list[dict] = []
+
+    class _Primary:
+        def __init__(self, **kwargs):
+            self.chat = type('_Chat', (), {'completions': self})()
+
+        async def create(self, **kwargs):
+            payloads.append(json.loads(kwargs['messages'][1]['content']))
+            # Reproduce the first wrong route, then the new explicit action.
+            action = 'add_receipt' if len(payloads) == 1 else 'open_work_day'
+            return _FakeResponse(json.dumps({'canonical_action': action, 'routing_kind': 'business_action'}))
+
+    class _Bot:
+        async def get_file(self, file_id):
+            return type('_File', (), {'file_path': 'fixture.ogg'})()
+
+        async def download_file(self, file_path, destination):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b'fixture')
+
+    async def _pass(**kwargs):
+        return 'pass_through'
+
+    async def _stt(*args, **kwargs):
+        return utterance
+
+    config = replace(_config(tmp_path), openai_api_key='sk-test')
+    init_db(config.db_path)
+    now = datetime(2026, 10, 16, 8, 0)
+    monkeypatch.setattr('bot.services.work_time.work_time_local_now', lambda value=None: value or now)
+    monkeypatch.setattr('bot.handlers.work_time.work_time_local_now', lambda value=None: value or now)
+    monkeypatch.setattr('bot.services.active_fsm_guard.resolve_active_fsm_navigation', _pass)
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', _Primary)
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', _stt)
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', _WorkTimeSlotOpenAIFake)
+    monkeypatch.setattr(_WorkTimeSlotOpenAIFake, 'output', json.dumps({
+        'canonical': 'work_time_entry', 'mode': 'open_at_time',
+        'date': '2026-10-16', 'start_time': '07:07',
+        'end_time': None, 'duration_minutes': None,
+    }) if explicit else '{"canonical":"unknown"}')
+    state = _DummyState()
+    message = _DummyMessage(utterance)
+    message.message_id = 89
+
+    async def _journey():
+        source = _DummyMessage('Запиши мне приход.')
+
+        async def _initial_public_handler(event, data):
+            await process_invoice_text(message=event, state=state, config=config, invoice_text=event.text)
+
+        await ActiveFsmMessageMiddleware()(_initial_public_handler, source, {'state': state, 'config': config})
+        assert state.current_state == AccountingDocumentIntakeStates.waiting_upload.state
+        assert 'fotku alebo PDF' in source.answers[-1]
+        if channel == 'voice':
+            message.voice = type('_Voice', (), {'file_id': 'fixture'})()
+            await voice.handle_voice(message, _Bot(), config, state)
+        else:
+            async def _source_handler(event, data):
+                raise AssertionError('accepted new request must not return to upload waiting')
+
+            await ActiveFsmMessageMiddleware()(_source_handler, message, {'state': state, 'config': config})
+
+        assert len(payloads) == 2  # One primary bundle per inbound update.
+        assert payloads[0]['user_input_text'] == source.text
+        assert payloads[1]['user_input_text'] == utterance
+        assert payloads[1]['current_state'] == AccountingDocumentIntakeStates.waiting_upload.state
+        assert 'empty_flow_interrupt' in payloads[1]['auxiliary_context']
+        assert message.reply_markups[0].remove_keyboard is True
+        service = WorkTimeService(config.db_path)
+        if explicit:
+            assert service.get_open_day(telegram_id=1001) is None
+            assert state.current_state == WorkTimeStates.waiting_open_preview_confirm.state
+            await work_time_open_preview_confirm(
+                message=_DummyMessage('schvalit' if decision == 'approve' else 'zrusit'),
+                state=state, config=config,
+            )
+        day = service.get_open_day(telegram_id=1001)
+        if decision == 'cancel':
+            assert day is None
+        else:
+            assert day is not None and day.start_time == ('07:07' if explicit else '08:00')
+        assert service.get_open_day(telegram_id=1002) is None
+        assert state.current_state is None
+        with sqlite3.connect(config.db_path) as conn:
+            assert conn.execute('SELECT count(*) FROM work_time_days').fetchone()[0] == (decision == 'approve')
+            assert conn.execute('SELECT count(*) FROM work_time_events').fetchone()[0] == (decision == 'approve')
+            assert conn.execute('SELECT count(*) FROM invoice').fetchone()[0] == 0
+
+    asyncio.run(_journey())
+    assert not (tmp_path / 'workspaces').exists()
+    assert not list(tmp_path.rglob('*.ogg'))
+
+
+def test_empty_receipt_switch_preserves_primary_report_slots(monkeypatch, tmp_path):
+    from bot.services.active_fsm_guard import handle_active_fsm_text_update
+
+    calls = []
+
+    async def _navigation(**kwargs):
+        return 'pass_through'
+
+    async def _primary(**kwargs):
+        calls.append(kwargs)
+        kwargs['diagnostics'].update(
+            resolution_source='llm_bundle', routing_kind='business_action',
+            slots={'period': {'month': 9, 'year': 2026}},
+        )
+        return 'generate_work_time_report'
+
+    async def _report(**kwargs):
+        assert await kwargs['state'].get_state() is None
+        assert kwargs['report_period'] == {'month': 9, 'year': 2026}
+        assert kwargs['text'] == 'Покажи табель за вересень 2026.'
+        await kwargs['message'].answer('report fixture')
+
+    monkeypatch.setattr('bot.services.active_fsm_guard.resolve_active_fsm_navigation', _navigation)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.start_generate_work_time_report', _report)
+    state = _DummyState()
+    state.current_state = AccountingDocumentIntakeStates.waiting_upload.state
+    state.data = {ACTIVE_FSM_LAST_ACTIVITY_AT_KEY: datetime.now(UTC).isoformat()}
+    message = _DummyMessage('Покажи табель за вересень 2026.')
+    assert asyncio.run(handle_active_fsm_text_update(
+        message=message, state=state, config=_config(tmp_path), text=message.text,
+        input_channel='text',
+    )) is True
+    assert len(calls) == 1 and message.answers[-1] == 'report fixture'
+    assert message.reply_markups[0].remove_keyboard is True
+    assert not _config(tmp_path).db_path.exists()
 
 
 def test_product_truth_work_time_tracking_is_partial() -> None:

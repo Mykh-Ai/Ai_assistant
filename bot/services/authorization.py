@@ -7,7 +7,7 @@ from typing import Any
 import unicodedata
 
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 
 from bot.config import Config
 from bot.services.access_control import (
@@ -112,23 +112,34 @@ class TelegramUserAuthorizationMiddleware(BaseMiddleware):
             return None
 
         state = data.get('state')
+        remove_correction_keyboard = bool(
+            not isinstance(event, CallbackQuery) and state is not None
+            and hasattr(state, 'get_data')
+            and (await state.get_data()).get('work_time_boundary_change') is not None
+        )
         if state is not None and hasattr(state, 'clear'):
             await state.clear()
-        await _answer_unauthorized(event)
+        await _answer_unauthorized(event, remove_reply_keyboard=remove_correction_keyboard)
         return None
 
     async def _handle_unauthorized_start(self, *, event: Message, data: dict[str, Any], config: Config) -> None:
         state = data.get('state')
+        reply_kwargs = (
+            {'reply_markup': ReplyKeyboardRemove()}
+            if state is not None and hasattr(state, 'get_data')
+            and (await state.get_data()).get('work_time_boundary_change') is not None
+            else {}
+        )
         if state is not None and hasattr(state, 'clear'):
             await state.clear()
 
         if event.from_user is None:
-            await event.answer(UNAUTHORIZED_MESSAGE)
+            await event.answer(UNAUTHORIZED_MESSAGE, **reply_kwargs)
             return
 
         access_service = AccessControlService(config.db_path)
         if access_service.is_blocked_user(event.from_user.id):
-            await event.answer(UNAUTHORIZED_MESSAGE)
+            await event.answer(UNAUTHORIZED_MESSAGE, **reply_kwargs)
             return
 
         request = access_service.create_or_refresh_pending_request(
@@ -140,14 +151,14 @@ class TelegramUserAuthorizationMiddleware(BaseMiddleware):
             )
         )
         if request.status == ACCESS_STATUS_APPROVED:
-            await event.answer(UNAUTHORIZED_MESSAGE)
+            await event.answer(UNAUTHORIZED_MESSAGE, **reply_kwargs)
             return
         if request.status != ACCESS_STATUS_PENDING:
-            await event.answer(UNAUTHORIZED_MESSAGE)
+            await event.answer(UNAUTHORIZED_MESSAGE, **reply_kwargs)
             return
 
         await _notify_admins_about_access_request(event=event, data=data, config=config)
-        await event.answer(ACCESS_REQUEST_MESSAGE)
+        await event.answer(ACCESS_REQUEST_MESSAGE, **reply_kwargs)
 
 
 def _command_token(event: Message) -> str:
@@ -175,11 +186,11 @@ def _normalize_admin_alias(value: str) -> str:
     return re.sub(r'\s+', ' ', without_diacritics).strip()
 
 
-async def _answer_unauthorized(event: Message | CallbackQuery) -> None:
+async def _answer_unauthorized(event: Message | CallbackQuery, *, remove_reply_keyboard: bool = False) -> None:
     if isinstance(event, CallbackQuery):
         await event.answer(UNAUTHORIZED_MESSAGE, show_alert=True)
         return
-    await event.answer(UNAUTHORIZED_MESSAGE)
+    await event.answer(UNAUTHORIZED_MESSAGE, **({'reply_markup': ReplyKeyboardRemove()} if remove_reply_keyboard else {}))
 
 
 async def _notify_admins_about_access_request(*, event: Message, data: dict[str, Any], config: Config) -> None:

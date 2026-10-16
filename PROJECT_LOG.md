@@ -1,3 +1,203 @@
+# 2026-10-16 - Authorized recovery deployment preflight
+
+- User explicitly requested deploying both prepared recovery changes and checking
+  Telegram. Read the private live server runbook and persisted-data runbook;
+  source contracts/design/UX evidence are recorded in the sections below.
+- Server audit: clean main at 0df00f2, bot up on previous image; existing
+  cloudflared stays running. Shared bot-token reality follows current code and
+  compose; stale tenant-token wording in private context is not a config change.
+- Scope: deploy existing evaluated FSM/routing/work-time/confirmation changes;
+  capability remains partial, AI maturity and models unchanged. No schema,
+  backfill, credentials, access eligibility, unrelated Google code or business
+  record repair is requested by this deployment. No automatic alias learning.
+- Backup/rollback: preserve Docker logs, consistent SQLite snapshot, source SHA,
+  private manifest, env hash and previous image before bot-only recreation.
+  Compare persisted work-time rows/events and DB integrity after startup. Revert
+  runtime image/code if needed; never restore an old whole DB over newer data.
+- Journey: empty receipt wait yields only to an executable bounded new action;
+  explicit new arrival/departure previews old/new, preserves the other boundary,
+  saves only through shared confirmation, cancel writes nothing. Validate actual
+  deployed source hashes, polling, provider probes and available Telegram access.
+  Interactive Telegram is pending login; no bot send can substitute an inbound
+  user conversation. Final operational results will be recorded separately.
+- Preserve unrelated existing local Gmail/Drive docs/log entries and attachments.
+
+# 2026-10-16 - Confirmed newer work-time boundary priority
+
+- User returned to the unfinished newer-time priority request. This scoped
+  local implementation extends existing open_work_day/close_work_day owners;
+  it is separate from the already prepared empty-receipt recovery patch.
+- Preflight: reviewed current AGENTS, AI/product/LLM/decision/action/FSM,
+  handoff/implementation/evaluation contracts, migration and access contracts,
+  current work-time code/tests and September/October incident history. Updated
+  existing work-time Architecture Design Proof section 19 to ready_for_handoff
+  before handler implementation. Status remains partial; bounded slot
+  canonicalization plus deterministic validation/confirmation, no AI maturity
+  upgrade, alias learning or new business action/decision family.
+- Touched existing work-time handlers/service, bounded correction slot context,
+  primary semantic hints, confirmation/reply-keyboard recovery, stale/navigation
+  and denial cleanup, old-inline-card rejection, Product Truth/help/docs/tests.
+  Access eligibility and authorization ordering are unchanged. No STT/LMM model,
+  schema, storage path, PDF, server operation or production data rewrite.
+- Persisted-data preflight: same days/events/settings schema; user-confirmed
+  single-row update plus appended event, no migration/backfill. Read-only audit
+  and dry-run use temporary scoped SQLite fixtures. Production deployment or
+  repair still requires the private runbook audit/backup/rollback gates; none
+  is executed here. Revert code without discarding later business rows/events.
+- New explicit arrival/departure now previews old/new values, preserves row id
+  and the other clock, and does not reopen a closed day. Explicit historical
+  dates select their existing actor/workspace row; a missing historical row is
+  not created by open. No-time open and now/duration on a closed day do not
+  silently replace stored clocks. Missing-start duration-only records, future
+  or reversed clocks remain outside boundary correction.
+- WorkTimeService prepares a frozen original/proposed/settings/event-revision
+  snapshot and applies it under BEGIN IMMEDIATE only if still current. Updates
+  and one time_correction event commit together; no-op confirmation creates no
+  event. Stale/repeated approval cannot overwrite another change. Closed ranges
+  recompute gross/net with current lunch; prior fixed-duration overrides are
+  replaced only as disclosed before approval. Origin/note/old events remain.
+- Existing open/close DecisionResolver contexts are reused. Correction mode
+  uses reply-keyboard buttons/text/STT, with cleanup on edit, cancel, success,
+  failure, expiry, navigation and denied access. Old generic inline cards
+  cannot authorize a correction or edit an unproven message. Telegram result /
+  cleanup delivery failure is logged without reversing/repeating committed data.
+- Existing work-time design section 18 report/open model-safety proposal is
+  still unresolved; this does not make arbitrary noisy STT safe or require
+  preview for every no-time opening. Current model configuration is unchanged.
+- Validation details and final counts are recorded in
+  docs/evals/WORK_TIME_TIME_CORRECTION_conversation_acceptance_proof.md.
+  Final focused suite:421 passed; focused compileall/diff checks passed. One
+  full attempt was stopped intentionally to complete strict conflicting-slot
+  validation, then the final full suite was restarted from the finished code.
+  Full run:2782 passed/7 subtests in721.04s. Final read-only help keyboard
+  cleanup and strict raw forbidden-field checks were validated incrementally:
+  97 correction/routing cases, then16 public/history/slot cases and7 strict
+  schema cases passed. The acceptance proof records exact run boundaries;
+  compileall/diff and scoped patch reverse-apply checks also passed.
+  An initial guidance test used a phrase outside the legacy static topic
+  fast-path; the test now uses the existing supported capability question and
+  verifies correction copy. /dochadzka also documents correction examples.
+  Arbitrary capability-language understanding is not claimed fixed. Live model,
+  audio, interactive Telegram and deployment remain unproven. No commit/push,
+  deploy, user notification or production write was performed.
+
+# 2026-10-16 - Narrow empty-receipt-wait action replacement
+
+- User clarified that cancel/start/restart already interrupt active FSMs and
+  requested the same recovery for a new explicit task when mistaken receipt
+  intake has only entered upload waiting and has no file or draft.
+- Read AGENTS, Product Doctrine, AI implementation standards, Product Truth /
+  registry / InfoHelp / learning contracts, LLM/action/in-action registries,
+  DecisionResolver, implementation/handoff/design/evaluation checklists,
+  migration runbook, intake proposals, current work-time proof/acceptance and
+  relevant code/tests/log history. Source FSM start creates only waiting state;
+  existing fresh-state guard previously let that state own all further input.
+- Preflight: existing work-time/intake capabilities stay partial; maturity is
+  bounded canonicalization and deterministic state recovery, not a new Level
+  2-7 capability or learning domain. Touched routing, primary LLM context, FSM,
+  upload in-flight protection, reply keyboard cleanup, Product Truth/guidance,
+  docs and tests. No STT/LMM model/prompt, schema, stored business data, paths,
+  authorization semantics, PDF, server or deployment change. General draft
+  switching, saved-time editing and the October 16 report/open model defect
+  are out of scope. No alias is learned from the mistaken route.
+- Completed the user-scoped Architecture Design Proof before implementation:
+  EMPTY_ACCOUNTING_INTAKE_ACTION_SWITCH_ARCHITECTURE_DESIGN_PROOF.md,
+  ready_for_handoff; implementation matches its narrow source-state contract.
+- Fresh empty AccountingDocumentIntakeStates:waiting_upload now lets the
+  existing primary router resolve a new executable request once, preserving
+  original text/STT/channel/update identity and structured report slots. Only
+  real valid business-action bundle output may claim the unchanged empty
+  snapshot. Unknown/help/reserved/repeated-intake/local-fallback results keep
+  the source state; existing target validation/confirmations own all effects.
+- Python emptiness accepts only shared activity metadata. Every other key
+  blocks the exception. Upload sets a processing marker before downloading or
+  extracting; final empty claim/clear and upload entry share a weakly held
+  per-storage-key process-local lock. Different FSMContext objects for the
+  same key serialize. No distributed/multi-worker guarantee is claimed.
+- Accepted handoff removes reply markup and explains the navigation in Slovak;
+  it does not claim a work day was saved. Target preview/cancel/success retains
+  existing shared DecisionResolver behavior. No new action/decision family.
+- Product Truth, Slovak InfoHelp copy, TZ, LLM/action/in-action contracts and
+  changelog are synchronized. Existing active-draft, capability-question,
+  stale/navigation, upload and target-owner boundaries remain explicit.
+- Validation and exact final results are recorded in
+  docs/evals/EMPTY_ACCOUNTING_INTAKE_ACTION_SWITCH_conversation_acceptance_proof.md.
+  Broad focused run: 1121 passed; final focused run: 222 passed; full
+  python -m pytest -q: 2746 passed, 7 subtests passed in 626.39s.
+  Focused compileall and git diff --check passed. Reviewable unified diff
+  excludes earlier/unrelated work and passed reverse-apply validation.
+  Synthetic model/STT and real local router/FSM/SQLite boundaries are disclosed;
+  real audio, live model recognition and interactive Telegram remain unproven.
+  No commit, push, deployment, Telegram notice or production data write.
+
+# 2026-10-16 - Report-to-open misroute diagnosis and exact day correction
+
+- User explicitly requested correcting today's work-day interval to 06:54-15:39
+  Europe/Bratislava and investigating why a report request opened a day.
+  Scope: authorized tenant-scoped data repair plus diagnosis; no new runtime
+  behavior, model/config change, deployment, notification or general editor.
+- Read AGENTS, the private server and data-migration runbooks, relevant current
+  AI/action/LLM/self-learning/evaluation contracts, existing work-time design
+  and acceptance artifacts, earlier routing repairs, and live owners/evidence.
+  Work-time remains partial; AI maturity is unchanged bounded canonicalization.
+- Preserved private actor/workspace/evidence before any operational changes at
+  /bot/backups/work-time-1016-audit-20261016T142025Z/evidence.json, mode 0600.
+  Actor came from the unique 15:39 close bundle, matched the report-misroute
+  history; active authorization, unique workspace and existing row were gated.
+  No real Telegram/workspace identifiers were recorded in repository output.
+- At 06:46:58 local STT returned Зароби мені, будь ласка, працівний вікас.
+  At 06:47:00 the actual LLM bundle returned open_work_day. The corresponding
+  DB open event/source message 3604 proves that the report request created
+  today's row at 06:47. This is a semantic selection failure, not a timezone
+  conversion or duplicate-polling failure.
+- At 06:47:18 the corrective utterance Я попросила працьовний виказ.
+  resolved to generate_work_time_report. The earlier accidental row remained.
+  At 06:54:30 Відкриття працьовного дня 6.54. resolved to open_work_day,
+  but the DB retained 06:47. At 15:39 the close request resolved correctly to
+  close_work_day and stored the correct end time 15:39.
+- Code-level second cause: WorkTimeService.open_day returns the existing row
+  with already_open for the same day, even when a different explicit start is
+  requested. The explicit-preview approval handler can report open success
+  without asserting that the requested start was applied. A temporary SQLite
+  replay proved 06:47 -> request 06:54 -> already_open with 06:47 and one row.
+  The exact live slot/confirmation branch is not fully logged; do not invent it.
+- The 2026-10-14 patch covered arrival versus accounting receipt, not this
+  noisy report versus opening sequence. Its nine live probes did not include
+  this phrase or existing-row correction. The primary bundle validates allowed
+  action identity, not semantic correctness; no-time opening then writes
+  immediately. Current STT context lists invoice/document terms but not the
+  work-time vocabulary. That is a context gap, not proof of the exact audio
+  recognition cause; raw audio was not replayed.
+- Read-only current shape: one closed row, 06:47-15:39, gross 532 minutes,
+  total 502, configured lunch 30, no net override/snapshot. Approved target:
+  preserve closed status/end/configuration and correct start to 06:54, gross
+  525 and total 495. No schema/path/original-document migration was needed.
+- Created a consistent SQLite backup and restricted manifest before the write:
+  /bot/backups/work-time-1016-correction-20261016T142233Z.
+  One BEGIN IMMEDIATE transaction revalidated the complete frozen row and
+  settings, updated only that bound row, and appended one manual_correction
+  audit event through the existing event owner. All other work days and prior
+  events matched exactly; other table counts and lunch configuration stayed
+  unchanged. Historical wrong open/close events were preserved as history.
+- Independent mode=ro readback: exactly one closed row for 2026-10-16,
+  06:54-15:39, 525 gross minutes (8:45), 495 credited minutes (8:15 after the
+  unchanged 30-minute lunch deduction), one new audit event, integrity_check=ok.
+  Rollback is precondition-gated restoration of only the audited row/event;
+  do not restore a full old DB over newer OAuth or other business activity.
+- Runtime repair is not implemented or deployed in this session. Recorded the
+  failed conversation in the existing design/acceptance artifacts and the
+  known limitation in Product Truth docs. A lasting repair needs an approved
+  design for confirmation before any open-day write, explicit handling of
+  a differing start on an existing open day, and a mixed/noisy read-versus-
+  mutate conversation corpus. Another phrase-only patch is not completion.
+  The shared DecisionResolver, tenant/version gates and keyboard lifecycle
+  must own any new preview/correction flow. No automatic alias learning was
+  added; this incident must not be learned from a wrong canonical action.
+- Validation: live pre/post data audits and temporary service replay passed;
+  git diff --check passed. No new runtime code/tests were added, so the full
+  runtime test suite and live model/audio experiments were not rerun.
+  Existing unrelated local log/Google runbook edits were preserved.
+
 # 2026-10-14 - Authorized arrival repair deployment, day recovery and notice
 
 - The user explicitly requested deployment and manual recovery of the missing

@@ -1,0 +1,127 @@
+# Newer Explicit Work-Time Boundary — Conversation Acceptance Proof
+
+2026-10-16. Local uncommitted tree based on main 0df00f2 plus the separate
+empty-accounting-intake recovery patch. Design: section 19 of
+WORK_TIME_EXPLICIT_OPEN_AND_OPEN_DURATION_CLOSE_ARCHITECTURE_DESIGN_PROOF.md.
+Design verification: design_matches_runtime. Status: partial. No new AI
+maturity/learning domain; Python validates and commits user-confirmed values.
+
+## Public-entry traces
+
+`test_public_new_explicit_time_supersedes_stored_boundary` starts at
+process_invoice_text or public voice.handle_voice, with temporary SQLite,
+synthetic actor1001, controlled Bratislava business time 16 October 18:00.
+Primary and slot OpenAI calls/STT are fixtures; real prompt serialization,
+bounded output validation, routing, FSM, shared DecisionResolver and DB owners
+execute. Authorization is assumed before those handlers; a separate middleware
+test proves denied access before the owner. No real model/API/audio is used.
+
+| Precondition / input | Observed route and effect | Result |
+|---|---|---|
+| Open 06:47; Oprav dnes prichod na 06:54 | open_work_day/open_at_time -> waiting_open_preview_confirm -> old/new reply preview -> shared Schváliť -> same open row06:54 | pass |
+| Closed 06:47-15:39; same arrival correction | same preview; no pre-approval write; approve preserves15:39 and closed status; gross525/net495 with lunch30 | pass |
+| Closed 06:47-15:39; Oprav dnes odchod na15:20 | close_work_day/close_at_time -> waiting_close_preview_confirm -> approve changes end only and recalculates | pass |
+| Open06:47; explicit end15:39 | same close owner -> preview -> approve closes same row; one audit event | pass |
+
+Each scenario runs both text and voice entry, checks exactly one primary
+bundle, Python-provided correction slot flag, unchanged original before
+approval, one resulting row/id, retained other clock and no other-actor row.
+Confirmation uses real shared resolver text Schváliť. Preview creates a reply
+keyboard; terminal success removes it and clears FSM. No voice file remains.
+Voice confirm-state dispatch remains the existing tested shared route; no
+voice phrase parser or new callback family is introduced.
+
+## Historical dates and math
+
+- `test_historical_end_correction_preserves_explicit_date_over_open_day`:
+  explicit9.9.2026 changes only that stored end to13:10, while a separate open
+  October16 row remains exactly equal.
+- `test_historical_arrival_edit_keeps_bound_date`: September9 start correction
+  -> Edit -> date-less07:15 reply -> new preview -> approval changes only the
+  historical start; no October16 row is created.
+- `test_duration_override_is_explicitly_replaced_by_confirmed_range`:
+  07:10-13:40 with360 confirmed net and lunch30 -> explicit13:10 correction ->
+  gross360/net330, explicit_end and no fixed-duration override. Current lunch
+  is retained; correcting a clock alone never implicitly disables lunch.
+- Old explicit range/duration/report tests retain their previous arithmetic.
+
+## Safety, transactions and UI
+
+- `test_correction_controls_and_final_reply_keyboard`: unknown repeats frozen
+  preview; cancel clears/no-write; edit removes reply keyboard and enters
+  expected input. All preserve the original business row until approval.
+- `test_invalid_reverse_future_boundary_never_proposes_write`: invalid order
+  and future clocks return no correction; original row remains exact.
+- `test_stale_snapshot_and_duplicate_approval_cannot_overwrite`: changed row
+  or lunch after preview rejects old approval; applied preview cannot repeat;
+  a fresh equal-value confirmation is unchanged with no extra event.
+- `test_audit_failure_rolls_back_and_other_workspace_cannot_apply`: scoped
+  workspace/legacy mismatch cannot apply; injected SQLite event failure rolls
+  back the preceding row update.
+- `test_no_time_repeat_and_fresh_preview_conflict_do_not_rewrite`: omitted
+  arrival leaves old clock; a fresh-open preview cannot claim success when a
+  same-day row already appeared.
+- `test_closed_now_without_new_explicit_clock_does_not_overwrite`: now on a
+  closed day asks for an exact clock and never revises departure automatically.
+- `test_expired_correction_removes_reply_keyboard_without_write` and
+  `test_correction_global_navigation_removes_reply_keyboard`: expiry,
+  /cancel, /menu and /start clear the pending correction and remove UI.
+- `test_work_time_help_exit_removes_correction_keyboard_and_does_not_write`:
+  /dochadzka clears pending state, removes reply UI and explains correction
+  examples without changing the stored day.
+- `test_old_inline_card_cannot_approve_or_remove_correction_ui`: an old generic
+  inline card cannot confirm the new snapshot or edit an unproven message.
+  Owned correction inline-card cleanup is not applicable: none is created.
+- `test_cleanup_send_failure_does_not_rollback_or_repeat_committed_change`:
+  Telegram reply/cleanup failure is logged after one committed change/event;
+  FSM is clear and data is not rolled back or replayed.
+- `test_denied_actor_cannot_confirm_and_reply_keyboard_is_removed`: access
+  middleware rejects before handler/model, clears its pending state/UI and
+  leaves business data unchanged. Membership failures use existing revalidation
+  with reply-keyboard cleanup; no access eligibility changed.
+- `test_conflicting_close_slots_are_unknown_not_partial_corrections` rejects
+  conflicting start/end/duration fields and now-plus-explicit-time shapes;
+  Python does not silently apply just part of a contradictory model result.
+
+## Product Truth / guidance
+
+Registry and Slovak copy explain confirmed dated start/end correction, other
+clock preservation, current lunch and explicit-range replacement of a fixed
+duration. Status remains partial and payroll/multi-shift/automatic-clock
+claims remain forbidden. `test_product_truth_explains_correction_without_executing`
+uses the existing known capability question Vie bot evidovat odpracovane
+hodiny? and checks correction examples with no business mutation. /dochadzka
+also exposes them. The initial test phrase Ako pouzivat dochadzku? is outside
+the legacy static fast-path; arbitrary help-language coverage is not claimed
+fixed. Existing contextual InfoHelp remains rollout-bound and partial.
+
+## Validation and limits
+
+- Preliminary unchanged work-time/service/routing/voice/callback slice:
+  205 passed. First new correction slice:22 passed.
+- Expanded intermediate slice:286 passed. A later slice exposed only the
+  guidance test's unsupported static-fast-path phrasing (305 passed/1 failed);
+  the corrected guidance/access tests passed2/2 separately.
+- Full `python -m pytest -q`:2782 passed,7 subtests passed in721.04s.
+  This run predates the final read-only /dochadzka keyboard cleanup and the
+  final strict raw forbidden-slot validation; those deltas are covered below.
+- Final focused correction/work-time/service/voice/navigation/access/callback/
+  Product Truth/InfoHelp suite:421 passed in146.62s.
+- After help cleanup: correction/public-routing slice97 passed in109.48s.
+- After strict raw-field validation (including invalid non-null unused
+  fields): public text/voice, historical and slot slice16 passed in14.42s;
+  all seven conflicting-slot cases passed separately in7.37s, including open
+  mode with an invalid non-null departure. Valid routes remain unchanged.
+- An earlier full attempt was intentionally interrupted to add final
+  conflicting-slot validation; the final full run supersedes that attempt.
+- Focused compileall and git diff --check passed.
+- Scoped unified diff passed git apply --reverse --check and excludes the
+  earlier empty-intake patch, prior incident edits and unrelated Google work.
+- Real model interpretation of new correction examples, real STT, interactive
+  Telegram, deployment and production write: not run. Prior nine arrival probes
+  are not acceptance for this new payload or correction journey.
+
+Verdict: runtime_not_proven for live semantic/Telegram acceptance; the local
+deterministic implementation is evaluated with disclosed model/STT fixtures.
+No production deployment, data repair or notification is implied. The report
+to opening model defect and general draft switching remain separate gaps.

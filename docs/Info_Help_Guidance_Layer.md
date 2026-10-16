@@ -925,7 +925,21 @@ state only: no bank confirmation and no bank matching.
 
 ### OfficeFlow Work-Time Partial Runtime - 2026-07-01
 
+Local empty-intake recovery (2026-10-16): guidance for receipt intake explains
+that a fresh empty wait before uploading can be replaced by another clear
+executable request, including work-day opening. Any upload processing or
+draft/session data blocks this exception; use existing cancel/navigation.
+Do not claim all fresh FSMs can switch, that capability questions execute a
+task, or that existing work-time records can now be edited.
+
 InfoHelp must answer work-time / dochadzka questions from Product Truth as `partial`.
+
+Local explicit-time correction (2026-10-16): explain `oprav dnesny prichod na
+06:54` / `oprav odchod 9.9.2026 na 13:10`. The user reviews old/new clocks
+before confirming. The other boundary remains, closed arrival edits keep the
+day closed, and hours use the configured lunch. The preview discloses replacing
+any fixed-duration override. No silent overwrite without an explicit clock,
+no inferred missing start, and no automatic correction/learning claim.
 
 Required wording boundaries:
 

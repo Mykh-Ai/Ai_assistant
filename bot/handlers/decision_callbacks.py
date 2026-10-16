@@ -207,6 +207,11 @@ class _CallbackMessageAdapter:
 
 @router.callback_query(F.data.startswith(DECISION_CALLBACK_PREFIX))
 async def decision_callback(callback: CallbackQuery, state: FSMContext, config: Config, bot: Bot | None = None) -> None:
+    if (await state.get_data()).get('work_time_boundary_change') is not None:
+        # Correction uses a reply keyboard. An old inline card cannot approve
+        # the new row snapshot, and its message ownership is not established.
+        await callback.answer('Pouzite aktualne tlacidla alebo odpoved v chate.', show_alert=True)
+        return
     token = _parse_decision_token(callback.data)
     current_state = _state_name(await state.get_state())
     if token is None:

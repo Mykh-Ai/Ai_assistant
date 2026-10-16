@@ -216,6 +216,8 @@ def test_add_receipt_how_to_renders_partial_guidance() -> None:
 
     assert answer is not None
     assert 'Pridanie bločku alebo prijatej faktúry' in answer
+    assert 'čakanie je prázdne' in answer
+    assert 'Po začatí nahrávania najprv použite /cancel' in answer
     assert 'čiastočné' in answer
     assert 'fotka alebo PDF' in answer
     assert 'nepodporovanú alebo nejasnú potrebu' not in answer

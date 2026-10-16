@@ -257,6 +257,18 @@ than implemented approximately.
 
 ## 6) Canonical value resolution
 
+Narrow active-FSM exception (2026-10-16, local implementation): fresh
+`AccountingDocumentIntakeStates:waiting_upload` with only shared activity
+metadata may accept a new explicit executable request. The existing primary
+bundle runs once with empty-source context. Only a valid `llm_bundle`
+`business_action` with an existing executable owner may replace the source;
+unknown/help, reserved/repeated intake actions and model/local fallback keep
+it unchanged. Python rechecks the exact empty snapshot before clearing.
+An upload-processing marker and per-storage-key lock protect the boundary
+before download/extraction creates a candidate. No other active FSM or draft
+is switchable. This does not implement general preservation/restoration.
+Design: `docs/architecture/EMPTY_ACCOUNTING_INTAKE_ACTION_SWITCH_ARCHITECTURE_DESIGN_PROOF.md`.
+
 The same resolver pattern applies to structured values/slots.
 
 Example service/value canonicalization:
@@ -677,3 +689,26 @@ explicit `close_now` are valid. For `operation_kind=manual`, only
 arrives while a workspace-bound day is open and resolves to a duration close,
 Python converges it onto the existing close preview/service; the model never
 selects or performs the write.
+
+## Work-time explicit boundary correction (2026-10-16 local extension)
+
+Existing open_work_day/close_work_day own newer explicit start/end corrections.
+No new action or mode is added. Python enables allow_boundary_correction for
+bounded open_at_time/close_at_time extraction. Explicit dates remain explicit;
+they must not be overwritten by open_day_date. A stored historical date may
+be corrected; open still creates only today's missing day. Python looks up
+the exact scoped row and requires an old/new preview before any correction.
+
+Start correction preserves any departure and closed status. End correction
+preserves arrival. Closing now/duration never silently revises a closed day.
+The exact snapshot, scoped event revision and lunch settings must still match
+inside the write transaction. Closed ranges recalculate gross/net and replace
+a fixed-duration override only after the preview discloses it. Unknown/help,
+invalid/future/reversed clocks, missing targets and stale previews do not write.
+With configured LLM, unknown rich natural-language slots are not reinterpreted
+as another dated target by Python; only narrow numeric clock continuation may
+use the structural fallback. No broad phrase/date dictionaries are added.
+
+Correction replies use existing DecisionResolver contexts and reply keyboards;
+generic old inline cards cannot authorize the new snapshot. This local scope
+does not solve report/open primary model selection or implement payroll.

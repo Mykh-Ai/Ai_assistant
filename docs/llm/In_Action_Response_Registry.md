@@ -4,7 +4,27 @@ Purpose: evidence-based registry of bounded in-workflow responses and state-scop
 
 ## A) Bounded canonical response groups
 
+2026-10-16 empty-intake navigation exception: only fresh
+`AccountingDocumentIntakeStates:waiting_upload` containing shared activity
+metadata alone may yield to a new explicit executable primary-bundle action.
+It adds no confirmation family or business token. Python checks/claims the
+unchanged empty snapshot, removes the reply keyboard, then calls the existing
+target owner with original slots and existing confirmations. Any file/draft,
+processing marker, unknown/help, reserved action or model failure blocks this
+exception. Other active states retain ownership.
+
 Design rule:
+
+2026-10-16 correction mode: work_time_open_preview and work_time_close_preview
+reuse approve_edit_cancel for old/new stored-clock previews. Correction mode
+uses a reply keyboard (text/STT/button taps share DecisionResolver); old inline
+decision:* cards are rejected without editing unproven messages. Edit removes
+the reply keyboard and asks HH:MM; unknown retains the frozen preview; success,
+cancel, failure, navigation and expiry remove it. Pending row/event revision
+and lunch snapshot are revalidated in one transaction. This mode neither
+reopens closed days nor infers a missing other clock. Normal create/duration
+previews keep their existing inline route.
+
 - New confirmation-like or route-like response groups must be implemented through `bot/services/decision_resolver.py`.
 - This registry records canonical outputs, not per-flow synonym lists.
 - Handlers must consume canonical outputs only and must not parse raw `ano` / `nie` / `ok` / `schvalit` / `zrusit` / multilingual variants locally.

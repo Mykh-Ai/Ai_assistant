@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -112,6 +112,49 @@ class WorkTimeCandidate:
         return None
 
 
+@dataclass(frozen=True)
+class WorkTimeBoundaryChange:
+    original: WorkTimeDay
+    proposed: WorkTimeDay
+    settings: WorkTimeLunchBreakSettings
+    revision: int
+    field: str
+    value: str
+
+
+def _proposed_boundary_day(
+    day: WorkTimeDay, settings: WorkTimeLunchBreakSettings, field: str, value: str,
+) -> WorkTimeDay | None:
+    if field not in {'start_time', 'end_time'} or day.status not in {STATUS_OPEN, STATUS_CLOSED}:
+        return None
+    clock = _parse_llm_hhmm(value)
+    if clock is None or day.start_time is None:
+        return None
+    try:
+        work_date = date.fromisoformat(day.work_date)
+        current = work_time_local_now()
+        if datetime.combine(work_date, clock) > current:
+            return None
+        changed = replace(day, **{field: clock.strftime('%H:%M')})
+        if changed.end_time is None:
+            return changed if changed.status == STATUS_OPEN else None
+        start = datetime.combine(work_date, _parse_time_value(changed.start_time))
+        end = datetime.combine(work_date, _parse_time_value(changed.end_time))
+        if end < start or end > current:
+            return None
+    except (ValueError, TypeError):
+        return None
+    gross = int((end - start).total_seconds() // 60)
+    return replace(
+        changed, status=STATUS_CLOSED,
+        source=SOURCE_CLOSED_LIVE if day.status == STATUS_OPEN else day.source,
+        gross_minutes=gross,
+        total_minutes=max(0, gross - _effective_lunch_break_minutes(settings)),
+        net_work_minutes_override=None, lunch_break_minutes_snapshot=None,
+        close_input_mode='explicit_end',
+    )
+
+
 class WorkTimeService:
     def __init__(self, db_path: Path, *, workspace_id: str | None = None) -> None:
         self.db_path = db_path
@@ -166,6 +209,7 @@ class WorkTimeService:
         now: datetime | None = None,
         start_datetime: datetime | None = None,
         source_message_id: int | None = None,
+        expected_no_day: bool = False,
     ) -> WorkTimeOperationResult:
         current = _local_now(now)
         explicit_start = _local_now(start_datetime) if start_datetime is not None else current
@@ -176,6 +220,10 @@ class WorkTimeService:
         work_date = explicit_start.date().isoformat()
         start_value = _format_time(explicit_start.time())
         with managed_connection(self.db_path) as connection:
+            if expected_no_day:
+                connection.execute('BEGIN IMMEDIATE')
+                if self.get_day(telegram_id=telegram_id, work_date=work_date, connection=connection) is not None:
+                    return WorkTimeOperationResult(ok=False, reason='day_changed')
             open_day = self.get_open_day(telegram_id=telegram_id, connection=connection)
             if open_day is not None:
                 if open_day.work_date == work_date:
@@ -217,6 +265,71 @@ class WorkTimeService:
             )
             connection.commit()
             return WorkTimeOperationResult(ok=True, day=self.get_day_by_id(day_id, connection=connection))
+
+    def _day_revision(self, connection: sqlite3.Connection, *, telegram_id: int, day_id: int) -> int:
+        scope, params = self._scope_condition(connection, table='work_time_events', telegram_id=telegram_id)
+        row = connection.execute(
+            f'SELECT COALESCE(MAX(id), 0) FROM work_time_events WHERE {scope} AND work_time_day_id = ?',
+            (*params, day_id),
+        ).fetchone()
+        return int(row[0])
+
+    def prepare_boundary_change(
+        self, *, telegram_id: int, work_date: str, field: str, value: str,
+    ) -> WorkTimeBoundaryChange | None:
+        with managed_connection(self.db_path) as connection:
+            connection.execute('BEGIN')
+            original = self.get_day(telegram_id=telegram_id, work_date=work_date, connection=connection)
+            if original is None:
+                return None
+            settings = self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection)
+            proposed = _proposed_boundary_day(original, settings, field, value)
+            if proposed is None:
+                return None
+            return WorkTimeBoundaryChange(
+                original, proposed, settings,
+                self._day_revision(connection, telegram_id=telegram_id, day_id=original.id), field, value,
+            )
+
+    def apply_boundary_change(
+        self, *, telegram_id: int, change: WorkTimeBoundaryChange,
+        source_message_id: int | None = None,
+    ) -> WorkTimeOperationResult:
+        with managed_connection(self.db_path) as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            original = self.get_day(
+                telegram_id=telegram_id, work_date=change.original.work_date, connection=connection,
+            )
+            if original is None or original != change.original or original.telegram_id != telegram_id:
+                return WorkTimeOperationResult(ok=False, reason='day_changed')
+            settings = self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection)
+            if (
+                settings != change.settings
+                or self._day_revision(connection, telegram_id=telegram_id, day_id=original.id) != change.revision
+            ):
+                return WorkTimeOperationResult(ok=False, reason='day_changed')
+            proposed = _proposed_boundary_day(original, settings, change.field, change.value)
+            if proposed is None or proposed != change.proposed:
+                return WorkTimeOperationResult(ok=False, reason='invalid_time_correction')
+            if proposed == original:
+                return WorkTimeOperationResult(ok=True, day=original, reason='unchanged')
+            scope, params = self._scope_condition(connection, table='work_time_days', telegram_id=telegram_id)
+            connection.execute(
+                'UPDATE work_time_days SET start_time=?, end_time=?, total_minutes=?, status=?, source=?, '
+                'gross_minutes=?, lunch_break_minutes_snapshot=?, net_work_minutes_override=?, '
+                f'close_input_mode=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND {scope}',
+                (proposed.start_time, proposed.end_time, proposed.total_minutes, proposed.status, proposed.source,
+                 proposed.gross_minutes, proposed.lunch_break_minutes_snapshot, proposed.net_work_minutes_override,
+                 proposed.close_input_mode, original.id, *params),
+            )
+            self._record_event(
+                connection, day_id=original.id, event_type='time_correction',
+                old_value=asdict(original),
+                new_value={**asdict(proposed), 'changed_field': change.field},
+                source_message_id=source_message_id, telegram_id=telegram_id,
+            )
+            connection.commit()
+            return WorkTimeOperationResult(ok=True, day=proposed)
 
     def close_open_day(
         self,
@@ -1031,6 +1144,7 @@ async def resolve_work_time_entry_candidate(
     today: date | None = None,
     open_day: WorkTimeDay | None = None,
     operation: str | None = None,
+    allow_boundary_correction: bool = False,
 ) -> WorkTimeCandidate | None:
     cleaned = user_input_text.strip()
     if not cleaned or not api_key or not api_key.startswith('sk-'):
@@ -1063,6 +1177,9 @@ async def resolve_work_time_entry_candidate(
                         'Verbal ranges such as "z piatej do deviatej", "from fifth morning to ninth morning", "z siestej rano do piatej vecer", or Cyrillic equivalents must be normalized to start_time and end_time in 24-hour HH:MM when clear. '
                         'For duration-only requests like "zapis dnes 10 hodin" or "close today nine and a half hours", set start_time and end_time to null and duration_minutes to the total. Do not convert a range into duration-only just because one number looks like hours. '
                         'If the input is a question about whether the bot can do work time tracking, return unknown rather than an executable work-time entry. Use unknown when date/time/duration is ambiguous.'
+                        ' When allow_boundary_correction is true, an explicit arrival/departure may correct an already stored open or closed day. '
+                        'Preserve an explicitly stated date instead of replacing it with open_day_date. '
+                        'Use open_at_time for correcting arrival and close_at_time for correcting departure; never infer the other clock. '
                     ),
                 },
                 {
@@ -1071,6 +1188,8 @@ async def resolve_work_time_entry_candidate(
                         {
                             'context_name': 'work_time_open_slot_extraction' if operation_kind == 'open' else 'work_time_slot_extraction',
                             'operation_kind': operation_kind,
+                            'allow_boundary_correction': allow_boundary_correction,
+                            'bound_day_status': open_day.status if open_day else None,
                             'today_iso': current.isoformat(),
                             'open_day_date': open_day.work_date if open_day else None,
                             'open_day_start_time': open_day.start_time if open_day else None,
@@ -1117,10 +1236,13 @@ async def resolve_work_time_entry_candidate(
     if operation_kind == 'open':
         if (
             mode == 'open_at_time'
-            and candidate_date == current
+            and (candidate_date == current or (allow_boundary_correction and candidate_date < current))
             and start_time is not None
             and end_time is None
             and duration_minutes is None
+            and (not allow_boundary_correction or (
+                parsed.get('end_time') is None and parsed.get('duration_minutes') is None
+            ))
         ):
             return WorkTimeCandidate(
                 work_date=candidate_date,
@@ -1129,8 +1251,20 @@ async def resolve_work_time_entry_candidate(
             )
         return None
 
-    if operation_kind == 'close' and open_day is not None:
-        candidate_date = date.fromisoformat(open_day.work_date)
+    if operation_kind == 'close' and (open_day is not None or allow_boundary_correction):
+        if not allow_boundary_correction:
+            candidate_date = date.fromisoformat(open_day.work_date)
+        elif (
+            parsed.get('start_time') is not None
+            or (mode == 'close_at_time' and parsed.get('duration_minutes') is not None)
+            or (mode == 'close_now' and (parsed.get('end_time') is not None or parsed.get('duration_minutes') is not None))
+            or (mode == 'close_with_duration' and parsed.get('end_time') is not None)
+        ):
+            return None
+        if mode == 'close_at_time' and end_time is not None and (allow_boundary_correction or open_day is not None):
+            return WorkTimeCandidate(work_date=candidate_date, end_time=end_time, close_mode='close_at_time')
+        if open_day is None:
+            return None
         if mode == 'close_now':
             return WorkTimeCandidate(work_date=candidate_date, close_mode='close_now', needs_confirmation=False)
         if mode == 'close_with_duration' and duration_minutes is not None:

@@ -19,6 +19,17 @@ acceptance remains unproven.
 
 ## A) Top-level user-facing actions
 
+2026-10-16 local extension: existing open_work_day and close_work_day also own
+confirmed correction of one stored arrival/departure, including a closed day
+and an explicitly selected historical existing date. New explicit clock ->
+old/new preview -> shared DecisionResolver -> atomic scoped correction. The
+other clock/id are preserved and closed days stay closed. No-time repeats do
+not overwrite; a closed day requires an explicit departure clock, not now or
+duration. Current/bound date is the default. No new canonical action; status
+partial. Implementation: WorkTimeService.prepare_boundary_change /
+apply_boundary_change and existing work-time previews. No production deploy
+or guarantee of live model recognition is implied.
+
 | Action (canonical/working name) | Category | Status | Entry mode | Source evidence | Notes |
 |---|---|---|---|---|---|
 | `start` (working: `/start`) | top-level/system action | implemented | mixed (command + semantic text/voice) | `/start` command response exists in `cmd_start()`; semantic top-level routing now maps bounded `start` intent to the same existing `/start` flow. | Starts/resumes the approved-user setup/status router. Unknown-user access request remains command/middleware-only through `/start`; voice/text semantic `start` is available only after authorization middleware has allowed the user. |
@@ -68,6 +79,13 @@ Important distinction:
 - No confirmed accounting storage, contact save, contract save, DB mutation, Google Drive sync, or bank matching may happen from classification alone.
 
 ## B) Bootstrap/admin/setup flows
+
+2026-10-16 local routing extension: a fresh, provably empty `add_receipt`
+upload-wait state may yield to a clear new executable request through the
+existing primary bundle and target owner. Unknown/help/model failure,
+reserved actions and any uploaded/in-flight/draft data preserve FSM ownership.
+No canonical action is added. See the empty-accounting-intake design proof;
+this does not claim general active-draft switching or saved-time editing.
 
 | Flow (working name) | Category | Status | Entry mode | Source evidence | Notes |
 |---|---|---|---|---|---|
