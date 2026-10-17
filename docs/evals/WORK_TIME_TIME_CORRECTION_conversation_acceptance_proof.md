@@ -149,3 +149,84 @@ Interactive Telegram and real audio: pending. Telegram Web requires QR login;
 user was asked to sign in and the page was left open. No customer notification
 or synthetic inbound getUpdates/polling was used. Verdict: deployed_partial,
 live provider/handler journeys pass; interactive Telegram runtime_not_proven.
+
+## Real Telegram follow-up — 2026-10-17
+
+Owner logged into the existing Edge Telegram Web session. Actual authorized
+chat: @officeflow_sk_bot, deployed runtime5a3f3f8 (no new code/deploy).
+Selected workspace contained no work-time rows. Private RO audit/snapshot and
+logs: /bot/backups/telegram-recovery-smoke-20261017T152454Z.
+
+| Actual input / operation | Observed result | Scope verdict |
+|---|---|---|
+| /add_blocek -> Відкрий сьогодні робочий день з 07:07. | Empty wait ended explicitly;17.10.2026 arrival07:07 preview, no save | pass |
+| Upraviť ->06:54 ->Zrušiť | New06:54 preview; cancellation; preview buttons removed | pass for unsaved preview only |
+| Покажи робочий виказ за жовтень 2026. | generate_work_time_report; first-report lunch question, no day opened | pass for route/setup only |
+| /cancel at lunch question | Returned idle, but Ano/Nie inline buttons remained | FAIL: terminal UI cleanup incomplete |
+| Old Ano clicked once after cancel | Stale-decision alert, markup removed, no settings saved | pass for stale rejection/cleanup |
+
+Primary server traces were real llm_bundle/business_action: opening request
+13b4eb4c-c3c2-4d2d-9e1e-6793e9c981c4/message3667; report request
+4e3cf654-f7bd-4097-9223-c3eed39839da/message3674. No synthetic inbound update,
+fake STT/model or secondary polling. Final alert dismissed; bot idle, old
+preview/lunch markup gone. Global hashes of work_time_days/events/settings
+match before exactly; integrity ok, no runtime traceback/polling conflict.
+Screenshot evidence is outside Git and cropped to the bot conversation.
+
+Verdict: real text/button Telegram recovery and clear report routing observed;
+not full conversation acceptance. No production existing-row correction save,
+closed/historical correction, Excel completion or real voice was exercised.
+No production fixture was inserted. The previously reproduced noisy report/open
+semantic failure remains unresolved. Report-setup global-cancel keyboard
+cleanup also remains open; do not label the entire UI lifecycle passing.
+
+## Real persisted open-day correction — 2026-10-17
+
+User explicitly authorized saving and retaining a test day after clarifying
+that preview editing alone did not prove saved-time correction. Same current
+Telegram actor/workspace, today17.10.2026 Europe/Bratislava; no prior row.
+Backup and private full records/logs/rollback note:
+/bot/backups/telegram-saved-time-smoke-20261017T153220Z.
+
+| Actual sequence | Independent evidence | Verdict |
+|---|---|---|
+| Відкрий сьогодні робочий день з07:07. ->preview->Schvalit button | Bot saved-open message; RO row open07:07/endnull and one open event | pass: actually saved |
+| Виправ сьогоднішній час відкриття робочого дня на06:54. | Old07:07/new06:54 preview; complete saved row/events unchanged while pending | pass: no pre-approval write |
+| Typed Schvalit | Same row id open06:54/endnull; one time_correction audit old07:07/new06:54; initial event intact; terminal reply keyboard removed | pass: persisted correction |
+
+Exactly one new day and two new events relative to before snapshot. All old
+days/events globally identical; settings unchanged, integrity ok. Origin/note/
+other totals fields retained; no end clock or lunch setting invented. Final
+17.10.2026 test day deliberately remains OPEN from06:54 per user instruction.
+
+Both real primary routes were llm_bundle/business_action/open_work_day:
+fdcaac93-c4b7-44be-9838-c4b5d2370a0f/message3678 and
+be4c5fc6-51a0-44ba-bd25-4bb11137468a/message3681. Real Telegram/model/
+slot/confirmation/FSM/SQLite owners; no synthetic update or direct SQL write.
+Screenshot saved outside Git with bot-chat-only crop.
+
+Verdict: real text/button persisted open-day arrival correction PASSED. This
+supersedes the earlier pending verdict for that specific journey. Closed-day,
+historical/end corrections and voice were not exercised here; noisy report/open
+semantic safety and report-setup global-cancel markup defect remain open.
+No new runtime change, redeploy or redundant unit/full suite run.
+
+## Explicit close-now text — 2026-10-17
+
+User requested closing the actual retained test day with no numeric end time
+and wanted to know whether confirmation would be asked. Private before/after
+DB/log evidence: /bot/backups/telegram-close-now-20261017T154315Z.
+
+Actual input: Закрий зараз робочий день. The very next bot response was
+Pracovny den je uzavrety,17.10.2026:06:54-17:43(10:49). No intermediate
+question/preview or second user approval was sent. Final scoped RO row was
+closed with end17:43, gross649/total649; same arrival/id, one new close event.
+All prior events/other days/settings unchanged; integrity ok. No lunch setting
+was supplied/changed, so the retained existing zero deduction applied.
+
+Primary: close_work_day via llm_bundle, trace
+2faba61c-acbe-4f67-8de1-58e1190ad303/message3685. Screenshot outside Git.
+Test day now remains CLOSED. Verdict: PASS for explicit close-now text with an
+existing open day and no exact clock supplied. No voice or unspecified-now
+inference is claimed. Registry wording was repaired to match existing direct
+close_now code; no runtime patch, deploy or redundant suite run.

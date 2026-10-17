@@ -5,8 +5,14 @@
   and closed status where appropriate. Existing historical dates are scoped;
   snapshot/event/lunch checks prevent stale overwrites, totals are recalculated
   and one audit event is appended. No-time repeats keep the old value. No
-  report/open model-selection fix is implied. Interactive Telegram acceptance
-  remains pending login; three real-model isolated provider/handler journeys passed.
+  report/open model-selection fix is implied. Three real-model isolated
+  provider/handler journeys passed. October17 real Telegram handoff, arrival
+  preview editing/cancel and clear report routing passed. Real persisted
+  open-day arrival07:07->06:54 correction also passed; the authorized test day
+  was retained, then explicitly closed by a real close-now request at17:43
+  without another confirmation. Closed/history/end corrections and voice
+  remain pending. Report-setup cancel leaves stale inline
+  buttons until rejection on click; that UI cleanup defect remains open.
 
 - Recovery fix deployed as `5a3f3f8`: a clear new executable text/voice request may replace a
   fresh empty receipt-upload wait through one existing primary action bundle.

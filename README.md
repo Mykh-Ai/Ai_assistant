@@ -238,12 +238,17 @@ changing arrival does not reopen a closed day. Hours are recalculated using
 the configured lunch, with any replaced fixed-duration override disclosed.
 Historical dates must identify an existing scoped record with a stored
 arrival. No-time repeats do not silently change recorded clocks. Live provider
-journeys passed in an isolated temporary DB; interactive Telegram acceptance
-is pending login. Payroll/multi-shift support remains outside this module.
+journeys passed in an isolated temporary DB. Real Telegram empty-wait handoff,
+07:07->06:54 preview editing/cancel and clear report routing passed on October17;
+saving an open day07:07 and correcting its saved start to06:54 also passed
+with independent DB audits. Closed/history/end-correction/voice acceptance
+remains pending. Report-setup global
+cancel leaves stale inline buttons until rejected on click; cleanup is incomplete.
+Payroll/multi-shift support remains outside this module.
 
 Supported top-level actions:
 - `open_work_day` - start the current work day at the current Bratislava business time when no time is stated, or preview and confirm an explicitly stated arrival time such as `7:10`/`7.10`;
-- `close_work_day` - close the open day with a preview-confirmed end time or net worked duration;
+- `close_work_day` - an explicit close-now request immediately closes the open day at the current Bratislava business time without another confirmation; a stated end time or net worked duration uses preview confirmation;
 - `add_work_time_entry` - add one preview-confirmed manual interval or duration-only total; when the current day is already open, a duration-only request closes that row instead of creating a conflicting second row;
 - `generate_work_time_report` - generate a monthly Excel report;
 - `update_work_time_lunch_break` - set, change, or disable the fixed lunch-break deduction used in reports;

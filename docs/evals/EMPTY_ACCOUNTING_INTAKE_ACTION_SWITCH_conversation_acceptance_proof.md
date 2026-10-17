@@ -118,3 +118,39 @@ Interactive Telegram and real audio: pending. Telegram Web requires QR login;
 user was asked to sign in and the page was left open. No customer notification
 or synthetic inbound getUpdates/polling was used. Verdict: deployed_partial,
 live provider/handler journeys pass; interactive Telegram runtime_not_proven.
+
+## Real Telegram follow-up — 2026-10-17
+
+Owner logged into the existing Edge Telegram Web session. Actual authorized
+chat: @officeflow_sk_bot, deployed runtime5a3f3f8 (no new code/deploy).
+Selected workspace contained no work-time rows. Private RO audit/snapshot and
+logs: /bot/backups/telegram-recovery-smoke-20261017T152454Z.
+
+| Actual input / operation | Observed result | Scope verdict |
+|---|---|---|
+| /add_blocek -> Відкрий сьогодні робочий день з 07:07. | Empty wait ended explicitly;17.10.2026 arrival07:07 preview, no save | pass |
+| Upraviť ->06:54 ->Zrušiť | New06:54 preview; cancellation; preview buttons removed | pass for unsaved preview only |
+| Покажи робочий виказ за жовтень 2026. | generate_work_time_report; first-report lunch question, no day opened | pass for route/setup only |
+| /cancel at lunch question | Returned idle, but Ano/Nie inline buttons remained | FAIL: terminal UI cleanup incomplete |
+| Old Ano clicked once after cancel | Stale-decision alert, markup removed, no settings saved | pass for stale rejection/cleanup |
+
+Primary server traces were real llm_bundle/business_action: opening request
+13b4eb4c-c3c2-4d2d-9e1e-6793e9c981c4/message3667; report request
+4e3cf654-f7bd-4097-9223-c3eed39839da/message3674. No synthetic inbound update,
+fake STT/model or secondary polling. Final alert dismissed; bot idle, old
+preview/lunch markup gone. Global hashes of work_time_days/events/settings
+match before exactly; integrity ok, no runtime traceback/polling conflict.
+Screenshot evidence is outside Git and cropped to the bot conversation.
+
+Verdict: real text/button Telegram recovery and clear report routing observed;
+not full conversation acceptance. No production existing-row correction save,
+closed/historical correction, Excel completion or real voice was exercised.
+No production fixture was inserted. The previously reproduced noisy report/open
+semantic failure remains unresolved. Report-setup global-cancel keyboard
+cleanup also remains open; do not label the entire UI lifecycle passing.
+
+Subsequent explicit authorization also allowed creating and retaining a real
+test work day, then confirming a saved start07:07->06:54 correction. That
+separate persisted journey passed; see WORK_TIME_TIME_CORRECTION acceptance
+proof, Real persisted open-day correction section. It does not resolve the
+report-setup cancel-markup defect recorded above.

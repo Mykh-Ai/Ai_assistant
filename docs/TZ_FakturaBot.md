@@ -1602,8 +1602,13 @@ This is not general draft switching; existing work-time correction is the
 separate change above. Design and acceptance are in the corresponding
 EMPTY_ACCOUNTING_INTAKE_ACTION_SWITCH artifacts. Three real-model isolated
 provider/handler journeys passed after deploy; Telegram getMe/polling passed,
-but interactive chat/audio acceptance is pending login. The noisy October16
-report phrase still selects open_work_day in a live probe; semantic root-cause
+and October17 real Telegram empty-wait handoff, arrival-preview edit/cancel
+and clear report routing passed with no work-time DB change. A subsequent
+explicitly authorized real Telegram save07:07 and same-open-row confirmed
+correction06:54 passed with before/pending/after DB audits; the test day was
+retained on17.10.2026. Closed/history/end corrections and voice remain pending. Report-setup /cancel
+leaves stale inline buttons until a rejected click removes them; cleanup is
+incomplete. The noisy October16 report phrase still selects open_work_day in a live probe; semantic root-cause
 remediation is unresolved and no-time opening still writes immediately.
 
 Current status: `partial`.

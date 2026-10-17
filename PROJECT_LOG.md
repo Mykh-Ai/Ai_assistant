@@ -1,3 +1,135 @@
+# 2026-10-17 - Authorized Telegram evidence publication checkpoint
+
+- User explicitly requested completing the documentation commit/push after
+  confirming runtime fixes were already deployed. Scope is the real Telegram
+  acceptance results, current README/TZ/changelog and corrected close-now
+  registry wording, plus this project log. No runtime delta or new capability.
+- Reviewed scoped diffs and governing root AGENTS/private server runbook;
+  diff whitespace validation passed. Existing evidence distinguishes proven
+  saved open-day correction/explicit close-now from pending closed/history/
+  voice coverage and the unresolved noisy-routing/cancel-markup defects.
+- Remote main and clean server checkout both start at8c2ea9c. Publish only
+  these reviewed docs; preserve unrelated Google/Gmail runbooks, their earlier
+  local project-log entries and attachments outside the commit. Index was empty.
+- Server synchronization is docs-only fast-forward with bot/cloudflared
+  identity, image, start time and Python source-hash checks; no rebuild/restart,
+  DB write, credential change or repeated test suite is part of this checkpoint.
+
+# 2026-10-17 - Real Telegram close-now executes without confirmation
+
+- User explicitly asked to send a close-work-day-now request without a clock
+  and observe whether the bot asks confirmation. Authorized ordinary close of
+  the retained test day; no code/deploy/model/schema change or direct SQL write.
+- Reused same authorized browser/chat. Before action, snapshot and frozen
+  actor/workspace/open-row/event manifest preserved privately at
+  /bot/backups/telegram-close-now-20261017T154315Z. Row was open06:54/endnull.
+- Sent exactly Закрий зараз робочий день. in real Telegram at17:43 Bratislava.
+  The next bot response was immediate saved closure06:54-17:43 (10:49), without
+  a preview, yes/no, approve/edit/cancel or a second user confirmation message.
+- Independent RO DB audit proved same scoped row now closed, end17:43,
+  gross649/total649, preserved arrival06:54 and one appended close event.
+  All prior events, other days and settings globally unchanged; integrity ok.
+  Test day remains stored and CLOSED on17.10.2026 per requested action.
+- Actual llm_bundle primary selected close_work_day, trace
+  2faba61c-acbe-4f67-8de1-58e1190ad303/message3685. No fake input/update,
+  secondary polling or follow-up approval click; screenshot saved outside Git.
+- Documentation mismatch found before maintenance: Canonical_Action_Registry
+  described shared preview confirmation for all close modes, while current
+  _start_or_continue_close explicitly executes close_now immediately. README
+  omitted that branch. Corrected docs to observed/current code truth; this is
+  not a behavior change. Stated end/duration still uses its preview owners.
+- Added real close-now acceptance evidence. No new runtime delta or redundant
+  test-suite run. The existing noisy-STT and report cancel-markup gaps remain
+  unresolved; this single explicit text journey proves only its stated scope.
+
+# 2026-10-17 - Saved-day arrival correction verified in real Telegram
+
+- User clarified that the earlier preview/cancel was insufficient and explicitly
+  authorized saving a test work day and leaving it in place. Continued the same
+  authorized Telegram account/profile; no additional approval loop.
+- Preflight: current AGENTS, private server runbook, persisted-data runbook,
+  correction acceptance and existing FSM/DecisionResolver owners rechecked.
+  Existing capability remains partial; no runtime code, prompt/model, schema,
+  storage-path, learning, access eligibility or deploy change. Ordinary scoped
+  business writes occur only through real Telegram confirmations.
+- Before write, resolved the same actor/workspace read-only and proved no row
+  for today17.10.2026. Created consistent private SQLite backup, frozen scope/
+  expected shape and rollback note at
+  /bot/backups/telegram-saved-time-smoke-20261017T153220Z. Planned effect: one
+  new open row07:07, then a confirmed same-row start06:54, no end/settings edits.
+  User requested retention; no cleanup/delete or whole-DB restore is planned.
+- Real Telegram at17:32 Europe/Bratislava: Відкрий сьогодні робочий день з
+  07:07. -> fresh preview -> Schvalit button -> opened07:07. Independent
+  mode=ro readback proved one saved open row and exactly one open event before
+  requesting correction; this was not another unsaved-preview-only check.
+- Next real request: Виправ сьогоднішній час відкриття робочого дня на06:54.
+  Bot showed Povodne07:07 and proposed06:54, keeping the other clock. RO audit
+  while preview pending proved the original complete row/event was unchanged.
+  Typed Schvalit -> shared confirmation -> saved-success message, reply
+  keyboard removed. Final RO audit proved same row id, start06:54, statusopen,
+  endnull, origin/note/other totals fields retained and one appended
+  time_correction event with old07:07/new06:54. Initial open event preserved.
+- All pre-existing days/events globally equal the before snapshot, settings
+  unchanged, no duplicate day, integrity_check=ok. The new authorized test day
+  remains OPEN on17.10.2026 from06:54; no closing time was invented or saved.
+- Actual primary llm_bundle/business_action traces both open_work_day:
+  fdcaac93-c4b7-44be-9838-c4b5d2370a0f/message3678 (initial save) and
+  be4c5fc6-51a0-44ba-bd25-4bb11137468a/message3681 (persisted correction).
+  No fake updates/models/STT, direct SQL business write or secondary polling.
+- Saved screenshot outside Git, cropped to bot chat. Updated current README,
+  TZ, changelog and correction proof to mark real open-row arrival save/correct
+  acceptance passed. No runtime delta; no redundant unit/full-suite rerun.
+  Closed/historical/end correction, real voice and noisy report/open safety
+  remain unproven/unresolved in Telegram. Prior lunch-cancel markup defect
+  remains open; this successful journey does not close that separate issue.
+
+# 2026-10-17 - Real Telegram recovery smoke after owner login
+
+- User confirmed Telegram login and asked to try the browser. Reused the
+  existing authorized Edge Telegram Web session, verified the target chat was
+  @officeflow_sk_bot, and continued the previously authorized live check.
+  No new login, permission expansion, deploy, model or runtime-code change.
+- Preflight: rechecked private server runbook, both recovery acceptance proofs,
+  current FSM/work-time/decision callback owners and current worktree. Scope
+  is observed Telegram conversation plus read-only persisted-data verification;
+  capability/maturity remains partial bounded routing/validation. No learning,
+  business-save confirmation, customer notification or data repair is requested.
+- Private before snapshot/actor/workspace manifest and after logs/hash evidence:
+  /bot/backups/telegram-recovery-smoke-20261017T152454Z. Current Telegram
+  account's selected workspace had no work-time rows; did not create fixtures
+  in production or switch profiles just to obtain an existing-row test.
+- Actual 17:25 Europe/Bratislava text/button journey: /add_blocek -> fresh
+  photo/PDF wait -> Відкрий сьогодні робочий день з 07:07. -> explicit handoff
+  explanation and 17.10.2026 arrival07:07 preview. Upravit -> 06:54 -> updated
+  preview06:54. Zrusit -> cancellation; old preview buttons removed. No save.
+  Server primary trace13b4eb4c-c3c2-4d2d-9e1e-6793e9c981c4 selected
+  open_work_day via llm_bundle/business_action (message3667).
+- Actual 17:26 request Покажи робочий виказ за жовтень 2026. selected
+  generate_work_time_report via llm_bundle/business_action, trace
+  4e3cf654-f7bd-4097-9223-c3eed39839da (message3674). Bot asked the existing
+  first-report lunch question; /cancel returned idle. Did not choose a setting
+  or generate/save a report, and did not open a work day.
+- A real UI failure remains: /cancel left the lunch question's inline Ano/Nie
+  buttons visible. Tested the stale Ano once after checking the None-state
+  rejection owner: bot rejected with Toto rozhodnutie uz nie je dostupne,
+  removed the old markup, and did not save settings. Dismissed alert; final
+  chat idle with both old preview/lunch buttons gone. Global-cancel cleanup is
+  incomplete for this report setup UI. Recorded, not silently fixed or called
+  a fully passing keyboard lifecycle acceptance.
+- After all chat actions: integrity_check=ok and exact global work_time_days,
+  work_time_events and work_time_settings hashes equal the before snapshot.
+  No polling conflict/runtime traceback in bounded logs. Login/browser and
+  these actual Telegram routes are now proven, not merely provider probes.
+- Limits: editing an already saved boundary, closed/history/other-profile
+  correction and real voice were not exercised in Telegram. Existing-row
+  corrections retain the Oct16 temporary-DB/live-provider evidence only.
+  The noisy report/open semantic defect reproduced Oct16 is still unresolved;
+  one clear report request succeeding is not proof that arbitrary noisy STT is
+  safe. No claim that full report generation or every keyboard path passed.
+- Updated current README/TZ/changelog and both acceptance proofs. Screenshot
+  evidence was saved outside Git, cropped to the bot chat (no other chat list).
+  No runtime delta; no redundant unit/full test rerun for evidence-only docs.
+
 # 2026-10-16 - Recovery changes deployed; interactive Telegram pending login
 
 - User authorized deployment and Telegram checking. Scoped runtime commit
