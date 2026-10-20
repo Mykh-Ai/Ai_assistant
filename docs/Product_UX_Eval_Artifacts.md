@@ -199,7 +199,7 @@ close-now safeguards against regression.
 
 ## 2026-10-20 work-time close summary and day-break correction candidate
 
-Status: local candidate, gated by rollout flag and explicit schema. Required scenarios are in
+Status: deployed partial slice, gated by rollout flag and explicit schema; local and deployed evidence below. Required scenarios are in
 [the existing work-time proof, section 22](architecture/WORK_TIME_EXPLICIT_OPEN_AND_OPEN_DURATION_CLOSE_ARCHITECTURE_DESIGN_PROOF.md#22-2026-10-20-close-summary-and-optional-day-specific-break--design-only).
 
 The Conversation Acceptance Proof covers the required journeys: close-now stays
@@ -223,3 +223,10 @@ Acceptance Proof for the full-suite result and verdict. No production migration,
 deployment, real-provider or interactive Telegram proof is claimed.
 Final full suite:2915 passed,7 subtests passed in744.71s. Frozen source/test
 manifest matched. Acceptance verdict: safe_to_commit for the gated local scope.
+
+Authorized deployment follow-up: PR#117 merged as9a88536; server migration/flag
+activation and147-source/config/schema/getMe/polling verification passed.
+Actual deployed-code/real-gpt-4o close -> day0 -> arrival07:00 -> report journey
+passed on isolated scoped SQLite, with controlled clock/fake Telegram transport.
+Live old rows/monthly totals stayed unchanged. Production activation is now
+proven; original-audio/interactive Telegram feature acceptance remains unrun.

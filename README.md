@@ -262,20 +262,24 @@ Supported top-level actions:
 - `close_work_day` - an explicit close-now request immediately closes the open day at the current Bratislava business time without another confirmation; a stated end time or net worked duration uses preview confirmation;
 - `add_work_time_entry` - add one preview-confirmed manual interval or duration-only total; when the current day is already open, a duration-only request closes that row instead of creating a conflicting second row;
 - `generate_work_time_report` - generate a monthly Excel report;
-- `update_work_time_lunch_break` - set, change, or disable the usual deduction; the gated local candidate also previews a dated one-day exception;
+- `update_work_time_lunch_break` - set, change, or disable the usual deduction; when enabled, also preview a dated one-day exception;
 - `delete_work_time_month` - delete stored work-time rows for one selected month after preview and confirmation.
 
 The first report asks once whether lunch break should be deducted. Reports show net hours: explicit start/end rows without a day exception subtract the current fixed lunch setting, while duration-only rows keep the user-confirmed net duration stable.
 
-Local candidate (not deployed): closing shows interval, deducted break and net
+Deployed2026-10-20 through PR#117 (merge9a88536): closing shows interval, deducted break and net
 hours and leaves the bot idle. Optional `Upraviť dnešnú prestávku` editing needs
 `WORK_TIME_DAY_BREAK_ENABLED=1` and the explicitly migrated schema. It previews
 and confirms one day's exception (including zero), preserving clocks, usual
 settings and other days. Later clock corrections preserve that exception.
 Fixed net-duration/manual-net entries are excluded; changing the default still
 recalculates unpinned clock history. See the
-[migration runbook](docs/FakturaBot_Data_Migration_Runbook.md#day-specific-work-time-break-2026-10-20-local-candidate)
-before activation; startup never silently adds this column to an existing DB.
+[migration runbook](docs/FakturaBot_Data_Migration_Runbook.md#day-specific-work-time-break-2026-10-20)
+before activation on another installation; startup never silently adds this
+column to an existing DB. Current server migration/flag activation passed with
+unchanged old data/monthly totals and verified backup. Runtime/source/getMe/
+polling and isolated real-model journeys passed; interactive Telegram/audio
+acceptance is not implied.
 
 Deleting a month removes DB work-time records only. Excel reports are generated on demand and are not the canonical stored attendance data.
 

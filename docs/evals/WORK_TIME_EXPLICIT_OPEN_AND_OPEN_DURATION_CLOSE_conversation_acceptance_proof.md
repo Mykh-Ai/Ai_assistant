@@ -265,3 +265,48 @@ Verdict: `safe_to_commit` for this gated local candidate and fixture-proven
 scope. This is not commit/merge/deploy approval or production acceptance.
 Production rollout is separate; the broader noisy report/open issue remains
 unresolved. Real model/audio/Telegram and production migration remain unrun.
+
+### Authorized production activation and deployed-provider follow-up
+
+User explicitly approved the explained schema change on the server and
+commit/push/merge/deployment. Runtime665b497 was published in PR#117 and merged
+as9a88536. Image13576138 is running with the feature enabled and schema ready.
+This supersedes the preceding local-only limitation for deployment/provider
+evidence; original audio and interactive Telegram feature acceptance are still
+unrun.
+
+Private checkpoint: /bot/backups/day-break-deploy-20261020T124359Z contains
+before.sqlite, verified migration backup, original environment/logs, old image
+referenceef2e4cc2, pinned audit/dry-run/apply/readback JSON and rollback notes.
+Only the bot was stopped/recreated; cloudflared id/start time did not change.
+Every pre-existing table value was equal immediately after the additive ALTER;
+all new fields NULL. Final live64 days/196 events/2 settings, scoped monthly
+report vector/totals, FK checks and integrity stayed unchanged. No customer-time
+write/exception/repair was executed. Other .env values were preserved; only
+WORK_TIME_DAY_BREAK_ENABLED=1 was introduced. Existing Google binding check
+timestamps changed on startup (last_attempt_at,last_successful_check_at,
+updated_at); binding rows and all other values were independently verified.
+
+Actual deployed147 Python source hashes match merged Git blobs. Python3.11.17,
+gpt-4o/whisper-1 unchanged. Telegram getMe, startup/polling and restarts0 passed;
+no error, traceback or polling conflict. pytest is absent from the runtime image;
+no dependency was installed. The full2915+7 regression result remains the local
+tested candidate proof, not a claim of server pytest execution.
+
+Deployed real-provider trace uses actual process_invoice_text, primary/slot
+prompts, shared decisions and service owners in a separate interpreter. Real
+gpt-4o; controlled17:00 clock; authorized synthetic workspace/actor; SQLite/Excel
+under a verified isolated /tmp directory; fake Telegram transport (no messages):
+
+| Exact input / state | Observed effect and final state | Result |
+|---|---|---|
+| `Zavri mi pracovný deň teraz.`; open08:00/default30 | existing close_now -> closed17:00/net8:30, idle and current-day launcher | pass |
+| `Dnes som nemala prestávku, oprav ju na nulu.`; idle | day/date/0 -> dated preview, no save until Schváliť; exception0/net9h, usual30 unchanged, one event, idle | pass |
+| `Зміни сьогодні прихід на роботу на 07:00.`; closed with exception0 | old08:00/new07:00 preview -> shared approval; keeps17:00/closed/exception0, net10h, idle | pass |
+| `Ukáž výkaz za tento mesiac.`; idle with optional launcher ignored | one real temporary Excel report, no hidden break FSM, idle | pass |
+
+Sanitized source/runtime/provider/CLI evidence retained in the task artifact
+directory; final live audit independently proves no production attendance effect.
+Verdict remains safe_to_commit for the implemented slice, now published and
+activated by explicit user approval. This does not claim original-STT/audio,
+interactive Telegram UI acceptance, perfect noisy intent safety or payroll.

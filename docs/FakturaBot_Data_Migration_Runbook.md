@@ -332,7 +332,7 @@ jobs, move remote files, or run a startup backfill. The normal deployment
 backup/rollback discipline remains mandatory, and rollback preserves DB rows,
 local originals, metadata, and remote files.
 
-## Day-specific work-time break (2026-10-20 local candidate)
+## Day-specific work-time break (2026-10-20)
 
 Current shape: work_time_days has clocks, gross/total minutes, lunch snapshot,
 fixed net override and input mode. Proposed additive nullable integer
@@ -377,5 +377,14 @@ column ignored. After an exception, older readers can use the compatibility net
 projection, but older writers may erase/invalidate it. Prefer disabling the new
 entry points while retaining compatible readers/writers; otherwise stop work-time
 writes pending a compatible forward fix. Never drop the column, erase exceptions,
-or restore a full backup over newer business activity. Production apply/deploy
-has not been performed by this implementation session.
+or restore a full backup over newer business activity.
+
+Authorized production apply/deploy completed2026-10-20 at merge9a88536,
+image13576138. Checkpoint: /bot/backups/day-break-deploy-20261020T124359Z.
+Frozen pre/post comparisons proved every legacy table value and scoped monthly
+total unchanged;64 days/196 events/2 settings, all new values NULL, integrity ok.
+The flag is enabled on this installation. Bot-only recreation preserved
+cloudflared and other .env entries. Final live work-time hashes stayed equal;
+normal existing Google binding checks changed only three maintenance timestamps.
+Four real-provider public-owner operations used isolated temporary data/fake
+Telegram; they did not create a production exception or repair a customer day.

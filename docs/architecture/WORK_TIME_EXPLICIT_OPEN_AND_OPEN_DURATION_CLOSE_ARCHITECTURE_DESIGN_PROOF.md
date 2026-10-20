@@ -968,3 +968,14 @@ Section22 final local validation:47 feature cases passed; final full suite2915
 passed plus7 subtests in744.71s. All264 frozen Python source/test hashes match;
 existing Conversation Acceptance Proof verdict safe_to_commit for the gated
 local scope. No production migration/deploy/real-provider acceptance implied.
+
+Section22 authorized release follow-up: user explicitly approved the explained
+server schema change and publication/deploy. Runtime665b497 merged via PR#117
+as9a88536 and deployed image13576138. Frozen backup/pinned additive apply and
+independent comparisons preserved every old value/report total; all new fields
+NULL. Enabled the feature flag; bot-only restart/getMe/polling/config/schema
+and147 tracked Python hashes passed, cloudflared unchanged. Four public-owner
+operations with actual deployed code/real gpt-4o passed on isolated scoped
+SQLite (fake Telegram/controlled clock). Final live64 days/196 events/2 settings
+and reports unchanged. Detailed evidence/limitations are in the acceptance proof.
+No real audio/interactive Telegram feature proof or broad noisy-routing fix.

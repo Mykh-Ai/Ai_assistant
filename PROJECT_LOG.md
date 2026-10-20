@@ -21,6 +21,33 @@
   polling/getMe and isolated candidate journeys. Cloudflared and other projects
   remain untouched. Rollback before exceptions may reuse the old image; after
   exceptions retain compatible writers and disable entry instead of DB restore.
+- Published runtime commit665b497 through PR#117, merged into main as9a88536.
+  Local/origin/server main synchronized; unrelated391 log additions remained
+  outside the release. Built image13576138 before bot downtime.
+- Frozen backup and rollback checkpoints:
+  /bot/backups/day-break-deploy-20261020T124359Z, with verified before.sqlite,
+  private environment/log snapshots, old imageef2e4cc2 and rollback notes.
+  Pinned audit/dry-run matched; additive apply verified its own SQLite backup.
+  Independent frozen pre/post checks: every old table value unchanged, all new
+  day fields NULL, same scoped report vectors/monthly totals, integrity ok.
+- Enabled only WORK_TIME_DAY_BREAK_ENABLED=1; other .env entries unchanged.
+  Recreated bot only with image13576138; cloudflared id/start time unchanged.
+  Runtime Python3.11.17/config flag/schema ready;147 tracked Python hashes
+  match merged source. getMe/polling passed, restarts0, no startup errors,
+  tracebacks or Telegram polling conflict. Models remain gpt-4o/whisper-1.
+- Actual deployed code + real configured gpt-4o passed four public-owner
+  operations on a scoped temporary DB: close-now -> idle summary/button;
+  day0 -> shared approval; arrival07:00 -> old/new approval preserving17:00/
+  zero break; next monthly report -> idle. Clock/Telegram transport were
+  fixtures, no real message/audio/customer-day write. Temporary files isolated.
+- Final independent live audit still64 days/196 events/2 settings, no saved
+  exceptions, identical work-time/report digests and integrity ok. The only
+  other changed table was existing Google service-binding maintenance:
+  last_attempt_at,last_successful_check_at,updated_at only; no binding changes.
+- Deployment/activation is complete for this gated partial slice. Original
+  noisy report/open issue and real-audio/interactive Telegram feature
+  acceptance remain outside this release. Current docs/acceptance synchronized;
+  publication of this operational follow-up does not rebuild unchanged code.
 
 # 2026-10-20 - Day-break implementation preflight
 

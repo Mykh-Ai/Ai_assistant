@@ -1,16 +1,20 @@
 # Changelog
 
-- Local candidate, not deployed (2026-10-20): work-day closing shows gross,
+- Deployed and enabled2026-10-20 through PR#117 (merge9a88536): work-day closing shows gross,
   deducted break and net hours and leaves FSM idle. Optional day-bound break
   editing, including zero, extends the existing action with scope/date/minutes
   and shared preview confirmation. Scoped snapshot/audit guards, complete
   keyboard cleanup and later time-correction preservation are included.
   Fixed-net entries are excluded; old global-default/history rules remain.
-  New edits default off pending explicit additive schema migration/activation;
+  New installations default off pending explicit additive schema migration/activation;
   existing exceptions remain readable when the flag is disabled. No production
-  migration, customer-time repair, model change or AI maturity upgrade.
+  customer-time repair, model change or AI maturity upgrade. The authorized
+  production additive migration preserved every old value and monthly total;
+  verified backup: /bot/backups/day-break-deploy-20261020T124359Z.
   Local validation:47 new-feature cases; final full suite2915 passed and7
-  subtests passed. Real Telegram/provider/production activation remain unrun.
+  subtests passed. Deployed147-source/config/schema/getMe/polling checks passed;
+  four real-gpt-4o public-owner operations passed with isolated SQLite and fake
+  Telegram transport. Interactive Telegram/original audio remain unproven.
 
 - Report setup keyboard lifecycle repair deployed2026-10-20 as `d3a05ee`: track
   the lunch-choice card and remove it on cancel/navigation/expiry or a valid

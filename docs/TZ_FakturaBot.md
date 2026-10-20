@@ -1625,7 +1625,7 @@ finance and waste do not become attendance. STT gets attendance vocabulary,
 without semantic rewriting or model migration. Python gates/owners are unchanged;
 real audio recognition and universal noisy-input safety are not claimed.
 
-Local candidate 2026-10-20, not deployed: after a successful clock-based close,
+Deployed and enabled2026-10-20 through PR#117 (merge9a88536): after a successful clock-based close,
 show the interval, deducted break and net hours; the bot remains idle. With
 `WORK_TIME_DAY_BREAK_ENABLED=1` AND the explicitly prepared schema, offer
 `Upraviť dnešnú prestávku` for the current day. There is no daily break question.
@@ -1636,7 +1636,12 @@ scope/date/minutes; no new top-level action or AI maturity level. Duration/opaqu
 fixed-net rows are excluded. Global defaults retain their existing historical
 effect on unpinned rows, disclosed in their preview. Unknown scope asks a pending
 clarification; a button cannot interrupt another FSM. Explicit schema migration,
-backup and operational approval remain required before production activation.
+backup and operational approval remain required before activation elsewhere.
+The authorized server migration and flag activation preserved all64 day rows,
+196 events,2 settings and scoped monthly totals; backup at
+/bot/backups/day-break-deploy-20261020T124359Z. Runtime/source/getMe/polling
+checks and isolated real-gpt-4o journeys passed. Interactive Telegram/original
+audio acceptance remains unproven; no customer-time correction was performed.
 See the migration runbook and complete route/acceptance design:
 [work-time architecture proof, section 22](architecture/WORK_TIME_EXPLICIT_OPEN_AND_OPEN_DURATION_CLOSE_ARCHITECTURE_DESIGN_PROOF.md#22-2026-10-20-close-summary-and-optional-day-specific-break--design-only).
 

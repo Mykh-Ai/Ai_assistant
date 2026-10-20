@@ -729,7 +729,7 @@ clock cannot infer close_now. Existing modes/Python validation remain. STT
 receives vocabulary spellings only; it does not canonicalize or execute actions.
 No extra resolver, Python phrase map, model migration or learned alias is added.
 
-### Day-specific break correction — local candidate 2026-10-20
+### Day-specific break correction — deployed slice 2026-10-20
 
 `update_work_time_lunch_break` is extended, not replaced by a new action.
 Primary hints request slots `scope=day|default|unknown`, `work_date=ISO|null`,
