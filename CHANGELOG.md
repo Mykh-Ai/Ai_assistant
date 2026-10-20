@@ -1,10 +1,12 @@
 # Changelog
 
-- Report setup keyboard lifecycle repair (local, deployment pending): track
+- Report setup keyboard lifecycle repair deployed2026-10-20 as `d3a05ee`: track
   the lunch-choice card and remove it on cancel/navigation/expiry or a valid
   yes/no continuation. Unknown keeps one card; old/foreign callbacks cannot
   authorize the current report. Cleanup failures log without reversing saved
-  effects. No attendance/schema/model change; work-time capability stays partial.
+  effects. Full2840 tests/7 subtests passed. Real Telegram report -> /cancel
+  removed buttons without another click; attendance/settings hashes unchanged.
+  No attendance/schema/model change; work-time capability stays partial.
 
 - Arrival/departure prompt repair deployed2026-10-20 as `62b1046`: distinguish приход/прихід from
   отход/отходи/відхід/odchod in existing primary hints and slot extraction,

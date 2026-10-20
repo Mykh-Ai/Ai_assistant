@@ -251,9 +251,10 @@ journeys passed in an isolated temporary DB. Real Telegram empty-wait handoff,
 saving an open day07:07 and correcting its saved start to06:54 also passed
 with independent DB audits. Closed/history/end-correction/voice acceptance
 remains pending. The report-setup global-cancel button defect reproduced on
-October17 has a local October20 lifecycle repair: one owned lunch-choice card
+October17 is fixed by the October20 lifecycle repair (`d3a05ee`, deployed): one owned lunch-choice card
 is removed on cancel/navigation/expiry and valid continuation; unknown retains
-one card. Deployment/live verification of that repair is pending.
+one card. Real Telegram report -> /cancel passed: buttons disappeared without
+another click, with identical attendance/settings snapshots before and after.
 Payroll/multi-shift support remains outside this module.
 
 Supported top-level actions:

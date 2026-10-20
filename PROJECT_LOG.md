@@ -34,6 +34,20 @@
 - Read-only live test preflight: same prior workspace, lunch unconfigured;
   report-question ->cancel smoke needs no settings reset or time repair.
 
+- Published/deployed runtime d3a05ee, imageef2e4cc2;146 tracked bot Python
+  source hashes matched. Running/restarts0/polling/getMe passed; .env and
+  cloudflared unchanged. Frozen/live schema and work-time hashes identical;
+  Google binding differences only three existing check/update timestamp fields.
+- Real Telegram09:34 report request -> visible Ano/Nie;09:35 /cancel -> idle
+  response and both buttons removed without clicking. Trace
+  8a4d84f5-1d27-4b41-8f0a-091b44ce3aeb,message3697,generate_work_time_report.
+  Before/after actor6 days/35 events/1 setting row digest identical, integrity
+  ok. No settings reset/time repair. No cleanup error/conflict in smoke logs.
+- Existing acceptance now safe_to_commit with real deployed report-cancel
+  evidence; docs/partial truth/help/registry synchronized. Scope complete;
+  broader noisy report/open issue remains. Old orphan cards require owned
+  stale-click recovery; Telegram edit failure is logged, not a rollback.
+
 # 2026-10-20 - Complete authorized arrival/departure release
 
 - User asks to finish the started work; together with the preceding explicit

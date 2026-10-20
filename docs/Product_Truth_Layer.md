@@ -840,7 +840,7 @@ alone, back the repair. Deployed model/temp-DB journeys and Telegram help
 smoke passed; actual voice recognition and interactive attendance execution
 remain unproven for this repair.
 
-### Report setup cancellation lifecycle — 2026-10-20, local
+### Report setup cancellation lifecycle — deployed2026-10-20, `d3a05ee`
 
 The existing partial work_time_tracking capability explains /cancel during
 pending report lunch setup: discard the pending request, remove its choice

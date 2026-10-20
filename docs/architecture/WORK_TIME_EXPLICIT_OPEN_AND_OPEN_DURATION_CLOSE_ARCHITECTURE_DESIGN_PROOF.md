@@ -575,3 +575,11 @@ Telegram/STT/LLM explicitly; any deployment/live evidence is recorded separately
 Section21 implementation: design_matches_runtime. Focused185 tests passed;
 final full suite: 2840 passed, 7 subtests passed in 701.04s (0:11:41). Live deployment/Telegram
 evidence is recorded separately, never inferred from fixtures.
+
+
+Section21 release follow-up:deployed d3a05ee with backup/image rollback and146
+source hashes verified. Real Telegram report -> visible lunch yes/no -> /cancel
+removed both buttons without another click; independent actor work-time and
+settings snapshots unchanged. Polling/getMe/schema checks passed; scope
+complete, partial capability/maturity unchanged. Existing acceptance proof
+records fixture/live boundaries and known orphan/API-failure limitations.

@@ -491,5 +491,49 @@ have no saved reference and can only be cleaned on a proven owned stale click.
 Telegram API failure can leave visible buttons; the failed cleanup is logged
 and must not reverse a completed business effect or claim success.
 
-Current verdict: runtime_not_proven for live Telegram/deployment until their
-follow-up is recorded; local public-entry deterministic journeys pass.
+Predeployment verdict: runtime_not_proven for live Telegram/deployment;
+local public-entry deterministic journeys passed. Superseded by the following
+authorized deployment/live verification, without erasing the original evidence.
+
+
+### Report-card deployment and real Telegram acceptance — 2026-10-20
+
+Runtime commit d3a05eec45ac176d49acbb71c09fceb3e1985ec8 committed/pushed directly
+to main and deployed. Image:
+sha256:ef2e4cc29f5a20d9a359885ac3d78a55c7633a8ad57eccf694883858888dac34.
+Full final runtime suite:2840 passed,7 subtests passed in701.04s. Source stayed
+unchanged during the run. Existing unrelated Google/Gmail work excluded.
+
+Private backup:/bot/backups/keyboard-cleanup-deploy-20261020T072321Z contains
+consistent original/frozen-prestart SQLite, logs, manifest and image rollback.
+Recreated only bot, preserved .env/cloudflared. All146 tracked bot Python files
+match checkout/container; restarts0, polling/getMe passed, no startup error or
+conflict. Schema/work-time hashes identical to frozen snapshot. Only existing
+Google-binding check timestamps changed (last_attempt_at,
+last_successful_check_at,updated_at), with stable row identities/count.
+
+Real browser Telegram, same previously authorized account/profile:
+
+| Step | Actual input / response | State/UI/effect |
+|---|---|---|
+| RO preflight | active prior workspace, lunch_configured=false | No settings reset required |
+| 09:34 local request | Покажи робочий виказ за жовтень 2026. | Real primary generate_work_time_report; question Chcete odpočítavať obednú prestávku? with visible Áno/Nie |
+| 09:35 cancellation | /cancel | Rozpracovaná akcia bola zrušená. Bot je v režime čakania.; both inline buttons removed without clicking them |
+| independent before/after audit |6 actor days,35 events,1 existing setting row across actor scopes | Identical full row-content digest for days/events/settings; integrity ok; no lunch setting or attendance changed |
+| smoke logs | request8a4d84f5-1d27-4b41-8f0a-091b44ce3aeb,message3697,generate_work_time_report | No cleanup failure, traceback, ERROR or polling conflict |
+
+Screenshots outside Git:report-buttons-before-cancel-2026-10-20.png and
+report-buttons-after-cancel-2026-10-20.png. Private server telegram-before.db,
+telegram-before/after.json and telegram-smoke.log preserve audit/trace details;
+no real actor/workspace identifiers copied into repository evidence.
+
+Final verdict:safe_to_commit; deployment and actual report ->cancel UI journey
+passed. Global command cancellation is live-proven; voice/yes/no/menu/start/
+expiry/forbidden/failure variants use disclosed fixtures and real handlers,
+not a claim of additional live voice or exhaustive Telegram testing.
+Runtime, existing decision registry, partial Product Truth/InfoHelp, current
+docs/log/tests and this acceptance proof agree. AI maturity unchanged.
+Pre-repair/restart orphan cards remain reference-free and can be cleaned only
+on a proven owned stale callback; Telegram API failure remains logged/bounded.
+Broader noisy report/open semantic selection remains unresolved and outside
+this UI repair. No migration, business-time repair or new learning feature.

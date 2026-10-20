@@ -1608,10 +1608,12 @@ explicitly authorized real Telegram save07:07 and same-open-row confirmed
 correction06:54 passed with before/pending/after DB audits; the test day was
 retained on17.10.2026. Closed/history/end corrections and voice remain pending.
 Report-setup /cancel left stale inline buttons in the October17 evidence. A
-local October20 lifecycle repair tracks the owned lunch card and removes it
+deployed October20 lifecycle repair (`d3a05ee`) tracks the owned lunch card and removes it
 on cancel/navigation/expiry and valid yes/no; unknown retains one card. Exact
 card/actor/workspace guards reject stale substitution; cleanup failure logs
-without undoing a saved effect. Deployment/live verification is pending.
+without undoing a saved effect. Full2840 tests/7 subtests passed. Real
+Telegram report -> /cancel removed buttons immediately without clicking them;
+before/after attendance/settings hashes matched. No customer-time repair.
 The noisy October16 report phrase still selects open_work_day in a live probe; semantic root-cause
 remediation is unresolved and no-time opening still writes immediately.
 

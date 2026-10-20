@@ -2,7 +2,7 @@
 
 Purpose: evidence-based registry of bounded in-workflow responses and state-scoped clarifications.
 
-2026-10-20 report lunch-choice lifecycle repair (local, deployment pending):
+2026-10-20 report lunch-choice lifecycle repair (deployed `d3a05ee`):
 existing yes_no tokens/DecisionResolver remain. One bot-authored choice card
 is tracked by chat/message/human actor/bound workspace in FSM. Yes/no consumes
 that card; unknown retains it without duplicates. Global cancel, menu/start,

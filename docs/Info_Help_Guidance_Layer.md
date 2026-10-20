@@ -1099,7 +1099,7 @@ income, discloses immediate current-departure closing versus previewed exact
 values, and retains partial status. No new topic dictionaries or capability
 claims are added; semantic repair is prompt guidance, not learned aliases.
 
-### Report setup cancellation guidance — 2026-10-20, local
+### Report setup cancellation guidance — deployed2026-10-20, `d3a05ee`
 
 Existing work-time safe-next copy explains that /cancel exits pending report
 lunch setup without saving the lunch setting. The owned inline choices are
