@@ -583,3 +583,388 @@ removed both buttons without another click; independent actor work-time and
 settings snapshots unchanged. Polling/getMe/schema checks passed; scope
 complete, partial capability/maturity unchanged. Existing acceptance proof
 records fixture/live boundaries and known orphan/API-failure limitations.
+
+## 22. 2026-10-20 close summary and optional day-specific break — design only
+
+### 22.1 Task, evidence and preflight
+
+Task: make the deduction visible after closing a day and allow an occasional
+exception without asking about the break every day. The September 11 repair
+in PROJECT_LOG records short days with unwanted deductions; this is a real
+recovery need, not permission to infer breaks automatically.
+
+Current status: `work_time_tracking` is `partial`; a day-specific break and
+its post-close edit button are `planned`. Target: evaluated partial attendance
+with this bounded extension, not payroll or an adaptive account engine. Risk:
+high for persisted calculation semantics; routine Telegram UI risk otherwise.
+Architect/date: Codex / 2026-10-20, following the user's request to study the
+integration. This proof is not implementation, migration or deployment approval.
+
+Read/rechecked: AGENTS; Product_Doctrine_2030; AI_Layer_Implementation_Standards;
+Product_Truth_Layer and Registry_MVP_Design; Self_Learning_Layer;
+Evaluation_and_Smoke_Test_Standards; Product_UX_Eval_Artifacts; TZ_FakturaBot;
+LLM_Orchestrator_Contract; Canonical_Action_Registry; In_Action_Response_Registry;
+New_Action_Design_Checklist; Bounded_Resolver_Prompt_Template; this architecture
+proof contract; Canonical_Decision_Resolver_Contract; Info_Help_Guidance_Layer;
+Customization_Request_Layer; Confirmed_Semantic_Alias_Learning_Contract;
+Code_Agent_Handoff_Contract; Implementation_Agent_Checklist;
+FakturaBot_Data_Migration_Runbook; User_Access_Model_Roadmap.
+
+Scopes considered: routing, bounded LLM slots, FSM, confirmation, callbacks,
+DB/calculation semantics, product/help/eval docs. STT stays transcription-only;
+no model, access model, PDF, server, storage-path or tenant-ownership change.
+No AI maturity upgrade: deterministic summary is UX/static guidance; bounded
+extraction reuses the current layer. A one-day exception, silence, and Cancel
+are not learning signals and must never change the usual setting or learn an
+alias. This is not Level 7 adaptation or an implemented Level 5 handoff layer.
+
+Current evidence exposes a distinction that the implementation must preserve:
+`WorkTimeService.report_net_minutes` applies CURRENT settings to ordinary clock
+rows, while confirmed net-duration rows have a fixed net override. Thus changing
+the global setting can already recalculate unpinned historical report rows.
+`test_explicit_range_report_subtracts_current_lunch_break` and
+`test_duration_close_keeps_requested_net_and_extends_end_by_lunch` prove this.
+Do not silently freeze all history or subtract twice. Existing snapshot fields
+do not prove that a user explicitly chose a break for a particular day.
+
+### 22.2 Architecture classification
+
+Primary class 2: extension of existing `update_work_time_lunch_break`, with
+scope/date/value slots and a child correction flow. The post-close card is a
+deterministic presentation extension of `close_work_day`. No new top-level
+action, menu command, decision family or general-purpose callback store is
+needed. Class 3/4 describes components, not the primary business ownership;
+class 5 alone would omit the new confirmed persisted exception.
+
+### 22.3 Canonical owner
+
+Keep `update_work_time_lunch_break` in Python-provided allowed_actions. Its
+existing default-setting behavior remains; day scope is planned until shipped.
+Extend `start_update_work_time_lunch_break` and the scoped `WorkTimeService`,
+not voice.py business logic. New service methods proposed here are
+`prepare_day_break_change` / `apply_day_break_change`; they do not exist yet.
+Only eligible closed clock rows can receive the day exception in this slice.
+Close-now keeps immediate completion; explicit-clock close retains its current
+preview/confirmation and gains the same summary after successful save.
+
+### 22.4 Semantic boundary
+
+| Meaning/input | Action and slots | Must not become |
+|---|---|---|
+| `Dnes som nemala prestávku, oprav ju na nulu` | update_work_time_lunch_break, day/today/0 | reopen day or change default |
+| `Za 19.10.2026 zmeň prestávku na 15 minút` | same action, day/explicit date/15 | correction to today |
+| `Štandardne odpočítavaj 30 minút` | same action, default/no date/30 | one-day exception |
+| `Zmeň prestávku` | same action, unknown scope/value -> pending clarification | assumed day/global write |
+| `Zavri deň teraz` / `Zavri deň o 17:00` | existing close_work_day modes | break-edit confirmation |
+| `Ukáž výkaz` / `Koľko prestávky odpočítavaš?` | report / informational answer | attendance mutation |
+| `Oprav odchod na 15:39` | existing boundary correction | break edit |
+| contradictory dates, negation, unrecoverable speech | unknown/clarification | guessed target/value |
+
+Hints must include meaning, positive_examples and not_this, including nearby
+read-only/report and time-correction intents. Examples illustrate semantics,
+never a literal whitelist. The orchestrator's required hint fields prevail
+over the template's older optional wording. No post-classifier veto, extra
+top-level retry cascade, or expanded multilingual Python phrase dictionary.
+
+### 22.5 Slots and calculation contract
+
+| Slot | Bounds/source | Missing/invalid behavior |
+|---|---|---|
+| scope | day/default/unknown, bounded primary bundle; trusted button fixes day | ask scope, no inferred last-day default |
+| work_date | ISO date or null from bounded extraction; Python resolves relative date in OFFICEFLOW_TIMEZONE | ask date for day scope; reject conflicting/future/missing row |
+| minutes | integer 0..180 or null; bounded extraction or strict whole-number input in the minutes state | ask/retry; no guessed duration |
+
+Python supplies business date and schema, validates all slots and transfers
+them explicitly from primary diagnostics to the handler. It must not reparse
+the full request with a separate business-language parser. Voice may provide
+these bounded, previewed date/minute values under the documented work-time
+exception; exact identifiers or destructive confirmations gain no voice route.
+Minutes cannot exceed the validated gross clock interval. Zero is a real
+exception, not absence. Clearing a saved exception back to the default is
+deferred; setting another explicit value remains possible.
+
+Proposed additive nullable `work_time_days.lunch_break_minutes_override`:
+
+- NULL preserves existing rules; no historical backfill or reinterpretation.
+- An integer including 0 means a confirmed exception for this row only.
+- A valid closed clock row without an opaque net override is eligible. Rows
+  with this new exception remain eligible for subsequent edits.
+- `close_input_mode=duration`, net-only entries, or legacy manually pinned net
+  rows without the new exception are excluded from this first slice, even if
+  a derived end clock exists. Their confirmed net must not be reinterpreted
+  as gross time. Explain this limitation; do not show a misleading edit button.
+- For an eligible exception, gross is validated from clocks; net=gross-break.
+  Store the exception, lunch snapshot, total and derived net override together.
+  This net override is a compatibility projection, not a second deduction.
+- One calculation owner returns gross/applied break/net and their provenance
+  for summary, previews and reports. New exception takes priority; otherwise
+  current legacy rules, including fixed net durations, remain unchanged.
+- Existing `_proposed_boundary_day` must preserve an explicit day exception
+  and recalculate its derived net on a later arrival/departure correction.
+  Reject a corrected range shorter than that break; never silently erase it.
+
+Changing the DEFAULT remains a separate confirmed path. Its preview must
+disclose the existing recalculation of unpinned clock history; explicit day
+exceptions keep priority. A future-only global policy is a separate decision.
+
+### 22.6 Public routes and convergence
+
+| Entry | Guards/resolution | Shared owner/result |
+|---|---|---|
+| idle text | authorization, active-FSM guard, one bounded primary bundle with slots | existing update owner -> scope/date/minutes/preview |
+| voice | authorization before STT, same state guard and bundle on transcript | same owner/slots/preview; no voice-specific save |
+| close result button | authorized human, active workspace, scoped row, fingerprint, no other FSM | same owner with immutable trusted day |
+| numeric/decision reply buttons | exact bound state and pending context | same value or DecisionResolver handler as equivalent text/voice |
+| /dochadzka | existing help owner | explanation only; no new command required |
+
+An unrelated active FSM retains ownership. This feature does not extend the
+existing narrowly defined empty-intake handoff or bypass a draft.
+
+### 22.7 FSM graph and ownership
+
+```text
+close success -> save already complete -> summary + optional launcher -> idle
+idle update -> [scope] -> [day date] -> minutes -> preview -> shared decision
+button -> immutable day -> minutes -> preview -> shared decision
+decision: approve -> atomic correction -> fresh summary -> idle
+          edit -> minutes for SAME scope/day -> preview
+          cancel -> unchanged saved day/default -> idle
+```
+
+Planned states: `waiting_lunch_scope`, `waiting_day_break_date`,
+`waiting_day_break_minutes`, `waiting_day_break_confirm`; existing default
+value/confirmation states keep their owner. Bracketed stages are skipped only
+when validated slots already exist. Clarification must store the matching
+pending state, not just send a question. Scope is immutable after preview;
+retargeting requires Cancel and a fresh request. No automatic report parent
+or suspended FSM is created by the post-close card.
+
+Scope/date/minutes: unknown retains the state and explains the expected input;
+no business writes. Confirmation unknown retains one preview; Edit replaces
+it with the minutes prompt. Missing/deleted/ineligible row ends safely with
+no correction. Stale snapshot refreshes old/new information and requires new
+approval. Cancel, /start, /menu and reactive timeout clear pending metadata
+and reply keyboard; already closed attendance stays closed. No Back control
+is added; explain Edit/Cancel as the available recovery controls.
+
+### 22.8 Decisions, callbacks and keyboard lifecycle
+
+Use shared `approve_edit_cancel`, new context `work_time_day_lunch_break_confirm`.
+Register it in resolver and handler tests. Text, voice and visible Slovak
+`Schváliť / Upraviť / Zrušiť` reply buttons converge. Do not let an old generic
+`decision:*` inline card approve this reply-keyboard flow. Confirmation expiry
+is 15 minutes, checked on updates, with actor/workspace/day binding and a
+fresh preview fingerprint. No background timeout worker is claimed.
+
+Proposed launcher payload: `wtb:<day_id>:<YYYYMMDD>:<24 hex fingerprint>`;
+even a 19-digit SQLite id fits Telegram's 64-byte limit. The fingerprint is
+a truncated SHA-256 over canonical row, scoped day-event revision and relevant
+settings; it is a staleness token, NOT authorization. Python loads only through
+the active workspace AND authorized actor, checks date/id, and revalidates
+membership. No cross-workspace fallback or silent profile switch.
+
+The launcher makes no business write and is valid across restart while that
+context is unchanged; it has no fixed expiry. A stale but proven-owned card
+loses markup and gets a fresh summary. Malformed, missing, foreign or wrong-
+workspace targets never write; without proven ownership no markup is edited.
+An unrelated active FSM rejects the launch without changing that state/card.
+Duplicate launch during the child flow cannot replace its pending context.
+
+On a valid launch remove the parent's inline markup and start the child.
+Unknown input retains one current input/preview. Terminal success, Cancel,
+navigation, expiry and owned stale exit remove reply controls with
+ReplyKeyboardRemove; clear pending state, then offer a refreshed day summary
+when still accessible/eligible. Navigation continues to its requested owner.
+Telegram edit/send failures are logged; they never roll back a committed day
+or falsely report cleanup success. Retry/duplicate approval checks database
+revision, not whether Telegram successfully removed a keyboard.
+
+### 22.9 Side effects and atomicity
+
+| Effect | Trigger/owner | Gate and failure behavior |
+|---|---|---|
+| close existing day | current close owner/service | existing close gates unchanged; summary only after commit |
+| summary/launcher send | handler after committed close/correction | current scoped row; Telegram failure does not undo save |
+| pending FSM data/UI cleanup | validated launcher/text owner | no business save; ownership before markup editing |
+| one-day correction | proposed apply_day_break_change | shared approval + BEGIN IMMEDIATE + exact row/event/settings snapshot + current membership/workspace |
+| correction audit event | same service transaction | one `lunch_break_correction` old/new event; duplicate/stale approval writes nothing |
+| global setting | existing default owner only | explicit default scope and existing confirmation; no day edit touches it |
+| monthly report file | existing explicit report request | same calculation owner; day edit does not silently regenerate/send files |
+
+Correction preserves id/date/arrival/departure/closed status, other days,
+other actors/workspaces and default settings. A failed transaction changes
+neither row nor event. After commit, transport failure is a delivery failure,
+not permission to apply again. Keep sensitive text out of callback/audit fields.
+
+### 22.10 Access and precision
+
+Authorization precedes LLM/STT, DB/business storage and temporary files.
+Every row/event/settings query and write uses existing workspace_id plus
+telegram_id boundaries. Callback source is the bot message; actor is the
+human callback sender, not message.from_user. Recheck membership and active
+workspace at preview and apply. No admin bulk repair, foreign day lookup,
+automatic contact/document save or new exact-value voice permission.
+
+### 22.11 Response and exits
+
+Example only, not a claim that this UI exists:
+
+```text
+✅ Pracovný deň je uzavretý.
+20.10.2026 · 08:00–17:00
+Trvanie: 9 h
+Odpočítaná prestávka: 30 min
+Odpracované: 8 h 30 min
+[Upraviť dnešnú prestávku]
+```
+
+No daily question and no new closing approval. Ignoring the inline launcher
+leaves FSM idle and permits the next task. Show 0 honestly when deduction is
+disabled/unconfigured; do not claim that the person physically took a break.
+User-approved label for the current-day close card: `Upraviť dnešnú prestávku`.
+The callback remains bound to that saved date; an older message must never
+silently retarget the correction to the date on which the button is pressed.
+Preview a day edit with exact date, clocks, old/new break and old/new net,
+explicitly saying the usual setting is unchanged. Cancel says the correction
+was cancelled, not that closing was cancelled. Success returns this day's
+current summary and optional launcher. For duration/pinned records, label net
+hours as confirmed, avoid inventing an observed break, and explain why this
+particular day-break editor is unavailable.
+
+### 22.12 Product Truth and help
+
+Capability id remains `work_time_tracking`, overall `partial`. Currently this
+extension is `planned`. Only after runtime/eval acceptance may registry,
+Product Truth, InfoHelp and TZ describe eligible day exceptions as supported
+within that partial capability. `Can I change today's break?` must be answered
+informationally, never executed. Future truthful guidance: use the post-close
+button or explicitly ask for a dated break correction; preview/approve; the
+usual setting and other days remain. Explain duration/manual-net exclusions
+and historical effects of changing the DEFAULT. No claim of payroll/legal
+compliance, automatic actual-break detection, perfect STT or all-history locks.
+
+### 22.13 Negative space
+
+Do not steal reports, capability questions, arrival/departure corrections,
+receipt/invoice intake or existing active FSMs. Preserve close-now behavior,
+net-duration semantics, explicit clock confirmations, old report setup and
+October 20 keyboard cleanup. No silence-based save, alias/default learning,
+customer-time repair, auto-report generation or forced daily interaction.
+
+### 22.14 Acceptance contract — required, not yet run
+
+Each case must enter the real public owner with temporary scoped SQLite,
+record input/action+slots/state/effects/final UI, and disclose provider mocks.
+
+| Case/precondition and exact input | Required result |
+|---|---|
+| open08:00/default30; `Zavri deň teraz` at17:00 | close_now -> one saved close -> idle; 9h/30min/8h30 summary + launcher, no new question |
+| same row; `Zavri deň o 17:00` | existing preview -> shared approve -> same final summary |
+| ignore launcher; `Ukáž výkaz za október` | idle report owner, no hidden break state/write |
+| closed09:00–14:00/default30; launcher -> `0` -> approve | minutes -> preview -> idle; day0/net5h, one event, default30 and other days unchanged; monthly row/sum5h |
+| `Za 19.10.2026 zmeň prestávku na 15 minút` in text/STT | same scoped dated owner/preview; no modification of today's row |
+| `Zmeň prestávku` -> `iba dnes` -> `0` | stored scope/date/minutes continuation, no write before shared approval |
+| `Ako zmením prestávku?` | truthful capability explanation, no FSM save or business mutation |
+| minutes -1/181/>gross, conflicting dates/values, unknown | clarification/retry with no mutation; no guessed zero/date |
+| preview -> Edit/Cancel/global Cancel/menu/start/expiry | same-day edit or safe idle/navigation; expected keyboard cleanup; saved closing intact |
+| default30 -> day0 -> confirmed default60 | day0 remains0; ordinary unpinned history retains existing recalculation policy |
+| explicit day15 -> confirmed arrival/departure correction | preserve15, recalculate derived net; too-short interval rejected |
+| duration/pinned legacy row, default then changes | fixed net preserved, no edit launcher/double deduction |
+| changed row/event/settings/membership/profile after preview | stale/rejected, no overwrite; new approval required where eligible |
+| duplicate approval; restart/duplicate/malformed/missing/stale/foreign launcher | at most one event; owned stale cleanup only; no foreign edit or cross-tenant lookup |
+| unrelated active FSM; unauthorized text/voice/button | preserve state; unauthorized no AI/storage/effects |
+| Telegram cleanup/send fails before/after save | logged failure, no false cleanup claim, no repeated/rolled-back business save |
+| additive migration on copied legacy DB | all new fields NULL; old rows/report totals identical before any explicit exception |
+| export/import/workspace copy and rollback rehearsal | exception/derived net retained; no unsafe old-writer activation |
+
+Name tests after these cases in work-time service/routing/time-correction,
+callback/keyboard, access/workspace, Product Truth/InfoHelp and migration suites.
+Include unchanged default/report and invoice/intake journeys. Full pytest plus
+Conversation Acceptance Proof is required for completion. Real-provider probes
+and authorized Telegram smoke are separate evidence, never implied by mocks.
+
+### 22.15 Migration, rollout, rollback and exclusions
+
+Affected persisted data: days/calculation fields and new correction events;
+settings are read but not rewritten by day scope. Current/proposed shape is in
+22.5. No migration of invoices, paths, originals or tenant keys is needed.
+
+Before any migration-sensitive implementation/write, obtain scoped approval
+under AGENTS and the migration runbook. Current study authorizes docs only.
+Prepare a read-only SQLite audit (mode=ro/query_only) of schema, ownership,
+clock/duration/pinned rows, inconsistent intervals and report totals, with
+row/event fingerprints. Prepare explicit dry-run/apply migration tooling; it
+is planned, not an existing operational command. Dry-run a copied DB; add only
+the nullable field and prove unchanged legacy totals and tenant isolation.
+
+Fresh DB schema may include the field; existing production initialization must
+not silently ALTER it on startup. Before activation, take a consistent verified
+backup and record schema/image/fingerprint rollback checkpoints. Readers must
+tolerate the old schema while the UI is disabled. A planned day-break feature
+flag defaults off and enables launchers/new edits only after schema readiness.
+Readers and boundary writers must still honor already saved exceptions when
+the flag is subsequently disabled. Audit workspace-copy/migration field lists.
+
+Before the first exception, an old image can ignore the additional NULL column.
+After an exception, the compatibility net projection preserves old report
+reads, but old writers may erase that projection or leave it inconsistent.
+Therefore rollback means disable new entry points while retaining compatible
+calculators/writers, or stop work-time writes pending a compatible forward fix.
+Do not claim arbitrary old-image writes are safe. Never restore a whole backup
+over later business activity or delete exceptions to make rollback easier.
+
+Deferred: editing duration/opaque manual-net rows through this editor, clearing
+an exception back to NULL, global-history freezing, multi-shift attendance,
+payroll, generic draft switching, broader noisy report/open remediation,
+self-learning, implementation, customer data repair, commit/push and deploy.
+
+### 22.16 Evidence index and verdict
+
+Runtime evidence: bot/services/work_time.py (`WorkTimeDay`, `_scope_condition`,
+`close_open_day`, `add_manual_range`, `add_duration_entry`, `report_net_minutes`,
+`_proposed_boundary_day`, prepare/apply_boundary_change, `_day_revision`);
+bot/services/db.py work_time_days/settings/events schema; bot/handlers/work_time.py
+start_update_work_time_lunch_break, current confirmation and result owners;
+invoice.py primary slots dispatch/hints; semantic_action_resolver.py slots
+diagnostics; voice.py/shared state guard and decision_callbacks.py ownership.
+Current Product Truth: bot/services/product_truth.py `work_time_tracking`.
+Contracts are listed in22.1; historical repair and released state in PROJECT_LOG.
+
+Verified during this design session: the two existing service tests named in
+22.1 passed (2 passed, 39 deselected). This proves current semantics only, not
+the planned feature. No code, schema, server or customer row changed.
+
+Verdict: `ready_for_handoff` for this bounded architecture proposal. Required
+product/migration approval and read-only implementation verification remain
+gates; the verdict does not authorize writes or assert runtime completion.
+
+Section22 implementation follow-up (2026-10-20, local working tree): user
+explicitly requested implementation after reviewing the design and current-day
+label. Read-only verification: design_matches_runtime; no material semantic
+deviation. Existing action/primary slot transfer, scoped service calculation,
+day-specific confirmed exception, dated read-only launcher, child FSM and
+text/STT/reply-button convergence are implemented behind flag/schema gates.
+Close summaries always remain presentation-only; the optional launcher is a
+second inline message after reply-keyboard removal. This Telegram presentation
+detail changes no state or approval semantics.
+
+The explicit migration CLI adds no startup ALTER/backfill and requires a pinned
+baseline, verified SQLite backup and writer-freeze confirmation. Copy tooling
+was reviewed and its actual dynamic table-copy owner fixture-tested with an
+explicit zero/derived-net projection. New day corrections derive gross from
+validated clocks; unedited legacy report rules remain unchanged. Compatible
+readers/writers honor exceptions even when the entry flag is off.
+
+Preflight/approval/implementation plan: PROJECT_LOG day-break implementation
+entry. Local tests/evidence and final verdict are owned by the existing
+Conversation Acceptance Proof, new October20 day-break section. Product Truth,
+InfoHelp, canonical/in-action registry, LLM contract, TZ, README and migration
+runbook describe the gated partial slice. No new action, model, learning or
+maturity level. Server migration/deployment/customer data repair and real-audio
+acceptance have not occurred. The earlier planned status describes the design
+checkpoint; this follow-up records the local candidate, not production support.
+
+Section22 final local validation:47 feature cases passed; final full suite2915
+passed plus7 subtests in744.71s. All264 frozen Python source/test hashes match;
+existing Conversation Acceptance Proof verdict safe_to_commit for the gated
+local scope. No production migration/deploy/real-provider acceptance implied.

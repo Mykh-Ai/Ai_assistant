@@ -1,3 +1,123 @@
+# 2026-10-20 - Authorized day-break publication and server activation
+
+- User explicitly requests the explained additive schema change on the server,
+  plus commit/push/merge/deploy and completion checks. Prior data-shape, audit,
+  dry-run, backup and rollback design remains governing; no second approval
+  needed for this reviewed scope. No customer-time repair or new notification.
+- Private server runbook rechecked. Its early-rollout/token wording is historic;
+  current code/AGENTS retain the controlled shared-bot tenant/workspace model.
+  Server/origin main3d52699, clean server checkout, running old imaged3a05ee.
+- Read-only live preflight: integrity ok, no FK violations/invalid intervals/
+  gross mismatches;64 days,196 events,2 settings,5 fixed-net rows. No day
+  exception column/flag yet. Scoped monthly net vector/digests retained privately
+  for frozen pre/post comparison. Old fixed-net rows stay excluded from editing.
+- Tested candidate:2915 tests/7 subtests,47 feature cases;264 frozen Python
+  source/test hashes to recheck before publication. Stage only this release;
+  preserve unrelated391 log additions, Google runbooks and attachment directory.
+- Plan: PR/main publication, build before downtime, bot-only writer freeze,
+  verified SQLite/environment/log/image backup, pinned audit/dry-run and additive
+  apply, independent unchanged-row/monthly-total verification, enable only
+  WORK_TIME_DAY_BREAK_ENABLED, recreate bot only, verify source/schema/config/
+  polling/getMe and isolated candidate journeys. Cloudflared and other projects
+  remain untouched. Rollback before exceptions may reuse the old image; after
+  exceptions retain compatible writers and disable entry instead of DB restore.
+
+# 2026-10-20 - Day-break implementation preflight
+
+- User explicitly authorizes implementing the reviewed section22 design and
+  asks that a later arrival correction (e.g. today07:00) preserve departure
+  and the day's break. Scoped local code/schema tooling/tests are approved;
+  production migration, customer data writes and deployment are not performed
+  under this implementation task.
+- Read-only verification: design_matches_runtime. Existing primary diagnostics
+  carry slots, but lunch dispatch does not transfer them yet; current close
+  summaries omit deductions. Existing time corrections already preview old/new
+  clocks. Scope/constraints/owners/maturity/out-of-scope and migration pre-work
+  are recorded in the approved architecture section22 and remain governing.
+- Plan: extend existing work-time service/handler and primary slots; add an
+  explicit additive migration tool and default-off rollout flag; keep old DB
+  reads compatible. Implement day-bound read-only launcher, shared confirmed
+  correction, terminal keyboard cleanup and voice convergence. No new business
+  module/action/learning. Synchronize truth/help/registries and acceptance proof.
+- Validate temporary DB migration/dry-run, public text/voice/button routes,
+  idle after close, stale/tenant guards, later boundary correction, default
+  history semantics and existing report cleanup; then full pytest.
+- Implemented the reviewed slice in existing owners: post-close summary stays
+  idle; optional current-day launcher and bounded slot continuation lead to a
+  shared confirmed correction. One day override0 is distinct from NULL; atomic
+  revision/settings checks preserve clocks/default/other rows and one event.
+  Later exact arrival/departure correction preserves the explicit day break.
+- Explicit migration CLI is default read-only, requires a pinned fingerprint,
+  verified complete SQLite backup and writer-freeze confirmation for apply.
+  Fresh schemas include the field; startup does not ALTER existing DBs.
+  Feature entry is default off and checks schema; disabling entry does not
+  change saved exception reads or compatible boundary writers. No backfill.
+- Pre-implementation mismatch (legacy reports use current defaults; confirmed
+  net remains fixed) preserved. Approved day edits derive gross from clocks;
+  opaque fixed-net/duration rows are excluded. Real workspace-copy owner
+  preserves zero and compatibility net in a temporary-copy test.
+- Focused47 feature tests passed in40.64s; earlier broad work-time/central-
+  decision run994 passed in148.26s. First failure exposed missing context
+  registration in shared semantic confirmation profiles; repaired centrally.
+  Fixture Excel/date/audio harness expectations also corrected. An asyncio
+  socketpair hang was a Windows sandbox boundary; loopback-enabled local test
+  reruns succeeded. Final source/test manifest frozen for full-suite run.
+- Product Truth/InfoHelp, canonical/in-action registry, LLM and architecture
+  contracts, TZ/README/changelog/migration/eval docs updated. Capability remains
+  partial, maturity unchanged, activation deployment-dependent. Forbidden
+  payroll/legal/autodetection/perfect-STT/all-history-lock claims checked.
+- Production migration/server audit/customer-row changes/live Telegram/real
+  provider/audio/commit/push/deploy are not part of this local implementation.
+  Final full-suite result and acceptance verdict recorded after completion.
+- Additional CLI smoke on synthetic old-schema SQLite: audit/dry-run reports
+  identical, writes_performed=false, integrity=ok, DB bytes unchanged. Apply
+  without required parameters exited2 with unchanged DB. Sanitized reports
+  retained outside Git; this does not audit or migrate production data.
+- Final full suite:2915 passed,7 subtests passed in744.71s (0:12:24), exit0.
+  All264 frozen Python source/test hashes match; no code changed during that
+  run. git diff --check passed. Existing Conversation Acceptance Proof verdict
+  safe_to_commit for the gated local scope; this is not merge/deploy approval.
+  JUnit/source manifest/CLI reports and own-only unified diff retained outside
+  Git. Existing unrelated391 log additions and Google runbooks preserved.
+
+# 2026-10-20 - Optional day-break correction architecture study
+
+- User wording follow-up: current-day close button is
+  `Upraviť dnešnú prestávku`, explicitly limited to today's break. Updated the
+  planned architecture/TZ label; callback date binding remains unchanged.
+- User asks to study canonical integration before implementation: retain the
+  usual break on normal days, show gross/deducted/net hours after closing,
+  offer an optional correction for that day without a daily question.
+- Reviewed canonical product/AI/LLM/action/subflow/decision/FSM/keyboard,
+  Product Truth/InfoHelp/learning/handoff/evaluation/access/migration contracts
+  and current handlers/services/schema/tests. Full preflight/evidence index:
+  existing work-time architecture proof section22, ready_for_handoff as a
+  proposal only; implementation and persisted-data approval remain separate.
+- Important current behavior: ordinary clock reports use the CURRENT default;
+  confirmed net-duration rows retain fixed net. Existing tests prove this.
+  A single-day exception is not permission to freeze/recalculate all history
+  or interpret a confirmed net duration as a gross interval.
+- Design: extend update_work_time_lunch_break with day/default scope, date and
+  bounded minutes; reuse primary bundle, Python validation and shared
+  approve_edit_cancel. A nonblocking post-close button targets a scoped saved
+  day; ignoring it keeps idle. No new top-level action or AI maturity claim.
+- Proposed nullable day-break override distinguishes NULL from explicit zero;
+  no backfill. Preserve other clocks/status/default/rows. New correction uses
+  snapshot/revision checks and one atomic audit event; later clock correction
+  must preserve the exception. Duration/opaque manual-net rows are excluded
+  from this first slice. No automatic learning from an exception or silence.
+- Defined callback ownership/staleness, complete keyboard lifecycle, read-only
+  audit/dry-run, explicit migration gate, compatible flag/rollback behavior
+  and public acceptance cases. Existing global default/history policy remains;
+  UI flag rollback cannot permit old incompatible writers after exceptions.
+- Updated existing architecture/TZ/eval planning docs; feature remains planned,
+  overall work_time_tracking partial. Product Truth/runtime/InfoHelp/action
+  registries are intentionally not advertised as implemented before code.
+- Verification: two existing work-time semantics tests passed,39 deselected;
+  planned feature acceptance has not run. Docs only: no runtime/schema/customer
+  data/server/Telegram/commit/push/deploy changes. Existing unrelated391 log
+  additions, Google runbooks and attachment files preserved.
+
 # 2026-10-20 - Report cancel-button repair preflight
 
 - User explicitly asks to fix buttons remaining after cancellation. Read root

@@ -308,7 +308,7 @@ async def handle_active_fsm_text_update(
             return True
         await clear_current_state_safely(state=state, config=config, message=message)
         await message.answer(ACTIVE_FSM_STALE_MESSAGE, **(
-            {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None or state_data.get('work_time_report_choice_keyboard') else {}
+            {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None or state_data.get('work_time_report_choice_keyboard') or state_data.get('work_time_day_break_flow') else {}
         ))
         await _route_through_idle_top_level(
             message=message,
@@ -328,7 +328,7 @@ async def handle_active_fsm_text_update(
         if await _looks_like_top_level_request(text=text, config=config, current_state=current_state):
             await clear_current_state_safely(state=state, config=config, message=message)
             await message.answer(ACTIVE_FSM_STALE_MESSAGE, **(
-                {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None or state_data.get('work_time_report_choice_keyboard') else {}
+                {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None or state_data.get('work_time_report_choice_keyboard') or state_data.get('work_time_day_break_flow') else {}
             ))
             await _route_through_idle_top_level(
                 message=message,
@@ -403,7 +403,7 @@ async def touch_active_fsm_activity(state: FSMContext, *, now: datetime | None =
 
 async def expire_active_fsm_state(*, message: Message, state: FSMContext, config: Config) -> None:
     data = await state.get_data()
-    remove_reply_keyboard = data.get('work_time_boundary_change') is not None or bool(data.get('work_time_report_choice_keyboard'))
+    remove_reply_keyboard = data.get('work_time_boundary_change') is not None or bool(data.get('work_time_report_choice_keyboard')) or bool(data.get('work_time_day_break_flow'))
     await _clear_owned_inline_keyboards(message=message, state=state)
     await clear_current_state_safely(state=state, config=config, message=message)
     await message.answer(ACTIVE_FSM_EXPIRED_MESSAGE, **({'reply_markup': ReplyKeyboardRemove()} if remove_reply_keyboard else {}))

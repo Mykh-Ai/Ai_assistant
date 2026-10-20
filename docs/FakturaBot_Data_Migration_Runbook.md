@@ -331,3 +331,51 @@ dry-run repair plan; this command has no apply mode. Do not rewrite uploaded
 jobs, move remote files, or run a startup backfill. The normal deployment
 backup/rollback discipline remains mandatory, and rollback preserves DB rows,
 local originals, metadata, and remote files.
+
+## Day-specific work-time break (2026-10-20 local candidate)
+
+Current shape: work_time_days has clocks, gross/total minutes, lunch snapshot,
+fixed net override and input mode. Proposed additive nullable integer
+`lunch_break_minutes_override` distinguishes no day exception (NULL) from an
+explicit no-break day (0). No backfill or historical rewrite. The exception
+and derived net projection are written only after a dated old/new confirmation,
+in one transaction with a `lunch_break_correction` event. Other days/settings
+are not changed. Readers tolerate an old schema; fresh DBs have the field,
+but init_db does not automatically add it to an existing database.
+
+Explicit local tooling, never invoked at startup:
+
+```text
+python -m bot.work_time_day_break_migration audit --db-path <db>
+python -m bot.work_time_day_break_migration dry-run --db-path <db>
+python -m bot.work_time_day_break_migration apply --db-path <db> --expected-fingerprint <approved fingerprint> --backup-dir <backup directory> --service-stopped
+```
+
+Audit/dry-run opens mode=ro/query_only and emits aggregate work-time counts,
+input-mode/fixed-net/reversed-clock inventory, integrity and logical baseline
+fingerprints, without actor/workspace IDs or transcript values. It performs no
+repair. Inspect suspicious legacy rows and per-workspace/month report totals
+privately against that frozen baseline before approving activation. Apply must
+follow explicit operational approval and a writer freeze, verify the fingerprint
+under BEGIN IMMEDIATE, take/verify a complete SQLite backup, add only the nullable
+column, and verify every legacy work-time value/event/setting is unchanged.
+Fresh-field values remain NULL. A stale baseline, bad backup or integrity error
+blocks apply. Also retain deployed-image/environment/storage rollback checkpoints
+under the ordinary server runbook; this tool backs up SQLite only.
+
+Only after independent readback and report-total checks enable
+`WORK_TIME_DAY_BREAK_ENABLED=1`. Both flag and schema are required for new edits
+and launchers. Disabling the flag hides entry points but readers/calculators and
+clock-correction writers still preserve already saved day exceptions. Normal
+default changes retain the existing recalculation of unpinned historical clock
+rows; no all-history freeze is included. Duration/opaque fixed-net rows cannot
+use this editor. Generic workspace migration copies columns dynamically; verify
+the exception and derived net survive a copied migration before such an operation.
+
+Rollback before any exception may use the earlier image with the extra NULL
+column ignored. After an exception, older readers can use the compatibility net
+projection, but older writers may erase/invalidate it. Prefer disabling the new
+entry points while retaining compatible readers/writers; otherwise stop work-time
+writes pending a compatible forward fix. Never drop the column, erase exceptions,
+or restore a full backup over newer business activity. Production apply/deploy
+has not been performed by this implementation session.

@@ -64,6 +64,8 @@ from bot.handlers.officeflow_attachment_router import (
 )
 from bot.handlers.work_time import (
     WorkTimeStates,
+    work_time_day_break_input,
+    work_time_day_break_confirm,
     work_time_close_input,
     work_time_close_preview_confirm,
     work_time_delete_month_confirm,
@@ -439,6 +441,11 @@ async def handle_voice(
                 config=config,
                 decision_text=recognized_text,
             )
+        elif current_state in {WorkTimeStates.waiting_lunch_scope.state, WorkTimeStates.waiting_day_break_date.state,
+                               WorkTimeStates.waiting_day_break_minutes.state}:
+            await work_time_day_break_input(message=text_message, state=state, config=config)
+        elif current_state == WorkTimeStates.waiting_day_break_confirm.state:
+            await work_time_day_break_confirm(message=text_message, state=state, config=config)
         elif current_state == WorkTimeStates.waiting_open_input.state:
             await work_time_open_input(
                 message=text_message,

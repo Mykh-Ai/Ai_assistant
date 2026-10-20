@@ -75,6 +75,7 @@ APPROVE_EDIT_CANCEL_CONTEXTS = (
     'work_time_close_preview',
     'work_time_open_preview',
     'work_time_lunch_break_update_confirm',
+    'work_time_day_lunch_break_confirm',
 )
 
 GLOBAL_CANCEL_CONTEXTS = (

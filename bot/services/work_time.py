@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import json
+import hashlib
 import logging
 import os
 import re
@@ -66,6 +67,7 @@ class WorkTimeDay:
     lunch_break_minutes_snapshot: int | None = None
     net_work_minutes_override: int | None = None
     close_input_mode: str | None = None
+    lunch_break_minutes_override: int | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +124,42 @@ class WorkTimeBoundaryChange:
     value: str
 
 
+@dataclass(frozen=True)
+class WorkTimeDayBreakChange:
+    original: WorkTimeDay
+    proposed: WorkTimeDay
+    settings: WorkTimeLunchBreakSettings
+    revision: int
+
+
+def day_break_eligible(day: WorkTimeDay) -> bool:
+    if day.status != STATUS_CLOSED or day.close_input_mode == 'duration':
+        return False
+    if day.net_work_minutes_override is not None and day.lunch_break_minutes_override is None:
+        return False
+    try:
+        return bool(day.start_time and day.end_time and
+                    _minutes_between(day.start_time, day.end_time) is not None)
+    except (ValueError, TypeError):
+        return False
+
+
+def day_calculation(day: WorkTimeDay, settings: WorkTimeLunchBreakSettings | None) -> tuple[int | None, int | None, int]:
+    """One report/preview/summary calculation; a confirmed net is never deducted twice."""
+    gross = _minutes_between(day.start_time, day.end_time) if day.start_time and day.end_time else None
+    if day.lunch_break_minutes_override is not None and gross is not None:
+        pause = day.lunch_break_minutes_override
+        return gross, pause, max(0, gross - pause)
+    if day.net_work_minutes_override is not None:
+        return gross, None, max(0, day.net_work_minutes_override)
+    if day.gross_minutes is not None:
+        gross = day.gross_minutes
+    if gross is not None:
+        pause = min(gross, _effective_lunch_break_minutes(settings))
+        return gross, pause, max(0, gross - pause)
+    return None, None, max(0, day.total_minutes or 0)
+
+
 def _proposed_boundary_day(
     day: WorkTimeDay, settings: WorkTimeLunchBreakSettings, field: str, value: str,
 ) -> WorkTimeDay | None:
@@ -145,12 +183,17 @@ def _proposed_boundary_day(
     except (ValueError, TypeError):
         return None
     gross = int((end - start).total_seconds() // 60)
+    explicit_break = day.lunch_break_minutes_override
+    if explicit_break is not None and gross < explicit_break:
+        return None
+    pause = explicit_break if explicit_break is not None else _effective_lunch_break_minutes(settings)
     return replace(
         changed, status=STATUS_CLOSED,
         source=SOURCE_CLOSED_LIVE if day.status == STATUS_OPEN else day.source,
         gross_minutes=gross,
-        total_minutes=max(0, gross - _effective_lunch_break_minutes(settings)),
-        net_work_minutes_override=None, lunch_break_minutes_snapshot=None,
+        total_minutes=max(0, gross - pause),
+        net_work_minutes_override=max(0, gross - pause) if explicit_break is not None else None,
+        lunch_break_minutes_snapshot=explicit_break,
         close_input_mode='explicit_end',
     )
 
@@ -159,6 +202,79 @@ class WorkTimeService:
     def __init__(self, db_path: Path, *, workspace_id: str | None = None) -> None:
         self.db_path = db_path
         self.workspace_id = str(workspace_id).strip() if workspace_id else None
+
+    def day_break_schema_ready(self, connection=None) -> bool:
+        if connection is None:
+            with managed_connection(self.db_path) as conn:
+                return self.day_break_schema_ready(conn)
+        return 'lunch_break_minutes_override' in {
+            row[1] for row in connection.execute('PRAGMA table_info(work_time_days)')
+        }
+
+    def _day_break_select(self, connection) -> str:
+        return 'lunch_break_minutes_override' if self.day_break_schema_ready(connection) else 'NULL'
+
+    def day_break_fingerprint(self, *, telegram_id: int, work_date: str) -> str | None:
+        with managed_connection(self.db_path) as connection:
+            connection.execute('BEGIN')
+            day = self.get_day(telegram_id=telegram_id, work_date=work_date, connection=connection)
+            if day is None:
+                return None
+            settings = self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection)
+            payload = [self.workspace_id, asdict(day), self._day_revision(connection, telegram_id=telegram_id, day_id=day.id),
+                       asdict(settings) if day.net_work_minutes_override is None else None]
+            return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:24]
+
+    def prepare_day_break_change(self, *, telegram_id: int, work_date: str, minutes: int) -> WorkTimeDayBreakChange | None:
+        if type(minutes) is not int or not 0 <= minutes <= 180:
+            return None
+        with managed_connection(self.db_path) as connection:
+            connection.execute('BEGIN')
+            if not self.day_break_schema_ready(connection):
+                return None
+            original = self.get_day(telegram_id=telegram_id, work_date=work_date, connection=connection)
+            if original is None or not day_break_eligible(original) or work_date > work_time_local_date().isoformat():
+                return None
+            gross = _minutes_between(original.start_time, original.end_time)
+            if gross is None or minutes > gross:
+                return None
+            proposed = replace(original, gross_minutes=gross, total_minutes=gross-minutes,
+                               lunch_break_minutes_override=minutes, lunch_break_minutes_snapshot=minutes,
+                               net_work_minutes_override=gross-minutes)
+            return WorkTimeDayBreakChange(original, proposed,
+                self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection),
+                self._day_revision(connection, telegram_id=telegram_id, day_id=original.id))
+
+    def apply_day_break_change(self, *, telegram_id: int, change: WorkTimeDayBreakChange,
+                              source_message_id: int | None = None) -> WorkTimeOperationResult:
+        with managed_connection(self.db_path) as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            original = self.get_day(telegram_id=telegram_id, work_date=change.original.work_date, connection=connection)
+            if (not self.day_break_schema_ready(connection) or original is None or original != change.original
+                or original.telegram_id != telegram_id or not day_break_eligible(original)
+                or original.work_date > work_time_local_date().isoformat()
+                or self.get_lunch_break_settings(telegram_id=telegram_id, connection=connection) != change.settings
+                or self._day_revision(connection, telegram_id=telegram_id, day_id=original.id) != change.revision):
+                return WorkTimeOperationResult(ok=False, reason='day_changed')
+            minutes = change.proposed.lunch_break_minutes_override
+            gross = _minutes_between(original.start_time, original.end_time)
+            if type(minutes) is not int or not 0 <= minutes <= 180 or gross is None or minutes > gross:
+                return WorkTimeOperationResult(ok=False, reason='invalid_break')
+            proposed = replace(original, gross_minutes=gross, total_minutes=gross-minutes,
+                lunch_break_minutes_override=minutes, lunch_break_minutes_snapshot=minutes, net_work_minutes_override=gross-minutes)
+            if proposed != change.proposed:
+                return WorkTimeOperationResult(ok=False, reason='day_changed')
+            if proposed == original:
+                return WorkTimeOperationResult(ok=True, day=original, reason='unchanged')
+            scope, params = self._scope_condition(connection, table='work_time_days', telegram_id=telegram_id)
+            connection.execute('UPDATE work_time_days SET gross_minutes=?, total_minutes=?, '
+                'lunch_break_minutes_override=?, lunch_break_minutes_snapshot=?, net_work_minutes_override=?, '
+                f'updated_at=CURRENT_TIMESTAMP WHERE id=? AND {scope}',
+                (gross, gross-minutes, minutes, minutes, gross-minutes, original.id, *params))
+            self._record_event(connection, day_id=original.id, event_type='lunch_break_correction',
+                old_value=asdict(original), new_value=asdict(proposed), source_message_id=source_message_id, telegram_id=telegram_id)
+            connection.commit()
+            return WorkTimeOperationResult(ok=True, day=proposed)
 
     def _scope_condition(
         self,
@@ -751,7 +867,7 @@ class WorkTimeService:
             row = conn.execute(
                 'SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, '
                 'status, source, note, gross_minutes, lunch_break_minutes_snapshot, '
-                'net_work_minutes_override, close_input_mode FROM work_time_days '
+                f'net_work_minutes_override, close_input_mode, {self._day_break_select(conn)} FROM work_time_days '
                 f'WHERE {scope_sql} AND status = ? '
                 'ORDER BY work_date ASC, id ASC LIMIT 1',
                 (*scope_params, STATUS_OPEN),
@@ -779,7 +895,7 @@ class WorkTimeService:
             row = conn.execute(
                 'SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, '
                 'status, source, note, gross_minutes, lunch_break_minutes_snapshot, '
-                'net_work_minutes_override, close_input_mode FROM work_time_days '
+                f'net_work_minutes_override, close_input_mode, {self._day_break_select(conn)} FROM work_time_days '
                 f'WHERE {scope_sql} AND work_date = ? ORDER BY id DESC LIMIT 1',
                 (*scope_params, work_date),
             ).fetchone()
@@ -812,7 +928,7 @@ class WorkTimeService:
             row = conn.execute(
                 'SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, '
                 'status, source, note, gross_minutes, lunch_break_minutes_snapshot, '
-                'net_work_minutes_override, close_input_mode FROM work_time_days '
+                f'net_work_minutes_override, close_input_mode, {self._day_break_select(conn)} FROM work_time_days '
                 f'WHERE id = ? AND {scope_sql}',
                 (day_id, *scope_params),
             ).fetchone()
@@ -914,16 +1030,7 @@ class WorkTimeService:
         *,
         settings: WorkTimeLunchBreakSettings | None = None,
     ) -> int:
-        if day.net_work_minutes_override is not None:
-            return max(0, day.net_work_minutes_override)
-        if day.start_time and day.end_time:
-            gross = day.gross_minutes
-            if gross is None:
-                gross = _minutes_between(day.start_time, day.end_time)
-            if gross is None:
-                return max(0, day.total_minutes or 0)
-            return max(0, gross - _effective_lunch_break_minutes(settings))
-        return max(0, day.total_minutes or 0)
+        return day_calculation(day, settings)[2]
 
     def _list_days_for_month_with_connection(
         self,
@@ -943,7 +1050,7 @@ class WorkTimeService:
         rows = connection.execute(
             'SELECT id, telegram_id, work_date, start_time, end_time, total_minutes, '
             'status, source, note, gross_minutes, lunch_break_minutes_snapshot, '
-            'net_work_minutes_override, close_input_mode FROM work_time_days '
+            f'net_work_minutes_override, close_input_mode, {self._day_break_select(connection)} FROM work_time_days '
             f'WHERE {scope_sql} AND work_date BETWEEN ? AND ? '
             'ORDER BY work_date ASC, id ASC',
             (*scope_params, start, end),
@@ -1134,6 +1241,46 @@ def parse_explicit_month(text: str, *, today: date | None = None) -> tuple[int, 
         previous = current.replace(day=1) - timedelta(days=1)
         return previous.year, previous.month
     return None
+
+
+async def resolve_day_break_slots(*, user_input_text: str, api_key: str | None, model: str,
+                                  scope: str | None = None, work_date: str | None = None) -> dict:
+    """Bounded continuation extraction; unknown is never a write default."""
+    cleaned = user_input_text.strip()
+    if scope and re.fullmatch(r'[0-9]{1,3}', cleaned):
+        return {'scope': scope, 'work_date': work_date, 'minutes': int(cleaned)}
+    if not api_key or not api_key.startswith('sk-'):
+        return {}
+    try:
+        response = await AsyncOpenAI(api_key=api_key).chat.completions.create(
+            model=model, temperature=0, response_format={'type': 'json_object'}, messages=[
+                {'role': 'system', 'content': (
+                    'Extract only OfficeFlow lunch-deduction correction slots. Never execute or claim a save. '
+                    'Return {"scope":"day|default|unknown","work_date":"YYYY-MM-DD or null","minutes":integer or null}. '
+                    'One-day exceptions including no break (0) are day scope; usual/general setting is default. '
+                    'A missing scope is unknown. Resolve explicit/relative dates using today_iso, never guess a missing date. '
+                    'Use null/unknown for questions, contradictions or ambiguity. A supplied bound scope/date is immutable; '
+                    'if the user contradicts it return {"scope":"unknown"}. Interpret Slovak/Ukrainian/Russian/English/STT; '
+                    'minutes must be a single unambiguous whole duration, 0..180. No-break means 0, not null.')},
+                {'role': 'user', 'content': json.dumps({'context_name': 'work_time_day_break_slots',
+                    'allowed_scopes': [scope, 'unknown'] if scope else ['day', 'default', 'unknown'],
+                    'bound_date': work_date, 'today_iso': work_time_local_date().isoformat(),
+                    'user_input_text': cleaned}, ensure_ascii=False)}])
+        value = json.loads(response.choices[0].message.content or '{}')
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        _LOGGER.exception('Work-time break slot extraction failed')
+        return {}
+
+
+def format_closed_day_summary(day: WorkTimeDay, settings: WorkTimeLunchBreakSettings) -> str:
+    gross, pause, net = day_calculation(day, settings)
+    header = f'{date.fromisoformat(day.work_date):%d.%m.%Y} · {day.start_time or "—"}–{day.end_time or "—"}'
+    if pause is None:
+        return (f'{header}\nPotvrdené čisté odpracované hodiny: {_format_duration(net)}\n'
+                'Prestávku tohto záznamu s pevným čistým časom týmto tlačidlom neupravujem.')
+    return (f'{header}\nTrvanie: {_format_duration(gross or 0)}\n'
+            f'Odpočítaná prestávka: {pause} min\nOdpracované: {_format_duration(net)}')
 
 
 async def resolve_work_time_entry_candidate(
@@ -1366,6 +1513,7 @@ def _row_to_day(row) -> WorkTimeDay | None:
         lunch_break_minutes_snapshot=None if len(row) <= 10 or row[10] is None else int(row[10]),
         net_work_minutes_override=None if len(row) <= 11 or row[11] is None else int(row[11]),
         close_input_mode=None if len(row) <= 12 or row[12] is None else str(row[12]),
+        lunch_break_minutes_override=None if len(row) <= 13 or row[13] is None else int(row[13]),
     )
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+- Local candidate, not deployed (2026-10-20): work-day closing shows gross,
+  deducted break and net hours and leaves FSM idle. Optional day-bound break
+  editing, including zero, extends the existing action with scope/date/minutes
+  and shared preview confirmation. Scoped snapshot/audit guards, complete
+  keyboard cleanup and later time-correction preservation are included.
+  Fixed-net entries are excluded; old global-default/history rules remain.
+  New edits default off pending explicit additive schema migration/activation;
+  existing exceptions remain readable when the flag is disabled. No production
+  migration, customer-time repair, model change or AI maturity upgrade.
+  Local validation:47 new-feature cases; final full suite2915 passed and7
+  subtests passed. Real Telegram/provider/production activation remain unrun.
+
 - Report setup keyboard lifecycle repair deployed2026-10-20 as `d3a05ee`: track
   the lunch-choice card and remove it on cancel/navigation/expiry or a valid
   yes/no continuation. Unknown keeps one card; old/foreign callbacks cannot
