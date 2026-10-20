@@ -1611,7 +1611,7 @@ leaves stale inline buttons until a rejected click removes them; cleanup is
 incomplete. The noisy October16 report phrase still selects open_work_day in a live probe; semantic root-cause
 remediation is unresolved and no-time opening still writes immediately.
 
-2026-10-19 local semantic repair, not deployed: primary hints distinguish
+2026-10-19 semantic repair deployed2026-10-20 as `62b1046`: primary hints distinguish
 personal arrival (приход/прихід) and departure (отход/отходи/відхід/odchod),
 including short workplace labels and noisy filler. Clear present departure
 without clock/duration maps to existing close_now; unclear/conflicting meaning,

@@ -382,3 +382,59 @@ forbidden perfect-recognition/payroll/waste/income/automatic-learning claims
 checked; PROJECT_LOG updated; maturity unchanged bounded canonicalization.
 Full-suite final result is recorded above when complete. No deployment or
 real-audio acceptance is inferred from these checks.
+
+
+## Authorized release and deployed verification — 2026-10-20
+
+User requested finishing the started work following earlier explicit
+commit/push/deploy instructions. October19 candidate-only statements above
+describe that original stage; this section records the subsequent release.
+
+- Runtime commit:62b1046e6f28f1ca7063c92c0adbc3e3cba3be27, published directly
+  to main (no separate PR merge). Server clean before/after fast-forward.
+- Final full suite repeated with durable artifacts:2814 passed,7 subtests
+  passed in674.70s. The earlier process result was unavailable, never inferred
+  from its partial output. No runtime source changed after this successful run.
+- Backup:/bot/backups/arrival-departure-deploy-20261020T065245Z, private
+  consistent DB/logs/manifest and old-image rollback. Captured another frozen
+  snapshot after stopping only bot; rebuilt/recreated only bot. No schema,
+  migration, repair, customer attendance write or notification.
+- New image:sha256:b899086274f9f999a8450eda799630318cc8ca453a8fe8146149cbe2cfc3b85c.
+  All146 tracked bot Python files match checkout/container; running, restarts0,
+  polling/getMe successful, no startup traceback/ERROR/polling conflict.
+  Existing .env hash and cloudflared container unchanged. Models remain
+  GPT-4o/Whisper-1; no competing polling process was started.
+- Read-only frozen/live comparison:integrity ok, identical schema and all
+  work-time hashes. The only table difference was existing Google binding
+  check timestamps (last_attempt_at,last_successful_check_at,updated_at),
+  verified separately with identical row identities/count; no credential or
+  business-data change was inferred from those scheduled checks.
+- Actual deployed prompts were captured before dispatch from container source,
+  then the real model client restored. No candidate hint/function injection:
+  all18 primary and8 slot cases passed with configured GPT-4o. Incident text
+  selected close_work_day and close_now; personal arrival selected opening;
+  negative neighbors remained unknown/question-only. One sampled run does
+  not guarantee universal noisy-input safety.
+- Two actual deployed public-handler journeys with real primary/slot models,
+  synthetic actor1001 and temporary SQLite passed: departure closes one07:05
+  day at synthetic16:09/net514 after30-minute lunch; arrival preserves the
+  existing open row. No real Telegram send/customer DB access in these probes.
+- Browser Telegram account/session was available after reopening its tab.
+  RO preflight found an existing open actor row, so the proposed live departure
+  smoke was deliberately not sent. Sent only /dochadzka; received partial
+  attendance/help instructions. Before/after actor snapshot:6 days/35 events,
+  identical content hash; existing October17 closed06:54-17:43 row preserved.
+  Real Telegram transport/help passed; interactive attendance execution for
+  this new prompt repair remains unproven. No actual Whisper audio replay.
+
+Private server evidence in the backup folder:manifest.json,frozen-prestart.db,
+verification.json,binding-diff.json,telegram-before/after.json and smoke logs.
+Outside-Git task artifacts:departure-full-tests-2026-10-20.log/.xml,
+departure-probe-2026-10-20.json (18+8),departure-journey-2026-10-20.json (two),
+telegram-deployment-help-2026-10-20.png. Public docs contain no actor/workspace
+identifiers or credentials. Unrelated local Google/Gmail changes excluded.
+
+Completion:runtime/hints/registries, partial Product Truth and InfoHelp,
+tests/UX evidence, forbidden-claim review, existing contract/TZ/log are current;
+AI maturity unchanged. This scoped release is complete. Universal noisy
+report/open selection safety and report-cancel inline cleanup remain open.

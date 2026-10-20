@@ -27,6 +27,23 @@
 - Preserve unrelated Google/Gmail docs, original391 log additions and local
   attachment directory outside this release.
 
+- Published main/runtime commit62b1046 and deployed imageb8990862. All146
+  bot Python source hashes match; polling/getMe passed, restarts0, no startup
+  error/conflict. Existing .env and cloudflared unchanged. Frozen/live schema
+  and work-time hashes identical; only existing Google binding check timestamp
+  columns changed, verified separately with stable row identities/count.
+- Actual deployed18/18 primary and8/8 slot probes passed, with no injected
+  candidate hints/functions. Both real-provider temporary-DB public-handler
+  journeys passed. No original audio replay or customer attendance mutation.
+- Telegram browser reopened and authorized. Preflight found an existing open
+  test-actor row; did not send departure. Sent only /dochadzka and received
+  help. Actor6 days/35 events remained byte-content-equivalent by snapshot
+  digest; October17 closed06:54-17:43 retained. This proves live transport/help,
+  not live attendance execution with the new repair. Guard outcome disclosed.
+- Current docs/partial Product Truth/help/contracts/evals/changelog synchronized;
+  scope complete. Broader noisy report/open and report cancel-inline defects
+  remain unresolved. No product maturity or learning-domain expansion.
+
 # 2026-10-19 - Arrival/departure terminology repair preflight
 
 - User confirms workplace UI departure vocabulary отход/отходи and asks to

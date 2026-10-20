@@ -12,13 +12,14 @@ Actions, slots and owners are unchanged; status remains partial. Nine bounded
 real-model probes passed after deploy; real audio/interactive Telegram
 acceptance remains unproven.
 
-2026-10-19 local prompt repair: personal arrival/приход/прихід starts attendance;
+2026-10-19 prompt repair, deployed2026-10-20 as `62b1046`: personal arrival/приход/прихід starts attendance;
 personal departure/отход/отходи/відхід/odchod ends attendance. Shared record/запиши
 wording must not swap event direction. Clear current-departure requests without
 clock/duration normalize to existing close_now; exact values keep their previews.
 Money and production waste do not become attendance. Unrecoverable/conflicting
 meaning remains unknown. This is semantic guidance, not Python keyword routing,
-a new token, automatic learning or a perfect-STT guarantee; deployment unproven.
+a new token, automatic learning or a perfect-STT guarantee. Deployed18/18
+primary and8/8 slot probes passed; actual audio remains unproven.
 
 ## Legend
 - **Category**: `top-level user-facing action` | `bootstrap/admin/setup flow`

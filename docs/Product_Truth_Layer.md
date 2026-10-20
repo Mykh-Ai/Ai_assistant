@@ -826,7 +826,7 @@ Contextual InfoHelp receives a compact safe view derived from the existing Produ
 
 Support for one business object does not transfer to another object with the same verb. An executable/offerable action requires an exact registered `domain_id + object_kind + operation_id` match, applicable `supported` or `partial` Product Truth, a real Python owner, actor/workspace validation, required slots or a real continuation FSM, and all existing confirmation gates. No exact match is `unsupported` or a new feature; it is never a nearest-action substitution. Capability questions are answer-only and account-wide deletion is never suggested by InfoHelp.
 
-### Work-time terminology repair — 2026-10-19, local
+### Work-time terminology repair — deployed2026-10-20, `62b1046`
 
 The existing partial work-time capability explains paired personal arrival and
 departure shorthand: приход/прихід starts work, отход/отходи/відхід/odchod ends
@@ -835,5 +835,7 @@ current business time; exact clocks/durations retain preview confirmation and
 closed-day edits retain their snapshot gates. Neither money/income nor
 production waste becomes an attendance feature. No claim of perfect STT,
 universal noisy-request safety or new automatic alias learning is permitted.
-Current source owners and local acceptance evidence, not this statement alone,
-back the repair; live audio/Telegram/deployment remains a separate gate.
+Current source owners and recorded acceptance evidence, not this statement
+alone, back the repair. Deployed model/temp-DB journeys and Telegram help
+smoke passed; actual voice recognition and interactive attendance execution
+remain unproven for this repair.

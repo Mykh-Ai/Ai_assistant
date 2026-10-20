@@ -504,3 +504,16 @@ handler journeys pass; initial negative-space failures and harness/loopback
 limits are disclosed in the acceptance proof. Final full suite repeated
 2026-10-20: 2814 passed, 7 subtests passed in 674.70s (0:11:14). Real audio/interactive candidate
 Telegram/deployment are not implied by that local evidence.
+
+
+Section20 authorized release follow-up (2026-10-20): user requested finishing
+the work after prior explicit publication/deployment instructions. Commit
+62b1046 deployed with existing runbook backup/image rollback, bot-only
+recreation and146 tracked Python source hashes matched. Actual deployed
+primary18/18 and slots8/8 plus both real-provider/temp-DB handler journeys
+passed without candidate code injection. Polling/getMe and schema/work-time
+preservation passed. Real Telegram /dochadzka help responded and actor days/
+events stayed unchanged. A preflight guard found an existing open actor row,
+so no live attendance command was sent. No migration/customer-time repair,
+real-audio acceptance, maturity upgrade or broad report/open fix is claimed.
+See the existing acceptance artifact for exact evidence and remaining gaps.

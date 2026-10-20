@@ -713,7 +713,7 @@ Correction replies use existing DecisionResolver contexts and reply keyboards;
 generic old inline cards cannot authorize the new snapshot. This local scope
 does not solve report/open primary model selection or implement payroll.
 
-## Symmetric arrival/departure vocabulary (2026-10-19 local repair)
+## Symmetric arrival/departure vocabulary (deployed2026-10-20, `62b1046`)
 
 Existing action_hints explicitly pair arrival/приход/прихід/prichod with opening
 and departure/отход/отходи/відхід/odchod with closing. Personal event wording can

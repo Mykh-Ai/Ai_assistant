@@ -1090,7 +1090,7 @@ Product-Truth-status-based pre-execution gate.
   user was unclear. User-facing recovery must say processing failed and must not
   blame the input with a false `nerozumel` claim.
 
-### Work-time arrival/departure wording — 2026-10-19, local
+### Work-time arrival/departure wording — deployed2026-10-20, `62b1046`
 
 Slovak guidance explains prichod as starting work and odchod (including the
 workplace labels отход/отходи) as leaving work, with zapis mi odchod as a
