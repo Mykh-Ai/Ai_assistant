@@ -728,3 +728,31 @@ assertion, question, bare ambiguous noun or closed-day correction with missing
 clock cannot infer close_now. Existing modes/Python validation remain. STT
 receives vocabulary spellings only; it does not canonicalize or execute actions.
 No extra resolver, Python phrase map, model migration or learned alias is added.
+
+### Day-specific break correction — local candidate 2026-10-20
+
+`update_work_time_lunch_break` is extended, not replaced by a new action.
+Primary hints request slots `scope=day|default|unknown`, `work_date=ISO|null`,
+`minutes=0..180|null`; Python supplies current_business_date. A missing/unclear
+scope is a pending clarification, never a guessed default/last-closed day.
+Invoice text routing transfers these slots explicitly. Rich continuation input
+uses bounded work_time_day_break_slots extraction; strict whole-number minutes
+are a structural in-state path. Unknown/errors never use a business-phrase
+fallback to save. The old direct default-setting compatibility adapter remains
+unchanged; public dispatch always supplies a slot object, including an empty
+one, and does not use that adapter to guess scope.
+
+After a successful close, deterministic summary and an optional day-bound
+launcher leave FSM idle. A valid authorized launcher fixes the existing row/date,
+does not interrupt another FSM, and starts only pending edit state. Shared
+`approve_edit_cancel` context `work_time_day_lunch_break_confirm` owns the final
+decision; no old generic inline decision may approve its reply-keyboard preview.
+Python rechecks scoped membership/active workspace, row/event/settings snapshot
+and expiry before the atomic correction. Late model replies after Cancel or
+state replacement cannot resurrect/approve an old flow. Voice shares owners;
+STT/model settings and precision restrictions are unchanged.
+
+This extension requires the rollout flag and explicit schema preparation;
+Product Truth/help must describe that deployment-dependent prerequisite. One
+day's exception or silence must never learn a global default/alias. No maturity
+upgrade, universal noisy-input fix, duration reinterpretation or payroll claim.

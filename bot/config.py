@@ -59,6 +59,7 @@ class Config:
     financna_sprava_api_key: str | None = field(default=None, repr=False)
     financna_sprava_timeout_seconds: int = 5
     infohelp_contextual_v2_rollout: str = 'disabled'
+    work_time_day_break_enabled: bool = False
 
 
 def ensure_storage_dirs(storage_dir: Path) -> None:
@@ -243,6 +244,7 @@ def load_config() -> Config:
         infohelp_contextual_v2_rollout=_parse_infohelp_contextual_v2_rollout(
             os.getenv('INFOHELP_CONTEXTUAL_V2_ROLLOUT', 'disabled')
         ),
+        work_time_day_break_enabled=_parse_bool(os.getenv('WORK_TIME_DAY_BREAK_ENABLED', '')),
     )
 
 

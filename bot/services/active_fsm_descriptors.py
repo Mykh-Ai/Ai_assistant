@@ -50,6 +50,15 @@ _PENDING_ACTION_LABELS = {
     'mark_existing_invoice_paid': 'Označenie faktúry ako uhradenej',
 }
 
+for _state, _step, _input in (
+    ('waiting_lunch_scope', 'výber rozsahu', 'či meníte konkrétny deň alebo obvyklé nastavenie'),
+    ('waiting_day_break_date', 'výber dňa', 'dátum dňa, ktorého prestávku meníte'),
+    ('waiting_day_break_minutes', 'trvanie prestávky', 'počet minút 0–180; nula znamená bez odpočtu'),
+    ('waiting_day_break_confirm', 'potvrdenie opravy', 'Schváliť, Upraviť alebo Zrušiť'),
+):
+    _DESCRIPTORS[f'WorkTimeStates:{_state}'] = ActiveFsmDescriptor(
+        'update_work_time_lunch_break', 'Úprava prestávky', _step, 'state_owned_value', _input)
+
 
 def get_active_fsm_descriptor(
     current_state: str,

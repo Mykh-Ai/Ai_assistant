@@ -99,6 +99,12 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
 
 
 async def clear_current_state_safely(*, state: FSMContext, config: Config, message: Message | None = None) -> None:
+    if message is not None and (await state.get_data()).get('work_time_day_break_flow'):
+        from bot.handlers.work_time import finish_day_break_flow
+
+        await finish_day_break_flow(message=message, state=state, config=config,
+                                   text='Úpravu prestávky som ukončil bez uloženia.')
+        return
     if message is not None:
         from bot.handlers.work_time import clear_work_time_report_choice_keyboard
 

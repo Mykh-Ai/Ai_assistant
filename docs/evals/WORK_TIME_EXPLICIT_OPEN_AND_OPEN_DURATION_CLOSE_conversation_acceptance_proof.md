@@ -167,3 +167,101 @@ notification was performed.
 
 Verdict: incident data repaired; report-to-open safety and existing-start
 correction remain `failed_runtime_acceptance`, not fixed by the data repair.
+
+## 2026-10-20 optional day-break correction — local candidate
+
+Design: section22 of the existing work-time Architecture Design Proof. User
+approved implementation and the current-day label `Upraviť dnešnú prestávku`.
+Design verification: design_matches_runtime. Working tree based on3d52699;
+not committed/deployed. The following evidence applies to this extension, not
+the unresolved noisy report/open incident above.
+
+Environment: Windows/Python3.12, synthetic actor1001 and isolated workspace
+fixtures, controlled Bratislava business clock2026-10-20 17:00, temporary
+SQLite/Excel and real additive migration/backup operations on fixtures only.
+Telegram methods, STT audio and OpenAI responses are mocked. Actual Python
+primary-prompt serialization/action validation/slot transfer, public handlers,
+shared DecisionResolver and storage owners run. Windows sandbox socketpair
+creation hung before test execution; local tests were rerun with loopback
+access. No production credentials, original audio or real messages were used.
+
+### Public traces and observed outcomes
+
+| Scenario/input and precondition | Observed route, state, effect and final UI | Evidence/result |
+|---|---|---|
+| open08:00/default30; `Zavri deň teraz` at17:00 | primary close_work_day -> close_now owner -> one closed row; no extra approval; FSM/data empty; gross9:00, break30, net8:30; reply removal then optional current-day launcher | test_public_close_finishes_idle_and_optional_button_does_not_start_flow[False], pass |
+| same; `Zavri deň o 17:00` | primary close_work_day -> close_at_time -> existing boundary preview; no save until shared approve; same final summary/idle | same test[True], pass |
+| eligible closed day; `Dnes som nemala prestávku, oprav ju na nulu`, text and STT | primary update_work_time_lunch_break + day/2026-10-20/0 transferred to existing owner -> dated preview, no mutation; Schváliť -> shared approve -> atomic exception0/net540, same id/clocks/status; one correction event; idle + refreshed launcher | test_public_day_zero_break_preserves_default_other_day_and_report[text/voice], pass |
+| same day; optional button -> `0` -> Schváliť | human/private bot/actor/workspace/day/fingerprint guard -> parent inline removed -> minutes -> same preview/approve/service; no business effect on click alone | same test[button], pass |
+| another day19.10 has net510/default30 | day20 correction leaves other day/default unchanged; generated real Excel date20 row9h, total17h30; duplicate approval adds no event | same test, pass |
+| `Zmeň prestávku` -> `iba dnes` -> voice `pätnásť minút` -> voice `Schváliť` | primary unknown scope -> waiting_lunch_scope -> waiting_day_break_minutes -> shared preview -> net525/exception15, then idle; temporary audio removed | test_scope_clarification_then_voice_minutes_and_shared_voice_confirmation, pass |
+| ignore launcher -> `Ukáž výkaz za október` -> `Ako zmením prestávku?` | no hidden break FSM; report runs then informational guidance without attendance mutation; current-day card remains optional | test_ignore_button_then_public_report_and_help_do_not_enter_break_edit, pass |
+| day already has exception0; `Зміни сьогодні прихід на роботу на сьому годину` | primary open_work_day -> open_at_time07:00 -> old08:00/new07:00 preview; shared approval changes only arrival, keeps17:00/closed/exception0, derived net600; no second row; later default60 does not alter600 | test_day_exception_survives_later_public_arrival_correction_and_default_change, pass |
+| pending preview; row/settings/event changes before approval | approve writes nothing; refreshed old/new preview requires another approval; only the second valid approval appends one correction event | test_stale_snapshot_no_overwrite_and_new_approval_needed, pass |
+| pending child; Zrušiť,/cancel,Edit,unknown,expired; menu/start/timeout/help | saved closing unchanged; Edit retains day and removes reply controls; unknown keeps confirmation keyboard; terminal/navigation clears child pending state and removes replies; eligible day summary refreshed | test_child_controls_cleanup_and_preserve_saved_closing + test_navigation_cleanup_preserves_day_and_leaves_child_flow, pass |
+| foreign/malformed/missing/active/stale/disabled/cleanup-failure launcher | no attendance writes; foreign/unproven messages untouched; unrelated FSM preserved; owned stale markup removed and current data shown; API cleanup failure logged with safe pending flow | test_launcher_ownership_staleness_and_cleanup, pass |
+| workspace/membership/actor changes after preview | no correction to either scoped workspace row; no event | test_authority_change_between_preview_and_confirmation_cannot_write, pass |
+| other FSM starts during Telegram cleanup; Cancel during slot extraction | new pending state cannot take over/resurrect the old flow | test_callback_does_not_take_over_flow_started_during_telegram_cleanup + test_unknown_or_cancel_during_slot_extraction_cannot_resurrect_flow, pass |
+| Telegram result send fails after approved commit | exception0 and one event persist; state idle; failure logged, no retry/rollback/false cleanup claim | test_committed_correction_survives_result_delivery_failure, pass |
+| invalid boolean/negative/>180 minutes, malformed/future date, malformed scope | Python rejects or stores appropriate clarification, no save/default guess | test_invalid_break_has_no_service_write + test_invalid_extracted_slots_clarify_without_write, pass |
+| duration/pinned net; old generic inline approve at new reply preview | no day editor/double deduction; old inline cannot approve new snapshot | test_fixed_net_exclusion_and_old_inline_cannot_approve_new_preview, pass |
+| flag off after saved exception; later boundary correction | no new launcher, reads preserve exception; shortened interval below break rejected; corrected start recalculates compatible derived net | test_disabled_entry_and_later_boundary_keep_saved_exception, pass |
+| legacy gross field disagrees with clocks | old unedited report unchanged; preparation read-only; approved correction derives gross/net/projection from clocks consistently | test_day_break_rederives_gross_from_clocks_without_silent_legacy_backfill, pass |
+| copied old DB without new column | init_db does not add column; old reads unchanged; stale baseline/unconfirmed freeze cannot apply; approved fixture apply verifies backup and unchanged business digest; all new values NULL | test_explicit_schema_migration_preserves_legacy_values_and_no_startup_alter, pass |
+| existing workspace table-copy owner | explicit zero/derived net and clocks survive copying into scoped target | test_existing_workspace_copy_preserves_explicit_zero_and_compatibility_net, pass |
+| `Ako zmením prestávku?` | partial truth/help, flag/schema condition and fixed-net exclusions explained; public question no mutation; payroll/autodetection exclusions retained | test_truth_help_explain_feature_gate_and_no_daily_prompt + public question trace, pass |
+
+### Design-to-code, effects and regression map
+
+- Existing update action/hints and slot transfer: invoice.py; bounded
+  continuation in services/work_time.py; no voice business parser. No new
+  command; /dochadzka remains informational. Public dispatch always transfers
+  a slot object, so missing provider slots clarify rather than entering the
+  old direct-call default-setting compatibility adapter.
+- Existing work_time handler owns the new scope/date/minutes/confirmation
+  states and read-only launcher. Day binding is immutable; canonical reply
+  buttons and voice use shared work_time_day_lunch_break_confirm. Snapshot,
+  current membership/workspace and preview expiry gate one service transaction.
+- WorkTimeDay optional field, old-schema SELECT NULL compatibility,
+  day_calculation/report owner and boundary writer preserve the precedence:
+  explicit exception, otherwise existing fixed net/default behavior.
+- State-control/active-FSM/decision-callback/voice shared integration is scoped
+  to the new flow; existing report-card cleanup and invoice/intake journeys
+  are exercised by the regression suite. Authorization middleware still runs
+  before AI/temporary storage; the new owners additionally recheck access.
+- DB correction and event commit together; no other rows/settings change.
+  Summary/launcher/cleanup are transport effects; failure cannot undo a save.
+  Monthly Excel remains explicit/on-demand, not auto-regenerated by correction.
+- Product Truth/InfoHelp, canonical/in-action registries, LLM contract, TZ,
+  migration runbook/README/changelog/log match the gated partial local slice.
+  No self-learning, maturity upgrade, payroll/HR or perfect-STT claim.
+
+### Verification and operational boundary
+
+Focused new feature:47 passed in40.64s. Earlier broad work-time/shared-decision
+regression run:994 passed in148.26s; final full-suite result is recorded below.
+Additional real CLI smoke on a synthetic old-schema SQLite fixture: audit and
+dry-run produced identical aggregate reports, integrity ok and writes_performed
+false; DB file SHA-256 stayed identical. Apply without required parameters exited2
+before writes. Sanitized audit/dry-run JSON retained outside Git. This is local
+tool acceptance, not a production migration or audit.
+Python source/test manifest frozen before the final run; JUnit retained outside
+Git. Full-suite evidence must match that manifest before this candidate is
+marked safe_to_commit.
+
+No server audit/migration, customer-row repair, real-provider/audio test,
+interactive Telegram, commit/push/merge or deployment was performed. These are
+not inferred from fixtures. Production activation remains default off and needs
+the approved read-only audit/backup/fingerprint-pinned migration/readback under
+the runbook. After a real exception, rollback must retain compatible writers;
+an arbitrary old image is unsafe for subsequent work-time edits.
+
+Final full suite:2915 passed,7 subtests passed in744.71s (0:12:24), exit0.
+All264 frozen Python source/test hashes still match the tested candidate;
+git diff --check passed. JUnit: work-time-day-break-full.xml retained in the
+task artifact directory. No source changed during the final full run.
+
+Verdict: `safe_to_commit` for this gated local candidate and fixture-proven
+scope. This is not commit/merge/deploy approval or production acceptance.
+Production rollout is separate; the broader noisy report/open issue remains
+unresolved. Real model/audio/Telegram and production migration remain unrun.

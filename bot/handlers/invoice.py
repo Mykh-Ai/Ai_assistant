@@ -4904,8 +4904,16 @@ async def process_invoice_text(
                 ],
             },
             _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT: {
-                'meaning': 'user wants to set, change, or disable the fixed lunch break deduction used by OfficeFlow work-time reports',
-                'not_this': ['monthly report generation', 'payroll or legal HR attendance', 'invoice editing'],
+                'meaning': ('user requests a change of the deducted work-time break, either for one explicitly selected day '
+                            'or the usual/default setting. Return slots {scope: day|default|unknown, work_date: ISO date or null, '
+                            'minutes: integer 0..180 or null}. Resolve today using current_business_date. '
+                            'No break for a specified day means minutes=0, scope=day; no specified scope is unknown, '
+                            'never assume default or the most recent closed day. Preserve an explicit date.'),
+                'positive_examples': ['Dnes som nemala prestávku, oprav ju na nulu',
+                                      'Штандартно віднімай 30 хвилин перерви',
+                                      'Замени сегодня перерыв на 15 минут', 'Zmeň prestávku'],
+                'not_this': ['monthly report generation', 'how-to/capability questions about breaks (informational, no execution)',
+                             'arrival/departure clock correction or closing a day', 'payroll or legal HR attendance', 'invoice editing'],
             },
             _DELETE_WORK_TIME_MONTH_INTENT: {
                 'meaning': (
@@ -5174,7 +5182,9 @@ async def process_invoice_text(
         await start_delete_work_time_month(message=message, state=state, config=config, text=invoice_text)
         return
     if top_level_intent == _UPDATE_WORK_TIME_LUNCH_BREAK_INTENT:
-        await start_update_work_time_lunch_break(message=message, state=state, config=config, text=invoice_text)
+        slots = top_level_diagnostics.get('slots')
+        await start_update_work_time_lunch_break(message=message, state=state, config=config, text=invoice_text,
+            break_slots=slots if isinstance(slots, dict) else {})
         return
     if top_level_intent == _DELETE_USER_DATABASE_INTENT:
         await start_delete_user_database_flow(message=message, state=state, config=config)

@@ -419,6 +419,7 @@ CREATE TABLE IF NOT EXISTS work_time_days (
     lunch_break_minutes_snapshot INTEGER,
     net_work_minutes_override INTEGER,
     close_input_mode TEXT,
+    lunch_break_minutes_override INTEGER CHECK (lunch_break_minutes_override BETWEEN 0 AND 180),
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(workspace_id, work_date)

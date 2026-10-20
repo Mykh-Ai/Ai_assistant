@@ -196,3 +196,30 @@ day with a confirmed net duration is recorded in
 `docs/evals/WORK_TIME_EXPLICIT_OPEN_AND_OPEN_DURATION_CLOSE_conversation_acceptance_proof.md`.
 The artifact also locks the older dotted-close ambiguity and explicit-only
 close-now safeguards against regression.
+
+## 2026-10-20 work-time close summary and day-break correction candidate
+
+Status: local candidate, gated by rollout flag and explicit schema. Required scenarios are in
+[the existing work-time proof, section 22](architecture/WORK_TIME_EXPLICIT_OPEN_AND_OPEN_DURATION_CLOSE_ARCHITECTURE_DESIGN_PROOF.md#22-2026-10-20-close-summary-and-optional-day-specific-break--design-only).
+
+The Conversation Acceptance Proof covers the required journeys: close-now stays
+immediate; explicit-clock close keeps its confirmation; both finish idle with
+an accurate gross/break/net summary and optional day-bound button. Ignoring
+the button must permit the next task. A confirmed zero-break exception affects
+only its eligible dated clock row and monthly report; usual settings remain.
+Text/STT/button convergence, clarification, stale/foreign callbacks, complete
+keyboard cleanup, duration/pinned-net exclusions, subsequent time corrections,
+tenant isolation and migration/rollback safety are mandatory. Existing global
+default/history semantics and the report-cancel cleanup journey must survive.
+
+Two existing service tests established current clock-versus-net semantics
+during design review. Implementation acceptance now has 47 passing public-
+owner/service/migration cases in tests/test_work_time_day_break.py, including
+text/STT/button convergence, shared decisions, navigation, authority changes,
+delivery failures, later arrival correction, old-schema reads and actual copy
+owner preservation. Providers/Telegram/audio are fixtures; SQLite/Excel and
+migration backups are real temporary artifacts. See the existing Conversation
+Acceptance Proof for the full-suite result and verdict. No production migration,
+deployment, real-provider or interactive Telegram proof is claimed.
+Final full suite:2915 passed,7 subtests passed in744.71s. Frozen source/test
+manifest matched. Acceptance verdict: safe_to_commit for the gated local scope.
