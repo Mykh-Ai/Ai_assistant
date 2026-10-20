@@ -517,3 +517,61 @@ events stayed unchanged. A preflight guard found an existing open actor row,
 so no live attendance command was sent. No migration/customer-time repair,
 real-audio acceptance, maturity upgrade or broad report/open fix is claimed.
 See the existing acceptance artifact for exact evidence and remaining gaps.
+
+## 21. 2026-10-20 report lunch-choice keyboard lifecycle repair
+
+Verdict: ready_for_handoff. User requests fixing the previously reproduced
+report-cancel inline-button defect. Class5: deterministic internal cleanup
+strategy for existing generate_work_time_report, no new action/slot/decision
+family. Work-time Product Truth stays partial; AI maturity unchanged.
+
+Evidence: start_generate_work_time_report sends an inline yes/no lunch card
+without storing its Telegram message reference; cancel_current_state clears
+FSM and sends ReplyKeyboardRemove, which cannot remove inline buttons.
+ActiveFsm guard cleans only InfoHelp/invoice-edit cards. Existing generic
+callback cleanup does not establish message ownership before stale cleanup.
+
+Route: existing authorized report text/voice/public owner -> unconfigured
+lunch -> waiting_lunch_break_initial_choice and one tracked bot card. Store
+only serializable chat/message/actor/workspace references in existing FSM,
+not DB. Canonical yes/no remains shared DecisionResolver; exact valid buttons
+converge into the same handler. No LLM/STT prompt or report calculation change.
+
+Lifecycle: yes removes old inline card before asking minutes; no removes it
+while continuing the existing report/settings operation; unknown retains one
+card without adding duplicates. Global /cancel, shared text/voice cancellation,
+/menu, /start, timeout and stale reset remove the tracked card before state
+clear. Reply cleanup remains ReplyKeyboardRemove on exits. /dochadzka also
+cleans the tracked report card before replacing the flow with help.
+
+Callback guard: current lunch-choice buttons require exact tracked message,
+chat, human actor and bound workspace. Missing/legacy/mismatched/forbidden
+context never executes. Owned stale/duplicate private-chat cards can be
+removed after cancellation or restart; no edit of a foreign/unproven message.
+Malformed tokens retain a still-valid current card; failed cleanup is logged,
+never presented as success and cannot roll back an already saved business
+effect. No timer worker is added; timeout cleanup occurs on the next update.
+
+Implementation owners: work_time.py sends/tracks/cleans its report card;
+state_control.py invokes cleanup before clearing; active_fsm_guard.py supplies
+the current message on navigation/stale exits; decision_callbacks.py checks
+card ownership and exposes the real bot through its human-actor adapter.
+Shared stale inline editing must require a private bot message addressed to
+the callback actor unless an existing exact owner guard has proved ownership.
+
+Acceptance: actual report owner with temporary SQLite and realistic bot-authored
+callback messages -> cancel command/text/voice/navigation/timeout removes card,
+no settings/day/event/report save. Yes/no text/voice/button keep existing
+continuations/settings writes; unknown retains the card; duplicate/old versus
+new card, missing/forbidden/wrong-workspace contexts cannot write or clear a
+foreign card. Cleanup failure logs and safe state/business result are asserted.
+Unchanged invoice/InfoHelp callback journeys cover the touched shared guard.
+
+No schema/storage migration, business-time repair, new learning, semantic
+report/open fix or general callback redesign. Update existing Product Truth,
+InfoHelp, In_Action registry, acceptance proof and project log. Tests use mock
+Telegram/STT/LLM explicitly; any deployment/live evidence is recorded separately.
+
+Section21 implementation: design_matches_runtime. Focused185 tests passed;
+final full suite: 2840 passed, 7 subtests passed in 701.04s (0:11:41). Live deployment/Telegram
+evidence is recorded separately, never inferred from fixtures.

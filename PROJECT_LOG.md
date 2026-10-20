@@ -1,3 +1,39 @@
+# 2026-10-20 - Report cancel-button repair preflight
+
+- User explicitly asks to fix buttons remaining after cancellation. Read root
+  AGENTS, keyboard lifecycle/design/checklist/evaluation/DecisionResolver
+  contracts and current report/state-control/active-FSM/callback source and
+  tests; earlier mandatory product/AI contracts remain governing context.
+- Mismatch reproduced in prior Telegram evidence: report lunch card is not
+  tracked in FSM; ReplyKeyboardRemove cannot remove its inline buttons.
+  Existing architecture proof section21 is ready_for_handoff before code.
+- Scope: deterministic report-card message ownership/cleanup, cancellation/
+  navigation/timeout/stale callbacks, tests and current docs. Capability stays
+  partial, no AI maturity upgrade, new actions/prompts or self-learning. Cancel
+  and cleanup events are not learning signals. Existing sources back claims.
+- Acceptance: public report -> one tracked lunch card -> cancel/no write,
+  same card removed on valid yes/no continuation, no duplicate on unknown,
+  owned stale cleanup and forbidden no-edit, logged Telegram failure with safe
+  state/effect. Text/voice/button and old shared callback journeys covered.
+- No schema/migration, business data repair or unrelated Google/Gmail edits.
+  Preserve their391 original log additions and attachment directory.
+
+- Implemented tracked report-card ownership/cleanup and shared navigation/
+  expiry integration. Yes/no text/voice/button converge; unknown keeps one card.
+  Owned stale/duplicate cleanup is safe; foreign/mismatched cards cannot save.
+- Initial focused2 failures exposed missing reply cleanup on menu/start;
+  repaired. Subsequent focused185 passed in95.31s. Final full suite: 2840 passed, 7 subtests passed in 701.04s (0:11:41).
+  Durable log/JUnit saved outside Git. No runtime change during final run.
+- Product Truth/InfoHelp cancellation guidance, In_Action, existing architecture/
+  acceptance/TZ/README/changelog synchronized. Capability partial, maturity
+  unchanged. No new action, model prompt, learning or persisted schema change.
+- Continuing prior explicit completion/commit/push/deploy authorization for
+  this follow-up. Private runbook rechecked; new consistent DB/log/image backup
+  /bot/backups/keyboard-cleanup-deploy-20261020T072321Z, integrity ok. Freeze
+  again before bot-only recreation, preserve .env/cloudflared/business data.
+- Read-only live test preflight: same prior workspace, lunch unconfigured;
+  report-question ->cancel smoke needs no settings reset or time repair.
+
 # 2026-10-20 - Complete authorized arrival/departure release
 
 - User asks to finish the started work; together with the preceding explicit

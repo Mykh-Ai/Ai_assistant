@@ -250,8 +250,10 @@ journeys passed in an isolated temporary DB. Real Telegram empty-wait handoff,
 07:07->06:54 preview editing/cancel and clear report routing passed on October17;
 saving an open day07:07 and correcting its saved start to06:54 also passed
 with independent DB audits. Closed/history/end-correction/voice acceptance
-remains pending. Report-setup global
-cancel leaves stale inline buttons until rejected on click; cleanup is incomplete.
+remains pending. The report-setup global-cancel button defect reproduced on
+October17 has a local October20 lifecycle repair: one owned lunch-choice card
+is removed on cancel/navigation/expiry and valid continuation; unknown retains
+one card. Deployment/live verification of that repair is pending.
 Payroll/multi-shift support remains outside this module.
 
 Supported top-level actions:

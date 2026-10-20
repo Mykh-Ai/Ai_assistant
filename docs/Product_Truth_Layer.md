@@ -839,3 +839,12 @@ Current source owners and recorded acceptance evidence, not this statement
 alone, back the repair. Deployed model/temp-DB journeys and Telegram help
 smoke passed; actual voice recognition and interactive attendance execution
 remain unproven for this repair.
+
+### Report setup cancellation lifecycle — 2026-10-20, local
+
+The existing partial work_time_tracking capability explains /cancel during
+pending report lunch setup: discard the pending request, remove its choice
+buttons, preserve attendance and leave lunch settings unconfigured. Yes/no
+retains the existing configured-setting/report semantics. UI failure is not a
+new AI feature or evidence of a failed committed business operation. Scope is
+the tracked report card; this does not claim every legacy keyboard is repaired.

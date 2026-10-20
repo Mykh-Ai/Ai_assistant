@@ -306,9 +306,9 @@ async def handle_active_fsm_text_update(
         if await is_stale_mutating_reply_text(text):
             await expire_active_fsm_state(message=message, state=state, config=config)
             return True
-        await clear_current_state_safely(state=state, config=config)
+        await clear_current_state_safely(state=state, config=config, message=message)
         await message.answer(ACTIVE_FSM_STALE_MESSAGE, **(
-            {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None else {}
+            {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None or state_data.get('work_time_report_choice_keyboard') else {}
         ))
         await _route_through_idle_top_level(
             message=message,
@@ -326,9 +326,9 @@ async def handle_active_fsm_text_update(
             await expire_active_fsm_state(message=message, state=state, config=config)
             return True
         if await _looks_like_top_level_request(text=text, config=config, current_state=current_state):
-            await clear_current_state_safely(state=state, config=config)
+            await clear_current_state_safely(state=state, config=config, message=message)
             await message.answer(ACTIVE_FSM_STALE_MESSAGE, **(
-                {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None else {}
+                {'reply_markup': ReplyKeyboardRemove()} if state_data.get('work_time_boundary_change') is not None or state_data.get('work_time_report_choice_keyboard') else {}
             ))
             await _route_through_idle_top_level(
                 message=message,
@@ -402,16 +402,17 @@ async def touch_active_fsm_activity(state: FSMContext, *, now: datetime | None =
 
 
 async def expire_active_fsm_state(*, message: Message, state: FSMContext, config: Config) -> None:
-    correction = (await state.get_data()).get('work_time_boundary_change') is not None
+    data = await state.get_data()
+    remove_reply_keyboard = data.get('work_time_boundary_change') is not None or bool(data.get('work_time_report_choice_keyboard'))
     await _clear_owned_inline_keyboards(message=message, state=state)
-    await clear_current_state_safely(state=state, config=config)
-    await message.answer(ACTIVE_FSM_EXPIRED_MESSAGE, **({'reply_markup': ReplyKeyboardRemove()} if correction else {}))
+    await clear_current_state_safely(state=state, config=config, message=message)
+    await message.answer(ACTIVE_FSM_EXPIRED_MESSAGE, **({'reply_markup': ReplyKeyboardRemove()} if remove_reply_keyboard else {}))
 
 
-async def clear_current_state_safely(*, state: FSMContext, config: Config) -> None:
+async def clear_current_state_safely(*, state: FSMContext, config: Config, message: Message | None = None) -> None:
     from bot.handlers.state_control import clear_current_state_safely as _clear_current_state_safely
 
-    await _clear_current_state_safely(state=state, config=config)
+    await _clear_current_state_safely(state=state, config=config, message=message)
 
 
 async def is_active_fsm_callback_stale_or_legacy(
@@ -481,6 +482,8 @@ async def _resolve_navigation_for_update(
 
 async def _execute_navigation(*, decision: str, message: Message, state: FSMContext, config: Config) -> None:
     await _clear_owned_inline_keyboards(message=message, state=state)
+    if decision != 'cancel_current_flow' and (await state.get_data()).get('work_time_report_choice_keyboard'):
+        await message.answer('Pripravu vykazu som ukoncil bez ulozenia.', reply_markup=ReplyKeyboardRemove())
     if decision != 'cancel_current_flow' and (await state.get_data()).get('work_time_boundary_change') is not None:
         await message.answer('Opravu casu som ukoncil bez ulozenia.', reply_markup=ReplyKeyboardRemove())
     if decision == 'cancel_current_flow':
@@ -489,7 +492,7 @@ async def _execute_navigation(*, decision: str, message: Message, state: FSMCont
         await cancel_current_state(message=message, state=state, config=config)
         return
 
-    await clear_current_state_safely(state=state, config=config)
+    await clear_current_state_safely(state=state, config=config, message=message)
     if decision == 'show_main_menu':
         from bot.handlers.start import cmd_menu
 

@@ -438,3 +438,58 @@ Completion:runtime/hints/registries, partial Product Truth and InfoHelp,
 tests/UX evidence, forbidden-claim review, existing contract/TZ/log are current;
 AI maturity unchanged. This scoped release is complete. Universal noisy
 report/open selection safety and report-cancel inline cleanup remain open.
+
+## Report lunch-card cancellation repair — 2026-10-20 local acceptance
+
+Design: existing architecture proof section21, ready_for_handoff before code.
+Scope is deterministic UI ownership/lifecycle; work_time_tracking stays partial,
+AI maturity unchanged, no semantic/model/action/slot/schema migration change.
+This follow-up addresses the reproduced cancel-markup defect; earlier failure
+records remain historical evidence. No report/open semantic-safety fix implied.
+
+Public entry: process_invoice_text -> fixture primary report action/month slot
+-> real start_generate_work_time_report -> temporary SQLite with an existing
+July2 duration row and unconfigured lunch -> actual MemoryStorage FSM initial
+lunch-choice state -> one bot-authored inline message. Telegram methods and
+STT are fixtures; canonical text yes/no/global-cancel resolvers execute. The
+callback actor is human and the callback source author is the bot.
+
+| Scenario / exact continuation | Observed outcome | Evidence |
+|---|---|---|
+| /cancel command, скасувати text and public voice/STT | idle, old inline removed, ReplyKeyboardRemove, no settings/report/day change | test_report_public_entry_cleanup_on_exit |
+| /menu, /start, /dochadzka help | owned card removed before replacing the flow, no business save | same parametrized test |
+| expired ano and stale reset/new request | expiry/idle transition removes card, no hidden save | same test through ActiveFsmMessageMiddleware |
+| ano / nie via text, voice and decision:yes/no | card consumed once; yes waits for minutes with no save; no saves disabled lunch and sends existing report | test_report_choice_channels_remove_card_and_keep_existing_effect |
+| unknown, cancel, new report, old no card | unknown retains one card; old card cannot answer the new request | test_unknown_retains_one_card_and_new_session_rejects_old_card |
+| foreign actor/chat | no effect and no markup edit | test_report_callback_guards_and_owned_cleanup |
+| missing reference / changed workspace / legacy / expired | no business effect; only proven private stale card removed, expiry/legacy exits | same guard matrix |
+| malformed decision:invalid on current card | current card retained, no business effect | same guard matrix |
+| Telegram edit failure during cancel/yes/no | logged failure, safe intended state/effect; subsequent owned stale click retries cleanup without saving again | test_cleanup_failure_logs_without_reversing_state_or_effect |
+
+The initial focused run found missing ReplyKeyboardRemove on menu/start
+(2 failed,97 passed). Repaired those exits; subsequent focused run across new
+UI matrix, existing work-time routing, callbacks, state control and active-FSM
+guard:185 passed in95.31s. Added guidance/partial-truth cancellation check.
+Full final suite: 2840 passed, 7 subtests passed in 701.04s (0:11:41). Durable log/JUnit outside Git:
+keyboard-full-tests-2026-10-20.log/.xml. Runtime source unchanged during run.
+
+Design-to-code: work_time.py tracks serializable chat/message/actor/workspace
+in FSM and owns cleanup; state_control and active_fsm_guard pass current
+message before clear/navigation/expiry; decision_callbacks validates current
+report card and restricts unbound stale cleanup to private bot messages owned
+by the callback actor. Existing exact invoice-edit/InfoHelp owner guards retain
+their cleanup authority. Shared callback regression fixture now models a real
+bot-authored private message, rather than identifying its author as the human.
+No business execution/confirmation owner or canonical decision token changed.
+
+Product Truth and Slovak InfoHelp explain /cancel during pending report lunch
+setup. In_Action registry and existing architecture/TZ/README/log updated;
+forbidden all-keyboards-fixed, payroll, perfect-STT and new-learning claims
+not added. Only this report card is tracked; cleanup is reactive on next update,
+not a new background timeout service. Existing pre-repair/restart orphan cards
+have no saved reference and can only be cleaned on a proven owned stale click.
+Telegram API failure can leave visible buttons; the failed cleanup is logged
+and must not reverse a completed business effect or claim success.
+
+Current verdict: runtime_not_proven for live Telegram/deployment until their
+follow-up is recorded; local public-entry deterministic journeys pass.

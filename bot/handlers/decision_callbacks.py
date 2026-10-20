@@ -36,6 +36,8 @@ from bot.handlers.onboarding import (
 )
 from bot.handlers.work_time import (
     WorkTimeStates,
+    clear_work_time_report_choice_keyboard,
+    is_current_work_time_report_choice,
     work_time_close_preview_confirm,
     work_time_delete_month_confirm,
     work_time_lunch_break_initial_choice,
@@ -118,7 +120,7 @@ async def invoice_edit_callback(
     ):
         await clear_current_state_safely(state=state, config=config)
         await callback.answer(ACTIVE_FSM_EXPIRED_MESSAGE, show_alert=True)
-        await _clear_inline_keyboard(callback)
+        await _clear_inline_keyboard(callback, ownership_proven=True)
         return
 
     handled = await process_invoice_edit_callback_choice(
@@ -131,7 +133,7 @@ async def invoice_edit_callback(
         await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
         return
 
-    await _clear_inline_keyboard(callback)
+    await _clear_inline_keyboard(callback, ownership_proven=True)
     await callback.answer()
     await touch_active_fsm_activity(state)
 
@@ -161,7 +163,7 @@ async def info_help_offer_callback(
     if await is_active_fsm_callback_stale_or_legacy(state=state, current_state=current_state):
         await clear_current_state_safely(state=state, config=config)
         await callback.answer(ACTIVE_FSM_EXPIRED_MESSAGE, show_alert=True)
-        await _clear_inline_keyboard(callback)
+        await _clear_inline_keyboard(callback, ownership_proven=True)
         return
 
     await info_help_admin_offer_decision(
@@ -170,7 +172,7 @@ async def info_help_offer_callback(
         config=config,
         canonical_decision=token,
     )
-    await _clear_inline_keyboard(callback)
+    await _clear_inline_keyboard(callback, ownership_proven=True)
     await callback.answer()
     await touch_active_fsm_activity(state)
 
@@ -190,6 +192,7 @@ class _CallbackMessageAdapter:
         source_message = callback.message
         self.message_id = getattr(source_message, 'message_id', None)
         self.chat = getattr(source_message, 'chat', None)
+        self.bot = getattr(source_message, 'bot', None)
 
     async def answer(self, text: str, **kwargs):
         source_message = self._callback.message
@@ -214,6 +217,15 @@ async def decision_callback(callback: CallbackQuery, state: FSMContext, config: 
         return
     token = _parse_decision_token(callback.data)
     current_state = _state_name(await state.get_state())
+    report_choice = current_state == WorkTimeStates.waiting_lunch_break_initial_choice.state
+    if report_choice:
+        if not await is_current_work_time_report_choice(callback, state):
+            await _clear_inline_keyboard(callback)
+            await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+            return
+        if token not in {DECISION_YES, DECISION_NO}:
+            await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+            return
     if token is None:
         await _clear_inline_keyboard(callback)
         await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
@@ -223,9 +235,12 @@ async def decision_callback(callback: CallbackQuery, state: FSMContext, config: 
         await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
         return
     if await is_active_fsm_callback_stale_or_legacy(state=state, current_state=current_state):
+        if report_choice:
+            await clear_work_time_report_choice_keyboard(message=_CallbackMessageAdapter(callback), state=state)
         await clear_current_state_safely(state=state, config=config)
         await callback.answer(ACTIVE_FSM_EXPIRED_MESSAGE, show_alert=True)
-        await _clear_inline_keyboard(callback)
+        if not report_choice:
+            await _clear_inline_keyboard(callback)
         return
 
     adapter = _CallbackMessageAdapter(callback)
@@ -238,10 +253,12 @@ async def decision_callback(callback: CallbackQuery, state: FSMContext, config: 
         bot=bot,
     )
     if not handled:
+        await _clear_inline_keyboard(callback)
         await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
         return
 
-    await _clear_inline_keyboard(callback)
+    if not report_choice:
+        await _clear_inline_keyboard(callback)
     await callback.answer()
     await touch_active_fsm_activity(state)
 
@@ -489,9 +506,17 @@ async def _dispatch_decision_token(
     return False
 
 
-async def _clear_inline_keyboard(callback: CallbackQuery) -> None:
+async def _clear_inline_keyboard(callback: CallbackQuery, *, ownership_proven: bool = False) -> None:
     source_message = callback.message
     if source_message is None or not hasattr(source_message, 'edit_reply_markup'):
+        return
+    # Without an exact tracked-card guard, only the human's private bot message
+    # proves authority to edit stale markup. Never edit another user's card.
+    if not ownership_proven and not (
+        getattr(getattr(source_message, 'chat', None), 'type', None) == 'private'
+        and getattr(source_message.chat, 'id', None) == getattr(callback.from_user, 'id', None)
+        and getattr(getattr(source_message, 'from_user', None), 'is_bot', False)
+    ):
         return
     try:
         await source_message.edit_reply_markup(reply_markup=None)

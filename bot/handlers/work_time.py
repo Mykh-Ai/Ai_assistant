@@ -5,6 +5,7 @@ from dataclasses import asdict
 import logging
 import sqlite3
 import re
+from types import SimpleNamespace
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -56,6 +57,7 @@ router = Router(name='work_time')
 
 _WORK_TIME_WORKSPACE_ID_KEY = 'work_time_workspace_id'
 _BOUNDARY_CHANGE_KEY = 'work_time_boundary_change'
+WORK_TIME_REPORT_CHOICE_KEY = 'work_time_report_choice_keyboard'
 _LOG = logging.getLogger(__name__)
 
 
@@ -145,8 +147,72 @@ class WorkTimeStates(StatesGroup):
     waiting_missing_days_choice = State()
 
 
+def _owns_report_choice(message, data: dict) -> bool:
+    ref = data.get(WORK_TIME_REPORT_CHOICE_KEY)
+    if not isinstance(ref, dict):
+        return False
+    return (
+        isinstance(ref.get('message_id'), int)
+        and isinstance(ref.get('chat_id'), int)
+        and isinstance(ref.get('owner_id'), int)
+        and ref['owner_id'] == getattr(getattr(message, 'from_user', None), 'id', None)
+        and ref['chat_id'] == getattr(getattr(message, 'chat', None), 'id', None)
+        and ref.get('workspace_id') == data.get(_WORK_TIME_WORKSPACE_ID_KEY)
+    )
+
+
+async def clear_work_time_report_choice_keyboard(*, message, state: FSMContext) -> None:
+    data = await state.get_data()
+    if not _owns_report_choice(message, data):
+        return
+    bot = getattr(message, 'bot', None)
+    if bot is None:
+        return
+    ref = data[WORK_TIME_REPORT_CHOICE_KEY]
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=ref['chat_id'], message_id=ref['message_id'], reply_markup=None,
+        )
+    except Exception:
+        _LOG.exception('Failed to clear work-time report choice inline keyboard')
+        return
+    await state.update_data(**{WORK_TIME_REPORT_CHOICE_KEY: None})
+
+
+async def is_current_work_time_report_choice(callback, state: FSMContext) -> bool:
+    data = await state.get_data()
+    source = callback.message
+    if source is None or not getattr(getattr(source, 'from_user', None), 'is_bot', False):
+        return False
+    # Callback actor is the human; the source message was authored by the bot.
+    actor_message = SimpleNamespace(from_user=callback.from_user, chat=source.chat)
+    return (
+        _owns_report_choice(actor_message, data)
+        and data[WORK_TIME_REPORT_CHOICE_KEY]['message_id'] == source.message_id
+    )
+
+
+async def _ask_report_lunch_choice(message, state: FSMContext) -> None:
+    data = await state.get_data()
+    text = 'Chcete odpočítavať obednú prestávku?'
+    if isinstance(data.get(WORK_TIME_REPORT_CHOICE_KEY), dict):
+        # Unknown keeps the one current card, rather than creating old live copies.
+        await message.answer(text)
+        return
+    sent = await answer_with_decision_keyboard(message, text, yes_no_keyboard(yes_label='Áno', no_label='Nie'))
+    message_id = getattr(sent, 'message_id', None)
+    chat_id = getattr(getattr(sent, 'chat', None), 'id', None)
+    owner_id = _telegram_id(message)
+    if isinstance(message_id, int) and isinstance(chat_id, int) and owner_id is not None:
+        await state.update_data(**{WORK_TIME_REPORT_CHOICE_KEY: {
+            'message_id': message_id, 'chat_id': chat_id, 'owner_id': owner_id,
+            'workspace_id': data.get(_WORK_TIME_WORKSPACE_ID_KEY),
+        }})
+
+
 @router.message(Command('dochadzka'))
 async def cmd_dochadzka(message: Message, state: FSMContext, config: Config) -> None:
+    await clear_work_time_report_choice_keyboard(message=message, state=state)
     await state.clear()
     await message.answer(
         'Evidencia pracovneho casu je ciastocny OfficeFlow modul.\n\n'
@@ -341,11 +407,7 @@ async def start_generate_work_time_report(
             work_time_pending_report_source_channel=source_channel,
         )
         await state.set_state(WorkTimeStates.waiting_lunch_break_initial_choice)
-        await answer_with_decision_keyboard(
-            message,
-            'Chcete odpočítavať obednú prestávku?',
-            yes_no_keyboard(yes_label='Áno', no_label='Nie'),
-        )
+        await _ask_report_lunch_choice(message, state)
         return
     await _send_work_time_report(message, state, config, telegram_id=telegram_id, year=year, month=month)
 
@@ -455,22 +517,21 @@ async def work_time_lunch_break_initial_choice(
     )
     telegram_id = _telegram_id(message)
     if telegram_id is None:
+        await clear_work_time_report_choice_keyboard(message=message, state=state)
         await state.clear()
         await message.answer('Nepodarilo sa identifikovat pouzivatela.')
         return
     if decision == 'no':
+        await clear_work_time_report_choice_keyboard(message=message, state=state)
         (await _require_work_time_service(message, state, config)).save_lunch_break_settings(telegram_id=telegram_id, enabled=False, minutes=0)
         await _continue_pending_work_time_report(message, state, config, telegram_id=telegram_id)
         return
     if decision == 'yes':
+        await clear_work_time_report_choice_keyboard(message=message, state=state)
         await state.set_state(WorkTimeStates.waiting_lunch_break_value)
-        await message.answer('Napíšte alebo povedzte trvanie obednej prestávky v minútach.')
+        await message.answer('Napíšte alebo povedzte trvanie obednej prestávky v minútach.', reply_markup=ReplyKeyboardRemove())
         return
-    await answer_with_decision_keyboard(
-        message,
-        'Chcete odpočítavať obednú prestávku?',
-        yes_no_keyboard(yes_label='Áno', no_label='Nie'),
-    )
+    await _ask_report_lunch_choice(message, state)
 
 
 @router.message(WorkTimeStates.waiting_lunch_break_value)
@@ -839,7 +900,7 @@ async def _continue_pending_work_time_report(
         month = int(data['work_time_pending_report_month'])
     except (KeyError, TypeError, ValueError):
         await state.clear()
-        await message.answer('Povodna poziadavka na vykaz uz nie je dostupna. Skuste vykaz zadat znova.')
+        await message.answer('Povodna poziadavka na vykaz uz nie je dostupna. Skuste vykaz zadat znova.', reply_markup=ReplyKeyboardRemove())
         return
     await _send_work_time_report(message, state, config, telegram_id=telegram_id, year=year, month=month)
 
@@ -863,11 +924,12 @@ async def _send_work_time_report(
     )
     await state.clear()
     if not result.ok or result.report_path is None:
-        await message.answer('Vykaz sa nepodarilo vytvorit.')
+        await message.answer('Vykaz sa nepodarilo vytvorit.', reply_markup=ReplyKeyboardRemove())
         return
     await message.answer_document(
         FSInputFile(result.report_path, filename=result.report_path.name),
         caption='Vytvoril som mesacny vykaz odpracovanych hodin. Nie je to oficialny mzdovy ani pravny HR doklad.',
+        reply_markup=ReplyKeyboardRemove(),
     )
 
 async def _preview_delete_month(

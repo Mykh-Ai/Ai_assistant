@@ -1098,3 +1098,11 @@ current-departure example. It distinguishes production waste and financial
 income, discloses immediate current-departure closing versus previewed exact
 values, and retains partial status. No new topic dictionaries or capability
 claims are added; semantic repair is prompt guidance, not learned aliases.
+
+### Report setup cancellation guidance — 2026-10-20, local
+
+Existing work-time safe-next copy explains that /cancel exits pending report
+lunch setup without saving the lunch setting. The owned inline choices are
+removed by Python cleanup; no new capability/topic/parser or learning signal.
+Existing partial attendance limits remain. Tests pair the guidance with the
+real report/cancellation owner and distinguish mocked Telegram from live UI.

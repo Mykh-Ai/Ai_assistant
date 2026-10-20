@@ -2,6 +2,16 @@
 
 Purpose: evidence-based registry of bounded in-workflow responses and state-scoped clarifications.
 
+2026-10-20 report lunch-choice lifecycle repair (local, deployment pending):
+existing yes_no tokens/DecisionResolver remain. One bot-authored choice card
+is tracked by chat/message/human actor/bound workspace in FSM. Yes/no consumes
+that card; unknown retains it without duplicates. Global cancel, menu/start,
+help replacement, timeout/stale exit remove it before clearing state. Callback
+dispatch requires the exact tracked card; foreign/mismatched/legacy cards
+cannot authorize a report/settings change. Private owned stale markup can be
+removed without execution. Telegram cleanup failures log and preserve the
+already committed business effect; no persistence/semantic/maturity expansion.
+
 ## A) Bounded canonical response groups
 
 2026-10-16 empty-intake navigation exception: only fresh

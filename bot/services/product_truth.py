@@ -1113,6 +1113,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         status=ProductTruthStatus.PARTIAL,
         summary_for_user='Records work-day opening at the current business time when no time is stated or at a preview-confirmed explicit arrival time, closes an open day immediately for a clear current-departure/close-now request or by confirmed end time/net worked duration, supports manual time ranges/totals, applies a lunch-break deduction for reports, generates a monthly Excel report, and can delete one selected month after confirmation.',
         current_limitations=(
+            'Cancelling pending report lunch setup removes its inline choices without saving lunch settings or changing attendance. Telegram cleanup failures are logged; they do not roll back a completed business effect.',
             'A new explicit dated arrival/departure can correct one existing open/closed row after old/new preview confirmation, preserving the other clock. Row revision and lunch settings are revalidated atomically. Missing dates use the current/bound day; historical correction requires an explicit existing date. No silent no-time overwrite, reopening, multiple shifts or missing-clock inference.',
             'Confirming an explicit boundary replaces a prior fixed-duration override with the confirmed range and current lunch calculation; the preview discloses this. Pure duration-only records without a stored arrival cannot use boundary correction.',
             'MVP supports one interval per user/day in the current controlled tenant-scoped runtime.',

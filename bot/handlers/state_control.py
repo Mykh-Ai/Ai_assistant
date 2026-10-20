@@ -66,7 +66,7 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
     clear_info_help_context_for_message(message)
     current_state = await state.get_state()
     if current_state is None:
-        await state.clear()
+        await clear_current_state_safely(state=state, config=config, message=message)
         await _answer_and_remove_keyboard(message, IDLE_CANCEL_MESSAGE)
         return
 
@@ -94,11 +94,15 @@ async def cancel_current_state(*, message: Message, state: FSMContext, config: C
         await _answer_and_remove_keyboard(message, PERSISTED_EDIT_CANCELLED_MESSAGE)
         return
 
-    await clear_current_state_safely(state=state, config=config)
+    await clear_current_state_safely(state=state, config=config, message=message)
     await _answer_and_remove_keyboard(message, STATE_CANCELLED_MESSAGE)
 
 
-async def clear_current_state_safely(*, state: FSMContext, config: Config) -> None:
+async def clear_current_state_safely(*, state: FSMContext, config: Config, message: Message | None = None) -> None:
+    if message is not None:
+        from bot.handlers.work_time import clear_work_time_report_choice_keyboard
+
+        await clear_work_time_report_choice_keyboard(message=message, state=state)
     current_state = await state.get_state()
     if current_state is None:
         await state.clear()

@@ -70,8 +70,9 @@ class _DummyMessage:
 class _CallbackSourceMessage(_DummyMessage):
     def __init__(self, user_id: int = AUTHORIZED_ID) -> None:
         super().__init__(user_id)
+        self.from_user = User(id=900000, is_bot=True, first_name='Bot')
         self.message_id = 501
-        self.chat = type('Chat', (), {'id': user_id + 1000})()
+        self.chat = type('Chat', (), {'id': user_id, 'type': 'private'})()
         self.reply_markup_edits: list[object | None] = []
         self.fail_edit_reply_markup = False
 
