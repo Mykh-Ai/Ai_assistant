@@ -1,5 +1,11 @@
 # Changelog
 
+- Local arrival/departure prompt repair: distinguish приход/прихід from
+  отход/отходи/відхід/odchod in existing primary hints and slot extraction,
+  add transcription-only attendance vocabulary, and explain the pair in
+  partial Product Truth/help. No Python keyword routing, model migration,
+  schema change or deployment; real speech recognition remains unproven.
+
 - Explicit-time correction deployed as `5a3f3f8`: a newer arrival/departure can replace one
   stored boundary after an old/new confirmation, preserving the other clock
   and closed status where appropriate. Existing historical dates are scoped;

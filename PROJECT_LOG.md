@@ -1,3 +1,124 @@
+# 2026-10-20 - Complete authorized arrival/departure release
+
+- User asks to finish the started work; together with the preceding explicit
+  commit/push/deploy instructions this authorizes publishing this scoped repair.
+  October19 local-only scope below describes its original implementation stage.
+- Rechecked private server runbook, current source/diffs, canonical action,
+  architecture section20 and acceptance evidence. Existing partial bounded
+  canonicalization maturity, owners and tenant isolation remain unchanged.
+- Release touches LLM/STT vocabulary, existing guidance/contracts/tests and
+  bot deployment. No schema, storage layout, migration, historical-time repair,
+  real-customer business write, notification or unrelated Google/Gmail edit.
+- Server/origin main both3183439 and server worktree clean before release.
+  Prior full-test process no longer exists and its final result was not saved;
+  no pass inferred from partial progress. Repeat final suite with durable log
+  and JUnit outside Git, using the established Windows loopback permission.
+- Read-only audit/consistent SQLite backup and old-image rollback prepared at
+  /bot/backups/arrival-departure-deploy-20261020T065245Z (integrity ok).
+  Freeze another DB snapshot after stopping only bot, then recreate only bot;
+  preserve .env, cloudflared and all business rows. Roll back the image if
+  recreation fails; never restore an older whole DB over later user activity.
+- Final full suite2026-10-20: 2814 passed, 7 subtests passed in 674.70s (0:11:14). Durable log/JUnit
+  saved outside Git; no failures. Runtime source unchanged during this run.
+- Acceptance after deployment: polling/getMe, tracked Python source hashes,
+  unchanged schema/work-time snapshots, actual deployed primary/slot probes
+  and isolated public-handler temporary-DB journeys. No second polling loop,
+  original-audio replay or interactive Telegram acceptance implied.
+- Preserve unrelated Google/Gmail docs, original391 log additions and local
+  attachment directory outside this release.
+
+# 2026-10-19 - Arrival/departure terminology repair preflight
+
+- User confirms workplace UI departure vocabulary отход/отходи and asks to
+  strengthen its distinction from arrival/приход. Scoped prompt/STT vocabulary
+  edits are authorized; no deploy/commit/push or production business writes.
+- Canonical AI/product/truth/learning/action/in-action/bounded/decision/design/
+  implementation/evaluation contracts were read in this conversation; current
+  source/incident proof and relevant contract sections rechecked. Added existing
+  architecture proof section20 ready_for_handoff before implementation.
+- Mismatch: production primary accepted allowed open_work_day for an intended
+  departure; schema validity is not semantic correctness. Existing STT lexicon
+  lacks attendance. Short arrival has examples; short departure is underspecified.
+- Scope: primary semantic hints, bounded departure-slot meaning, STT vocabulary,
+  Product Truth/help, public-entry tests and evidence docs. Existing partial
+  bounded canonicalization maturity, no new action/mode or learning feature.
+- Keep Python authority, one primary, allowed actions, access/tenant/FSM,
+  numeric/confirmation/keyboard owners. No phrase-based Python routing, model
+  migration, schema/path/migration, DB repair, PDF/LMM or generic FSM switch.
+- Journey: actual incident transcript/text/voice -> close existing synthetic
+  open row; arrival -> open/idempotence; finance/waste/ambiguous -> no mutation.
+  One primary, preserved input and old rows/events checked. Live model probes
+  must disclose no real audio/business dispatch. No perfect-STT/root-gap claim.
+- Official OpenAI guides checked: prompt examples guide semantics; Whisper
+  prompt is limited vocabulary context, not a reliable instruction processor.
+  Sources: https://developers.openai.com/api/docs/guides/speech-to-text and
+  https://developers.openai.com/api/docs/guides/prompt-engineering.
+- Implemented existing hints/slot meaning and transcription-only vocabulary;
+  Product Truth/help, registries, TZ/README/changelog and acceptance synchronized.
+  No aliases saved. Same Python allowed-actions/modes/FSM/access/storage owners.
+- Focused371 tests passed in102.90s before final primary negative emphasis;
+  full suite for final code is running. Compileall/diff checks passed.
+- Initial real-model candidate failed3/16 primary negative cases; tightened
+  prohibition/capability/bare-label boundaries. Final18/18 primary and8/8 slot
+  probes passed, including unseen wording; two real-provider public-handler/
+  temporary-DB journeys passed. Initial isolated harness used an old imported
+  slot-function reference and was corrected; not counted as valid evidence.
+- Original sandbox test/capture attempts hung creating Windows asyncio local
+  socketpair; interrupted them after faulthandler proved socket.accept wait.
+  Approved elevated execution resolved it, without dependency/policy changes.
+- No real Whisper/audio, candidate Telegram, commit/push/deploy, customer DB
+  write or user notification. Detailed evidence/limits in existing acceptance.
+- Preserve earlier read-only diagnosis and unrelated Google/Gmail local edits.
+
+# 2026-10-19 - Departure voice request misrouted to opening; read-only diagnosis
+
+- User asked to inspect today's real opening/closing logs because closing
+  reportedly required a second attempt. Scope: read-only server/log/DB diagnosis
+  and evidence maintenance, not repair/deploy/notification or business writes.
+- Rechecked private server runbook, current work-time/voice/STT/router owners,
+  canonical action contract, existing architecture section18, acceptance proof
+  and prior incidents. Current capability remains partial; no AI maturity,
+  alias-learning, model/prompt, FSM, schema, storage or authorization change.
+- Server checkout3183439; six relevant runtime source hashes match checkout.
+  Container still started2026-10-16T20:27:38Z. Actual configuration:
+  STT whisper-1, LLM gpt-4o, business timezone Europe/Bratislava.
+  Today's unique work-time actor matches the private October16 incident actor;
+  no real Telegram/workspace identifiers copied into repo or public output.
+- 07:05:30 local STT: Відкрив мені працьовний день зараз.
+  Primary07:05:31 chose open_work_day via llm_bundle/business_action;
+  source message3687, trace58e753e4-a1ce-4393-95b5-6560315d7fa2.
+  DB open event07:05:32 records arrival07:05.
+- First departure attempt STT16:08:58.983: Запиши меню отход, будь ласка.
+  At16:09:00.185 the actual primary returned open_work_day, not close_work_day.
+  Source message3689, traced5862254-5c19-4b34-bf40-9a1222eb617e.
+  This is the proven wrong top-level semantic choice. DB has no new open or
+  close event for this message; the existing same-day open row was retained.
+  Source owner returns already_open for that no-time same-day request; exact
+  outgoing response and secondary slot output are not logged, so not invented.
+- Repeat STT16:09:25.350: Закрий мені працьовний день.
+  At16:09:26.136 primary correctly returned close_work_day; message3691,
+  trace8fdc133e-3424-4fbb-8fd9-5da0ba218b18. DB close event16:09:27 from
+  the same message records end16:09; no separate approval update in daily logs.
+- RO result: one closed19.10.2026 row07:05-16:09, gross544 minutes,
+  net514 after30-minute lunch; exactly its open and close events, no duplicate;
+  integrity_check=ok. All three updates handled; visible provider calls200 OK,
+  no traceback/polling conflict in the21 daily Docker-log lines inspected.
+- Transcription is what the bot received, not verified original speech: raw
+  audio was not replayed. The malformed menu word does not explain/justify
+  selecting arrival when the transcript retained departure/отход. Actual LLM
+  action is proven; exact inner-model reasoning is unknown. Existing hints
+  emphasize shorthand arrival; shorthand departure and work-time STT vocabulary
+  have weaker coverage. That asymmetry is a repair candidate, not a proven
+  sole cause. Valid action-token/schema checks cannot validate intended meaning.
+- Distinct from saved-time correction/FSM recovery: the semantic selection gap
+  recorded October16 remains open and now recurs as departure->opening.
+  Add this exact production trace to the existing acceptance corpus: desired
+  close_work_day if meaning is recoverable, otherwise unknown/clarify with no
+  mutation; never opening. No keyword handler, automatic alias learning or
+  runtime patch was introduced. No new live model probe/unit-suite run needed
+  to establish an already logged production failure. Documentation-only diff.
+- Existing unrelated Google/Gmail worktree/log additions and attachments kept.
+
 # 2026-10-17 - Authorized Telegram evidence publication checkpoint
 
 - User explicitly requested completing the documentation commit/push after

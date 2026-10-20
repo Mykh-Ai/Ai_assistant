@@ -1336,3 +1336,16 @@ def test_mark_existing_invoice_paid_capability_classifier() -> None:
         classify_info_help_capability(user_input_text='Ako mozem oznacit fakturu ako uhradenu?')
         == 'mark_existing_invoice_paid'
     )
+
+
+def test_work_time_guidance_explains_departure_without_claiming_waste_support():
+    from bot.services.info_help import build_product_truth_guidance
+    from bot.services.product_truth import get_safe_answer_payload
+    answer = build_product_truth_guidance(user_input_text='Vie bot evidovat odpracovane hodiny?')
+    assert answer is not None
+    assert 'отход/отходи' in answer and 'zapis mi odchod' in answer
+    assert 'nie prichod ani vyrobny odpad' in answer
+    assert 'bez dalsieho potvrdenia' in answer
+    truth = get_safe_answer_payload('work_time_tracking')
+    assert truth['product_status'] == 'partial'
+    assert any('Personal departure shorthand' in item for item in truth['current_limitations'])

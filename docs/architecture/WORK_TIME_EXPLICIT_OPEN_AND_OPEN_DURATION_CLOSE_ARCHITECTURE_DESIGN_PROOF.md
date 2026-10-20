@@ -427,3 +427,80 @@ Three isolated real-provider journeys passed; polling/getMe passed. Actual
 Telegram chat/audio remains pending login. The noisy report/open selection
 defect is reproduced, unresolved. See the acceptance proof deployment section;
 prior local-only verdicts describe their original evaluation stage.
+
+## 20. 2026-10-19 symmetric arrival/departure prompt repair
+
+Design verdict: ready_for_handoff for the user-authorized narrow semantic
+repair. Product status stays partial; this is bounded canonicalization, no
+new AI maturity level/learning domain. Class: extension of existing action
+semantics; no new action/mode, Python parser, confirmation or FSM graph.
+
+Need/evidence: production voice departure Запиши меню отход, будь ласка.
+selected open_work_day. Owner confirms workplace UI uses отход/отходи for
+leaving work and приход for starting. Existing arrival hint is stronger than
+its departure counterpart; speech_to_text context omits attendance vocabulary.
+Existing route/DB/confirmation evidence is in the work-time acceptance proof.
+This does not replace the broader unresolved report/open safety design.
+
+Route: existing authorization -> idle/explicit empty-wait guard -> one primary
+LLM bundle with existing allowed_actions -> open_work_day for personal arrival
+or close_work_day for personal departure -> existing Python work-time owner
+and scoped service. Active drafts retain ownership, voice uses original STT
+once. No post-classifier veto, dictionary route, retry cascade or alias learning.
+
+Hints describe the semantic pair: приход/прихід/prichod records arrival;
+отход/отходи/відхід/odchod records departure even when work/day words are
+omitted. A surviving departure meaning in noisy personal wording must not
+become arrival. Explicit finance/income/payment, waste/production scrap,
+receipt upload, reports and capability questions keep their own boundaries.
+Negated/conflicting/unrecoverable event meaning returns unknown rather than
+inventing arrival. Examples illustrate meaning, never a whitelist.
+
+Slots: existing bounded extractor also receives this event meaning. A clear
+performative request to record the current personal departure with neither
+end clock nor duration is an explicit current departure event (close_now),
+even if the literal word now is omitted. Exact end/duration/date preserve
+their existing modes and previews. Questions, past/future assertions, bare
+ambiguous nouns and contradictory times are unknown; no missing clock is
+guessed for a correction to a closed/historical day. Existing Python closed-
+day and snapshot gates remain. Structural no-key parser is NOT expanded.
+
+STT: append compact multilingual attendance spellings as vocabulary only;
+keep transcribe/verbatim/no invented words/no semantic rewriting. No command
+mapping, learned transcript alias, model migration, new endpoint or post-STT
+repair. Whisper has limited prompt control; this cannot prove improved audio
+recognition without a real audio replay. See official OpenAI speech-to-text
+and prompt-engineering guides consulted2026-10-19.
+
+Effects/UI: current no-time opening and explicit present departure close use
+their existing immediate service paths; exact clocks/durations and persisted
+corrections retain shared DecisionResolver previews and keyboard lifecycles.
+No callback, tenant, DB schema, path, access, storage or calculation change.
+No migration/backfill or production write. Code rollback is prompt reversion;
+never undo later business rows. Deployment is a separate authorized operation.
+
+Product Truth/help: explain partial arrival/departure terminology and exclusions
+without promising perfect noisy speech, payroll, waste/income support or safe
+interpretation of every bare word. No automatic alias learning: user-approved
+meaning is curated prompt guidance, not a newly persistent learning feature.
+
+Acceptance: real public text and voice/STT entry with temporary SQLite seed
+an open day -> departure -> same row closed, preserved arrival/lunch/audit;
+unknown/waste/finance/contradiction -> same row unchanged/no accounting save;
+arrival keeps one-row idempotence. Assert original input, one primary call,
+existing allowed modes and final FSM. STT request test checks vocabulary and
+verbatim boundary; disclose fake audio/models. Live model-only probes must
+use exact production primary/slot payloads and no business dispatch, including
+incident text, wording not in examples and negative neighbors. Do not equate
+those with real STT/Telegram/deployment acceptance.
+
+Out of scope: universal no-time-open preview, existing report/open noisy gap,
+report cancel-inline bug, default model migration, automatic learning, new
+capabilities, server/deploy/commit/push and business data repair.
+
+Section20 implementation follow-up: design_matches_runtime for local candidate.
+Final sampled live primary18/18, slots8/8 and two temporary-DB real-provider
+handler journeys pass; initial negative-space failures and harness/loopback
+limits are disclosed in the acceptance proof. Final full suite repeated
+2026-10-20: 2814 passed, 7 subtests passed in 674.70s (0:11:14). Real audio/interactive candidate
+Telegram/deployment are not implied by that local evidence.

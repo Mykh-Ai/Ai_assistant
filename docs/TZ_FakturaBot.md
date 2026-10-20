@@ -1611,6 +1611,14 @@ leaves stale inline buttons until a rejected click removes them; cleanup is
 incomplete. The noisy October16 report phrase still selects open_work_day in a live probe; semantic root-cause
 remediation is unresolved and no-time opening still writes immediately.
 
+2026-10-19 local semantic repair, not deployed: primary hints distinguish
+personal arrival (приход/прихід) and departure (отход/отходи/відхід/odchod),
+including short workplace labels and noisy filler. Clear present departure
+without clock/duration maps to existing close_now; unclear/conflicting meaning,
+finance and waste do not become attendance. STT gets attendance vocabulary,
+without semantic rewriting or model migration. Python gates/owners are unchanged;
+real audio recognition and universal noisy-input safety are not claimed.
+
 Current status: `partial`.
 
 Implemented runtime slice:

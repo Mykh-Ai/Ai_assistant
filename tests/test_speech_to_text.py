@@ -49,3 +49,14 @@ def test_stt_context_prompt_is_not_a_canonical_action_router():
     assert 'edit_supplier' not in prompt
     assert 'add_receipt' not in prompt
     assert 'delete_user_database' not in prompt
+
+
+def test_stt_attendance_vocabulary_stays_transcription_context_only():
+    prompt = speech_to_text.STT_CONTEXT_PROMPT
+    vocabulary = prompt.split('Work-time vocabulary: ', 1)[1]
+    for term in ['príchod', 'odchod', 'приход', 'прихід', 'отход', 'отходи', 'відхід']:
+        assert term in vocabulary
+    assert 'Transcribe what was spoken' in prompt
+    assert 'Do not infer missing words' in prompt
+    assert 'open_work_day' not in prompt and 'close_work_day' not in prompt
+    assert 'means opening' not in vocabulary and 'means closing' not in vocabulary

@@ -1089,3 +1089,12 @@ Product-Truth-status-based pre-execution gate.
 - Invalid InfoHelp transport/schema is a processing failure, not proof that the
   user was unclear. User-facing recovery must say processing failed and must not
   blame the input with a false `nerozumel` claim.
+
+### Work-time arrival/departure wording — 2026-10-19, local
+
+Slovak guidance explains prichod as starting work and odchod (including the
+workplace labels отход/отходи) as leaving work, with zapis mi odchod as a
+current-departure example. It distinguishes production waste and financial
+income, discloses immediate current-departure closing versus previewed exact
+values, and retains partial status. No new topic dictionaries or capability
+claims are added; semantic repair is prompt guidance, not learned aliases.

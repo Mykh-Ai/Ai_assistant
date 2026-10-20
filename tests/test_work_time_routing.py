@@ -1188,3 +1188,120 @@ def test_manual_cyrillic_range_from_llm_is_not_duration_only(monkeypatch, tmp_pa
     assert 'Prichod: 06:00' in message.answers[-1]
     assert 'Odchod: 11:00' in message.answers[-1]
     assert 'Typ: pocet hodin bez presneho prichodu/odchodu' not in message.answers[-1]
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize('input_channel', ['text', 'voice'])
+@pytest.mark.parametrize(('utterance', 'model_action'), [
+    ('Запиши меню отход, будь ласка.', 'close_work_day'),
+    ('Запиши мне отход.', 'close_work_day'),
+    ('Запиши мені отходи.', 'close_work_day'),
+    ('Зафіксуй мій відхід з роботи.', 'close_work_day'),
+    ('Zapíš mi odchod.', 'close_work_day'),
+    ('Запиши мне приход.', 'open_work_day'),
+    ('Внеси мой приход.', 'open_work_day'),
+    ('Zapíš mi príchod.', 'open_work_day'),
+    ('Запиши приход денег.', 'unknown'),
+    ('Облік виробничих отходів.', 'unknown'),
+    ('Не записуй мій відхід.', 'unknown'),
+    ('Приход і отход одночасно.', 'unknown'),
+    ('Отход.', 'unknown'),
+])
+def test_arrival_departure_public_entry_preserves_event_direction(
+    monkeypatch, tmp_path, input_channel, utterance, model_action,
+):
+    # Fixture-selected semantics: validates the actual payload/owners, not model accuracy.
+    primary_payloads, slot_payloads = [], []
+
+    class Primary:
+        def __init__(self, **kwargs):
+            self.chat = type('Chat', (), {'completions': self})()
+
+        async def create(self, **kwargs):
+            payload = json.loads(kwargs['messages'][1]['content'])
+            primary_payloads.append(payload)
+            return _FakeResponse(json.dumps({
+                'canonical_action': model_action,
+                'routing_kind': 'unknown' if model_action == 'unknown' else 'business_action',
+            }))
+
+    class Slots(Primary):
+        async def create(self, **kwargs):
+            payload = json.loads(kwargs['messages'][1]['content'])
+            slot_payloads.append((payload, kwargs['messages'][0]['content']))
+            result = {'canonical': 'unknown'}
+            if payload['operation_kind'] == 'close':
+                result = {
+                    'canonical': 'work_time_entry', 'mode': 'close_now',
+                    'date': '2026-10-19', 'start_time': None, 'end_time': None,
+                    'duration_minutes': None,
+                }
+            return _FakeResponse(json.dumps(result))
+
+    class UnknownHelp(Primary):
+        async def create(self, **kwargs):
+            return _FakeResponse(json.dumps({
+                'capability_id': 'unknown', 'topic_id': 'unknown',
+                'triage_class': 'unknown', 'confidence': 0, 'needs_clarification': False,
+            }))
+
+    class VoiceBot:
+        async def get_file(self, file_id):
+            return type('File', (), {'file_path': 'departure-fixture.ogg'})()
+
+        async def download_file(self, file_path, destination):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b'fixture')
+
+    async def stt(*args, **kwargs):
+        return utterance
+
+    config = replace(_config(tmp_path), openai_api_key='sk-test')
+    init_db(config.db_path)
+    now = datetime(2026, 10, 19, 16, 9)
+    monkeypatch.setattr('bot.services.work_time.work_time_local_now', lambda value=None: value or now)
+    monkeypatch.setattr('bot.handlers.work_time.work_time_local_now', lambda value=None: value or now)
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', Primary)
+    monkeypatch.setattr('bot.services.work_time.AsyncOpenAI', Slots)
+    monkeypatch.setattr('bot.services.info_help_resolver.AsyncOpenAI', UnknownHelp)
+    monkeypatch.setattr('bot.handlers.voice.transcribe_audio', stt)
+    service = WorkTimeService(config.db_path)
+    service.save_lunch_break_settings(telegram_id=1001, enabled=True, minutes=30)
+    original = service.open_day(telegram_id=1001, now=now.replace(hour=7, minute=5)).day
+    state, message = _DummyState(), _DummyMessage(utterance)
+
+    async def journey():
+        if input_channel == 'voice':
+            message.voice = type('Voice', (), {'file_id': 'departure-fixture'})()
+            await voice.handle_voice(message, VoiceBot(), config, state)
+        else:
+            await process_invoice_text(message=message, state=state, config=config, invoice_text=utterance)
+
+    asyncio.run(journey())
+    assert len(primary_payloads) == 1
+    payload = primary_payloads[0]
+    assert payload['user_input_text'] == utterance
+    assert {'open_work_day', 'close_work_day', 'unknown'} <= set(payload['allowed_actions'])
+    arrival, departure = (payload['action_hints'][name] for name in ('open_work_day', 'close_work_day'))
+    assert 'opposite attendance events' in arrival['meaning']
+    assert 'Personal departure shorthand' in departure['meaning']
+    assert 'Запиши меню отход, будь ласка.' in departure['positive_examples']
+    assert any('production waste' in value for value in departure['not_this'])
+    assert state.current_state is None
+    result = service.get_day(telegram_id=1001, work_date='2026-10-19')
+    assert result.id == original.id and result.start_time == '07:05'
+    if model_action == 'close_work_day':
+        assert result.status == 'closed' and result.end_time == '16:09'
+        assert result.gross_minutes == 544 and result.total_minutes == 514
+        assert 'Pracovny den je uzavrety' in message.answers[-1]
+        assert len(slot_payloads) == 1 and slot_payloads[0][0]['operation_kind'] == 'close'
+        assert 'equivalent current departure event' in slot_payloads[0][1]
+    else:
+        assert result == original
+    assert service.get_open_day(telegram_id=1002) is None
+    with sqlite3.connect(config.db_path) as connection:
+        assert connection.execute('SELECT count(*) FROM work_time_days').fetchone()[0] == 1
+        assert connection.execute('SELECT count(*) FROM work_time_events').fetchone()[0] == (2 if model_action == 'close_work_day' else 1)
+        assert connection.execute('SELECT count(*) FROM invoice').fetchone()[0] == 0
+    assert not list(tmp_path.rglob('*.ogg'))
+    assert not (tmp_path / 'workspaces').exists()

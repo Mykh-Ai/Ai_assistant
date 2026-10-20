@@ -825,3 +825,15 @@ before confirmation. Active non-admin FSM ownership is not interrupted.
 Contextual InfoHelp receives a compact safe view derived from the existing Product Truth registry. The model is never the authority: Python performs the final capability lookup and validates runtime-owner presence after parsing the model output.
 
 Support for one business object does not transfer to another object with the same verb. An executable/offerable action requires an exact registered `domain_id + object_kind + operation_id` match, applicable `supported` or `partial` Product Truth, a real Python owner, actor/workspace validation, required slots or a real continuation FSM, and all existing confirmation gates. No exact match is `unsupported` or a new feature; it is never a nearest-action substitution. Capability questions are answer-only and account-wide deletion is never suggested by InfoHelp.
+
+### Work-time terminology repair — 2026-10-19, local
+
+The existing partial work-time capability explains paired personal arrival and
+departure shorthand: приход/прихід starts work, отход/отходи/відхід/odchod ends
+work. A clear current departure without a clock/duration closes an open day at
+current business time; exact clocks/durations retain preview confirmation and
+closed-day edits retain their snapshot gates. Neither money/income nor
+production waste becomes an attendance feature. No claim of perfect STT,
+universal noisy-request safety or new automatic alias learning is permitted.
+Current source owners and local acceptance evidence, not this statement alone,
+back the repair; live audio/Telegram/deployment remains a separate gate.

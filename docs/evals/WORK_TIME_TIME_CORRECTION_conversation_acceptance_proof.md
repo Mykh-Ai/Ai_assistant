@@ -230,3 +230,155 @@ Test day now remains CLOSED. Verdict: PASS for explicit close-now text with an
 existing open day and no exact clock supplied. No voice or unspecified-now
 inference is claimed. Registry wording was repaired to match existing direct
 close_now code; no runtime patch, deploy or redundant suite run.
+
+## Production voice recurrence — 2026-10-19, read-only audit
+
+Actual deployed sources match server checkout3183439; whisper-1 STT/gpt-4o,
+Europe/Bratislava. Same incident actor as October16 verified privately. No
+customer/workspace identifiers published; no raw audio replay or business write.
+
+| Local time | Actual STT text | Actual primary / persisted result |
+|---|---|---|
+|07:05:30-32|Відкрив мені працьовний день зараз.|open_work_day -> one day opened07:05|
+|16:08:58-16:09:00|Запиши меню отход, будь ласка.|open_work_day WRONG for reported departure; no extra open/close event|
+|16:09:25-27|Закрий мені працьовний день.|close_work_day -> same day closed16:09|
+
+All primary choices were real llm_bundle/business_action. First departure
+trace:d5862254-5c19-4b34-bf40-9a1222eb617e/message3689; repeat:
+8fdc133e-3424-4fbb-8fd9-5da0ba218b18/message3691. Opening trace:
+58e753e4-a1ce-4393-95b5-6560315d7fa2/message3687. Independent scoped DB
+readback: exactly one closed19.10.2026 row07:05-16:09, gross544/net514 with
+lunch30, its open/close events only, integrity ok. All three updates handled,
+provider calls200 OK; no traceback/polling conflict in bounded daily logs.
+Secondary slot output/outgoing replies are not logged; do not invent them.
+
+Verdict: FAIL for shorthand departure recognition; explicit repeat close PASS.
+This is fresh production evidence of the unresolved semantic selection gap,
+not proof that recent correction/recovery work failed to deploy. Existing
+same-day idempotency prevented a duplicate open row; it did not close the day.
+No new model/STT fixtures or runtime change/tests were run. The exact noisy
+transcript must enter future public-entry evaluation; accept recovered close
+or safe unknown/clarification, never an opposite opening action. Original
+spoken wording and sole STT-error cause remain unknown without audio replay.
+
+## Candidate arrival/departure prompt repair — 2026-10-19
+
+Design: existing architecture proof section20, ready_for_handoff before code;
+implementation matches that narrow semantic scope. Capability stays partial;
+existing bounded canonicalization maturity and Python owners are unchanged.
+Candidate is local/uncommitted, not the deployed3183439 runtime. No new action,
+mode, regex/phrase router, learning table, confirmation or DB schema change.
+
+Runtime changes: symmetric primary hints for personal arrival versus departure;
+bounded close slots accept a clear performative current departure with no
+clock/duration as existing close_now. STT receives a compact multilingual
+attendance vocabulary only; no canonical actions, rewriting or model migration.
+Exact clocks/durations and saved/historical correction gates remain existing.
+Product Truth/help explain departure terminology, exclusions and immediate
+current-departure closing. Broad report/open safety and cancel-markup gaps
+remain outside scope and unresolved.
+
+### Public text/voice fixture journeys
+
+New parametrized test_arrival_departure_public_entry_preserves_event_direction
+covers13 phrases through both public text and voice entry (26 cases). Each
+uses temporary SQLite with one open07:05 day, lunch30 and business16:09.
+Primary and STT outputs are fixtures; actual prompt serialization/validation,
+work-time slot call, router/FSM and service owners execute. The departure
+fixture normalizes close_now; same row closes16:09/net514 with one close audit.
+Arrival is idempotent; finance, waste, prohibition, contradiction and bare-label
+unknown fixtures leave the entire original day unchanged. One primary call,
+original text, actor isolation, no invoices/accounting artifacts and temporary
+voice cleanup are checked. This proves Python boundaries, not model accuracy.
+
+STT request tests inspect attendance spellings and retained verbatim/no-invented-
+words constraints; no actual speech is transcribed by those tests. Guidance
+checks partial truth, departure example/exclusions and no-extra-confirmation
+wording for a clear current departure. Existing scopes retain their tests.
+
+### Real candidate model probes, no business dispatch
+
+Captured the exact local public-entry primary request before execution with a
+synthetic actor and no DB. In an isolated process of the production container,
+used configured GPT-4o with that complete allowed-action/hint envelope and the
+candidate slot function. Running bot modules/credentials/config were not
+changed; there was no business dispatch, Telegram send or real audio call.
+
+Initial primary candidate:13/16 expected actions matched, while prohibition,
+capability question and a bare departure label incorrectly selected closing.
+Slots8/8 passed. Tightened the primary semantic negative space with explicit
+prohibition/question/bare-label examples and precedence. Re-captured the exact
+request; final18/18 primary cases and8/8 slot cases passed, including new
+wordings absent from examples. One sampled pass is not a quality guarantee.
+
+Final primary evidence includes:
+
+| Meaning / sample | Actual candidate result |
+|---|---|
+| Запиши меню отход, будь ласка.; Запиши мені отходи.; Внеси мій одход. | close_work_day/business_action |
+| Запиши мне приход.; Зафіксуй мій прихід на роботу. | open_work_day/business_action |
+| Money, production waste, negated departure, uncertain arrival/departure, bare Отход. | unknown |
+| Чи вмієш записувати відхід?; Можеш пояснити як записати одход? | unknown/capability_or_howto |
+| Existing work-time report and receipt requests | generate_work_time_report / add_receipt |
+
+Final slot evidence: incident and short personal departure ->close_now;
+explicit15:39 ->close_at_time;8worked hours ->close_with_duration; prohibition,
+question, ambiguous event and closed-day missing-clock correction ->unknown.
+No date/time value was supplied to the incident request or inferred as a
+correction to a closed day.
+
+### Real-provider public handler / temporary SQLite
+
+Separate isolated process over existing public process_invoice_text patched
+only the two candidate hint objects and candidate slot function (including its
+already-imported handler reference). Real primary and slot model calls then
+ran with a synthetic actor/temp SQLite and fake Telegram message:
+
+- incident input ->one primary close_work_day ->same07:05 row closed16:09,
+  net514, one close event and terminal FSM;
+- short arrival input ->one primary open_work_day ->same open07:05 row,
+  no duplicate/event, terminal FSM.
+
+Both passed. An initial harness attempt failed because it retained the handler's
+old imported slot-function reference; after binding the candidate reference it
+passed. That failed harness was not counted as valid candidate acceptance.
+No customer row, production FSM, model configuration or daemon was modified.
+
+### Validation / limits
+
+- Focused tests:371 passed in102.90s; this predates only the final primary
+  negative-example emphasis. The final full suite covers that finished state.
+- Full suite for final runtime code, repeated2026-10-20: 2814 passed, 7 subtests passed in 674.70s (0:11:14).
+  Durable log/JUnit: departure-full-tests-2026-10-20.log/.xml outside Git.
+- Initial sandbox runs were interrupted before useful async execution: Windows
+  asyncio socketpair blocked in socket.accept. A25-second faulthandler trace
+  identified the loopback restriction; approved elevated reruns worked. No
+  dependency/event-loop-policy change was needed.
+- Compileall and whitespace checks pass; final diff checks run after docs.
+- Raw probe JSON and scripts live outside Git in the task artifact directory:
+  departure-live-probes-2026-10-19-v1.json (disclosed initial failures),
+  departure-live-probes-2026-10-19.json (final18+8), and
+  departure-live-journeys-2026-10-19.json (two handler journeys).
+- Real Whisper/audio recognition, interactive Telegram with the candidate,
+  deployment, commit/push and production business writes: not performed.
+
+Verdict: local deterministic boundaries and sampled real candidate LLM/handler
+journeys pass; real-audio/Telegram/deployed runtime_not_proven. No universal
+noisy-input fix or product-maturity upgrade is claimed. Existing feature/gate
+source owners, documentation and honest partial guidance remain authoritative.
+
+Official OpenAI references consulted2026-10-19:
+https://developers.openai.com/api/docs/guides/speech-to-text (Whisper prompt
+has limited vocabulary control/224-token limit, not general instruction
+following) and https://developers.openai.com/api/docs/guides/prompt-engineering
+(diverse input/output examples). These references do not prove this repair's
+recognition quality; measured evidence above does.
+
+Capability completion check for this local candidate: runtime prompts changed;
+existing canonical-action hints/registry updated, no token added; Product Truth
+and Slovak InfoHelp updated with partial status; public text/voice fixture and
+real candidate model/handler evidence recorded;28 regression cases added;
+forbidden perfect-recognition/payroll/waste/income/automatic-learning claims
+checked; PROJECT_LOG updated; maturity unchanged bounded canonicalization.
+Full-suite final result is recorded above when complete. No deployment or
+real-audio acceptance is inferred from these checks.

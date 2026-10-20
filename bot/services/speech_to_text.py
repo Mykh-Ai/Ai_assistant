@@ -26,7 +26,9 @@ STT_CONTEXT_PROMPT = (
     'or technical terms such as invoice, receipt, document, profile, company, service, '
     'repair, maintenance, support, development, hosting. '
     'Mixed speech examples may sound like: "зроби faktúru pre Tech Company za opravy", '
-    '"покажи moje údaje", "додай bloček", "schváliť faktúru".'
+    '"покажи moje údaje", "додай bloček", "schváliť faktúru". '
+    'Work-time vocabulary: príchod, odchod, pracovný deň, dochádzka, výkaz, '
+    'приход, прихід, отход, отходи, відхід, робочий день.'
 )
 
 

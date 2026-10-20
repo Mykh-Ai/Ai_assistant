@@ -712,3 +712,19 @@ use the structural fallback. No broad phrase/date dictionaries are added.
 Correction replies use existing DecisionResolver contexts and reply keyboards;
 generic old inline cards cannot authorize the new snapshot. This local scope
 does not solve report/open primary model selection or implement payroll.
+
+## Symmetric arrival/departure vocabulary (2026-10-19 local repair)
+
+Existing action_hints explicitly pair arrival/приход/прихід/prichod with opening
+and departure/отход/отходи/відхід/odchod with closing. Personal event wording can
+omit work/day; surviving departure meaning must never be swapped to arrival
+because both requests say record/запиши or STT distorted a filler word. Finance,
+production waste, capability questions and unresolved contradictions preserve
+unknown/other existing route boundaries. Examples illustrate meaning only.
+
+For operation_kind=close, a clear performative current-departure request with
+no clock/duration is semantically equivalent to close-now. A past/future
+assertion, question, bare ambiguous noun or closed-day correction with missing
+clock cannot infer close_now. Existing modes/Python validation remain. STT
+receives vocabulary spellings only; it does not canonicalize or execute actions.
+No extra resolver, Python phrase map, model migration or learned alias is added.

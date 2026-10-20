@@ -1111,12 +1111,12 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         title='Work time tracking / Evidencia pracovneho casu',
         domain='work_hours',
         status=ProductTruthStatus.PARTIAL,
-        summary_for_user='Records work-day opening at the current business time when no time is stated or at a preview-confirmed explicit arrival time, closes an open day by confirmed end time or net worked duration, supports manual time ranges/totals, applies a lunch-break deduction for reports, generates a monthly Excel report, and can delete one selected month after confirmation.',
+        summary_for_user='Records work-day opening at the current business time when no time is stated or at a preview-confirmed explicit arrival time, closes an open day immediately for a clear current-departure/close-now request or by confirmed end time/net worked duration, supports manual time ranges/totals, applies a lunch-break deduction for reports, generates a monthly Excel report, and can delete one selected month after confirmation.',
         current_limitations=(
             'A new explicit dated arrival/departure can correct one existing open/closed row after old/new preview confirmation, preserving the other clock. Row revision and lunch settings are revalidated atomically. Missing dates use the current/bound day; historical correction requires an explicit existing date. No silent no-time overwrite, reopening, multiple shifts or missing-clock inference.',
             'Confirming an explicit boundary replaces a prior fixed-duration override with the confirmed range and current lunch calculation; the preview discloses this. Pure duration-only records without a stored arrival cannot use boundary correction.',
             'MVP supports one interval per user/day in the current controlled tenant-scoped runtime.',
-            'Personal arrival shorthand means arrival at work, not receipt of money; financial income/payment recording is not part of work-time tracking.',
+            'Personal arrival shorthand means arrival at work, not receipt of money; financial income/payment recording is not part of work-time tracking. Personal departure shorthand (отход/отходи/відхід/odchod) means leaving work, not arrival or production waste. A clear current-departure request without a clock/duration closes an open day at the current business time without another confirmation; unclear meaning must not be treated as the opposite event.',
             'It is not payroll, salary calculation, legal HR attendance compliance, multi-employee dochadzka, accounting/payroll software export, or automatic time detection.',
             'The first report asks once whether lunch break should be deducted; users can later set, change, or disable the fixed lunch-break setting.',
             'Explicit start/end rows report net minutes by subtracting the currently configured lunch break; duration-only rows keep the user-confirmed net duration stable and store a lunch snapshot for audit.',
@@ -1143,7 +1143,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         test_refs=('tests/test_work_time_service.py', 'tests/test_work_time_routing.py', 'tests/test_product_truth.py', 'tests/test_info_help.py'),
         safe_next_steps=(
             'To correct a saved clock, say Oprav dnesny prichod na 06:54 or Oprav odchod 9.9.2026 na 13:10; review old/new values and confirm.',
-            'Say zacinam pracovny den or zapis mi prichod (arrival at work) for the current time, zapis prichod o 7:10 for an explicit arrival, zatvor den o 17:00, zapis dnes 6 odpracovanych hodin, pracoval som dnes od 5:30 do 17:00, vytvor vykaz hodin za jun 2026, nastav obednu prestavku na 30 minut, or vymaz dochadzku za jul 2026.',
+            'Say zacinam pracovny den or zapis mi prichod (arrival at work) for the current time, zapis prichod o 7:10 for an explicit arrival, zapis mi odchod for current departure, zatvor den o 17:00, zapis dnes 6 odpracovanych hodin, pracoval som dnes od 5:30 do 17:00, vytvor vykaz hodin za jun 2026, nastav obednu prestavku na 30 minut, or vymaz dochadzku za jul 2026.',
         ),
         customization_allowed=True,
         requires_setup=True,

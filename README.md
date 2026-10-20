@@ -231,6 +231,12 @@ invoice/accounting data. Receipt, expense, and incoming-invoice analytics are ha
 
 `work_time_tracking` is implemented as a partial OfficeFlow MVP for simple user-scoped work-time evidence.
 
+The local October19 prompt repair pairs personal arrival (`приход/прихід`)
+with starting work and departure (`отход/отходи/відхід/odchod`) with leaving
+work. A clear current departure without a clock uses close-now; exact clocks
+keep their previews. Money and production waste are excluded. Deployment and
+real-audio recognition of this repair are not yet proven.
+
 Explicit-time correction deployed as `5a3f3f8` also supports requests such as `oprav dnesny
 prichod na 06:54` or `oprav odchod 9.9.2026 na 13:10`. Review the old/new
 range before confirming. The existing row and other clock are preserved;

@@ -4799,6 +4799,9 @@ async def process_invoice_text(
                     'user wants to start/open today work-time attendance day or record their arrival at work. '
                     'A short personal arrival request such as Запиши мне приход, Запиши мені приход or Zapíš mi príchod '
                     'means work attendance even when the words at work / на роботу are omitted; it does not request a receipt document. '
+                    'Arrival and departure are opposite attendance events: приход/прихід/príchod starts work, '
+                    'while отход/отходи/відхід/odchod records leaving work and belongs to close_work_day, never open_work_day. '
+                    'Use the event meaning, not merely the shared verb record/запиши. '
                     'Explicit money, income, payment or bank/cash context instead describes a financial operation, not work attendance. '
                     'When the user explicitly states an arrival/start clock time, '
                     'the work-time owner validates and previews that time, while an omitted time means the current Bratislava business time'
@@ -4821,20 +4824,49 @@ async def process_invoice_text(
                     'report generation',
                     'manual full time range with both start and end',
                     'closing an already open day',
+                    'personal departure/отход/отходи/відхід/odchod, including noisy Запиши меню отход, будь ласка; use close_work_day',
+                    'production waste/scrap/отходы or a negated, conflicting or unrecoverable attendance request; never guess arrival',
                     'add/upload an accounting receipt, bloček, чек or incoming invoice; use add_receipt',
                     'record receipt of money or income, including Запиши приход денег or Zaznamenaj príjem peňazí',
                 ],
             },
             _CLOSE_WORK_DAY_INTENT: {
-                'meaning': 'user wants to close the currently open work day now, at an explicit end clock time, or by total duration; an explicit departure correction for a dated already closed day changes only that end time after old/new confirmation, preserving arrival',
+                'meaning': (
+                    'user wants to close the currently open work day now, at an explicit end clock time, or by total duration. '
+                    'Personal departure shorthand such as Запиши мне отход, Запиши мені отходи, Запиши відхід or Zapíš mi odchod '
+                    'means leaving work/end of attendance even when work/day words are omitted. '
+                    'A clear request to record the current personal departure without a clock or duration is a current departure event. '
+                    'Noisy filler such as меню instead of мені does not turn surviving departure meaning into arrival. '
+                    'Arrival/приход/прихід starts work and belongs to open_work_day, never close_work_day. '
+                    'An explicit departure correction for a dated already closed day changes only that end time after old/new confirmation, preserving arrival. '
+                    'Do not infer attendance from production waste/scrap, money or a bare ambiguous noun. '
+                    'This action requires a request to record departure, not merely mentioning departure: '
+                    'a prohibition is unknown, a capability/how-to question is unknown with capability_or_howto, '
+                    'and a bare unexplained label is unknown. These boundaries take precedence over the departure examples. '
+                    'Do not execute a negated event; honor a clear correction from arrival to departure or vice versa. '
+                    'If the final intended event is conflicting or unrecoverable, return unknown rather than guessing the opposite action'
+                ),
                 'positive_examples': [
                     'zatvor pracovný deň teraz',
+                    'Запиши мне отход.',
+                    'Запиши мені отходи.',
+                    'Запиши відхід.',
+                    'Zapíš mi odchod.',
+                    'Запиши меню отход, будь ласка.',
                     'uzavri dnes 6 odpracovaných hodín',
                     'закрий мені сьогодні 6 відпрацьованих годин',
                     'Oprav dnesny odchod na 15:39',
                     'Oprav odchod 9.9.2026 na 13:10',
                 ],
-                'not_this': ['create invoice', 'monthly report', 'manual full range without an open day'],
+                'not_this': [
+                    'create invoice', 'monthly report', 'manual full range without an open day',
+                    'personal arrival/приход/прихід/príchod; use open_work_day',
+                    'money/income/payment or production waste/отходы without a personal attendance event',
+                    'a capability question about recording departure, rather than a request to record it now',
+                    'Не записуй мій відхід. (prohibition; unknown, do not start a departure flow)',
+                    'Чи вмієш записувати відхід? (capability_or_howto; canonical_action unknown, no execution)',
+                    'Отход. (bare unexplained label, no request; unknown)',
+                ],
             },
             _ADD_WORK_TIME_ENTRY_INTENT: {
                 'meaning': 'user wants to manually add work time for today or another date, either as a full start/end range or as duration-only total hours after breaks',
