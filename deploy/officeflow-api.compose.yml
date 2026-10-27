@@ -1,0 +1,35 @@
+services:
+  officeflow_api:
+    image: repo-bot
+    container_name: officeflow-api
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DB_PATH: /bot/data/storage/fakturabot.db
+      STORAGE_DIR: /bot/data/storage
+      OFFICEFLOW_API_HOST: 127.0.0.1
+      OFFICEFLOW_API_PORT: "8081"
+      LOG_LEVEL: INFO
+    volumes:
+      - /bot/repo/data/storage:/bot/data/storage
+      - /bot/repo/data/storage/invoices:/bot/data/storage/invoices:ro
+      - /bot/repo/data/storage/workspaces:/bot/data/storage/workspaces:ro
+    working_dir: /app
+    command: python -m bot.officeflow_api_app
+
+  officeflow_api_cloudflared:
+    image: cloudflare/cloudflared:2026.10.4@sha256:4c72c1af2984a66a255efd20fc4ec73fe0f7267384b55315ad953b354b3361b4
+    container_name: officeflow-api-cloudflared
+    restart: unless-stopped
+    user: "0:0"
+    network_mode: host
+    depends_on:
+      - officeflow_api
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token-file
+      - /run/secrets/cloudflared-token
+    volumes:
+      - /bot/secrets/cloudflared-officeflow-api-token:/run/secrets/cloudflared-token:ro

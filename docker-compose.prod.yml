@@ -17,7 +17,7 @@ services:
     command: python -m bot.main
 
   cloudflared:
-    image: cloudflare/cloudflared:2026.7.2
+    image: cloudflare/cloudflared:2026.10.4@sha256:4c72c1af2984a66a255efd20fc4ec73fe0f7267384b55315ad953b354b3361b4
     container_name: fakturabot-cloudflared
     restart: unless-stopped
     depends_on:
