@@ -1,3 +1,28 @@
+# 2026-10-31 - ZEVS archive design approved and implementation task prepared
+
+- Product owner approved ZEVS statement copies without a password, receipt
+  routing and bounded archive-failure notifications. Clarification: provided
+  2026 Drive URLs illustrate the existing tree; do not hardcode 2026 or yearly
+  child-folder IDs. Reuse validated document/statement year/month and existing
+  local storage rules, with Zevs_YYYY/Vypisy and Zevs_YYYY/blocky/YYYY-MM on Drive.
+- Published the approved Architecture Design Proof and its scoped implementation
+  task under docs/architecture and docs/tasks. The package freezes owners,
+  tenant/side-effect boundaries, source retention, secret handling, annual
+  rollover, idempotency, retries/outbox, rollback and 40 acceptance scenarios.
+- Repository copies contain placeholders, not real installation folder IDs or
+  secrets. Live workspace, runtime credentials/permissions and outstanding
+  legacy jobs remain operational preflight items; they were not verified here.
+- This publication changes documentation only. No runtime code, dependencies,
+  SQLite schema/data, local business documents, Google Drive content/permissions,
+  Telegram messages or server state were changed. No implementation agent was
+  launched. User approval is for the design and task preparation; merge,
+  deployment and production writes remain separate approvals.
+- Checked required proof sections, task/design references, annual-routing and
+  source-preservation constraints, placeholder redaction, whitespace and exact
+  preservation of all prior PROJECT_LOG content. Runtime tests were not run for
+  this docs-only package; the future implementation task requires them and the
+  post-implementation Conversation Acceptance Proof.
+
 # 2026-10-20 - Authorized day-break publication and server activation
 
 - User explicitly requests the explained additive schema change on the server,
