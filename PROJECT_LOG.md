@@ -1,3 +1,113 @@
+# 2026-11-01 (Europe/Berlin) - ZEVS candidate local acceptance and publication handoff
+
+- Product owner explicitly requested all necessary work including GitHub commit;
+  publication is authorized. Reviewed candidate remote branch:
+  feat/zevs-archive-annual-routing-notices-v1. Exact implementation SHA/PR is
+  supplied in the publishing agent's handoff. Merge/deploy/live writes remain
+  separate; local verification branch was work/zevs-archive-implementation.
+- Closed the previously listed local evidence gaps with synthetic integration
+  tests: exactly two file-create transient errors then third verified success,
+  two concurrent workers competing for all annual/type/month reservations,
+  each folder-level indeterminate-create recovery in fresh workers, cached
+  lineage/permission/trashed changes, and an actual provider-builder None path.
+- Real child processes were SIGKILLed after fsynced fake Telegram send before
+  and after DB acknowledgement. New processes prove lease recovery, identical
+  reference/possible duplicate before ack, no duplicate after ack and zero
+  upload retries. This is real process termination with fake transport only.
+- Actual public work-time report inline-choice and invoice input FSMs survive
+  a background notice unchanged and subsequently cancel normally. Actual public
+  intake consumes missing-date/text/reuploaded-file continuation at January1
+  and routes the confirmed December document to2026, never the current year.
+- Actual Gmail _run_tick now covers plaintext2027 without an opening secret,
+  conflicting December/January periods, no-text PDF and unsupported encryption:
+  safe retained source/review notices or verified direct2027 Vypisy as applicable.
+- No production runtime-code defect was found in this follow-up. Existing failed
+  attempt counter semantics remain: two failures followed by success leaves
+  attempts=2, while there were three provider executions. Requirements unchanged.
+- Targeted archive suites:80 passed in11.04s. Final full repository suite:
+  2996 passed,7 subtests passed in97.25s, exit0. Compileall bot/tests and
+  git diff --check pass. One canonical acceptance verdict remains
+  runtime_not_proven: all required local behavior groups pass; only actual
+  provider/server/manual external evidence is outstanding.
+- Expanded the server-agent handoff with exact reviewed-source pinning, private
+  workspace/root/config inputs, actual compose secrets/storage facts, read-only
+  audit/no silent OAuth repair, offline rehearsal, backup before auto-bootstrap,
+  additive apply/activation gates, real smoke and compatible forward rollback.
+  No production/server/Google/Telegram write or deployment was performed.
+
+# 2026-10-31 - ZEVS archive local implementation proposal (not deployed)
+
+- Implemented the approved revision-3 scoped route/context/payload/notice proposal
+  on an isolated local branch, without commit/push or production operations.
+  Routes derive validated document year/month, reuse/create bounded annual
+  children and reserve file/folder IDs; incoming/outgoing/default routes remain.
+- Added trusted storage-root injection, source hash/tenant checks, private
+  password-free PDF payloads, source preservation, owner-OAuth-only routed
+  provider gates, verified readback, bounded 403 retry classification and shared
+  terminal payload cleanup. Provider unavailability now has bounded retries.
+- Added durable scoped failure notices, fixed cutoff, leases/restart recovery,
+  truthful source/indeterminate-result wording, safe prequeue handling, and
+  notice delivery independent of upload enablement. No FSM/keyboard ownership
+  or new canonical action/voice dictionary was introduced.
+- Parent review findings addressed: foreign-tree containment, terminal cleanup,
+  disabled-upload notice loop, invoice legacy-root ambiguity, transient authority
+  failure, bounded HTTP reasons, missing Gmail source pointer, unsupported
+  routed providers and a no-create delivery-context probe.
+- Added read-only rollout audit and unexecuted backup/cutover/rollback runbook;
+  synchronized partial Product Truth, InfoHelp, setup/storage docs and env
+  examples. No historical file/job/state repair or OAuth/permission changes
+  were performed; requirements.txt remains unchanged.
+- User explicitly approved isolated dependency installation after the initial
+  missing-pytest blocker. Existing requirements plus pytest/pytest-asyncio were
+  installed in an isolated venv: Python3.12.14, pypdf4.3.1, aiogram3.31.0;
+  pip check passed. No production dependency file or system package was changed.
+- Coordinated existing/new focused regression batch:483 passed in11.04s.
+  Final new archive/public/edge/Gmail/InfoHelp batch:169 passed in8.08s;
+  final Slovak Drive-copy regression:106 passed in0.46s. Full repository suite:
+  2972 passed,7 subtests passed in106.70s, exit0. Compileall bot/tests and
+  git diff --check passed. Synthetic protected/plaintext PDF renders matched.
+- Added real aiogram Dispatcher/production-handler/middleware local journeys
+  with synthetic STT/model results and fake Telegram/Drive transports: command,
+  typed/reply-button/voice save, idle attachment, unknown/cancel, unauthorized
+  input, capability question, enqueue error, active-FSM notice, profile switch
+  and missing-date no-write. Added actual Gmail _run_tick missing/wrong/valid
+  secret traces; found/fixed unnecessary secret reads for plaintext PDFs.
+- Added pagination/folder reserved-ID timeout recovery, exact New Year retry,
+  remote parent/size/reference/checksum mismatch, actual forbidden-recipient,
+  missing-source worker and disabled-upload notice-loop evidence. Parent
+  independently fault-injected post-send/pre-ack loss and proved lease recovery
+  with the same event/reference and the documented possible duplicate notice.
+- Updated canonical Slovak InfoHelp copy for configured annual routes,
+  conditional private decrypted payload and durable terminal failures.
+  Acceptance verdict remains runtime_not_proven: real external/server smoke
+  and explicitly listed exact-case permutations were not run. No live network
+  side effects, commit/push/merge/deploy or activation took place.
+
+# 2026-10-31 - ZEVS archive design approved and implementation task prepared
+
+- Product owner approved ZEVS statement copies without a password, receipt
+  routing and bounded archive-failure notifications. Clarification: provided
+  2026 Drive URLs illustrate the existing tree; do not hardcode 2026 or yearly
+  child-folder IDs. Reuse validated document/statement year/month and existing
+  local storage rules, with Zevs_YYYY/Vypisy and Zevs_YYYY/blocky/YYYY-MM on Drive.
+- Published the approved Architecture Design Proof and its scoped implementation
+  task under docs/architecture and docs/tasks. The package freezes owners,
+  tenant/side-effect boundaries, source retention, secret handling, annual
+  rollover, idempotency, retries/outbox, rollback and 40 acceptance scenarios.
+- Repository copies contain placeholders, not real installation folder IDs or
+  secrets. Live workspace, runtime credentials/permissions and outstanding
+  legacy jobs remain operational preflight items; they were not verified here.
+- This publication changes documentation only. No runtime code, dependencies,
+  SQLite schema/data, local business documents, Google Drive content/permissions,
+  Telegram messages or server state were changed. No implementation agent was
+  launched. User approval is for the design and task preparation; merge,
+  deployment and production writes remain separate approvals.
+- Checked required proof sections, task/design references, annual-routing and
+  source-preservation constraints, placeholder redaction, whitespace and exact
+  preservation of all prior PROJECT_LOG content. Runtime tests were not run for
+  this docs-only package; the future implementation task requires them and the
+  post-implementation Conversation Acceptance Proof.
+
 # 2026-10-20 - Authorized day-break publication and server activation
 
 - User explicitly requests the explained additive schema change on the server,

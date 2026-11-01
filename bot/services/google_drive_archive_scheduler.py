@@ -93,19 +93,20 @@ def process_google_drive_archive_once(
     if not config.google_drive_enabled:
         return ArchiveWorkerResult(status=ARCHIVE_WORKER_NOOP)
     resolved_provider = build_google_drive_archive_provider(config) if provider is _UNSET else provider
-    if resolved_provider is None:
-        return ArchiveWorkerResult(status=ARCHIVE_WORKER_NOOP)
     return ArchiveWorker(
         config.db_path,
         resolved_provider,
+        storage_dir=config.storage_dir,
         retention_policy=retention_policy_from_config(config),
     ).process_one(now=now)
 
 
-async def run_google_drive_archive_scheduler(*, config: Config) -> None:
+async def run_google_drive_archive_scheduler(*, config: Config, bot=None) -> None:
     if not config.google_drive_enabled:
-        logger.info("Google Drive archive scheduler disabled by configuration")
-        return
+        from bot.services.archive_failure_notices import configured_cutoff
+        if bot is None or configured_cutoff() is None:
+            logger.info("Google Drive archive scheduler disabled by configuration")
+            return
 
     interval = config.google_drive_archive_worker_interval_seconds
     batch_size = config.google_drive_archive_worker_batch_size
@@ -117,7 +118,10 @@ async def run_google_drive_archive_scheduler(*, config: Config) -> None:
     )
     while True:
         try:
-            result = run_google_drive_archive_batch(config=config, batch_size=batch_size)
+            result = await asyncio.to_thread(run_google_drive_archive_batch, config=config, batch_size=batch_size)
+            if bot is not None:
+                from bot.services.archive_failure_notices import deliver_failure_notices
+                await deliver_failure_notices(bot=bot, db_path=config.db_path, storage_dir=config.storage_dir)
             if result.processed_jobs or result.last_error_code:
                 logger.info(
                     "Google Drive archive scheduler tick processed_jobs=%s last_status=%s last_error_code=%s",

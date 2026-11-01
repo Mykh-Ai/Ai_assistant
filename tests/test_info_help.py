@@ -1360,3 +1360,13 @@ def test_work_time_guidance_explains_cancelling_pending_report_setup():
     payload = get_safe_answer_payload('work_time_tracking')
     assert payload['product_status'] == 'partial'
     assert any('Cancelling pending report lunch setup' in value for value in payload['current_limitations'])
+
+
+def test_drive_capability_explains_configured_annual_route_and_async_failures() -> None:
+    answer = info_help.render_product_truth_payload(get_safe_answer_payload('google_drive_invoice_storage'))
+    assert 'Zevs_YYYY/Vypisy' in answer
+    assert 'Zevs_YYYY/blocky/YYYY-MM' in answer
+    assert 'podľa obdobia dokladu' in answer
+    assert 'lokálne uloženie neznamená úspešný upload' in answer
+    assert 'po konečnom zlyhaní' in answer
+    assert 'oprávnenému používateľovi' in answer

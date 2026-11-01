@@ -14,7 +14,7 @@ The opening password is deployment-owned configuration. It must be loaded from
 an administrator-managed, read-only secret file named by
 `GOOGLE_GMAIL_STATEMENT_PDF_OPEN_PASSWORD_FILE`. The password must not be
 accepted through Telegram, committed to Git, stored in SQLite or metadata,
-included in logs, or retained in a decrypted file. The PDF owner/edit password
+included in logs, or retained in any archive payload. The PDF owner/edit password
 is neither required nor requested.
 
 ## Current-state variance being repaired
@@ -123,8 +123,20 @@ archives.
 - the greatest-covered-days rule and end-month tie-break are unit tested;
 - a PDF stored in an August ingestion path can enqueue to the June Drive target;
 - legacy schema rows survive additive schema initialization;
-- encrypted source bytes remain byte-for-byte unchanged and no decrypted file
-  is created;
+- encrypted source bytes remain byte-for-byte unchanged; the period detector
+  creates no decrypted file. The separately configured archive-payload exception
+  below is owned by the archive worker;
 - Product Truth, InfoHelp, setup docs, project log, and UX acceptance evidence
   describe the same partial capability.
 
+
+## 2026-10-31 approved archive-payload exception
+
+The approved ZEVS archive design extends only the upload stage: configured owner
+OAuth jobs may create a separate private password-free payload, verify all pages
+and the frozen period, and remove that payload after terminal upload/failure.
+The collector and period detector still preserve the immutable original and do
+not persist the opening password or extracted text. This supersedes the older
+no-decrypted-copy restriction only for that scoped worker-owned payload, not for
+intake or arbitrary PDF editing. See docs/ZEVS_Archive_Rollout_Runbook.md.
+Implementation is a local proposal; production rollout remains unverified.

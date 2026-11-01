@@ -1,3 +1,24 @@
+## 2026-11-01 — ZEVS candidate verification (not deployed)
+
+- All required local archive behavior groups now pass, including concurrent
+  folder reservations, real synthetic-process termination/restart, cross-flow
+  FSM preservation,2027 plaintext statements and New Year continuation.
+- Final repository validation:2996 tests and7 subtests passed. GitHub publication
+  is authorized; real server/provider/manual acceptance is still outstanding.
+  Acceptance verdict remains runtime_not_proven; this is not deployment approval.
+
+## 2026-10-31 — ZEVS archive local proposal (not released)
+
+- Added scoped annual Drive routing, private password-free statement payloads,
+  verified idempotent uploads and durable authorized failure notifications.
+- Preserved local originals/metadata identity and other document/workspace
+  routes; added a read-only activation audit and migration/rollback procedure.
+- Local validation on the repository dependency set: 2972 tests and7 subtests
+  passed; real public handlers/middleware with fake external transports cover
+  receipt text/button/voice/attachment confirmation, tenant safety and keyboard
+  preservation. Live provider/server rollout and listed exact-case permutations
+  remain unproven; acceptance verdict is runtime_not_proven.
+
 # Changelog
 
 - Deployed and enabled2026-10-20 through PR#117 (merge9a88536): work-day closing shows gross,

@@ -49,7 +49,7 @@ async def main() -> None:
         name='invoice_followup_scheduler',
     )
     google_drive_archive_task = asyncio.create_task(
-        run_google_drive_archive_scheduler(config=config),
+        run_google_drive_archive_scheduler(config=config, bot=bot),
         name='google_drive_archive_scheduler',
     )
     contact_registry_monitor_task = asyncio.create_task(

@@ -835,3 +835,20 @@ itself.
 Google Drive має додаватися як архівний шар поверх поточної логіки,
 а не як переписування всієї document storage моделі.
 ```
+
+## 2026-10-31 — scoped annual document routes (local proposal)
+
+The approved ZEVS design adds an optional exact-workspace/type route file. One
+configured company root resolves Zevs_YYYY/Vypisy and Zevs_YYYY/blocky/YYYY-MM
+using the existing validated statement/document period. Missing folders are
+created with persisted IDs; retries reuse the same folder/file identity and
+verify parents/content before uploaded. Existing folder IDs for 2026 are hints,
+not code constants or a year gate. Incoming/outgoing invoices and other
+workspaces retain existing routes. Local storage and original identity do not
+change. Failed/pending upload never authorizes source deletion.
+
+A separate password-free bank-statement payload is private and temporary; its
+encrypted source and metadata remain authoritative. An optional durable failure
+outbox is independent of upload enablement and never changes FSM/keyboard state.
+See docs/ZEVS_Archive_Rollout_Runbook.md for the unexecuted audit/apply/rollback
+procedure. This paragraph does not claim production rollout or live success.

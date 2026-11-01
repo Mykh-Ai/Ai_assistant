@@ -112,8 +112,10 @@ class ArchiveWorker:
         lease_seconds: int = DEFAULT_ARCHIVE_LEASE_SECONDS,
         retry_delay: timedelta = DEFAULT_ARCHIVE_RETRY_DELAY,
         retention_policy: ArchiveLocalRetentionPolicy | None = None,
+        storage_dir: Path | None = None,
     ) -> None:
         self._db_path = db_path
+        self._storage_dir = storage_dir
         self._jobs = ArchiveJobService(db_path)
         self._archive = AccountingDocumentArchiveService(db_path)
         self._provider = provider
@@ -123,6 +125,18 @@ class ArchiveWorker:
         self._retention_policy = retention_policy or ArchiveLocalRetentionPolicy()
 
     def process_one(self, *, now: datetime | None = None) -> ArchiveWorkerResult:
+        result = self._process_one(now=now)
+        if result.job_id and result.status in {'uploaded', 'failed'}:
+            from bot.services.archive_delivery import ArchiveDeliveryStore, ArchiveDeliveryError, cleanup_payload
+            job = self._jobs.get_job(result.job_id)
+            if job is not None:
+                try:
+                    cleanup_payload(ArchiveDeliveryStore(self._db_path), job, storage_dir=self._storage_dir)
+                except (OSError, ArchiveDeliveryError):
+                    logger.warning('archive_payload_cleanup_failed')
+        return result
+
+    def _process_one(self, *, now: datetime | None = None) -> ArchiveWorkerResult:
         current_time = _utc_now(now)
         job = self._jobs.claim_next_runnable_job(
             worker_id=self._worker_id,
@@ -146,6 +160,22 @@ class ArchiveWorker:
                 now=current_time,
             )
 
+        from bot.services.archive_delivery import (ArchiveDeliveryStore, ArchiveDeliveryError,
+                                                   prepare_payload)
+        from bot.services.workspace_context import WorkspaceContextError
+        delivery = ArchiveDeliveryStore(self._db_path)
+        context = delivery.get(job.job_id)
+        payload_path = Path(job.local_file_path)
+        if context is not None:
+            if self._provider is not None and getattr(self._provider, 'supports_routed_delivery', False) is not True:
+                return self._mark_failed(job, error_code='archive_routed_provider_unsupported', now=current_time)
+            try:
+                payload_path = prepare_payload(delivery, job, storage_dir=self._storage_dir)
+            except (ArchiveDeliveryError, WorkspaceContextError) as exc:
+                result = self._mark_failed(job, error_code=(exc.code if isinstance(exc, ArchiveDeliveryError)
+                                                         else 'archive_authority_revoked'), now=current_time)
+                return result
+
         if self._provider is None:
             return self._mark_retry_wait(
                 job,
@@ -155,17 +185,27 @@ class ArchiveWorker:
 
         try:
             upload_result = self._provider.upload_file(
-                local_file_path=Path(job.local_file_path),
+                local_file_path=payload_path,
                 target_folder_path=job.target_folder_path,
                 document_type=job.document_type,
                 metadata=_provider_metadata(job),
             )
+            if context is not None:
+                verified = delivery.get(job.job_id)
+                if (not verified['reserved_drive_file_id'] or not verified['resolved_target_folder_id']
+                    or upload_result.drive_file_id != verified['reserved_drive_file_id']
+                    or upload_result.drive_folder_id != verified['resolved_target_folder_id']):
+                    raise ArchiveDeliveryError('archive_remote_mismatch')
             if not upload_result.drive_file_id.strip():
                 return self._mark_retry_wait(
                     job,
                     error_code=ARCHIVE_ERROR_UNEXPECTED,
                     now=current_time,
                 )
+        except ArchiveDeliveryError as exc:
+            result = (self._mark_failed(job, error_code=exc.code, now=current_time) if exc.permanent else
+                      self._mark_retry_wait(job, error_code=exc.code, now=current_time))
+            return result
         except ArchiveUploadTransientError:
             return self._mark_retry_wait(
                 job,

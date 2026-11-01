@@ -76,7 +76,8 @@ and never marks, labels, archives, deletes, drafts, or sends Gmail messages.
 New originals and bounded metadata are stored atomically under the owning
 workspace. Repeated Gmail sources and workspace-local content are deduplicated.
 When the existing owner Drive archive is independently enabled, a newly stored
-canonical original may be enqueued as `bank_statement_original` under
+canonical original may be enqueued as `bank_statement_original`. Without a
+configured document-route override, the default destination is
 `<workspace folder>/<YYYY>/bankove_vypisy/<YYYY-MM>`; local files remain the
 source of truth and are never deleted by this flow. The workspace owner receives
 one bounded notification per newly stored canonical statement; reauthorization
@@ -87,8 +88,8 @@ in memory with one administrator-managed file-backed opening password and read
 bounded header text only to determine the statement interval. The owner/edit
 password is not requested. The archive month is the calendar month containing
 the greatest number of inclusive interval days; a tie selects the interval-end
-month. The encrypted original remains unchanged, no decrypted copy or password
-is persisted, and a missing/wrong password or ambiguous interval withholds the
+month. The encrypted original remains unchanged, the password is never persisted; a decrypted copy is created only for the
+separately configured private archive-payload stage described below, and a missing/wrong password or ambiguous interval withholds the
 new Drive enqueue for review instead of falling back to the ingestion month.
 Existing local paths, rows, archive jobs, and Drive files are not automatically
 rewritten or moved.
@@ -1847,3 +1848,26 @@ execution. Active FSM remains the first owner and may invoke contextual
 InfoHelp only for bounded help/confusion recovery.
 
 For `delete_existing_invoice`, a supplied invoice reference reaches the existing tenant-scoped lookup and `InvoiceStates.waiting_delete_existing_invoice_confirm`; a missing reference reaches the existing `InvoiceReferenceContinuationStates.waiting_reference`. The existing `áno / nie` DecisionResolver confirmation and deletion owner are unchanged, and no invoice is deleted during top-level routing.
+
+## 2026-10-31 — configured ZEVS archive proposal
+
+The scoped implementation proposal adds administrator-configured annual Drive
+routing and terminal-failure notices; production activation is not proven. A
+validated document/statement period selects Zevs_YYYY/Vypisy for statements and
+Zevs_YYYY/blocky/YYYY-MM for receipts, reusing or creating exact children below
+one approved company root. URLs supplied for 2026 are examples/bootstrap
+evidence, not hardcoded yearly configuration. Existing local storage paths and
+other workspace/document-type routes remain unchanged.
+
+A configured supported statement can use a separate private password-free
+archive payload; the original stays byte-for-byte unchanged and the opening
+password is never persisted. This narrow worker-owned exception supersedes older
+blanket no-decrypted-copy wording only for configured upload jobs. Missing/wrong
+password or an ambiguous period withholds upload and can create a safe notice.
+
+Local save is not proof of Drive upload. After five total transient failures,
+or immediately for a permanent error, an enabled durable outbox can notify the
+original authorized user. A frozen activation cutoff prevents historical spam;
+Telegram delivery is separately retried and may be blocked. No exactly-once or
+all-banks/general-PDF-editing claim is permitted. Capability questions only
+explain setup and create no upload. Details: docs/ZEVS_Archive_Rollout_Runbook.md.

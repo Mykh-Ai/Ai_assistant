@@ -173,7 +173,8 @@ credentials while configuring Gmail.
    - for a supported PDF, `statement_period_status=detected` and the expected
      inclusive start/end and selected year/month;
    - the stored `original.pdf` is byte-for-byte identical to the Gmail
-     attachment and no decrypted file exists;
+     attachment; the period detector creates no decrypted file (a configured
+     worker-owned archive payload is the separate exception described below);
    - no duplicate original on a repeated tick;
    - if the separately configured Drive archive is enabled, one idempotent
      archive job targets the month with the most covered interval days; a
@@ -259,3 +260,26 @@ Operational status source:
 
 Local `/gmail_disconnect` and provider-side revocation are separate operations.
 Neither operation deletes already collected business documents.
+
+## 2026-10-31 — configured ZEVS archive proposal
+
+The scoped implementation proposal adds administrator-configured annual Drive
+routing and terminal-failure notices; production activation is not proven. A
+validated document/statement period selects Zevs_YYYY/Vypisy for statements and
+Zevs_YYYY/blocky/YYYY-MM for receipts, reusing or creating exact children below
+one approved company root. URLs supplied for 2026 are examples/bootstrap
+evidence, not hardcoded yearly configuration. Existing local storage paths and
+other workspace/document-type routes remain unchanged.
+
+A configured supported statement can use a separate private password-free
+archive payload; the original stays byte-for-byte unchanged and the opening
+password is never persisted. This narrow worker-owned exception supersedes older
+blanket no-decrypted-copy wording only for configured upload jobs. Missing/wrong
+password or an ambiguous period withholds upload and can create a safe notice.
+
+Local save is not proof of Drive upload. After five total transient failures,
+or immediately for a permanent error, an enabled durable outbox can notify the
+original authorized user. A frozen activation cutoff prevents historical spam;
+Telegram delivery is separately retried and may be blocked. No exactly-once or
+all-banks/general-PDF-editing claim is permitted. Capability questions only
+explain setup and create no upload. Details: docs/ZEVS_Archive_Rollout_Runbook.md.
