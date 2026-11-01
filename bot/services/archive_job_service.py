@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import sqlite3
 from uuid import uuid4
+from typing import Callable, Any
 
 from bot.services.accounting_document_archive_path import (
     AccountingDocumentArchivePathError,
@@ -97,6 +98,7 @@ class ArchiveJobService:
         accounting_drive_folder_name: str | None = None,
         statement_period_year: int | None = None,
         statement_period_month: int | None = None,
+        delivery_snapshot_factory: Callable[[], dict[str, Any] | None] | None = None,
         max_attempts: int = 5,
         now: datetime | None = None,
     ) -> ArchiveJobRecord:
@@ -193,6 +195,7 @@ class ArchiveJobService:
         with managed_connection(self._db_path) as connection:
             ensure_archive_schema(connection)
             connection.row_factory = sqlite3.Row
+            connection.execute('BEGIN IMMEDIATE')
             existing = self._get_document_job_row(
                 connection,
                 workspace_id=workspace_id,
@@ -202,6 +205,7 @@ class ArchiveJobService:
             if existing is not None:
                 return _job_from_row(existing)
 
+            snapshot = delivery_snapshot_factory() if delivery_snapshot_factory else None
             job_id = str(uuid4())
             connection.execute(
                 (
@@ -228,6 +232,9 @@ class ArchiveJobService:
                     timestamp,
                 ),
             )
+            if snapshot is not None:
+                from bot.services.archive_delivery import ArchiveDeliveryStore
+                ArchiveDeliveryStore.insert(connection, job_id, snapshot, timestamp)
             connection.commit()
             row = self._get_job_row(connection, job_id)
             if row is None:

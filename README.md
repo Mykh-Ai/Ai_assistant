@@ -564,3 +564,26 @@ Do not treat these as current runtime:
 The existing InfoHelp layer has an optional context-aware V2 validator. It understands bounded speech acts, exact business object/operation, correction/negation, unknown command hints, explicit Telegram replies, recent process-memory context and active-FSM help. Python remains the authority for Product Truth, action owners, slots, workspace scope, confirmations and effects.
 
 Set `INFOHELP_CONTEXTUAL_V2_ROLLOUT` to `disabled` (default), `admin_pilot`, or `enabled`. Invalid values are treated as `disabled`. `admin_pilot` enables V2 only for IDs already present in `ADMIN_TELEGRAM_USER_IDS`. Context is not persisted and is lost on restart. This repository change does not enable the flag in production.
+
+## 2026-10-31 — configured ZEVS archive proposal
+
+The scoped implementation proposal adds administrator-configured annual Drive
+routing and terminal-failure notices; production activation is not proven. A
+validated document/statement period selects Zevs_YYYY/Vypisy for statements and
+Zevs_YYYY/blocky/YYYY-MM for receipts, reusing or creating exact children below
+one approved company root. URLs supplied for 2026 are examples/bootstrap
+evidence, not hardcoded yearly configuration. Existing local storage paths and
+other workspace/document-type routes remain unchanged.
+
+A configured supported statement can use a separate private password-free
+archive payload; the original stays byte-for-byte unchanged and the opening
+password is never persisted. This narrow worker-owned exception supersedes older
+blanket no-decrypted-copy wording only for configured upload jobs. Missing/wrong
+password or an ambiguous period withholds upload and can create a safe notice.
+
+Local save is not proof of Drive upload. After five total transient failures,
+or immediately for a permanent error, an enabled durable outbox can notify the
+original authorized user. A frozen activation cutoff prevents historical spam;
+Telegram delivery is separately retried and may be blocked. No exactly-once or
+all-banks/general-PDF-editing claim is permitted. Capability questions only
+explain setup and create no upload. Details: docs/ZEVS_Archive_Rollout_Runbook.md.

@@ -1044,8 +1044,9 @@ async def _save_accounting_document_from_state(
         await message.answer('Doklad sa nepodarilo uložiť. Skúste /doklad znova.', reply_markup=_remove_keyboard())
         return
 
-    _enqueue_archive_after_confirmed_save(
+    archive_enqueued = _enqueue_archive_after_confirmed_save(
         db_path=config.db_path,
+        storage_dir=config.storage_dir,
         result=result,
         candidate=candidate,
         supplier_telegram_id=supplier_telegram_id,
@@ -1057,7 +1058,13 @@ async def _save_accounting_document_from_state(
     )
     _cleanup_temp_quietly(config.storage_dir, Path(source_path_value))
     await state.clear()
-    await message.answer(_format_post_save_next_steps(), reply_markup=_remove_keyboard())
+    if not archive_enqueued:
+        archive_note = 'Doklad zostal uložený lokálne, ale zaradenie do archívu Google Drive zlyhalo.'
+    elif config.google_drive_enabled:
+        archive_note = 'Doklad je uložený lokálne. Archivácia na Google Drive prebieha na pozadí.'
+    else:
+        archive_note = 'Doklad je uložený lokálne. Archivácia na Google Drive je vypnutá.'
+    await message.answer(_format_post_save_next_steps() + '\n\n' + archive_note, reply_markup=_remove_keyboard())
 
 
 def _format_post_save_next_steps() -> str:
@@ -1313,14 +1320,15 @@ def _enqueue_archive_after_confirmed_save(
     workspace_id: str | None = None,
     workspace_key: str | None = None,
     workspace_drive_folder_name: str | None = None,
-) -> None:
+    storage_dir: Path | None = None,
+) -> bool:
     resolved_workspace_id = workspace_id or workspace_key or (
         workspace_key_for_supplier(supplier_telegram_id)
         if supplier_telegram_id is not None
         else WORKSPACE_KEY
     )
     try:
-        AccountingDocumentArchiveService(db_path).enqueue_confirmed_document(
+        AccountingDocumentArchiveService(db_path, storage_dir=storage_dir).enqueue_confirmed_document(
             workspace_id=resolved_workspace_id,
             telegram_id=supplier_telegram_id or 0,
             document_id=result.metadata_path.stem,
@@ -1332,13 +1340,24 @@ def _enqueue_archive_after_confirmed_save(
             ),
             workspace_drive_folder_name=workspace_drive_folder_name,
         )
+        return True
     except Exception:
+        from bot.services.archive_failure_notices import ArchiveFailureNoticeStore
+        try:
+            ArchiveFailureNoticeStore(db_path).enqueue(
+                workspace_id=resolved_workspace_id, recipient=supplier_telegram_id or 0,
+                document_id=result.metadata_path.stem, error_code='archive_enqueue_failed',
+                local_file_path=str(result.original_path),
+            )
+        except Exception:
+            logger.warning('archive_failure_notice_enqueue_failed')
         logger.warning(
             'archive_enqueue_failed workspace_ref=%s document_ref=%s error_category=%s',
             _safe_log_ref(resolved_workspace_id),
             _safe_log_ref(result.metadata_path.stem),
             'archive_enqueue_failed',
         )
+        return False
 
 
 def _safe_log_ref(value: object, *, length: int = 12) -> str:

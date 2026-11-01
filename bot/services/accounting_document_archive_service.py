@@ -65,8 +65,9 @@ class AccountingDocumentArchiveEnqueueResult:
 
 
 class AccountingDocumentArchiveService:
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, *, storage_dir: Path | None = None) -> None:
         self._db_path = db_path
+        self._storage_dir = storage_dir
         self._jobs = ArchiveJobService(db_path)
 
     def ensure_schema(self) -> None:
@@ -143,6 +144,12 @@ class AccountingDocumentArchiveService:
             accounting_drive_folder_name=workspace_drive_folder_name,
             statement_period_year=statement_period_year,
             statement_period_month=statement_period_month,
+            delivery_snapshot_factory=lambda: self._delivery_snapshot(
+                workspace_id=workspace_id, telegram_id=telegram_id, document_type=document_type,
+                local_file_path=local_file_path_text, metadata_path=metadata_path_text,
+                storage_key=workspace_storage_key, statement_year=statement_period_year,
+                statement_month=statement_period_month,
+            ),
             now=now,
         )
         state = self._upsert_state_for_job(
@@ -152,6 +159,10 @@ class AccountingDocumentArchiveService:
             now_text=job.updated_at,
         )
         return AccountingDocumentArchiveEnqueueResult(job=job, state=state)
+
+    def _delivery_snapshot(self, **values):
+        from bot.services.archive_delivery import make_snapshot
+        return make_snapshot(db_path=self._db_path, storage_dir=self._storage_dir, **values)
 
     def get_state(self, *, workspace_id: str, document_id: str) -> AccountingDocumentArchiveState | None:
         with managed_connection(self._db_path) as connection:

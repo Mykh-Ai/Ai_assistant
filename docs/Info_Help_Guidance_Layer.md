@@ -903,9 +903,11 @@ Required wording boundaries:
 
 - say it requires admin setup, OAuth client credentials, `GOOGLE_TOKEN_CRYPTO_SECRET`, an encrypted owner refresh token, and a personal My Drive root folder id;
 - say it is single-owner only, not per-client OAuth and not full SaaS Drive sync;
-- say newly queued workspace-scoped outgoing invoice PDFs, confirmed receipts,
-  and incoming invoices use the owning workspace's persisted separate Drive
-  folder and immutable queued target;
+- say that without an administrator-configured document-route override, newly
+  queued workspace-scoped outgoing invoice PDFs, confirmed receipts and incoming
+  invoices use the owning workspace's persisted separate Drive folder and
+  immutable queued target; the receipt/statement exception is described below
+  and does not change outgoing/incoming invoice destinations;
 - say local save may succeed while upload is pending/unavailable, metadata stays
   local, and existing remote files are not migrated automatically;
 - say service-account mode is unsupported for personal My Drive unless Workspace/Shared Drive is explicitly configured later;
@@ -1106,3 +1108,26 @@ lunch setup without saving the lunch setting. The owned inline choices are
 removed by Python cleanup; no new capability/topic/parser or learning signal.
 Existing partial attendance limits remain. Tests pair the guidance with the
 real report/cancellation owner and distinguish mocked Telegram from live UI.
+
+## 2026-10-31 — configured ZEVS archive proposal
+
+The scoped implementation proposal adds administrator-configured annual Drive
+routing and terminal-failure notices; production activation is not proven. A
+validated document/statement period selects Zevs_YYYY/Vypisy for statements and
+Zevs_YYYY/blocky/YYYY-MM for receipts, reusing or creating exact children below
+one approved company root. URLs supplied for 2026 are examples/bootstrap
+evidence, not hardcoded yearly configuration. Existing local storage paths and
+other workspace/document-type routes remain unchanged.
+
+A configured supported statement can use a separate private password-free
+archive payload; the original stays byte-for-byte unchanged and the opening
+password is never persisted. This narrow worker-owned exception supersedes older
+blanket no-decrypted-copy wording only for configured upload jobs. Missing/wrong
+password or an ambiguous period withholds upload and can create a safe notice.
+
+Local save is not proof of Drive upload. After five total transient failures,
+or immediately for a permanent error, an enabled durable outbox can notify the
+original authorized user. A frozen activation cutoff prevents historical spam;
+Telegram delivery is separately retried and may be blocked. No exactly-once or
+all-banks/general-PDF-editing claim is permitted. Capability questions only
+explain setup and create no upload. Details: docs/ZEVS_Archive_Rollout_Runbook.md.

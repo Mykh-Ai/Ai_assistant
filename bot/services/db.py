@@ -1223,6 +1223,8 @@ def ensure_archive_schema(connection: sqlite3.Connection) -> None:
     connection.execute(ACCOUNTING_DOCUMENT_ARCHIVE_STATE_SCHEMA)
     _ensure_archive_job_additive_columns(connection)
     _ensure_archive_indexes(connection)
+    from bot.services.archive_delivery import ensure_delivery_schema
+    ensure_delivery_schema(connection)
 
 
 def ensure_google_drive_connection_schema(connection: sqlite3.Connection) -> None:

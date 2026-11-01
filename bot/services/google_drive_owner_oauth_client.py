@@ -60,6 +60,8 @@ class GoogleDriveOwnerOAuthClientConfig:
 class GoogleDriveOwnerOAuthArchiveProvider(ArchiveUploadProvider):
     """Google Drive archive provider for a single owner OAuth connection."""
 
+    supports_routed_delivery = True
+
     def __init__(
         self,
         config: GoogleDriveOwnerOAuthClientConfig,
@@ -89,6 +91,25 @@ class GoogleDriveOwnerOAuthArchiveProvider(ArchiveUploadProvider):
         document_type: str,
         metadata: Mapping[str, Any],
     ) -> ArchiveUploadResult:
+        from bot.services.archive_delivery import ArchiveDeliveryStore
+        store = ArchiveDeliveryStore(self._config.db_path)
+        context = store.get(str(metadata.get('job_id', '')))
+        if context is not None:
+            from hashlib import sha256
+            from bot.services.archive_delivery import ArchiveDeliveryError, read_source
+            from bot.services.archive_delivery_drive import upload_routed_file
+            if (metadata.get('workspace_id') != context['workspace_id']
+                or str(local_file_path) != context['payload_path']):
+                raise ArchiveDeliveryError('archive_workspace_mismatch')
+            content = read_source(local_file_path, Path(context['workspace_root']))
+            if sha256(content).hexdigest() != context['payload_sha256']:
+                raise ArchiveDeliveryError('archive_payload_changed')
+            self._require_configured()
+            file_id, folder_id = upload_routed_file(
+                service=self._get_drive_service(), store=store, context=context,
+                local_file_path=local_file_path, media_factory=self._media_file_upload,
+            )
+            return ArchiveUploadResult(drive_file_id=file_id, drive_folder_id=folder_id)
         if not local_file_path.is_file():
             raise ArchiveUploadPermanentError("local_file_missing")
         try:

@@ -99,10 +99,15 @@ async def run_gmail_statement_scheduler(*, bot: Bot, config: Config) -> None:
 
 def _run_tick(config: Config):
     gmail = load_google_gmail_config()
-    pdf_open_password = load_statement_pdf_open_password(gmail)
     workspace_id = gmail.target_workspace_id or ""
     workspace_service = WorkspaceContextService(config.db_path)
     workspace = workspace_service.resolve_for_background_workspace(workspace_id)
+    secret_error = False
+    try:
+        pdf_open_password = load_statement_pdf_open_password(gmail)
+    except RuntimeError:
+        pdf_open_password = None
+        secret_error = True
     crypto = FernetTokenCryptoProvider(
         secret=gmail.token_crypto_secret, key_id="google-integration-fernet-v1"
     )
@@ -157,7 +162,7 @@ def _run_tick(config: Config):
         return "needs_reauth", None, workspace
     if config.google_drive_enabled:
         store = GmailStatementStore(config.db_path, config.storage_dir)
-        archive = AccountingDocumentArchiveService(config.db_path)
+        archive = AccountingDocumentArchiveService(config.db_path, storage_dir=config.storage_dir)
         for imported in result.new_imports:
             if (
                 imported.statement_period_status != STATEMENT_PERIOD_DETECTED
@@ -169,6 +174,8 @@ def _run_tick(config: Config):
                     "gmail_statement_period_"
                     + imported.statement_period_status[:96],
                 )
+                _enqueue_import_failure_notice(config, workspace, imported,
+                    'password_secret_unavailable' if secret_error else imported.statement_period_status)
                 logger.warning(
                     "gmail_statement_archive_withheld import_id=%s period_status=%s",
                     imported.import_id,
@@ -177,6 +184,7 @@ def _run_tick(config: Config):
                 continue
             if not imported.local_original_path or not imported.local_metadata_path:
                 store.mark_archive_failed(imported.import_id, "gmail_archive_path_missing")
+                _enqueue_import_failure_notice(config, workspace, imported, 'local_file_missing')
                 continue
             try:
                 enqueued = archive.enqueue_confirmed_document(
@@ -193,12 +201,16 @@ def _run_tick(config: Config):
                 )
             except Exception:
                 store.mark_archive_failed(imported.import_id, "gmail_archive_enqueue_failed")
+                _enqueue_import_failure_notice(config, workspace, imported, 'archive_enqueue_failed')
                 logger.warning(
                     "gmail_statement_archive_enqueue_failed import_id=%s",
                     imported.import_id,
                 )
             else:
                 store.mark_archive_enqueued(imported.import_id, enqueued.job.job_id)
+    else:
+        for imported in result.new_imports:
+            _enqueue_import_failure_notice(config, workspace, imported, 'archive_disabled')
     runtime.mark_check_succeeded(workspace.workspace_id, tick_started.isoformat())
     logger.info(
         "gmail_statement_scheduler_tick_complete messages=%s stored=%s "
@@ -211,6 +223,18 @@ def _run_tick(config: Config):
         result.failed,
     )
     return "complete", result, workspace
+
+
+def _enqueue_import_failure_notice(config, workspace, imported, code):
+    from bot.services.archive_failure_notices import ArchiveFailureNoticeStore
+    try:
+        ArchiveFailureNoticeStore(config.db_path).enqueue(
+            workspace_id=workspace.workspace_id, recipient=workspace.actor_telegram_id,
+            document_id=imported.import_id, error_code=code,
+            local_file_path=imported.local_original_path or '',
+        )
+    except Exception:
+        logger.warning('gmail_archive_failure_notice_enqueue_failed')
 
 
 def _notification_text(imported) -> str:
@@ -230,7 +254,7 @@ def _notification_text(imported) -> str:
             "bola pozastavená na kontrolu.\n"
         )
     return (
-        "Nový bankový výpis bol bezpečne uložený.\n"
+        "Nový bankový výpis bol bezpečne uložený lokálne.\n"
         f"Súbor: {filename}\n"
         f"Veľkosť: {size} B\n"
         f"{period_line}"
