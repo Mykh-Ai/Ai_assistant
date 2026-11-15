@@ -630,12 +630,15 @@ user-visible capability answer is Slovak-only; a missing localized copy uses a
 Slovak fail-safe response. Internal enum values such as `unknown` must not
 appear in user-facing prose.
 
-For a coherent new business need with no matching Product Truth capability,
-the model may draft a live Slovak answer only as an `unknown` explanation: the
-current support cannot be reliably confirmed and administrator review may be
-offered. Python validates that unknown-status wording before display. The model
-must not convert absence from Product Truth into verified `unsupported`,
-`planned`, or `supported` status and must not invent a capability ID.
+Contextual V2 classifies `product_scope` independently of `intent_kind` and
+`speech_act`. Python allows `in_scope`, `out_of_scope`, and `unknown`.
+An out-of-scope result drops all action/capability/command candidates and
+can only produce a short response. Unknown or missing scope cannot start an
+idle business action or administrator offer. A concrete new feature proposal
+needs an in-scope classification, a named product domain, and the normalized
+need. A capability or exact unsupported operation may have its own review
+path. Missing Product Truth or action matches alone never authorize a draft.
+Python validates any Slovak explanation of unknown support before display.
 
 The payload must enumerate literal allowed values for every bounded field. Primary-resolver output is untrusted diagnostic evidence: it may trigger the call but cannot replace the exact object/operation/speech act in the current input. Schema descriptions and placeholder prose are not output values. Any out-of-bound value fails closed without retry or execution.
 
@@ -655,8 +658,12 @@ with no proposed action or command and a known capability ID or bounded read
 topic, can reach its answer when action-specific domain/object/operation
 fields are invalid. Python resets those fields to `unknown`. Executable action
 and command results keep their original validation. The bounded topics are
-`receipt_drive_status`, `receipt_drive_coverage`, `product_updates`, and
-`monthly_expense_method`.
+`receipt_drive_status`, `receipt_drive_coverage`, `drive_folder_sharing`,
+`product_updates`, and `monthly_expense_method`. Folder sharing guidance
+answers a question about the visibility of receipts on Google Drive.
+The requested outcome determines the topic even when the same question
+mentions archived receipts. Current permissions, actual sharing and
+accountant access inside the bot have no execution path through this topic.
 Python renders their replies in the selected `sk`, `uk`, `ru`, or `en` locale
 without an extra model call or business mutation. Other capability answers
 retain the existing Slovak contract. The primary read-only analytics and
@@ -666,6 +673,9 @@ For authorized idle natural-language text and authorized non-empty STT, the
 top-level resolver runs LLM-first and returns bounded JSON containing
 `canonical_action` and `routing_kind`. The only routing kinds are
 `business_action`, `capability_or_howto`, `contextual_help`, and `unknown`.
+The model decides the expected response before selecting a canonical action.
+Instructions, capability questions, contextual help, and requests without
+an applicable route use `unknown` as the action.
 Python rejects non-allowed actions and uses the deterministic local candidate
 only as a fail-safe fallback when the model call cannot supply a valid result.
 

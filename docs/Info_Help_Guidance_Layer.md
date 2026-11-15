@@ -84,7 +84,8 @@ Unless later code proves otherwise:
 - an exact unsupported Contextual InfoHelp answer can expose two bounded
   inline choices: `Požiadať správcu` opens that existing preview and
   `Hlavné menu` calls the existing menu owner. Neither choice saves a request;
-  persistence still requires the preview's separate approval;
+  persistence still requires the preview's separate approval. Free text during
+  the offer points back to the original buttons or `/menu`;
 - this preview/save path is a partial Level 3 MVP slice only;
 - admin-only list/detail and status-only accept/reject review commands exist,
   but they do not notify users/admins, mutate Product Truth, convert to
@@ -1001,7 +1002,19 @@ STT/LLM or either persistence path. Active non-admin FSM ownership is unchanged.
 
 Contextual V2 extends the existing InfoHelp owner; it is not a parallel recovery layer. One inbound update may cause exactly one enhanced InfoHelp call after the primary resolver when the primary result is unknown, capability-like/informational, corrective/negative, an unknown command, an explicit reply follow-up, an active-flow help question, unsupported, or genuinely ambiguous. A Product-Truth-supported canonical action with a registered runtime owner is not classified again: mutation class alone is not an InfoHelp trigger, and an owner-handled missing slot enters that owner's existing continuation FSM.
 
-The bounded JSON distinguishes speech act, domain, exact business object, operation, reference, missing slots, correction/negation, explicit reply, active flow, registered action/capability/command and confidence. Python validates every field, repeats Product Truth lookup, requires exact `domain + object + operation`, and retains FSM, callback, tenant, confirmation and side-effect authority. A receipt delete never becomes invoice/account deletion; contact edit never becomes supplier-profile edit.
+The bounded JSON distinguishes product scope from the user's intent and speech
+act. It also carries the domain, exact object, operation, reference, missing
+slots, correction/negation, reply/state context, and bounded IDs. Python
+validates the result, repeats Product Truth lookup, and retains FSM, callback,
+tenant, confirmation and side-effect authority.
+
+For authorized idle V2, `out_of_scope` finishes with a short localized reply.
+Unknown or missing scope cannot open a business action or an administrator
+offer. The same reply and command-help paths use their existing validation.
+An `in_scope` result can reach a capability answer, a validated existing
+action, or a review offer for an exact unsupported operation or a concrete
+new need in a named product domain. A missing catalog match alone is
+insufficient. No phrase whitelist is used to decide what belongs in scope.
 
 Capability and proposed-business-outcome questions are resolved by their desired
 outcome, not merely by nouns naming source documents. For example, asking
@@ -1021,12 +1034,11 @@ never inserted into user prose. Unsupported capability answers retain the
 existing confirmation-gated administrator-review offer; no request is
 persisted before confirmation.
 
-A coherent new business need with no registered capability may also receive a
-live Slovak `answer_sk`, but only as a Python-validated `unknown` explanation:
-current support cannot be reliably confirmed from Product Truth and the need
-may be offered for administrator review. Absence from Product Truth is not
-proof of `unsupported`, `planned`, or `supported`, and the model may not invent
-an ID. Invalid copy falls back to the generic Slovak customization offer.
+A `new_business_feature_request` with verified in-scope classification, a
+named domain, a concrete normalized need and no matching capability or action
+may receive a live Slovak `answer_sk` that explains unverified support. Python
+validates the wording and owns the review offer. Invalid copy falls back to
+the existing Slovak draft guidance with an explicit unknown-support statement.
 
 Python checks whether the exact `domain + object + operation` is registered
 before treating `intent_complete=false` or `missing_slots` as a reason to ask
@@ -1073,8 +1085,10 @@ Product-Truth-status-based pre-execution gate.
   fallback evidence only when the call is unavailable, invalid, or fails.
 - The bundle returns a canonical action plus `routing_kind`:
   `business_action`, `capability_or_howto`, `contextual_help`, or `unknown`.
-  Questions that calculate/list/analyze real saved business data are
-  `business_action`; capability/how-to questions do not execute that action.
+  The model chooses the expected response first. Instructions are
+  `capability_or_howto` even when the user mentions details of a particular
+  job. Requests to calculate/list/analyze real saved business data can be
+  `business_action`.
 - Any non-`unknown` canonical action validated against Python-provided
   `allowed_actions` routes directly to its Python owner. InfoHelp cannot veto,
   downgrade, or reclassify it because of a question mark, `partial` Product
@@ -1095,12 +1109,12 @@ Product-Truth-status-based pre-execution gate.
 ### Profile questions and business explanations — 2026-11-15
 
 Status: partial Level 2 local implementation, pending live acceptance. The
-read-only branch preserves recognized capability IDs and four bounded topics
+read-only branch preserves recognized capability IDs and five bounded topics
 when action fields fail validation. It answers the active profile receipt
 archive from local configuration, the latest upload record, and coverage of
-confirmed receipts, release updates
+confirmed receipts, how to share the receipt folder, release updates
 from the curated user-facing section of `CHANGELOG.md`, and the monthly expense
-method with a worked example. The four replies support Slovak, Ukrainian,
+method with a worked example. These replies support Slovak, Ukrainian,
 Russian, and English. The recent-documents view still lists only the latest
 documents. Natural-language status for a specific file and live Drive readback
 remain proposed.
@@ -1129,6 +1143,17 @@ remain proposed.
   Current file presence requires a Drive readback. The local implementation
   covers all confirmed receipts for the active profile as a whole. Specific
   receipts and limited date ranges are follow-up scope.
+- **Sharing the receipt folder.** A question about letting an accountant see
+  only one profile's receipts in Google Drive selects `drive_folder_sharing`.
+  Explain how to share the folder containing only those receipts with Viewer
+  access and explain that a grant on a subfolder does not remove existing
+  access to the parent. The instructions assume the user can share the folder.
+  They make no claim about the existence of a specific folder, existing access,
+  or who currently controls it. Google Drive controls those permissions.
+  This answer is separate from upload status and access inside the bot. The
+  [Google Drive Help sharing guide](https://support.google.com/drive/answer/7166529)
+  supplies the permission facts. A Drive mention alone is insufficient for the
+  legacy archive guidance.
 - **Business explanations and calculations.** A genuine explanation question
   can receive a plain-language method and a worked example. For monthly document
   expenses, for example, sum confirmed receipt and incoming-invoice totals whose

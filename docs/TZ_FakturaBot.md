@@ -1812,9 +1812,11 @@ The monitor never updates invoice/invoice-item rows, regenerates PDFs, changes `
 2026-11-15 local repair (partial Level 2): the authorized idle V2 text/STT
 route can answer the active profile's receipt archive status and recorded coverage, explain the
 monthly document expense calculation with an example, and summarize the build's
-curated user-facing release notes. The current profile's saved upload record
-comes from a scoped read-only Python lookup. It does not prove current remote
-file presence. The rollout remains gated and live Telegram acceptance is open.
+curated user-facing release notes. It can also explain how to give someone
+Viewer access to a receipt-only folder. Google Drive controls folder permissions.
+The current profile's saved upload record comes from a scoped read-only Python
+lookup. It does not prove current remote file presence. The rollout remains
+gated and live Telegram acceptance is open.
 
 The existing InfoHelp owner has a rollout-gated contextual V2 contract. It runs one bounded assistant call when the primary resolver is unknown or potentially unsafe/incomplete, then Python validates Product Truth, exact domain/object/operation, runtime owner, required slots, FSM, callback actor, tenant scope, confirmation and side effects. V2 adds no public business action and no generic nearest-action dispatcher.
 

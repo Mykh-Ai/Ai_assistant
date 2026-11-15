@@ -19,8 +19,11 @@ INFO_HELP_INTENT_ACTIVE_FLOW = 'active_flow_question'
 INFO_HELP_INTENT_ACTIVE_EXPECTED = 'active_expected_input_question'
 INFO_HELP_INTENT_NEW_FEATURE = 'new_business_feature_request'
 INFO_HELP_INTENT_SMALLTALK = 'smalltalk'
-INFO_HELP_INTENT_OUT_OF_DOMAIN = 'out_of_domain'
 INFO_HELP_INTENT_GENUINELY_UNCLEAR = 'genuinely_unclear'
+
+INFO_HELP_SCOPE_IN = 'in_scope'
+INFO_HELP_SCOPE_OUT = 'out_of_scope'
+INFO_HELP_PRODUCT_SCOPES = (INFO_HELP_SCOPE_IN, INFO_HELP_SCOPE_OUT, 'unknown')
 
 INFO_HELP_SPEECH_EXECUTE = 'execute_request'
 INFO_HELP_SPEECH_CAPABILITY_QUESTION = 'capability_question'
@@ -29,7 +32,10 @@ INFO_HELP_SPEECH_CLARIFICATION = 'clarification_answer'
 INFO_HELP_SPEECH_INFORMATIONAL = 'informational_question'
 INFO_HELP_SPEECH_UNKNOWN = 'unknown'
 
-INFO_HELP_READ_TOPICS = ('receipt_drive_status', 'receipt_drive_coverage', 'product_updates', 'monthly_expense_method')
+INFO_HELP_READ_TOPICS = (
+    'receipt_drive_status', 'receipt_drive_coverage', 'drive_folder_sharing',
+    'product_updates', 'monthly_expense_method',
+)
 INFO_HELP_RESPONSE_LANGUAGES = ('sk', 'uk', 'ru', 'en')
 
 _INTENT_KINDS = {
@@ -37,7 +43,7 @@ _INTENT_KINDS = {
     INFO_HELP_INTENT_COMMAND_TYPO, INFO_HELP_INTENT_INCOMPLETE,
     INFO_HELP_INTENT_CONVERSATIONAL, INFO_HELP_INTENT_ACTIVE_FLOW,
     INFO_HELP_INTENT_ACTIVE_EXPECTED, INFO_HELP_INTENT_NEW_FEATURE,
-    INFO_HELP_INTENT_SMALLTALK, INFO_HELP_INTENT_OUT_OF_DOMAIN,
+    INFO_HELP_INTENT_SMALLTALK,
     INFO_HELP_INTENT_GENUINELY_UNCLEAR,
 }
 _SPEECH_ACTS = {
@@ -75,6 +81,7 @@ INFO_HELP_MISSING_SLOTS = ('attachment', 'invoice_reference', 'object_kind', 'op
 
 @dataclass(frozen=True)
 class InfoHelpAssistantResult:
+    product_scope: str = 'unknown'
     intent_kind: str = INFO_HELP_INTENT_GENUINELY_UNCLEAR
     speech_act: str = INFO_HELP_SPEECH_UNKNOWN
     domain_id: str = 'unknown'
@@ -139,7 +146,22 @@ def parse_info_help_assistant_model_output(
         )
         return InfoHelpAssistantResult()
 
+    product_scope = str(parsed.get('product_scope') or 'unknown')
     intent_kind = str(parsed.get('intent_kind') or '')
+    response_language = _optional_choice(
+        parsed.get('response_language'), INFO_HELP_RESPONSE_LANGUAGES
+    ) or 'sk'
+    if product_scope == INFO_HELP_SCOPE_OUT:
+        _set_parse_diagnostics(diagnostics, status='accepted')
+        return InfoHelpAssistantResult(
+            product_scope=product_scope,
+            intent_kind=(
+                intent_kind if intent_kind in _INTENT_KINDS
+                else INFO_HELP_INTENT_GENUINELY_UNCLEAR
+            ),
+            response_language=response_language,
+        )
+
     speech_act = str(parsed.get('speech_act') or '')
     # Older/non-strict model responses sometimes copied the valid speech-act
     # token into intent_kind. Normalize that harmless shape before validating
@@ -170,6 +192,7 @@ def parse_info_help_assistant_model_output(
     invalid_enum_fields = tuple(
         name
         for name, value, allowed in (
+            ('product_scope', product_scope, INFO_HELP_PRODUCT_SCOPES),
             ('intent_kind', intent_kind, _INTENT_KINDS),
             ('speech_act', speech_act, _SPEECH_ACTS),
             ('domain_id', domain_id, _DOMAINS),
@@ -230,6 +253,7 @@ def parse_info_help_assistant_model_output(
         answer = ''
 
     result = InfoHelpAssistantResult(
+        product_scope=product_scope,
         intent_kind=intent_kind,
         speech_act=speech_act,
         domain_id=domain_id,
@@ -254,9 +278,7 @@ def parse_info_help_assistant_model_output(
         normalized_business_need_sk=normalized_business_need,
         answer_sk=answer,
         read_topic=read_topic if read_only_answer else None,
-        response_language=_optional_choice(
-            parsed.get('response_language'), INFO_HELP_RESPONSE_LANGUAGES
-        ) or 'sk',
+        response_language=response_language,
     )
     _set_parse_diagnostics(diagnostics, status='accepted')
     return result

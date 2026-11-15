@@ -358,6 +358,7 @@ def test_google_drive_invoice_storage_record_is_partial_owner_oauth() -> None:
     assert any('existing remote files are not migrated' in value for value in entry.current_limitations)
     assert 'accounting_document_archive_path.py' in (entry.runtime_owner or '')
     assert 'All business profiles share one archive folder.' in entry.forbidden_claims
+    assert 'The bot grants, restricts, or verifies Google Drive folder access for an accountant.' in entry.forbidden_claims
     assert 'A confirmed local save means the Drive upload already succeeded.' in entry.forbidden_claims
     assert any('Service-account mode is unsupported' in limitation for limitation in entry.current_limitations)
     assert 'This is per-client Google OAuth Drive storage.' in entry.forbidden_claims

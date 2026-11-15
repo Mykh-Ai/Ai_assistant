@@ -68,6 +68,7 @@ from bot.services.customization_requests import (
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
 from bot.services.accounting_document_archive_service import read_receipt_archive_coverage, read_receipt_archive_status
 from bot.services.info_help import (
+    INFO_HELP_OUT_OF_SCOPE_REPLY,
     TRIAGE_ADMIN_REVIEW_CANDIDATE,
     TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
     build_contextual_read_answer,
@@ -83,7 +84,13 @@ from bot.services.info_help_action_registry import (
 )
 from bot.services.info_help_assistant import (
     INFO_HELP_INTENT_GENUINELY_UNCLEAR,
+    INFO_HELP_INTENT_NEW_FEATURE,
+    INFO_HELP_INTENT_SMALLTALK,
+    INFO_HELP_SCOPE_IN,
+    INFO_HELP_SCOPE_OUT,
     INFO_HELP_SPEECH_CAPABILITY_QUESTION,
+    INFO_HELP_SPEECH_CORRECTION,
+    INFO_HELP_SPEECH_EXECUTE,
     should_run_contextual_info_help,
     validate_info_help_answer_sk,
 )
@@ -1387,7 +1394,7 @@ async def _offer_customization_request_from_info_help(
     result,
     context_key,
     capability_id: str | None = None,
-    response_text: str | None = None,
+    response_text: str,
 ) -> None:
     draft = _build_customization_request_draft(
         requester_telegram_id=requester_telegram_id,
@@ -1413,9 +1420,8 @@ async def _offer_customization_request_from_info_help(
         }
     )
     await state.set_state(CustomizationRequestStates.waiting_admin_offer_decision)
-    text = response_text or _format_exact_unsupported(result)
     sent_message = await answer_with_decision_keyboard(
-        message, text, info_help_admin_offer_keyboard()
+        message, response_text, info_help_admin_offer_keyboard()
     )
     sent_message_id = getattr(sent_message, 'message_id', None)
     offer_chat_id = getattr(getattr(message, 'chat', None), 'id', None)
@@ -1426,7 +1432,7 @@ async def _offer_customization_request_from_info_help(
                 _INFO_HELP_OFFER_CHAT_ID_KEY: offer_chat_id,
             }
         )
-    info_help_conversation_context.capture_bot(context_key, text=text)
+    info_help_conversation_context.capture_bot(context_key, text=response_text)
 
 
 async def clear_info_help_offer_keyboard(*, message: Message, state: FSMContext) -> None:
@@ -4116,6 +4122,52 @@ async def _apply_contextual_info_help_v2(
             product_status=product_status,
         )
 
+    async def answer(
+        text: str, *, outcome: str, response_mode: str = 'info_help_answer',
+        capability_id: str | None = None, product_status: str | None = None,
+    ) -> tuple[bool, str]:
+        await _answer_contextual_info_help(message=message, context_key=context_key, text=text)
+        log_outcome(
+            outcome=outcome,
+            response_mode=response_mode,
+            response_text=text,
+            capability_id=capability_id,
+            product_status=product_status,
+        )
+        return True, top_level_intent
+
+    async def offer(
+        text: str, *, outcome: str, capability_id: str | None = None,
+        product_status: str | None = None,
+    ) -> tuple[bool, str]:
+        await _offer_customization_request_from_info_help(
+            message=message,
+            state=state,
+            requester_telegram_id=actor_id,
+            user_input_text=invoice_text,
+            source_channel=input_channel,
+            result=result,
+            context_key=context_key,
+            capability_id=capability_id,
+            response_text=text,
+        )
+        log_outcome(
+            outcome=outcome,
+            response_mode='admin_review_offer',
+            response_text=text,
+            capability_id=capability_id,
+            product_status=product_status,
+        )
+        return True, top_level_intent
+
+    if result.intent_kind == INFO_HELP_INTENT_SMALLTALK:
+        return await answer(
+            'Som pripravený pomôcť s biznis úlohami vo FakturaBote.',
+            outcome='smalltalk',
+        )
+    if result.product_scope == INFO_HELP_SCOPE_OUT:
+        return await answer(INFO_HELP_OUT_OF_SCOPE_REPLY[result.response_language], outcome='out_of_domain')
+
     if (
         result.refers_to_explicit_reply
         and explicit_reply is not None
@@ -4127,17 +4179,7 @@ async def _apply_contextual_info_help_v2(
             f'{acknowledgement}\nCitovaná správa bola: „{quoted[:500]}“\n'
             'Táto správa opisovala stav v danom kroku; sama nič nevytvorila, nezmenila ani nevymazala.'
         )
-        await _answer_contextual_info_help(
-            message=message,
-            context_key=context_key,
-            text=response_text,
-        )
-        log_outcome(
-            outcome='explicit_reply_explained',
-            response_mode='info_help_answer',
-            response_text=response_text,
-        )
-        return True, top_level_intent
+        return await answer(response_text, outcome='explicit_reply_explained')
 
     parse_diagnostics = assistant_diagnostics.get('parse')
     parse_rejected = (
@@ -4149,46 +4191,37 @@ async def _apply_contextual_info_help_v2(
             'Pomocný kontext sa teraz nepodarilo spoľahlivo spracovať. '
             'Skúste požiadavku poslať znova alebo napíšte /menu.'
         )
-        await _answer_contextual_info_help(
-            message=message,
-            context_key=context_key,
-            text=response_text,
-        )
-        log_outcome(
+        return await answer(
+            response_text,
             outcome='info_help_processing_failed',
             response_mode='info_help_fallback',
-            response_text=response_text,
         )
-        return True, top_level_intent
 
     if result.intent_kind == INFO_HELP_INTENT_GENUINELY_UNCLEAR:
         response_text = 'Tejto správe som nerozumel. Skúste stručne napísať, čo chcete urobiť.'
-        await _answer_contextual_info_help(
-            message=message,
-            context_key=context_key,
-            text=response_text,
-        )
-        log_outcome(
+        return await answer(
+            response_text,
             outcome='unclear_fallback',
             response_mode='info_help_fallback',
-            response_text=response_text,
         )
-        return True, top_level_intent
 
     if result.probable_command_target:
         raw_command = invoice_text.split(maxsplit=1)[0]
         response_text = f'Príkaz `{raw_command}` nepoznám. Pravdepodobne ste mysleli `{result.probable_command_target}`.'
-        await _answer_contextual_info_help(
-            message=message,
-            context_key=context_key,
-            text=response_text,
+        return await answer(response_text, outcome='probable_command_hint')
+
+    if result.intent_kind == 'probable_command_typo':
+        return await answer(
+            'Tento príkaz nepoznám. Skontrolujte ho alebo napíšte, čo chcete urobiť.',
+            outcome='unknown_command',
+            response_mode='info_help_fallback',
         )
-        log_outcome(
-            outcome='probable_command_hint',
-            response_mode='info_help_answer',
-            response_text=response_text,
+    if result.product_scope != INFO_HELP_SCOPE_IN:
+        return await answer(
+            'Čo presne chcete urobiť vo FakturaBote?',
+            outcome='product_scope_clarification',
+            response_mode='clarification',
         )
-        return True, top_level_intent
 
     exact = find_exact_info_help_action(
         domain_id=result.domain_id,
@@ -4196,7 +4229,7 @@ async def _apply_contextual_info_help_v2(
         operation_id=result.operation_id,
     )
     capability_question = result.speech_act == INFO_HELP_SPEECH_CAPABILITY_QUESTION
-    if capability_question:
+    if capability_question and result.read_topic:
         archive_status, upload_date = (
             read_receipt_archive_status(config, workspace)
             if result.read_topic == 'receipt_drive_status' and workspace is not None
@@ -4216,37 +4249,10 @@ async def _apply_contextual_info_help_v2(
             receipt_coverage=asdict(receipt_coverage) if receipt_coverage else None,
         )
         if response_text is not None:
-            await _answer_contextual_info_help(message=message, context_key=context_key, text=response_text)
-            log_outcome(
-                outcome=result.read_topic or 'capability_answer',
-                response_mode='info_help_answer',
-                response_text=response_text,
-            )
-            return True, top_level_intent
-        capability_id = result.proposed_capability_id or (
-            exact.capability_id if exact is not None else None
-        )
-        if capability_id is None:
-            response_text = validate_info_help_answer_sk(
-                result.answer_sk,
-                product_status='unknown',
-            )
-            await _offer_customization_request_from_info_help(
-                message=message,
-                state=state,
-                requester_telegram_id=actor_id,
-                user_input_text=invoice_text,
-                source_channel=input_channel,
-                result=result,
-                context_key=context_key,
-                response_text=response_text,
-            )
-            log_outcome(
-                outcome='capability_customization_offer',
-                response_mode='admin_review_offer',
-                response_text=response_text or _format_exact_unsupported(result),
-            )
-            return True, top_level_intent
+            return await answer(response_text, outcome=result.read_topic)
+
+    capability_id = result.proposed_capability_id or (exact.capability_id if exact else None)
+    if capability_question and capability_id:
         truth = get_safe_answer_payload(capability_id)
         product_status = str(truth.get('product_status') or 'unknown')
         response_text = validate_info_help_answer_sk(
@@ -4254,93 +4260,60 @@ async def _apply_contextual_info_help_v2(
             product_status=product_status,
         ) or render_product_truth_payload(truth)
         if product_status not in {'supported', 'partial'} and truth.get('customization_allowed'):
-            await _offer_customization_request_from_info_help(
-                message=message,
-                state=state,
-                requester_telegram_id=actor_id,
-                user_input_text=invoice_text,
-                source_channel=input_channel,
-                result=result,
-                context_key=context_key,
-                capability_id=capability_id,
-                response_text=response_text,
-            )
-            log_outcome(
+            return await offer(
+                response_text,
                 outcome='capability_customization_offer',
-                response_mode='admin_review_offer',
-                response_text=response_text,
                 capability_id=capability_id,
                 product_status=product_status,
             )
-            return True, top_level_intent
-        await _answer_contextual_info_help(message=message, context_key=context_key, text=response_text)
-        log_outcome(
+        return await answer(
+            response_text,
             outcome='capability_answer',
             response_mode='product_truth_answer',
-            response_text=response_text,
             capability_id=capability_id,
             product_status=product_status,
         )
-        return True, top_level_intent
 
-    if result.intent_kind in {'smalltalk', 'out_of_domain'}:
-        text = (
-            'Som pripravený pomôcť s biznis úlohami vo FakturaBote.'
-            if result.intent_kind == 'smalltalk'
-            else 'Toto je mimo rozsahu OfficeFlow/FakturaBotu.'
-        )
-        await _answer_contextual_info_help(message=message, context_key=context_key, text=text)
-        log_outcome(
-            outcome=result.intent_kind,
-            response_mode='info_help_answer',
-            response_text=text,
-        )
-        return True, top_level_intent
-
-    if result.intent_kind == 'probable_command_typo' and not result.probable_command_target:
-        response_text = 'Tento príkaz nepoznám. Skontrolujte ho alebo napíšte, čo chcete urobiť.'
-        await _answer_contextual_info_help(
-            message=message,
-            context_key=context_key,
-            text=response_text,
-        )
-        log_outcome(
-            outcome='unknown_command',
-            response_mode='info_help_fallback',
-            response_text=response_text,
-        )
-        return True, top_level_intent
-
-    if result.intent_kind == 'incomplete_intent' or result.operation_id == 'unknown':
-        question = result.clarification_question_sk or (
-            'Čo presne chcete urobiť s kontaktom?'
-            if result.object_kind == 'contact'
-            else 'Čo presne chcete urobiť?'
-        )
-        await _answer_contextual_info_help(message=message, context_key=context_key, text=question)
-        log_outcome(
+    if result.intent_kind == INFO_HELP_INTENT_NEW_FEATURE:
+        if (
+            result.domain_id != 'unknown'
+            and result.normalized_business_need_sk
+            and capability_id is None
+            and result.proposed_action_id is None
+        ):
+            response_text = validate_info_help_answer_sk(result.answer_sk, product_status='unknown') or (
+                f'Rozumiem, ide o túto biznis potrebu: {result.normalized_business_need_sk} '
+                'Jej podporu neviem spoľahlivo potvrdiť. '
+                'Ak chcete, môžem pripraviť požiadavku pre správcu. '
+                'Požiadavka sa uloží až po vašom potvrdení.'
+            )
+            return await offer(response_text, outcome='new_business_feature_offer')
+        return await answer(
+            result.clarification_question_sk or 'Ktorý pracovný postup chcete vo FakturaBote doplniť?',
             outcome='clarification_requested',
             response_mode='clarification',
-            response_text=question,
         )
-        return True, top_level_intent
 
-    if exact is None:
-        await _offer_customization_request_from_info_help(
-            message=message,
-            state=state,
-            requester_telegram_id=actor_id,
-            user_input_text=invoice_text,
-            source_channel=input_channel,
-            result=result,
-            context_key=context_key,
+    execution_request = result.speech_act in {INFO_HELP_SPEECH_EXECUTE, INFO_HELP_SPEECH_CORRECTION}
+    if (
+        capability_id is None
+        and result.proposed_action_id is None
+        and 'unknown' not in (result.domain_id, result.object_kind, result.operation_id)
+        and (capability_question or execution_request)
+        and result.intent_kind != 'incomplete_intent'
+    ):
+        return await offer(_format_exact_unsupported(result), outcome='unsupported_customization_offer')
+
+    if exact is None or result.intent_kind == 'incomplete_intent' or not execution_request:
+        return await answer(
+            result.clarification_question_sk or (
+                'Čo presne chcete urobiť s kontaktom?'
+                if result.object_kind == 'contact'
+                else 'Čo presne chcete urobiť?'
+            ),
+            outcome='clarification_requested',
+            response_mode='clarification',
         )
-        log_outcome(
-            outcome='unsupported_customization_offer',
-            response_mode='admin_review_offer',
-            response_text=_format_exact_unsupported(result),
-        )
-        return True, top_level_intent
 
     if not result.intent_complete or bool(result.missing_slots):
         question = result.clarification_question_sk or (
@@ -4348,13 +4321,11 @@ async def _apply_contextual_info_help_v2(
             if 'invoice_reference' in result.missing_slots
             else 'Čo presne chcete urobiť?'
         )
-        await _answer_contextual_info_help(message=message, context_key=context_key, text=question)
-        log_outcome(
+        return await answer(
+            question,
             outcome='clarification_requested',
             response_mode='clarification',
-            response_text=question,
         )
-        return True, top_level_intent
 
     if (
         exact.object_kind in result.negated_objects
@@ -4364,38 +4335,30 @@ async def _apply_contextual_info_help_v2(
         or exact.entry_mode == 'not_infohelp_eligible'
     ):
         response_text = result.clarification_question_sk or 'Spresnite prosím presný objekt a úkon. Nič som nevykonal.'
-        await _answer_contextual_info_help(
-            message=message,
-            context_key=context_key,
-            text=response_text,
-        )
-        log_outcome(
+        return await answer(
+            response_text,
             outcome='semantic_conflict_clarification',
             response_mode='clarification',
-            response_text=response_text,
             capability_id=exact.capability_id,
         )
-        return True, top_level_intent
 
     truth = get_safe_answer_payload(exact.capability_id)
     if truth.get('product_status') not in {'supported', 'partial'} or not exact.runtime_owner:
-        await _offer_customization_request_from_info_help(
-            message=message,
-            state=state,
-            requester_telegram_id=actor_id,
-            user_input_text=invoice_text,
-            source_channel=input_channel,
-            result=result,
-            context_key=context_key,
-        )
-        log_outcome(
-            outcome='product_truth_customization_offer',
-            response_mode='admin_review_offer',
-            response_text=_format_exact_unsupported(result),
+        response_text = render_product_truth_payload(truth)
+        if truth.get('customization_allowed'):
+            return await offer(
+                response_text,
+                outcome='product_truth_customization_offer',
+                capability_id=exact.capability_id,
+                product_status=str(truth.get('product_status') or 'unknown'),
+            )
+        return await answer(
+            response_text,
+            outcome='capability_answer',
+            response_mode='product_truth_answer',
             capability_id=exact.capability_id,
-            product_status=str(truth.get('product_status') or '') or None,
+            product_status=str(truth.get('product_status') or 'unknown'),
         )
-        return True, top_level_intent
     log_outcome(
         outcome='action_pass_through',
         handled=False,
@@ -6570,11 +6533,7 @@ async def info_help_admin_offer_decision(
         return
 
     if canonical_decision != 'request_admin':
-        await answer_with_decision_keyboard(
-            message,
-            'Vyberte, prosím: Požiadať správcu alebo Hlavné menu.',
-            info_help_admin_offer_keyboard(),
-        )
+        await info_help_admin_offer_text_fallback(message)
         return
 
     await clear_info_help_offer_keyboard(message=message, state=state)
@@ -6600,11 +6559,7 @@ async def info_help_admin_offer_decision(
 
 @router.message(CustomizationRequestStates.waiting_admin_offer_decision)
 async def info_help_admin_offer_text_fallback(message: Message) -> None:
-    await answer_with_decision_keyboard(
-        message,
-        'Vyberte, prosím, jednu z možností nižšie alebo použite /menu.',
-        info_help_admin_offer_keyboard(),
-    )
+    await message.answer('Použite tlačidlá pri pôvodnej ponuke alebo napíšte /menu.')
 
 
 @router.message(CustomizationRequestStates.waiting_edit_text)

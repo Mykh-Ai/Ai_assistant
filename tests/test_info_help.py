@@ -112,6 +112,15 @@ def test_gmail_statement_collection_question_is_partial_and_no_parsing_claim() -
     ).capability_id == 'gmail_statement_collection'
 
 
+@pytest.mark.parametrize('question', (
+    'Google Drive',
+    'Можу я дати бухгалтеру доступ до мого Google Drive, щоб він бачив тільки чеки мого профілю?',
+    'How can my bookkeeper see only the receipts in my Google Drive?',
+))
+def test_legacy_infohelp_does_not_assume_drive_mentions_are_archive_questions(question: str) -> None:
+    assert classify_info_help_capability(user_input_text=question) is None
+
+
 def test_google_drive_question_renders_external_limitation() -> None:
     answer = build_product_truth_guidance(user_input_text='Vie bot ukladat faktury na Google Drive?')
 

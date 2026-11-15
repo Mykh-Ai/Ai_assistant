@@ -68,6 +68,33 @@ _MONTHLY_EXPENSE_METHOD = {
     'en': 'I add the totals of confirmed receipts and incoming invoices issued in the month, separately for each currency. For example, €20 + €30 = €50.',
 }
 
+_DRIVE_FOLDER_SHARING = {
+    'sk': (
+        'Áno. Ak máte právo zdieľať, na Google Drive vyberte priečinok, v ktorom sú len bločky '
+        'daného profilu. Kliknite na Zdieľať, zadajte e-mail príjemcu, vyberte Čitateľ a potvrďte. '
+        'Ak už má prístup k nadradenému priečinku, týmto ho neobmedzíte. '
+        'Prístup nastavujete v Google Drive, bot ho nemení.'
+    ),
+    'uk': (
+        'Так. Якщо ви маєте право ділитися папкою, відкрийте на Google Диску папку, де є лише чеки '
+        'цього профілю. Натисніть «Поділитися», введіть пошту одержувача, виберіть «Читач» і підтвердьте. '
+        'Якщо ця людина вже має доступ до батьківської папки, це його не обмежить. '
+        'Доступ налаштовується в Google Drive, бот його не змінює.'
+    ),
+    'ru': (
+        'Да. Если у вас есть право делиться папкой, откройте на Google Диске папку, где только чеки '
+        'этого профиля. Нажмите «Поделиться», введите почту получателя, выберите «Читатель» и подтвердите. '
+        'Если у получателя уже есть доступ к родительской папке, это его не ограничит. '
+        'Доступ настраивается в Google Drive, бот его не меняет.'
+    ),
+    'en': (
+        'Yes. If you can share the folder, select the Google Drive folder containing only receipts '
+        'for that profile. Click Share, enter the recipient’s email, choose Viewer, and confirm. '
+        'This will not restrict any access they already have to the parent folder. '
+        'You manage access in Google Drive. The bot does not change it.'
+    ),
+}
+
 _RELEASE_NOTES_UNAVAILABLE = {
     'sk': 'Táto verzia nemá dostupné používateľské poznámky k vydaniu.',
     'uk': 'Для цієї версії немає доступних нотаток про зміни.',
@@ -75,11 +102,20 @@ _RELEASE_NOTES_UNAVAILABLE = {
     'en': 'This build has no available user-facing release notes.',
 }
 
+INFO_HELP_OUT_OF_SCOPE_REPLY = {
+    'sk': 'Táto otázka je mimo možností OfficeFlow. Pomáham s faktúrami, dokladmi a evidenciou práce.',
+    'uk': 'Це питання поза сферою OfficeFlow. Я допомагаю з фактурами, документами й обліком часу.',
+    'ru': 'Этот вопрос вне сферы OfficeFlow. Я помогаю со счетами, документами и учётом времени.',
+    'en': 'That question is outside OfficeFlow’s scope. I can help with invoices, documents, and time tracking.',
+}
+
 
 def build_contextual_read_answer(
     *, topic: str | None, language: str, profile: str | None, archive_status: str, upload_date: str | None,
     receipt_coverage: Mapping[str, int] | None = None,
 ) -> str | None:
+    if topic == 'drive_folder_sharing':
+        return _DRIVE_FOLDER_SHARING[language]
     if topic == 'monthly_expense_method':
         return _MONTHLY_EXPENSE_METHOD[language]
     if topic == 'product_updates':
@@ -217,7 +253,7 @@ _SLOVAK_CAPABILITY_COPY = {
         'title': 'Pomoc InfoHelp',
         'summary': 'InfoHelp čiastočne odpovedá na otázky o možnostiach produktu a pomáha pri nejasnej požiadavke.',
         'limitation': 'Pri zapnutom V2 vie vysvetliť výpočet mesačných výdavkov, prečítať poznámky k vydaniu a overiť evidovaný archív bločkov aktívneho profilu. Rozsah pomoci aj overenie uloženia na Drive sú naďalej obmedzené.',
-        'safe_next': 'Opíšte biznis cieľ prirodzeným jazykom; InfoHelp odpovie podľa aktuálneho Product Truth alebo ponúkne potvrdený ľudský review tok.',
+        'safe_next': 'Opíšte, čo chcete vo FakturaBote urobiť. Pri zapnutom V2 sa návrh pre správcu ponúka pri konkrétnej potrebe z oblasti produktu.',
     },
     'invoice_period_summary': {
         'title': 'Ročný súhrn v analytike faktúr',
@@ -908,7 +944,12 @@ def classify_info_help_capability(
         return 'send_invoice_email'
     if _mentions_google_drive_invoice_archive_after_due_date(normalized, tokens):
         return 'google_drive_invoice_archive_after_due_date'
-    if _mentions_google_drive(normalized, tokens):
+    if _mentions_google_drive(normalized, tokens) and tokens.intersection({
+        'archiv', 'archivacia', 'archivovat', 'archive', 'archiving',
+        'uklada', 'ukladat', 'ulozit', 'nahrat', 'save', 'store', 'upload',
+        'зберігати', 'зберігає', 'завантажувати', 'завантажує',
+        'сохранять', 'сохраняет', 'загружать', 'загружает',
+    }):
         return 'google_drive_invoice_storage'
     if _mentions_invoice_due_date_reminders(normalized, tokens):
         return 'invoice_due_date_reminders'

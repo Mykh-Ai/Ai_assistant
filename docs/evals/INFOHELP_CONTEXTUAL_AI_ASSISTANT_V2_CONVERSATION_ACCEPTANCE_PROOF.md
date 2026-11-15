@@ -146,7 +146,7 @@ final interactive acceptance step.
 
 The ZIP contains 15 numbered Higgsfield clips converted to Ogg/Opus. The
 runtime STT was exercised directly with the clips and replacements. Telegram
-delivery remains open because Computer Use could not verify the browser URL.
+voice delivery remains open. The live text results are recorded below.
 Project-history prompts include paraphrases of the recorded journeys.
 
 | Clip | Source | Spoken input | Expected visible outcome |
@@ -171,6 +171,41 @@ The delete probe stops at the preview and then cancels. Record the deployed
 version, exact input, STT transcript, visible response, fact source and
 business/FSM outcome for each run. Do not score the fixture result as live.
 
+### Live Telegram text results, deployed `3425a6d`
+
+The 15 scenarios ran in the authorized Zevs s.r.o. chat. Scenario 7 was
+verified in the preceding live dialogue. For scenario 14, the target was the
+actual invoice `20260004`, and `/cancel` ended the flow without deletion.
+
+| Scenario | Result | Visible evidence |
+| --- | --- | --- |
+| 1 | Failed | Generic processing error and `/menu` suggestion. Production diagnostics show an invalid `object_kind` in the contextual response. |
+| 2 | Passed | Category suggestions appear during preview and need confirmation. |
+| 3 | Incomplete | The reply mentioned separate confirmation and omitted the duplicate warning already implemented in intake. |
+| 4 | Passed | Correctly distinguished the bot's local paid status from bank verification. |
+| 5 | Outside-scope routing gap | Declined greenhouse scheduling but opened a proposal for administrator review. |
+| 6 | Passed | Confirmed ZEVS receipt uploads and the last recorded date, 1 November 2026. |
+| 7 | Passed | Reported 12 of 13 uploaded, one failure, zero pending and unknown. Matched the archive journal. |
+| 8 | Passed | Explained month and currency grouping and gave `20 € + 30 € = 50 €`. |
+| 9 | Stale content | Read the bundled 20 October note. It did not mention the November release. |
+| 10 | Passed | Counted four 2026 outgoing invoices, matching the ZEVS database. |
+| 11 | Passed | Reported EUR 12,981.00 for those invoices, matching the ZEVS database. |
+| 12 | Incorrect heading | Displayed the correct latest invoice `20260004` and sent its PDF without asking for a number. The view began with “for editing”. |
+| 13 | Passed | Clearly said receipt deletion is unsupported and did not open invoice deletion. |
+| 14 | Cleanup failed | Asked for confirmation. `/cancel` acknowledged cancellation, and the invoice remained in the database. The previous inline `Vymazať` and `Zrušiť` buttons remained visible. |
+| 15 | Passed | Declined to prepare a tax return and distinguished read-only document analytics. |
+
+After the separate question about identifying the failed receipt, the
+administrator offer consumed three new questions and repeated its buttons.
+Its displayed `Hlavné menu` button returned a stale-decision message. Sending
+`/menu` restored idle, and the three questions then received substantive
+answers. No administrator request was saved during the test.
+
+The local regression checks that two typed replies retain the original offer
+message and its working menu button. The reminder has no inline markup. The
+original menu callback clears the state and the inline keyboard without
+saving a request. Live rechecking of the local repair remains open.
+
 Real configured-model probes on an isolated local input path selected
 `invoice_analytics` for `Koľko vystavených faktúr mám za tento rok?`,
 `show_existing_invoice` with `invoice_selector=latest` for
@@ -179,3 +214,45 @@ Real configured-model probes on an isolated local input path selected
 Selected audio transcripts also reached the local help routes. The original
 deletion audio's unreliable transcription reached invoice viewing; the exact
 text reached deletion. These runs provide routing evidence only.
+
+### Google Drive receipt-folder sharing follow-up
+
+Live on `3425a6d`, the question “Можу я дати бухгалтеру доступ до мого Google
+Drive, щоб він бачив тільки чеки мого профілю?” received Slovak invoice archive
+setup instructions. The reply omitted folder sharing, the Viewer role, and
+the scope of existing permissions. This is a separate question from scenario 1,
+which asks for access inside the bot.
+
+The local handler regression sends the exact question through text and the STT
+transcript entry and verifies a Ukrainian answer, folder-specific Viewer
+instructions, the parent-access caveat, no offer buttons, idle FSM, and
+byte-identical test SQLite. Four configured `gpt-4o` probes selected the
+sharing topic and the correct Slovak, Ukrainian, Russian, or English locale.
+Three contrast probes distinguished whether uploads run, all-receipt coverage,
+and sharing inside the bot. The inside-bot probe verified routing only.
+The external guide is [Google Drive Help](https://support.google.com/drive/answer/7166529).
+An interactive Telegram check of the repaired build remains open.
+
+### Product scope before action or review
+
+The deployed greenhouse query used the capability-question branch without a
+known product domain or capability and opened an administrator offer. The
+local route separates scope and intent and requires an in-scope result before
+idle action recovery or a review offer. Older payloads with no scope and
+unmatched capability questions end in clarification.
+
+The local configured-model journey sent questions through the primary
+resolver, InfoHelp and the actual handler with test messages and test state.
+Weather, irrigation, sports reservations, and an aquarium question carried
+as an STT transcript received scoped declines with no keyboard or draft.
+Google Drive folder sharing produced the expected steps. A concrete monthly
+receipt-report delivery request produced the confirmation-gated review offer.
+The first pass exposed an invoice how-to incorrectly entering invoice creation.
+After correcting primary intent precedence, two invoice how-to phrasings
+returned the verified `/invoice` step without opening a flow.
+
+After deployment, repeat with fresh multilingual inputs selected at test
+time, including a genuine action using the same subject as a how-to question,
+an out-of-domain request that mentions a product term, an eligible feature
+proposal, and an active-state navigation request. Verify the actual Telegram
+text and voice journeys and that declined queries create no buttons or draft.
