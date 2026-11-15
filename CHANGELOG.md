@@ -21,6 +21,26 @@
 
 # Changelog
 
+## User-facing release notes
+
+### sk
+
+Posledná zmena v poznámkach je z 20. 10. 2026. Pri ukončení pracovného dňa vidíte celkový čas, odpočítanú prestávku a čistý pracovný čas. Ak sú zapnuté úpravy prestávok za jednotlivé dni, viete opraviť prestávku aj na nulu cez náhľad a potvrdenie.
+
+### uk
+
+Останнє оновлення в нотатках — від 20 жовтня 2026 року. Під час закриття робочого дня бот показує загальний час, перерву й чистий робочий час. Якщо ввімкнено правки перерв за окремий день, можна змінити перерву навіть на нуль після перегляду й підтвердження.
+
+### ru
+
+Последнее обновление в заметках — от 20 октября 2026 года. При закрытии рабочего дня бот показывает общее время, вычтенное время перерыва и чистое рабочее время. Если включена правка перерывов для отдельных дней, перерыв можно изменить даже на ноль после просмотра и подтверждения.
+
+### en
+
+The latest update in these notes is from 20 October 2026. Closing a workday shows total time, the break deduction, and net working time. If day-specific break edits are enabled, you can set a break to zero after preview and confirmation.
+
+## Development history
+
 - Deployed and enabled2026-10-20 through PR#117 (merge9a88536): work-day closing shows gross,
   deducted break and net hours and leaves FSM idle. Optional day-bound break
   editing, including zero, extends the existing action with scope/date/minutes

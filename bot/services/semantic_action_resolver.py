@@ -1514,6 +1514,7 @@ async def resolve_semantic_action(
                             'Outgoing/vystavene invoice totals, counts, customers, paid/unpaid, and revenue belong to invoice analytics when that action is allowed. '
                             'A request to calculate, list, compare, show, or analyze the user\'s actual saved business data is a business_action even when phrased as a question. '
                             'A question about whether the product can do something, how a function works, or what command to use is capability_or_howto and canonical_action must be "unknown" so contextual InfoHelp can answer without executing the business action. '
+                            'Questions about what is new in the product, how an expense total is calculated, or whether the active profile archives receipts to Google Drive are capability_or_howto. '
                             'A request for help with the current conversation or confusion about what the bot expects is contextual_help and canonical_action must be "unknown". '
                             'Return "unknown" only when the normalized meaning is genuinely unclear or no allowed action fits.'
                         ),

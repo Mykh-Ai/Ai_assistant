@@ -1092,6 +1092,67 @@ Product-Truth-status-based pre-execution gate.
   user was unclear. User-facing recovery must say processing failed and must not
   blame the input with a false `nerozumel` claim.
 
+### Profile questions and business explanations — 2026-11-15
+
+Status: partial Level 2 local implementation, pending live acceptance. The
+read-only branch preserves recognized capability IDs and four bounded topics
+when action fields fail validation. It answers the active profile receipt
+archive from local configuration, the latest upload record, and coverage of
+confirmed receipts, release updates
+from the curated user-facing section of `CHANGELOG.md`, and the monthly expense
+method with a worked example. The four replies support Slovak, Ukrainian,
+Russian, and English. The recent-documents view still lists only the latest
+documents. Natural-language status for a specific file and live Drive readback
+remain proposed.
+
+- **Current profile first.** For “Are receipts going to Google Drive?”, use the
+  active authorized business profile by default. Python reads the effective
+  archive configuration and route for receipts and any relevant success record.
+  Answer yes or no when the facts establish it. Say “It's set up, but I don't
+  see a completed upload yet” when that is the available evidence. If a check
+  fails, name the fact that could not be verified. Ask which profile only when
+  the intended authorized profile cannot be established. A global connection
+  record alone is insufficient evidence about this profile.
+- **Start with the answer in plain language.** Example when supported by the
+  profile evidence: “Yes, I upload confirmed ZEVS receipts to Google Drive.
+  I save the receipt first and send it to Drive afterward. The last upload I
+  can confirm is from 1 November.” Preserve the user's language in this
+  proposed path. That requires a contract change from the current Slovak-only
+  response rule. Avoid setup instructions when the profile is already set up.
+- **Specific receipt or all receipts.** Reuse the existing authorized document
+  and archive reads. For a particular receipt, identify it before reporting
+  its recorded status. For all receipts, reconcile all confirmed receipts in
+  the requested profile and period with their recorded archive states. Report
+  uploads, pending work, failures, and receipts with no archive record. Use
+  the confirmed receipts as the denominator, rather than the archive jobs or
+  the recent-documents list. An `uploaded` record proves a recorded upload.
+  Current file presence requires a Drive readback. The local implementation
+  covers all confirmed receipts for the active profile as a whole. Specific
+  receipts and limited date ranges are follow-up scope.
+- **Business explanations and calculations.** A genuine explanation question
+  can receive a plain-language method and a worked example. For monthly document
+  expenses, for example, sum confirmed receipt and incoming-invoice totals whose
+  issue date falls in the month, separately by currency. EUR 20 + EUR 30 gives
+  EUR 50. “How much did I spend this month?” uses the existing scoped read-only
+  analytics owner to compute the actual numbers. Questions about the product's
+  capabilities still take their facts from Product Truth.
+- **Reuse the existing model call and Python owners.** Use the existing V2 call
+  for unclear authorized input. A validated catalog ID for a recognized
+  capability question can reach a read-only answer even when action fields
+  are unusable. An ambiguous action prompts a specific clarification. Commands
+  can reach only their registered Python owner with its exact object checks,
+  active-flow rules and required confirmations. A question performs no upload,
+  business write, new workflow or request save.
+
+Acceptance starts with the ZEVS yes/no question in real Telegram, in text and
+voice, followed by a disabled profile and a configured profile with no completed
+upload. Exercise the recorded Drive parser conflict, ordinary paraphrases,
+receipt status, totals, a formula example, and nearby invoice create/delete
+commands. Verify isolation, no business side effects from questions, and the
+existing confirmation paths. Keep the exact input, visible reply, fact source,
+version, and outcome. A server harness supplies regression evidence. Live
+Telegram conversations determine product acceptance.
+
 ### Work-time arrival/departure wording — deployed2026-10-20, `62b1046`
 
 Slovak guidance explains prichod as starting work and odchod (including the

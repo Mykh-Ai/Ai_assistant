@@ -122,7 +122,7 @@ LLM must return one of allowed actions or `unknown`.
 
 `edit_invoice` remains a **reserved top-level action token**.
 Runtime editing is defined as bounded in-action/subflow operations under invoice flow (`upraviť`), not as a separate top-level executor.
-`show_existing_invoice` is an explicit read-only top-level action for viewing an already created/persisted invoice by number reference; Python performs supplier-scoped lookup, sends summary/PDF when available, clears FSM state, and must not enter edit mode or mutate invoice rows/PDFs.
+`show_existing_invoice` is an explicit read-only top-level action for viewing an already created/persisted invoice by number reference or explicit `invoice_selector=latest`. Python performs the scoped lookup and sends the summary and any available PDF before clearing FSM state. Only this action may consume the `latest` selector, and an explicit reference takes precedence. Latest means greatest issue date, with greatest invoice ID breaking ties. Supported owners remain separate for counts, edits and confirmed deletion.
 `invoice_period_summary` is no longer a competing user-facing top-level action. Simple current/previous/explicit calendar-year count and total questions over saved outgoing invoices may use its deterministic Python logic only as an internal fast path under `invoice_analytics`; Python parses the supported year period, filters by the current `supplier_telegram_id`, groups totals by currency, renders the answer, clears FSM state, and must not create/edit/delete invoices, generate PDFs, or summarize receipts/incoming invoices.
 `invoice_analytics` is a partial read-only top-level pilot for questions over already saved outgoing invoices, such as counts, sums, customer/normalized-payment-status/month grouping, period comparisons, and bounded matching lists. Python filters the current supplier's invoice rows, exposes only a sanitized dataframe, injects the current runtime date, derives bot payment state from follow-up state plus due dates, validates any LLM-generated analysis code, and executes it in a timeout-killed child process without DB/file/network/write access. LLM must not run SQL, inspect storage paths, treat raw invoice lifecycle status as payment truth, mutate invoice state, claim bank-confirmed settlement, claim receipt/incoming-invoice/bank/tax/accounting analytics, or replace the deterministic internal yearly fast path.
 For an invoice analytics question that explicitly names one customer, a bounded extractor returns only the raw customer reference. Python then reuses the invoice-generation tenant-scoped contact chain (exact, normalized, confirmed alias, high-confidence fuzzy), with bounded context `invoice_analytics_customer_resolution` only as the final fallback over current-tenant candidates. A resolved contact is enforced by Python as a trusted `contact_id` dataframe prefilter before planning; an explicit unresolved reference fails safe instead of analyzing all invoices. The planner must not apply a second raw-name/contact-id filter. This read-only resolution does not create a contact alias or mutate invoice history.
@@ -649,6 +649,18 @@ still no retry cascade, confidence threshold, alternate classifier, or side
 effect, and a transport timeout still fails closed.
 
 ### Top-level bundle and recovery ownership - 2026-08-05
+
+2026-11-15 local amendment: an unambiguous read-only capability response,
+with no proposed action or command and a known capability ID or bounded read
+topic, can reach its answer when action-specific domain/object/operation
+fields are invalid. Python resets those fields to `unknown`. Executable action
+and command results keep their original validation. The bounded topics are
+`receipt_drive_status`, `receipt_drive_coverage`, `product_updates`, and
+`monthly_expense_method`.
+Python renders their replies in the selected `sk`, `uk`, `ru`, or `en` locale
+without an extra model call or business mutation. Other capability answers
+retain the existing Slovak contract. The primary read-only analytics and
+canonical business routes remain separate owners.
 
 For authorized idle natural-language text and authorized non-empty STT, the
 top-level resolver runs LLM-first and returns bounded JSON containing

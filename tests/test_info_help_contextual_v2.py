@@ -55,6 +55,28 @@ def _assistant_json(**overrides) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def test_drive_capability_answer_survives_invalid_action_fields() -> None:
+    question = dict(
+        intent_kind='capability_question',
+        speech_act='capability_question',
+        domain_id='google_drive',
+        object_kind='receipt',
+        operation_id='store',
+        proposed_action_id=None,
+        proposed_capability_id='google_drive_invoice_storage',
+    )
+    result = parse_info_help_assistant_model_output(_assistant_json(**question))
+    assert result.proposed_capability_id == 'google_drive_invoice_storage'
+    assert result.proposed_action_id is None
+    assert result.domain_id == result.operation_id == 'unknown'
+
+    rejected = parse_info_help_assistant_model_output(_assistant_json(**(
+        question | {'proposed_action_id': 'delete_existing_invoice'}
+    )))
+    assert rejected.proposed_capability_id is None
+    assert rejected.proposed_action_id is None
+
+
 def test_parser_preserves_exact_receipt_delete_capability_question() -> None:
     result = parse_info_help_assistant_model_output(
         _assistant_json(

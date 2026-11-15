@@ -25,6 +25,8 @@ from bot.services.info_help_assistant import (
     INFO_HELP_OBJECTS,
     INFO_HELP_OPERATIONS,
     INFO_HELP_SPEECH_ACTS,
+    INFO_HELP_READ_TOPICS,
+    INFO_HELP_RESPONSE_LANGUAGES,
     KNOWN_INFO_HELP_COMMANDS,
     InfoHelpAssistantResult,
     build_info_help_product_truth_view,
@@ -191,6 +193,8 @@ def build_info_help_assistant_payload(
         'expected_output': {
             'intent_kind': {'allowed_values': list(INFO_HELP_INTENT_KINDS)},
             'speech_act': {'allowed_values': list(INFO_HELP_SPEECH_ACTS)},
+            'read_topic': {'allowed_values': list(INFO_HELP_READ_TOPICS), 'nullable': True},
+            'response_language': {'allowed_values': list(INFO_HELP_RESPONSE_LANGUAGES)},
             'domain_id': {'allowed_values': list(INFO_HELP_DOMAINS)},
             'object_kind': {'allowed_values': list(INFO_HELP_OBJECTS)},
             'operation_id': {'allowed_values': list(INFO_HELP_OPERATIONS)},
@@ -301,8 +305,18 @@ async def resolve_info_help_assistant_with_llm(
                             'questions, infer the desired outcome before considering the source documents mentioned by the user. '
                             'An invoice or receipt used as input to a tax/accounting outcome does not make the request create_invoice. '
                             'Select the closest provided Product Truth capability even when its status is partial, planned, or '
-                            'unsupported; never invent an ID. Normalize the business need into Slovak in '
-                            'normalized_business_need_sk. When proposed_capability_id is present, write a concise direct Slovak '
+                            'unsupported; never invent an ID. '
+                            'For a read-only answer use intent_kind and speech_act capability_question, with null action and command. '
+                            'Use read_topic receipt_drive_status for whether this active profile sends receipts to Google Drive. '
+                            'Use receipt_drive_coverage when the user wants to know whether all receipts from the active profile reached Drive. '
+                            'An STT transcript such as "Все мои чеки уже завантажены на Google Диск." asks for receipt_drive_coverage. '
+                            'Neither receipt topic applies to an individual file, other profiles, limited date ranges, or outgoing invoices. '
+                            'Use product_updates for what is new in the bot and monthly_expense_method for a formula or example, '
+                            'not for calculating the user\'s actual expenses. For a read_topic, Python supplies the reply; '
+                            'set proposed_capability_id to null and response_language to the language of the current question. '
+                            'For a capability-only response, action-specific fields can be unknown. '
+                            'Normalize the business need into Slovak in normalized_business_need_sk. '
+                            'When proposed_capability_id is present, write a concise direct Slovak '
                             'answer in answer_sk using only that capability record: state its current product status, explain the '
                             'relevant limitation, and offer only a safe next step present in the record. Never translate a forbidden '
                             'claim into Slovak, promise implementation, or claim any action happened. For a coherent new business '

@@ -11,6 +11,7 @@ from bot.services.access_control import AccessControlService
 from bot.services.contact_service import ContactProfile
 from bot.services.db import init_db
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
+from bot.services.scoped_invoice_runtime import ScopedInvoiceRuntime
 from bot.services.supplier_service import SupplierProfile
 from bot.services.workspace_contact_service import WorkspaceContactService
 from bot.services.workspace_context import WorkspaceContextService
@@ -96,6 +97,11 @@ def test_same_invoice_number_is_isolated_between_workspaces(tmp_path: Path) -> N
     assert service.get_by_number(second, '20260001').id == second_invoice.id
     assert service.get_by_id(first, second_invoice.id) is None
     assert service.get_by_id(second, first_invoice.id) is None
+    for workspace, expected in ((first, first_invoice), (second, second_invoice)):
+        runtime = ScopedInvoiceRuntime(
+            db_path=db_path, storage_dir=tmp_path, actor_telegram_id=USER_ID, context=workspace,
+        )
+        assert runtime.get_latest_invoice().id == expected.id
 
 
 def test_numbering_settings_and_sequence_are_workspace_scoped(tmp_path: Path) -> None:

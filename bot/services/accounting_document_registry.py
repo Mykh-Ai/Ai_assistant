@@ -39,11 +39,11 @@ def list_recent_accounting_documents(
     *,
     storage_dir: Path,
     workspace_key: str = WORKSPACE_KEY,
-    limit: int = 5,
+    limit: int | None = 5,
 ) -> list[AccountingDocumentSummary]:
     """Return recent confirmed accounting documents from the whitelisted metadata tree only."""
 
-    if limit <= 0:
+    if limit is not None and limit <= 0:
         return []
 
     scored: list[_ScoredAccountingDocumentSummary] = []

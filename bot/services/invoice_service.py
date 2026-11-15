@@ -360,6 +360,20 @@ class InvoiceService:
             return None
         return invoice
 
+    def get_latest_legacy_invoice_for_supplier(self, *, supplier_telegram_id: int) -> InvoiceRecord | None:
+        if not self._db_path.is_file():
+            return None
+        with managed_connection(self._db_path) as connection:
+            legacy_only = ' AND workspace_id IS NULL' if _table_has_workspace_id(connection, 'invoice') else ''
+            latest = connection.execute(
+                'SELECT id FROM invoice WHERE supplier_telegram_id = ?' + legacy_only
+                + ' ORDER BY issue_date DESC, id DESC LIMIT 1',
+                (supplier_telegram_id,),
+            ).fetchone()
+        if latest is None:
+            return None
+        return self.get_invoice_for_supplier_by_id(supplier_telegram_id=supplier_telegram_id, invoice_id=latest[0])
+
     def get_invoice_by_number(self, invoice_number: str) -> InvoiceRecord | None:
         with managed_connection(self._db_path) as connection:
             connection.row_factory = sqlite3.Row

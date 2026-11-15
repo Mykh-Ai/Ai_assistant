@@ -186,6 +186,14 @@ class ScopedInvoiceRuntime:
         invoice_id: int,
     ) -> InvoiceRecord | None:
         return self.get_invoice(invoice_id)
+    def get_latest_invoice(self) -> InvoiceRecord | None:
+        if self.context is None:
+            return self._legacy_invoices.get_latest_legacy_invoice_for_supplier(
+                supplier_telegram_id=self.actor_telegram_id,
+            )
+        invoices = self._workspace_invoices.list_invoices(self.context, limit=1)
+        return invoices[0] if invoices else None
+
     def find_invoices(self, invoice_reference: str) -> list[InvoiceRecord]:
         if self.context is None:
             return self._legacy_invoices.find_invoices_for_supplier_by_number_reference(

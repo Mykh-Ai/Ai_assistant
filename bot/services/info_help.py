@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+from pathlib import Path
 import re
 import unicodedata
 from typing import Any, Mapping
@@ -16,6 +17,96 @@ from bot.services.info_help_assistant import (
     should_run_contextual_info_help,
 )
 
+
+_RECEIPT_DRIVE_COPY = {
+    'sk': {
+        'no_profile': 'Najprv vyberte firemný profil cez /profily.',
+        'disabled': 'Nie. V profile {profile} je archív bločkov na Google Drive vypnutý.',
+        'not_ready': 'Nie. V profile {profile} chýba nastavenie archívu bločkov na Google Drive.',
+        'unknown': 'V profile {profile} sa mi nepodarilo overiť stav archívu bločkov.',
+        'configured': 'V profile {profile} je archív zapnutý. Zatiaľ nevidím potvrdený prenos bločka.',
+        'uploaded': 'Áno. Bločky z profilu {profile} posielam na Google Drive. Posledný potvrdený prenos: {date}.',
+        'coverage': 'Podľa archívu profilu {profile} je na Google Drive nahratých {uploaded} z {total} potvrdených bločkov. Čaká: {pending}. Zlyhalo: {failed}. Bez overeného stavu: {unknown}.',
+        'empty': 'V profile {profile} nemám evidované potvrdené bločky.',
+    },
+    'uk': {
+        'no_profile': 'Спочатку виберіть бізнес-профіль через /profily.',
+        'disabled': 'Ні. У профілі {profile} архів чеків на Google Диск вимкнений.',
+        'not_ready': 'Ні. У профілі {profile} архів чеків на Google Диск поки не налаштований.',
+        'unknown': 'Я не зміг перевірити стан архіву чеків профілю {profile}.',
+        'configured': 'У профілі {profile} архів увімкнений. Поки не бачу підтвердженого завантаження чека.',
+        'uploaded': 'Так. Чеки профілю {profile} йдуть на Google Диск. Останнє підтверджене завантаження: {date}.',
+        'coverage': 'За журналом профілю {profile} на Google Диск завантажено {uploaded} з {total} підтверджених чеків. Ще чекають: {pending}. Помилки: {failed}. Статус невідомий: {unknown}.',
+        'empty': 'У профілі {profile} не бачу підтверджених чеків.',
+    },
+    'ru': {
+        'no_profile': 'Сначала выберите бизнес-профиль через /profily.',
+        'disabled': 'Нет. В профиле {profile} архив чеков на Google Диск выключен.',
+        'not_ready': 'Нет. В профиле {profile} архив чеков на Google Диск пока не настроен.',
+        'unknown': 'Мне не удалось проверить состояние архива чеков профиля {profile}.',
+        'configured': 'В профиле {profile} архив включён. Пока не вижу подтверждённой загрузки чека.',
+        'uploaded': 'Да. Чеки профиля {profile} отправляются на Google Диск. Последняя подтверждённая загрузка: {date}.',
+        'coverage': 'По журналу профиля {profile} на Google Диск загружено {uploaded} из {total} подтверждённых чеков. В очереди: {pending}. Ошибки: {failed}. Статус неизвестен: {unknown}.',
+        'empty': 'В профиле {profile} не вижу подтверждённых чеков.',
+    },
+    'en': {
+        'no_profile': 'First select a business profile with /profily.',
+        'disabled': 'No. The Google Drive receipt archive is off for {profile}.',
+        'not_ready': 'No. The Google Drive receipt archive is still missing setup for {profile}.',
+        'unknown': 'I could not verify the receipt archive for {profile}.',
+        'configured': 'The archive is set up for {profile}. I have no confirmed receipt upload yet.',
+        'uploaded': 'Yes. Receipts from {profile} go to Google Drive. Last confirmed upload: {date}.',
+        'coverage': 'The archive log for {profile} shows {uploaded} of {total} confirmed receipts uploaded to Google Drive. Waiting: {pending}. Failed: {failed}. No verified status: {unknown}.',
+        'empty': 'I found no confirmed receipts for {profile}.',
+    },
+}
+
+_MONTHLY_EXPENSE_METHOD = {
+    'sk': 'Sčítam sumy potvrdených bločkov a prijatých faktúr podľa dátumu vystavenia v danom mesiaci, samostatne za každú menu. Príklad: 20 € + 30 € = 50 €.',
+    'uk': 'Підсумовую суми підтверджених чеків і вхідних фактур, датованих цим місяцем, окремо за кожною валютою. Наприклад, 20 € + 30 € = 50 €.',
+    'ru': 'Складываю суммы подтверждённых чеков и входящих счетов с датой выставления в этом месяце, отдельно по каждой валюте. Например, 20 € + 30 € = 50 €.',
+    'en': 'I add the totals of confirmed receipts and incoming invoices issued in the month, separately for each currency. For example, €20 + €30 = €50.',
+}
+
+_RELEASE_NOTES_UNAVAILABLE = {
+    'sk': 'Táto verzia nemá dostupné používateľské poznámky k vydaniu.',
+    'uk': 'Для цієї версії немає доступних нотаток про зміни.',
+    'ru': 'Для этой версии нет доступных заметок об изменениях.',
+    'en': 'This build has no available user-facing release notes.',
+}
+
+
+def build_contextual_read_answer(
+    *, topic: str | None, language: str, profile: str | None, archive_status: str, upload_date: str | None,
+    receipt_coverage: Mapping[str, int] | None = None,
+) -> str | None:
+    if topic == 'monthly_expense_method':
+        return _MONTHLY_EXPENSE_METHOD[language]
+    if topic == 'product_updates':
+        try:
+            changelog = (Path(__file__).resolve().parents[2] / 'CHANGELOG.md').read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            return _RELEASE_NOTES_UNAVAILABLE[language]
+        _, marker, notes = changelog.partition('\n## User-facing release notes\n')
+        if marker:
+            section = notes.partition('\n## ')[0]
+            _, language_marker, localized = section.partition(f'\n### {language}\n')
+            if language_marker and (answer := localized.partition('\n### ')[0].strip()):
+                return answer[:1600]
+        return _RELEASE_NOTES_UNAVAILABLE[language]
+    if topic not in {'receipt_drive_status', 'receipt_drive_coverage'}:
+        return None
+
+    copy = _RECEIPT_DRIVE_COPY[language]
+    if profile is None:
+        return copy['no_profile']
+    if topic == 'receipt_drive_coverage':
+        if receipt_coverage is None:
+            return copy['unknown'].format(profile=profile)
+        if receipt_coverage['total'] == 0:
+            return copy['empty'].format(profile=profile)
+        return copy['coverage'].format(profile=profile, **receipt_coverage)
+    return copy[archive_status].format(profile=profile, date=upload_date)
 
 
 _PRODUCT_TRUTH_OVERVIEW_IDS = (
@@ -82,9 +173,9 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'show_existing_invoice': {
         'title': 'Zobrazenie existujúcej faktúry',
-        'summary': 'Jednu už vytvorenú odosielanú faktúru možno zobraziť podľa čísla alebo referencie v rámci aktuálneho dodávateľa.',
+        'summary': 'V aktívnom profile môžete zobraziť poslednú vystavenú faktúru podľa dátumu vystavenia alebo ľubovoľnú uloženú faktúru podľa čísla či referencie.',
         'limitation': 'Je to iba čítanie; faktúru neupravuje ani nemení uložené údaje.',
-        'safe_next': 'Uveďte číslo alebo referenciu faktúry.',
+        'safe_next': 'Povedzte „Ukáž poslednú vystavenú faktúru“ alebo uveďte číslo či referenciu.',
     },
     'invoice_pdf_generation': {
         'title': 'Vytvorenie PDF faktúry',
@@ -124,8 +215,8 @@ _SLOVAK_CAPABILITY_COPY = {
     },
     'info_help': {
         'title': 'Pomoc InfoHelp',
-        'summary': 'InfoHelp čiastočne odpovedá na otázky o možnostiach produktu a pomáha bezpečne obnoviť nejasnú požiadavku.',
-        'limitation': 'Je to čiastočný Level 2/3 základ; model iba interpretuje a Python opätovne overuje Product Truth, presný objekt, operáciu, stav, vlastníka a všetky účinky.',
+        'summary': 'InfoHelp čiastočne odpovedá na otázky o možnostiach produktu a pomáha pri nejasnej požiadavke.',
+        'limitation': 'Pri zapnutom V2 vie vysvetliť výpočet mesačných výdavkov, prečítať poznámky k vydaniu a overiť evidovaný archív bločkov aktívneho profilu. Rozsah pomoci aj overenie uloženia na Drive sú naďalej obmedzené.',
         'safe_next': 'Opíšte biznis cieľ prirodzeným jazykom; InfoHelp odpovie podľa aktuálneho Product Truth alebo ponúkne potvrdený ľudský review tok.',
     },
     'invoice_period_summary': {

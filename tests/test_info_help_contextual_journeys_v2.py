@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import replace
 import json
 import logging
 from pathlib import Path
@@ -16,9 +17,10 @@ from bot.handlers.invoice import (
     unknown_slash_command,
 )
 from bot.services.active_fsm_guard import handle_active_fsm_text_update
-from bot.services.db import init_db
+from bot.services.access_control import AccessControlService
+from bot.services.db import init_db, managed_connection
 from bot.services.customization_requests import CustomizationRequestService
-from bot.services.info_help_assistant import InfoHelpAssistantResult
+from bot.services.info_help_assistant import InfoHelpAssistantResult, parse_info_help_assistant_model_output
 from bot.services.info_help_rollout import contextual_info_help_v2_enabled
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoiceService
 from bot.services.supplier_service import SupplierProfile, SupplierService
@@ -99,6 +101,133 @@ def _result(**overrides) -> InfoHelpAssistantResult:
     }
     values.update(overrides)
     return InfoHelpAssistantResult(**values)
+
+
+@pytest.mark.parametrize('input_channel', ('text', 'voice'))
+@pytest.mark.parametrize(('topic', 'question', 'expected'), (
+    ('receipt_drive_status', 'У моєму профілі чеки йдуть на Google Диск?', 'Так. Чеки профілю ZEVS'),
+    ('receipt_drive_coverage', 'Всі мої чеки вже завантажені на Google Диск?', '1 з 6 підтверджених чеків'),
+    ('product_updates', 'Що нового у ФактураБоті?', '20 жовтня 2026 року'),
+    ('monthly_expense_method', 'Як ти рахуєш витрати за місяць?', '20 € + 30 € = 50 €'),
+))
+def test_contextual_read_topics_answer_from_project_facts(
+    tmp_path: Path, monkeypatch, input_channel: str, topic: str, question: str, expected: str,
+) -> None:
+    config = replace(
+        _config(tmp_path),
+        google_drive_enabled=True,
+        google_oauth_client_id='client',
+        google_oauth_client_secret='secret',
+        google_token_crypto_secret='test-only-secret',
+    )
+    init_db(config.db_path)
+    AccessControlService(config.db_path).approve_user(telegram_id=111, approved_by=999)
+    with managed_connection(config.db_path) as connection:
+        connection.executemany(
+            'INSERT INTO workspace (workspace_id, display_name, storage_key, drive_folder_name, '
+            'status, created_at, updated_at) VALUES (?, ?, ?, ?, \'active\', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+            [('zevs', 'ZEVS', 'zevs-storage', 'ZEVS'), ('foreign', 'Other business', 'foreign-storage', 'Other')],
+        )
+        connection.execute(
+            'INSERT INTO workspace_membership (workspace_id, telegram_id, role, status, created_at, updated_at) '
+            "VALUES ('zevs', 111, 'owner', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+        connection.execute(
+            'INSERT INTO google_drive_connections (connection_id, workspace_id, telegram_id, status, '
+            'scopes_granted, token_ciphertext, token_key_id, root_folder_id, created_at, updated_at) '
+            "VALUES ('owner-connection', 'owner', 111, 'connected', 'drive', X'00', 'test', 'root', "
+            'CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)'
+        )
+        connection.executemany(
+            'INSERT INTO accounting_document_archive_state (document_id, workspace_id, telegram_id, document_type, '
+            'local_file_path, archive_status, drive_file_id, uploaded_at, created_at, updated_at) '
+            "VALUES (?, ?, ?, ?, 'unused', 'uploaded', 'file', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            [
+                ('own-receipt', 'zevs', 111, 'receipt', '2026-11-01T14:01:19+00:00'),
+                ('own-invoice', 'zevs', 111, 'incoming_invoice', '2026-11-10T14:01:19+00:00'),
+                ('another-receipt', 'foreign', 222, 'receipt', '2026-11-13T14:01:19+00:00'),
+            ],
+        )
+        connection.commit()
+    before = config.db_path.read_bytes()
+    metadata = tmp_path / 'workspaces' / 'zevs-storage' / 'years' / '2026' / 'expenses' / '2026-11' / 'receipts' / 'metadata'
+    metadata.mkdir(parents=True)
+    for document_id in ('own-receipt', 'missing-1', 'missing-2', 'missing-3', 'missing-4', 'missing-5'):
+        (metadata / f'{document_id}.json').write_text('{"document_type": "receipt"}', encoding='utf-8')
+    state = _State()
+    message = _Message(question)
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'capability_or_howto'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        diagnostics = {}
+        result = parse_info_help_assistant_model_output(json.dumps({
+            'intent_kind': 'capability_question',
+            'speech_act': 'capability_question',
+            'domain_id': 'google_drive',
+            'operation_id': 'store',
+            'read_topic': topic,
+            'response_language': 'uk',
+        }), diagnostics=diagnostics)
+        kwargs['diagnostics'].update(call_status='completed', parse=diagnostics)
+        return result
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(
+        message=message, state=state, config=config, invoice_text=question, input_channel=input_channel,
+    ))
+
+    assert len(message.answers) == 1 and expected in message.answers[0]
+    if topic == 'receipt_drive_status':
+        assert '2026-11-01' in message.answers[0]
+        assert '2026-11-10' not in message.answers[0] and '2026-11-13' not in message.answers[0]
+    if topic == 'receipt_drive_coverage':
+        assert 'Статус невідомий: 5' in message.answers[0]
+    assert state.current_state is None and not state.cleared
+    assert config.db_path.read_bytes() == before
+
+
+@pytest.mark.parametrize(('question', 'input_channel'), (
+    ('Покажи мені останню фактуру.', 'voice'),
+    ('Pokáž poslednú vystavenú faktúru.', 'text'),
+))
+def test_show_latest_invoice_selects_the_scoped_document(
+    tmp_path: Path, monkeypatch, question: str, input_channel: str,
+) -> None:
+    config = _config(tmp_path)
+    init_db(config.db_path)
+    with managed_connection(config.db_path) as connection:
+        connection.executemany(
+            'INSERT INTO invoice (supplier_telegram_id, contact_id, invoice_number, issue_date, '
+            'delivery_date, due_date, due_days, total_amount, currency, status, created_at, updated_at) '
+            "VALUES (?, 1, ?, ?, '2026-11-01', '2026-11-15', 14, 10, 'EUR', 'draft', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            [
+                (111, '20260012', '2026-11-02'),
+                (111, '20260020', '2026-10-30'),
+                (222, '20260090', '2026-11-10'),
+            ],
+        )
+        connection.commit()
+    before = config.db_path.read_bytes()
+    state = _State()
+    message = _Message(question)
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics'].update(routing_kind='business_action', slots={'invoice_selector': 'latest'})
+        return 'show_existing_invoice'
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    asyncio.run(process_invoice_text(
+        message=message, state=state, config=config, invoice_text=question, input_channel=input_channel,
+    ))
+
+    assert len(message.answers) == 1 and '20260012' in message.answers[0]
+    assert '20260020' not in message.answers[0] and '20260090' not in message.answers[0]
+    assert state.current_state is None
+    assert config.db_path.read_bytes() == before
 
 
 def test_infohelp_raw_model_output_is_hidden_without_debug_transparency() -> None:

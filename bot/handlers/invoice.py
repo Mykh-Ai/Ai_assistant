@@ -7,6 +7,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import sqlite3
 import unicodedata
 from uuid import uuid4
 
@@ -65,9 +66,11 @@ from bot.services.customization_requests import (
     redact_customization_request_text,
 )
 from bot.services.decision_resolver import resolve_approve_edit_cancel, resolve_yes_no
+from bot.services.accounting_document_archive_service import read_receipt_archive_coverage, read_receipt_archive_status
 from bot.services.info_help import (
     TRIAGE_ADMIN_REVIEW_CANDIDATE,
     TRIAGE_NEW_BUSINESS_FEATURE_REQUEST,
+    build_contextual_read_answer,
     build_product_truth_guidance,
     build_top_level_unknown_guidance,
     render_info_help_triage_result,
@@ -195,11 +198,14 @@ _INVOICE_SCOPED_ACTIONS = {
 }
 
 
-def _resolve_invoice_scope(config: Config, telegram_id: int) -> WorkspaceContext | None:
+def _resolve_invoice_scope(config: Config, telegram_id: int, *, read_only: bool = False) -> WorkspaceContext | None:
     if not config.db_path.exists():
         return None
     try:
-        return WorkspaceContextService(config.db_path).resolve_for_user(telegram_id)
+        workspaces = WorkspaceContextService(config.db_path)
+        if read_only:
+            return workspaces.resolve_for_user_readonly(telegram_id)
+        return workspaces.resolve_for_user(telegram_id)
     except WorkspaceContextError as workspace_error:
         try:
             supplier = SupplierService(config.db_path).get_by_telegram_id(telegram_id)
@@ -215,20 +221,20 @@ async def _require_invoice_runtime(
     message: Message,
     state: FSMContext,
     config: Config,
+    read_only_scope: bool = False,
 ) -> ScopedInvoiceRuntime:
     telegram_id = _message_supplier_telegram_id(message)
     if telegram_id is None:
         raise WorkspaceContextError('invoice_actor_required')
     data = await state.get_data()
     if _INVOICE_WORKSPACE_ID_KEY not in data:
-        context = _resolve_invoice_scope(config, telegram_id)
-        await state.update_data(
-            **{
-                _INVOICE_WORKSPACE_ID_KEY: (
-                    context.workspace_id if context is not None else ''
-                )
-            }
-        )
+        if read_only_scope:
+            context = _resolve_invoice_scope(config, telegram_id, read_only=True)
+        else:
+            context = _resolve_invoice_scope(config, telegram_id)
+            await state.update_data(
+                **{_INVOICE_WORKSPACE_ID_KEY: context.workspace_id if context is not None else ''}
+            )
     else:
         workspace_id = str(data.get(_INVOICE_WORKSPACE_ID_KEY) or '').strip()
         context = (
@@ -254,12 +260,14 @@ async def _invoice_runtime_or_recover(
     message: Message,
     state: FSMContext,
     config: Config,
+    read_only_scope: bool = False,
 ) -> ScopedInvoiceRuntime | None:
     try:
         return await _require_invoice_runtime(
             message=message,
             state=state,
             config=config,
+            read_only_scope=read_only_scope,
         )
     except WorkspaceContextError:
         await state.clear()
@@ -4036,13 +4044,17 @@ async def _apply_contextual_info_help_v2(
     actor_id, chat_id = _message_context_ids(message)
     if actor_id is None or chat_id is None:
         return True, top_level_intent
-    runtime = None
-    if top_level_intent in _INVOICE_SCOPED_ACTIONS:
-        runtime = _resolve_invoice_scope(config, actor_id)
+    workspace = None
+    if config.db_path.is_file():
+        try:
+            workspace = WorkspaceContextService(config.db_path).resolve_for_user_readonly(actor_id)
+        except (WorkspaceContextError, sqlite3.Error):
+            pass
+    workspace_id = workspace.workspace_id if workspace else 'legacy-supplier-scope'
     context_key = info_help_conversation_context.key(
         telegram_user_id=actor_id,
         chat_id=chat_id,
-        workspace_id=_workspace_key_for_runtime(runtime),
+        workspace_id=workspace_id,
     )
     context_channel = 'voice_stt' if input_channel == 'voice' else input_channel
     info_help_conversation_context.capture_user(
@@ -4069,7 +4081,7 @@ async def _apply_contextual_info_help_v2(
         telegram_update_id=telegram_update_id,
         telegram_message_id=telegram_message_id,
         actor_id=actor_id,
-        workspace_id=_workspace_key_for_runtime(runtime),
+        workspace_id=workspace_id,
         input_text=invoice_text,
         input_channel=context_channel,
         primary_action=top_level_intent,
@@ -4185,6 +4197,32 @@ async def _apply_contextual_info_help_v2(
     )
     capability_question = result.speech_act == INFO_HELP_SPEECH_CAPABILITY_QUESTION
     if capability_question:
+        archive_status, upload_date = (
+            read_receipt_archive_status(config, workspace)
+            if result.read_topic == 'receipt_drive_status' and workspace is not None
+            else ('unknown', None)
+        )
+        receipt_coverage = (
+            read_receipt_archive_coverage(config, workspace)
+            if result.read_topic == 'receipt_drive_coverage' and workspace is not None
+            else None
+        )
+        response_text = build_contextual_read_answer(
+            topic=result.read_topic,
+            language=result.response_language,
+            profile=workspace.workspace_display_name if workspace else None,
+            archive_status=archive_status,
+            upload_date=upload_date,
+            receipt_coverage=asdict(receipt_coverage) if receipt_coverage else None,
+        )
+        if response_text is not None:
+            await _answer_contextual_info_help(message=message, context_key=context_key, text=response_text)
+            log_outcome(
+                outcome=result.read_topic or 'capability_answer',
+                response_mode='info_help_answer',
+                response_text=response_text,
+            )
+            return True, top_level_intent
         capability_id = result.proposed_capability_id or (
             exact.capability_id if exact is not None else None
         )
@@ -4688,14 +4726,18 @@ async def process_invoice_text(
             _SHOW_EXISTING_INVOICE_INTENT: {
                 'meaning': (
                     'user wants only to view/show/open an already created outgoing invoice by invoice number, suffix, '
-                    'or reference; Python resolves the invoice under the current supplier scope, sends summary/PDF, '
+                    'reference, or an explicit request for the latest invoice; Python resolves it under the current profile, sends summary/PDF, '
                     'and leaves the bot idle without entering edit mode'
                 ),
+                'slots': {
+                    'invoice_selector': 'Return "latest" only for a request to show the latest saved outgoing invoice of the active profile, without an invoice number, customer, date range, or other filter. Otherwise omit it. Never use it for editing, deletion, or statistics.',
+                },
                 'not_this': [
                     'edit or change an invoice',
                     'delete an invoice',
                     'create a new invoice draft',
                     'view recent accounting receipts',
+                    'count, sum, or analyze outgoing invoices; use invoice_analytics',
                 ],
             },
             _ACCOUNTING_DOCUMENT_ANALYTICS_INTENT: {
@@ -5099,18 +5141,36 @@ async def process_invoice_text(
             await state.clear()
             return
 
+    invoice_reference = (
+        _extract_invoice_reference(invoice_text) if top_level_intent in _INVOICE_REFERENCE_ACTIONS else None
+    )
+    slots = top_level_diagnostics.get('slots')
+    show_latest = (
+        top_level_intent == _SHOW_EXISTING_INVOICE_INTENT and not invoice_reference
+        and isinstance(slots, dict) and slots.get('invoice_selector') == 'latest'
+    )
     scoped_runtime: ScopedInvoiceRuntime | None = None
     if top_level_intent in _INVOICE_SCOPED_ACTIONS:
         scoped_runtime = await _invoice_runtime_or_recover(
             message=message,
             state=state,
             config=config,
+            read_only_scope=show_latest,
         )
         if scoped_runtime is None:
             return
     if top_level_intent in _INVOICE_REFERENCE_ACTIONS:
         assert scoped_runtime is not None
-        invoice_reference = _extract_invoice_reference(invoice_text)
+        if show_latest:
+            latest_invoice = scoped_runtime.get_latest_invoice()
+            if latest_invoice is None:
+                await message.answer('V aktívnom profile som nenašiel vystavenú faktúru.')
+            else:
+                await _send_existing_invoice_view(
+                    message=message, config=config, runtime=scoped_runtime, invoice=latest_invoice,
+                )
+            await state.clear()
+            return
         if not invoice_reference:
             await _start_invoice_reference_continuation(
                 message=message,

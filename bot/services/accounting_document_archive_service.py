@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import sqlite3
 from urllib.parse import quote
 
+from bot.config import Config
 from bot.services.accounting_document_archive_path import (
     AccountingDocumentArchivePathError,
     derive_accounting_document_drive_target_path,
 )
+from bot.services.accounting_document_models import DOCUMENT_TYPE_RECEIPT
+from bot.services.accounting_document_registry import list_recent_accounting_documents
 from bot.services.gmail_statement_archive_path import (
     DOCUMENT_TYPE_BANK_STATEMENT_ORIGINAL,
     derive_gmail_statement_drive_target_path,
@@ -26,6 +30,7 @@ from bot.services.archive_job_service import (
     ArchiveJobServiceError,
 )
 from bot.services.db import ensure_archive_schema, managed_connection
+from bot.services.workspace_context import WorkspaceContext
 
 
 ARCHIVE_STATUS_PENDING = 'pending'
@@ -62,6 +67,59 @@ class AccountingDocumentArchiveState:
 class AccountingDocumentArchiveEnqueueResult:
     job: ArchiveJobRecord
     state: AccountingDocumentArchiveState
+
+
+@dataclass(frozen=True)
+class ReceiptArchiveOverview:
+    owner_connected: bool
+    owner_has_root: bool
+    last_uploaded_at: str | None
+
+
+@dataclass(frozen=True)
+class ReceiptArchiveCoverage:
+    total: int
+    uploaded: int
+    pending: int
+    failed: int
+    unknown: int
+
+
+def read_receipt_archive_coverage(config: Config, workspace: WorkspaceContext) -> ReceiptArchiveCoverage | None:
+    try:
+        documents = list_recent_accounting_documents(
+            storage_dir=config.storage_dir, workspace_key=workspace.storage_key, limit=None,
+        )
+        receipt_ids = {Path(doc.metadata_path).stem for doc in documents if doc.document_type == DOCUMENT_TYPE_RECEIPT}
+        return AccountingDocumentArchiveService(config.db_path).get_receipt_coverage_read_only(
+            workspace_id=workspace.workspace_id, receipt_ids=receipt_ids,
+        )
+    except (OSError, sqlite3.Error):
+        return None
+
+
+def read_receipt_archive_status(config: Config, workspace: WorkspaceContext) -> tuple[str, str | None]:
+    if not config.google_drive_enabled:
+        return 'disabled', None
+    if config.google_drive_mode != 'owner_oauth':
+        return 'unknown', None
+    try:
+        overview = AccountingDocumentArchiveService(config.db_path).get_receipt_overview_read_only(
+            workspace_id=workspace.workspace_id,
+            owner_workspace_id=config.google_drive_owner_workspace_id,
+        )
+    except sqlite3.Error:
+        return 'unknown', None
+    if not (
+        workspace.drive_folder_name and overview.owner_connected
+        and (overview.owner_has_root or config.google_drive_root_folder_id)
+        and config.google_oauth_client_id and config.google_oauth_client_secret
+        and config.google_token_crypto_secret
+    ):
+        return 'not_ready', None
+    if overview.last_uploaded_at:
+        return 'uploaded', overview.last_uploaded_at[:10]
+    return 'configured', None
 
 
 class AccountingDocumentArchiveService:
@@ -194,6 +252,53 @@ class AccountingDocumentArchiveService:
         except sqlite3.OperationalError:
             return None
         return _state_from_row(row) if row is not None else None
+
+    def get_receipt_overview_read_only(
+        self, *, workspace_id: str, owner_workspace_id: str
+    ) -> ReceiptArchiveOverview:
+        db_uri = f"file:{quote(self._db_path.resolve().as_posix(), safe='/:')}?mode=ro"
+        with closing(sqlite3.connect(db_uri, uri=True)) as connection:
+            connection.execute('BEGIN')
+            owner = connection.execute(
+                'SELECT status, root_folder_id FROM google_drive_connections WHERE workspace_id = ?',
+                (owner_workspace_id,),
+            ).fetchone()
+            latest_upload = connection.execute(
+                'SELECT MAX(uploaded_at) FROM accounting_document_archive_state '
+                'WHERE workspace_id = ? AND document_type = ? AND archive_status = ? '
+                'AND NULLIF(TRIM(drive_file_id), \'\') IS NOT NULL',
+                (workspace_id, DOCUMENT_TYPE_RECEIPT, ARCHIVE_STATUS_UPLOADED),
+            ).fetchone()
+        return ReceiptArchiveOverview(
+            owner_connected=owner is not None and owner[0] == 'connected',
+            owner_has_root=owner is not None and bool(owner[1]),
+            last_uploaded_at=latest_upload[0] if latest_upload else None,
+        )
+
+    def get_receipt_coverage_read_only(
+        self, *, workspace_id: str, receipt_ids: set[str]
+    ) -> ReceiptArchiveCoverage:
+        if not receipt_ids:
+            return ReceiptArchiveCoverage(total=0, uploaded=0, pending=0, failed=0, unknown=0)
+        db_uri = f"file:{quote(self._db_path.resolve().as_posix(), safe='/:')}?mode=ro"
+        with closing(sqlite3.connect(db_uri, uri=True)) as connection:
+            states = connection.execute(
+                'SELECT document_id, archive_status, drive_file_id '
+                'FROM accounting_document_archive_state WHERE workspace_id = ? AND document_type = ?',
+                (workspace_id, DOCUMENT_TYPE_RECEIPT),
+            ).fetchall()
+        uploaded = pending = failed = 0
+        for document_id, status, file_id in states:
+            if document_id not in receipt_ids:
+                continue
+            if status == ARCHIVE_STATUS_UPLOADED and str(file_id or '').strip():
+                uploaded += 1
+            elif status in {ARCHIVE_STATUS_PENDING, ARCHIVE_STATUS_UPLOADING, ARCHIVE_STATUS_RETRY_WAIT}:
+                pending += 1
+            elif status in {ARCHIVE_STATUS_FAILED, ARCHIVE_STATUS_ABANDONED}:
+                failed += 1
+        total = len(receipt_ids)
+        return ReceiptArchiveCoverage(total, uploaded, pending, failed, total - uploaded - pending - failed)
 
     def mark_uploading(self, job_id: str, *, now: datetime | None = None) -> AccountingDocumentArchiveState:
         self._require_existing_state(job_id)
