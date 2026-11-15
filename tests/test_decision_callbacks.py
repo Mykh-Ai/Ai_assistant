@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from aiogram.types import CallbackQuery, User
 
 from bot.config import Config
@@ -16,7 +17,11 @@ from bot.handlers.decision_callbacks import (
     info_help_offer_callback,
     invoice_edit_callback,
 )
-from bot.handlers.invoice import CustomizationRequestStates, InvoiceStates
+from bot.handlers.invoice import (
+    CustomizationRequestStates,
+    InvoiceStates,
+    info_help_admin_offer_text_fallback,
+)
 from bot.handlers.work_time import WorkTimeStates
 from bot.keyboards.decision import (
     DECISION_APPROVE,
@@ -542,7 +547,10 @@ def test_info_help_admin_offer_button_opens_existing_preview_without_saving(tmp_
     assert callback.answers[-1] == (None, None)
 
 
-def test_info_help_main_menu_button_clears_offer_and_uses_existing_menu(tmp_path: Path) -> None:
+@pytest.mark.parametrize('typed_replies', [0, 2])
+def test_info_help_main_menu_button_clears_offer_and_uses_existing_menu(
+    tmp_path: Path, typed_replies: int,
+) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
     source_message = _CallbackSourceMessage()
@@ -560,7 +568,14 @@ def test_info_help_main_menu_button_clears_offer_and_uses_existing_menu(tmp_path
         CustomizationRequestStates.waiting_admin_offer_decision.state,
     )
 
-    asyncio.run(info_help_offer_callback(callback, state, config))
+    async def retry_then_open_menu() -> None:
+        incoming = _DummyMessage()
+        for _ in range(typed_replies):
+            await info_help_admin_offer_text_fallback(incoming)
+        assert len(incoming.answers) == typed_replies
+        await info_help_offer_callback(callback, state, config)
+
+    asyncio.run(retry_then_open_menu())
 
     assert state.current_state is None
     assert state.cleared is True

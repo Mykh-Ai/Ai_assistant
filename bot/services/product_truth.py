@@ -513,6 +513,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         forbidden_claims=(
             'Google Drive sync is active for every user.',
             'This is per-client Google OAuth Drive storage.',
+            'The bot grants, restricts, or verifies Google Drive folder access for an accountant.',
             'All business profiles share one archive folder.',
             'Existing remote accounting files were migrated automatically.',
             'A confirmed local save means the Drive upload already succeeded.',
@@ -1258,12 +1259,12 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         title='InfoHelp guidance',
         domain='info_help',
         status=ProductTruthStatus.PARTIAL,
-        summary_for_user='Current runtime keeps the bounded Unknown / Discovery / Triage v1 and post-rollback InfoHelp by default, and includes a rollout-gated contextual V2 assistant that extracts exact business object/operation, speech act, correction, negation, command typo, explicit reply, recent process-memory context, and active-flow questions before Python validation.',
+        summary_for_user='Current runtime keeps bounded Unknown / Discovery / Triage v1 by default. Rollout-gated V2 distinguishes product scope and intent and uses the existing context and Product Truth to explain capabilities and recover unresolved product requests.',
         current_limitations=(
             'This remains a partial Level 2 foundation built on bounded triage v1; Contextual V2 is disabled by default and admin_pilot/enabled modes require explicit runtime configuration.',
             'Full Level 2 still requires broader bounded InfoHelp resolver coverage, voice/STT parity across the full surface, multilingual and noisy-input evaluation, and account-context-aware runtime evidence.',
             'InfoHelp can describe selected human-review capabilities, but does not itself save requests, send admin responses, mutate Product Truth, or hand off code-agent work.',
-            'The assistant call is interpretation only. Python revalidates Product Truth, exact domain/object/operation, action owner, slots, FSM, tenant scope, confirmation and side effects.',
+            'The assistant call is interpretation only. Python requires in-scope classification before idle action recovery or review offers, and revalidates Product Truth, exact semantics, ownership, required slots and confirmations.',
             'Recent context is process-memory only, limited to three user and three bot turns for ten minutes, isolated by user/chat/workspace, and lost on restart.',
             'Interactive Telegram admin-pilot acceptance is still pending; this is not unrestricted arbitrary-request understanding or permanent learning.',
             'Enabled V2 can read the active profile receipt archive configuration, latest recorded upload and recorded coverage of confirmed receipts, answer a monthly expense-method question, and report the build’s curated user-facing release notes. A local archive record does not verify current Drive file presence.',

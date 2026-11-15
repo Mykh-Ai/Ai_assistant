@@ -1490,6 +1490,26 @@ async def resolve_semantic_action(
 
     if api_key and api_key.startswith('sk-'):
         try:
+            top_level = context_name == 'top_level_action'
+            intent_policy = (
+                'First decide routing_kind from the result the user expects. '
+                'Use capability_or_howto for instructions, a question about what the product supports, how it behaves, '
+                'or which command to use. Work details in an instruction question are context for the explanation. '
+                'Use contextual_help for help with the current conversation or confusion about what the bot expects. '
+                'Use business_action only if the user wants the bot to perform the task in this turn. A question asking for '
+                'an actual calculation, comparison, list, or saved document can request a business action. '
+                'Use unknown when the request is unrelated, unclear, or no allowed route fits. '
+                'Only for business_action, infer the user meaning and internally normalize it to Slovak FakturaBot product semantics, then select an allowed action. '
+                'For all other routing kinds return canonical_action "unknown" and omit action slots. '
+                if top_level else
+                'First infer the user meaning and internally normalize it to Slovak FakturaBot product semantics. '
+                'Then choose exactly one allowed token for the supplied context, or "unknown" if none fits. '
+            )
+            help_policy = (
+                'Questions about release changes, calculation methods, integration status, or how to share access belong to capability_or_howto.'
+                if top_level else
+                'A question asking for instructions or help instead of providing the expected input uses a help routing kind and canonical_action "unknown".'
+            )
             client = AsyncOpenAI(api_key=api_key)
             response = await client.chat.completions.create(
                 model=model,
@@ -1503,8 +1523,7 @@ async def resolve_semantic_action(
                             'Return JSON only: {"canonical_action":"...","routing_kind":"..."} where canonical_action is one allowed action or "unknown" and routing_kind is exactly one of "business_action", "capability_or_howto", "contextual_help", or "unknown". When action_hints request slots, include a "slots" object; otherwise omit it. '
                             'Never return explanations. '
                             'User input may be Slovak, Ukrainian, Russian, mixed-language, colloquial, or STT-noisy. '
-                            'First infer the user meaning and internally normalize it to Slovak FakturaBot product semantics. '
-                            'Then choose exactly one allowed canonical action or "unknown". '
+                            f'{intent_policy}'
                             'For requested slots, normalize human wording into structured business values inside Python-provided bounds. '
                             'Do not require literal command, alias, or example matching. '
                             'Action hints describe product meaning; any examples are illustrative only and never a whitelist. '
@@ -1512,11 +1531,7 @@ async def resolve_semantic_action(
                             'If allowed_actions includes an unsupported-domain action for bank/cashflow/tax/accounting-export analytics, choose that action for those requests even when the text also mentions receipts, bloceky, expenses, or accounting documents. '
                             'For top-level business analytics, expense-side spending questions such as "kolko som minul", vendor spending, categories, receipts, bloceky, and prijate/incoming invoices belong to accounting-document analytics when that action is allowed. '
                             'Outgoing/vystavene invoice totals, counts, customers, paid/unpaid, and revenue belong to invoice analytics when that action is allowed. '
-                            'A request to calculate, list, compare, show, or analyze the user\'s actual saved business data is a business_action even when phrased as a question. '
-                            'A question about whether the product can do something, how a function works, or what command to use is capability_or_howto and canonical_action must be "unknown" so contextual InfoHelp can answer without executing the business action. '
-                            'Questions about what is new in the product, how an expense total is calculated, or whether the active profile archives receipts to Google Drive are capability_or_howto. '
-                            'A request for help with the current conversation or confusion about what the bot expects is contextual_help and canonical_action must be "unknown". '
-                            'Return "unknown" only when the normalized meaning is genuinely unclear or no allowed action fits.'
+                            f'{help_policy}'
                         ),
                     },
                     {

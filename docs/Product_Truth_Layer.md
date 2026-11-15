@@ -414,6 +414,9 @@ The registry must explicitly block claims such as:
 - "I can send invoices by email" unless real outbound email is implemented;
 - "I can store invoices on Google Drive" unless integration and credentials are
   implemented;
+- "I can give an accountant access to your Google Drive receipt folder" or
+  verify their permissions. InfoHelp can explain Google's sharing controls.
+  Google Drive sharing creates no access inside the bot;
 - "I can send SMS reminders" unless provider, consent, and sending flow exist;
 - "I created a support request" unless request storage and confirmation exist;
 - "Admin will answer you" unless response delivery is guaranteed by runtime;
@@ -824,7 +827,15 @@ before confirmation. Active non-admin FSM ownership is not interrupted.
 
 Contextual InfoHelp receives a compact safe view derived from the existing Product Truth registry. The model is never the authority: Python performs the final capability lookup and validates runtime-owner presence after parsing the model output.
 
-Support for one business object does not transfer to another object with the same verb. An executable/offerable action requires an exact registered `domain_id + object_kind + operation_id` match, applicable `supported` or `partial` Product Truth, a real Python owner, actor/workspace validation, required slots or a real continuation FSM, and all existing confirmation gates. No exact match is `unsupported` or a new feature; it is never a nearest-action substitution. Capability questions are answer-only and account-wide deletion is never suggested by InfoHelp.
+Support for one business object does not transfer to another object with the
+same verb. Executable recovery requires an in-scope request, an exact
+registered `domain_id + object_kind + operation_id` match, applicable
+`supported` or `partial` Product Truth, a Python owner, actor/workspace
+validation, required slots or a real continuation FSM, and existing
+confirmation. Capability questions are answer-only. Unknown support can
+lead to clarification or a bounded business review offer. The offer requires
+positive scope and a concrete need, and a known registry record must allow
+customization. Account-wide deletion is never suggested by InfoHelp.
 
 ### Work-time terminology repair — deployed2026-10-20, `62b1046`
 

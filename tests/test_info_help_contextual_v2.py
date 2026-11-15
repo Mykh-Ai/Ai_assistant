@@ -77,6 +77,25 @@ def test_drive_capability_answer_survives_invalid_action_fields() -> None:
     assert rejected.proposed_action_id is None
 
 
+def test_out_of_scope_ignores_irrelevant_action_fields() -> None:
+    result = parse_info_help_assistant_model_output(_assistant_json(
+        product_scope='out_of_scope',
+        intent_kind='capability_question',
+        speech_act='capability_question',
+        domain_id='unrelated_domain',
+        proposed_action_id='delete_existing_invoice',
+        proposed_capability_id='create_invoice',
+        read_topic='product_updates',
+        response_language='uk',
+    ))
+    assert result.product_scope == 'out_of_scope'
+    assert result.intent_kind == 'capability_question'
+    assert result.proposed_action_id is None
+    assert result.proposed_capability_id is None
+    assert result.read_topic is None
+    assert result.response_language == 'uk'
+
+
 def test_parser_preserves_exact_receipt_delete_capability_question() -> None:
     result = parse_info_help_assistant_model_output(
         _assistant_json(
@@ -151,6 +170,7 @@ def test_parser_fails_closed_for_unknown_ids_and_oversized_text() -> None:
     diagnostics: dict[str, object] = {}
     result = parse_info_help_assistant_model_output(
         _assistant_json(
+            product_scope='invented',
             intent_kind='invented',
             speech_act='invented',
             domain_id='invented',
@@ -175,6 +195,7 @@ def test_parser_fails_closed_for_unknown_ids_and_oversized_text() -> None:
         'status': 'rejected',
         'reason': 'invalid_bounded_enum',
         'invalid_fields': [
+            'product_scope',
             'intent_kind',
             'speech_act',
             'domain_id',
@@ -302,6 +323,9 @@ def test_payload_exposes_exact_enum_values_and_receipt_negative_space_example() 
     )
     serialized = json.dumps(payload, ensure_ascii=False)
     assert 'one bounded intent kind' not in serialized
+    assert payload['expected_output']['product_scope']['allowed_values'] == [
+        'in_scope', 'out_of_scope', 'unknown',
+    ]
     assert 'capability_question' in payload['expected_output']['intent_kind']['allowed_values']
     examples = payload['product_and_action_context']['critical_semantic_examples']
     example = next(

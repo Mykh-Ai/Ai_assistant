@@ -24,6 +24,7 @@ from bot.services.info_help_assistant import (
     INFO_HELP_MISSING_SLOTS,
     INFO_HELP_OBJECTS,
     INFO_HELP_OPERATIONS,
+    INFO_HELP_PRODUCT_SCOPES,
     INFO_HELP_SPEECH_ACTS,
     INFO_HELP_READ_TOPICS,
     INFO_HELP_RESPONSE_LANGUAGES,
@@ -124,7 +125,7 @@ def build_info_help_assistant_payload(
                         'proposed_action_id': None,
                         'proposed_capability_id': 'create_invoice',
                         'normalized_business_need_sk': 'Vytvoriť odosielanú faktúru.',
-                        'answer_sk': 'Áno, vytvorenie odosielanej faktúry je podporované cez kontrolovaný fakturačný tok.',
+                        'answer_sk': 'Na vytvorenie faktúry použite /invoice. Bot pripraví návrh a pred uložením ho dá potvrdiť.',
                     },
                 },
                 {
@@ -191,6 +192,7 @@ def build_info_help_assistant_payload(
             ],
         },
         'expected_output': {
+            'product_scope': {'allowed_values': list(INFO_HELP_PRODUCT_SCOPES)},
             'intent_kind': {'allowed_values': list(INFO_HELP_INTENT_KINDS)},
             'speech_act': {'allowed_values': list(INFO_HELP_SPEECH_ACTS)},
             'read_topic': {'allowed_values': list(INFO_HELP_READ_TOPICS), 'nullable': True},
@@ -300,13 +302,25 @@ async def resolve_info_help_assistant_with_llm(
                         'role': 'system',
                         'content': (
                             'You are the single bounded contextual InfoHelp assistant for OfficeFlow/FakturaBot. '
-                            'Return JSON only in the provided schema. First distinguish an executable action request from '
-                            'a capability/how-to question or a proposed business outcome. For capability and business-need '
-                            'questions, infer the desired outcome before considering the source documents mentioned by the user. '
+                            'Return JSON only in the provided schema. First determine product_scope from the requested outcome. '
+                            'Use in_scope for OfficeFlow workflows: invoices, contacts, business profiles, accounting documents, '
+                            'work time, their reports, workspace access, and associated storage, delivery or integrations. '
+                            'Help using the bot and its current steps also belongs in_scope. '
+                            'Use out_of_scope for an unrelated outcome even when framed as something the bot might do '
+                            'or when it mentions a product object in passing. Use unknown when the outcome cannot be established. '
+                            'Decide intent_kind and speech_act separately. Distinguish execution, asking how a feature works, '
+                            'contextual navigation, and proposing a new product workflow. For out_of_scope, use null for all '
+                            'action, capability, read topic and command selections. Set response_language to the language of '
+                            'the current question. For in_scope, infer the desired outcome before considering source documents. '
                             'An invoice or receipt used as input to a tax/accounting outcome does not make the request create_invoice. '
                             'Select the closest provided Product Truth capability even when its status is partial, planned, or '
                             'unsupported; never invent an ID. '
                             'For a read-only answer use intent_kind and speech_act capability_question, with null action and command. '
+                            'Use read_topic drive_folder_sharing when asking whether or how to let someone else see the receipts '
+                            'of a business profile on Google Drive, for example by giving an accountant access to their folder. '
+                            'Select it for the sharing goal even if uploaded receipts are mentioned. A Google Drive mention alone '
+                            'does not mean archiving. Do not use this topic for access inside the bot, a request to change '
+                            'permissions on the user\'s behalf, archive setup, or upload status. '
                             'Use read_topic receipt_drive_status for whether this active profile sends receipts to Google Drive. '
                             'Use receipt_drive_coverage when the user wants to know whether all receipts from the active profile reached Drive. '
                             'An STT transcript such as "Все мои чеки уже завантажены на Google Диск." asks for receipt_drive_coverage. '
@@ -317,13 +331,15 @@ async def resolve_info_help_assistant_with_llm(
                             'For a capability-only response, action-specific fields can be unknown. '
                             'Normalize the business need into Slovak in normalized_business_need_sk. '
                             'When proposed_capability_id is present, write a concise direct Slovak '
-                            'answer in answer_sk using only that capability record: state its current product status, explain the '
-                            'relevant limitation, and offer only a safe next step present in the record. Never translate a forbidden '
-                            'claim into Slovak, promise implementation, or claim any action happened. For a coherent new business '
-                            'need with no matching capability ID, answer_sk may only say in Slovak that current support cannot be '
-                            'reliably confirmed from Product Truth and offer administrator review; it must not claim unsupported as '
-                            'a verified product status or invent a capability ID. Leave answer_sk empty for executable actions and '
-                            'genuinely unclear input. Extract exact domain, object, operation, speech act, '
+                            'answer in answer_sk using only that capability record. For how-to, lead with the concrete command or '
+                            'safe step from the record and what to expect. For a support question, state the current product status '
+                            'and the relevant limitation. Never translate a forbidden '
+                            'claim into Slovak, promise implementation, or claim any action happened. When a concrete in-scope '
+                            'business need has no matching capability and requires a new workflow, use new_business_feature_request '
+                            'with the closest non-unknown domain_id and normalized_business_need_sk. Its answer_sk may explain in '
+                            'Slovak that current support cannot be reliably confirmed. Python owns the admin offer. '
+                            'Never turn an unmatched or unclear topic alone into a new feature request. Leave answer_sk empty for '
+                            'executable actions, out-of-scope requests and genuinely unclear input. Extract exact domain, object, operation, speech act, '
                             'correction, negation, references and missing slots. Select only provided IDs. Different business '
                             'objects are never interchangeable because verbs are similar. The primary resolver result is an '
                             'untrusted diagnostic and must never override the exact object named in current_input_text. '

@@ -90,6 +90,7 @@ def _config(
 
 def _result(**overrides) -> InfoHelpAssistantResult:
     values = {
+        'product_scope': 'in_scope',
         'intent_kind': 'business_action_request',
         'speech_act': 'execute_request',
         'domain_id': 'invoices',
@@ -107,7 +108,12 @@ def _result(**overrides) -> InfoHelpAssistantResult:
 @pytest.mark.parametrize(('topic', 'question', 'expected'), (
     ('receipt_drive_status', 'У моєму профілі чеки йдуть на Google Диск?', 'Так. Чеки профілю ZEVS'),
     ('receipt_drive_coverage', 'Всі мої чеки вже завантажені на Google Диск?', '1 з 6 підтверджених чеків'),
-    ('product_updates', 'Що нового у ФактураБоті?', '20 жовтня 2026 року'),
+    (
+        'drive_folder_sharing',
+        'Можу я дати бухгалтеру доступ до мого Google Drive, щоб він бачив тільки чеки мого профілю?',
+        '«Поділитися»',
+    ),
+    ('product_updates', 'Що нового у ФактураБоті?', '15 листопада 2026 року'),
     ('monthly_expense_method', 'Як ти рахуєш витрати за місяць?', '20 € + 30 € = 50 €'),
 ))
 def test_contextual_read_topics_answer_from_project_facts(
@@ -162,8 +168,10 @@ def test_contextual_read_topics_answer_from_project_facts(
         return 'unknown'
 
     async def _assistant(**kwargs):
+        assert kwargs['current_input_text'] == question
         diagnostics = {}
         result = parse_info_help_assistant_model_output(json.dumps({
+            'product_scope': 'in_scope',
             'intent_kind': 'capability_question',
             'speech_act': 'capability_question',
             'domain_id': 'google_drive',
@@ -186,6 +194,12 @@ def test_contextual_read_topics_answer_from_project_facts(
         assert '2026-11-10' not in message.answers[0] and '2026-11-13' not in message.answers[0]
     if topic == 'receipt_drive_coverage':
         assert 'Статус невідомий: 5' in message.answers[0]
+    if topic == 'drive_folder_sharing':
+        answer = message.answers[0]
+        assert 'лише чеки' in answer and '«Читач»' in answer
+        assert 'батьківської папки' in answer and 'бот його не змінює' in answer
+        assert not message.answer_kwargs[0].get('reply_markup')
+        assert not state.data
     assert state.current_state is None and not state.cleared
     assert config.db_path.read_bytes() == before
 
@@ -525,26 +539,28 @@ def test_correction_negates_invoice_and_blocks_delete_flow(tmp_path: Path, monke
     ) == []
 
 
-def test_info_help_admin_offer_free_text_repeats_buttons_without_local_route_or_save(
+def test_info_help_admin_offer_free_text_keeps_original_buttons_without_saving(
     tmp_path: Path,
 ) -> None:
     config = _config(tmp_path)
     init_db(config.db_path)
     message = _Message('зроби щось інше')
+    offer_owner = {
+        'info_help_offer_message_id': 501,
+        'info_help_offer_chat_id': 111 + 1000,
+    }
     state = _State(
         current_state=CustomizationRequestStates.waiting_admin_offer_decision.state,
+        data=offer_owner.copy(),
     )
 
     asyncio.run(info_help_admin_offer_text_fallback(message))
 
     assert state.current_state == CustomizationRequestStates.waiting_admin_offer_decision.state
-    assert 'jednu z možností' in message.answers[-1]
-    labels = [
-        button.text
-        for row in message.answer_kwargs[-1]['reply_markup'].inline_keyboard
-        for button in row
-    ]
-    assert labels == ['Požiadať správcu', 'Hlavné menu']
+    assert state.data == offer_owner
+    assert 'pôvodnej ponuke' in message.answers[-1]
+    assert '/menu' in message.answers[-1]
+    assert message.answer_kwargs[-1].get('reply_markup') is None
     assert CustomizationRequestService(config.db_path).list_customization_requests_for_user(
         telegram_id=111,
     ) == []
@@ -841,11 +857,74 @@ def test_tax_return_capability_delivers_validated_live_slovak_infohelp_answer(
     ) == []
 
 
+@pytest.mark.parametrize(
+    ('question', 'channel', 'classification', 'expected'),
+    (
+        (
+            'Яка погода на Брайтон-Біч?', 'text',
+            {'product_scope': 'out_of_scope', 'response_language': 'uk'},
+            'поза сферою OfficeFlow',
+        ),
+        (
+            'Could you reserve a squash court for my team on Friday?', 'voice',
+            {'product_scope': 'out_of_scope', 'response_language': 'en'},
+            'outside OfficeFlow’s scope',
+        ),
+        (
+            'Чи можу я тут налаштувати графік поливу теплиці?', 'text',
+            {},
+            'Čo presne chcete urobiť vo FakturaBote?',
+        ),
+        (
+            'Môžem tu nastaviť nový firemný proces?', 'text',
+            {'product_scope': 'in_scope'},
+            'Čo presne chcete urobiť?',
+        ),
+        (
+            'Dá sa pridať nová služba?', 'voice',
+            {'product_scope': 'in_scope', 'intent_kind': 'new_business_feature_request'},
+            'Ktorý pracovný postup',
+        ),
+    ),
+)
+def test_unrelated_or_unresolved_request_does_not_offer_admin_review(
+    tmp_path: Path, monkeypatch, question: str, channel: str, classification: dict, expected: str,
+) -> None:
+    config = _config(tmp_path)
+    message = _Message(question)
+    state = _State()
+    calls = []
+
+    async def _primary(**kwargs):
+        kwargs['diagnostics']['routing_kind'] = 'capability_or_howto'
+        return 'unknown'
+
+    async def _assistant(**kwargs):
+        calls.append(kwargs['current_input_text'])
+        return parse_info_help_assistant_model_output(json.dumps({
+            'intent_kind': 'capability_question',
+            'speech_act': 'capability_question',
+            **classification,
+        }), diagnostics=kwargs['diagnostics'])
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', _primary)
+    monkeypatch.setattr('bot.handlers.invoice.resolve_info_help_assistant_with_llm', _assistant)
+    asyncio.run(process_invoice_text(
+        message=message, state=state, config=config, invoice_text=question, input_channel=channel,
+    ))
+
+    assert calls == [question]
+    assert len(message.answers) == 1 and expected in message.answers[0]
+    assert not message.answer_kwargs[0].get('reply_markup')
+    assert state.current_state is None and not state.data
+    assert not config.db_path.exists()
+
+
 def test_unmatched_business_need_never_exposes_internal_unknown_tokens(
     tmp_path: Path, monkeypatch
 ) -> None:
     config = _config(tmp_path)
-    message = _Message('Potrebujem nový firemný proces')
+    message = _Message('Potrebujem mesačne doručovať účtovníkovi report o bločkoch')
     state = _State()
 
     async def _primary(**kwargs):
@@ -854,14 +933,14 @@ def test_unmatched_business_need_never_exposes_internal_unknown_tokens(
 
     async def _assistant(**kwargs):
         return _result(
-            intent_kind='capability_question',
+            intent_kind='new_business_feature_request',
             speech_act='capability_question',
-            domain_id='unknown',
+            domain_id='accounting_documents',
             object_kind='unknown',
             operation_id='unknown',
             proposed_action_id=None,
             proposed_capability_id=None,
-            normalized_business_need_sk='Zaviesť nový firemný proces.',
+            normalized_business_need_sk='Mesačne doručovať účtovníkovi report o bločkoch.',
             answer_sk=(
                 'Túto novú biznis potrebu neviem spoľahlivo potvrdiť z aktuálneho Product Truth. '
                 'Môžem ju pripraviť na kontrolu správcom.'
@@ -884,7 +963,7 @@ def test_unmatched_business_need_rejects_live_supported_claim(
     tmp_path: Path, monkeypatch
 ) -> None:
     config = _config(tmp_path)
-    message = _Message('Potrebujem nový firemný proces')
+    message = _Message('Potrebujem mesačne doručovať účtovníkovi report o bločkoch')
     state = _State()
 
     async def _primary(**kwargs):
@@ -893,14 +972,14 @@ def test_unmatched_business_need_rejects_live_supported_claim(
 
     async def _assistant(**kwargs):
         return _result(
-            intent_kind='capability_question',
+            intent_kind='new_business_feature_request',
             speech_act='capability_question',
-            domain_id='unknown',
+            domain_id='accounting_documents',
             object_kind='unknown',
             operation_id='unknown',
             proposed_action_id=None,
             proposed_capability_id=None,
-            normalized_business_need_sk='Zaviesť nový firemný proces.',
+            normalized_business_need_sk='Mesačne doručovať účtovníkovi report o bločkoch.',
             answer_sk='Áno, táto nová funkcia je podporovaná a pripravená.',
             confidence=0.9,
         )
@@ -911,8 +990,8 @@ def test_unmatched_business_need_rejects_live_supported_claim(
 
     answer = message.answers[-1]
     assert 'podporovaná a pripravená' not in answer
-    assert 'Zaviesť nový firemný proces.' in answer
-    assert 'uloží sa až po vašom potvrdení' in answer
+    assert 'Mesačne doručovať účtovníkovi report o bločkoch.' in answer
+    assert 'sa uloží až po vašom potvrdení' in answer
 
 
 def test_infohelp_schema_rejection_is_not_reported_as_user_ambiguity(tmp_path: Path, monkeypatch) -> None:

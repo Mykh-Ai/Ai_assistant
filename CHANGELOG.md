@@ -25,19 +25,19 @@
 
 ### sk
 
-Posledná zmena v poznámkach je z 20. 10. 2026. Pri ukončení pracovného dňa vidíte celkový čas, odpočítanú prestávku a čistý pracovný čas. Ak sú zapnuté úpravy prestávok za jednotlivé dni, viete opraviť prestávku aj na nulu cez náhľad a potvrdenie.
+15. novembra 2026. V zapnutom InfoHelp V2 sa môžete opýtať na archív bločkov aktívneho profilu alebo na to, ako sprístupniť priečinok s bločkami účtovníkovi. Otázky o používaní funkcie dostanú návod. Pri otázkach mimo rozsahu OfficeFlow už bot neotvára ponuku pre správcu.
 
 ### uk
 
-Останнє оновлення в нотатках — від 20 жовтня 2026 року. Під час закриття робочого дня бот показує загальний час, перерву й чистий робочий час. Якщо ввімкнено правки перерв за окремий день, можна змінити перерву навіть на нуль після перегляду й підтвердження.
+15 листопада 2026 року. У ввімкненому InfoHelp V2 можна спитати про архів чеків активного профілю або як поділитися папкою чеків із бухгалтером. На запитання про користування функцією бот дає інструкцію. Сторонні запити більше не відкривають пропозицію звернутися до адміністратора.
 
 ### ru
 
-Последнее обновление в заметках — от 20 октября 2026 года. При закрытии рабочего дня бот показывает общее время, вычтенное время перерыва и чистое рабочее время. Если включена правка перерывов для отдельных дней, перерыв можно изменить даже на ноль после просмотра и подтверждения.
+15 ноября 2026 года. При включённом InfoHelp V2 можно спросить об архиве чеков активного профиля или о том, как поделиться папкой чеков с бухгалтером. На вопросы об использовании функции бот отвечает инструкцией. Запросы вне сферы OfficeFlow больше не открывают предложение обратиться к администратору.
 
 ### en
 
-The latest update in these notes is from 20 October 2026. Closing a workday shows total time, the break deduction, and net working time. If day-specific break edits are enabled, you can set a break to zero after preview and confirmation.
+15 November 2026. With InfoHelp V2 active, you can ask about the current profile's receipt archive or how to share the receipt folder with your accountant. How-to questions receive instructions. Requests outside OfficeFlow's scope no longer open an administrator offer.
 
 ## Development history
 
