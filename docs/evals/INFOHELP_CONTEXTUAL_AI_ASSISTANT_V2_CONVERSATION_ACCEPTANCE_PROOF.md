@@ -141,3 +141,41 @@ SHA with both compose services up, bot restart count `0`, in-container compile
 success, and active Telegram polling. Runtime status is
 `deployed_pending_live_smoke`; the repeated real voice question remains the
 final interactive acceptance step.
+
+## 2026-11-15 voice acceptance set
+
+The ZIP contains 15 numbered Higgsfield clips converted to Ogg/Opus. The
+runtime STT was exercised directly with the clips and replacements. Telegram
+delivery remains open because Computer Use could not verify the browser URL.
+Project-history prompts include paraphrases of the recorded journeys.
+
+| Clip | Source | Spoken input | Expected visible outcome |
+| --- | --- | --- | --- |
+| 1 | New | Можу я дати бухгалтеру доступ, щоб він бачив тільки чеки мого профілю? | Explain the actual accountant/access options without granting access. |
+| 2 | New | Як ти вибираєш категорію для чека, якщо там є і пальне, і кава? | Explain how category selection works without changing receipt data. |
+| 3 | New | Що буде, якщо я випадково надішлю той самий чек двічі? | Describe the duplicate warning and any user confirmation. |
+| 4 | New | Коли я позначаю фактуру оплаченою, ти перевіряєш, чи гроші надійшли в банк? | Explain that the bot's paid mark records a local status. |
+| 5 | New | Чи можу я тут налаштувати графік поливу теплиці? | Answer the out-of-domain question without starting a workflow. |
+| 6 | Current conversation | Скажи, у моєму активному профілі чеки йдуть на Google Диск? | Say whether the active profile archives receipts, using profile and upload evidence. |
+| 7 | Current conversation | Всі мої чеки вже завантажені на Google Диск? | Give verified counts for the active profile or identify missing coverage. |
+| 8 | Current conversation | Ako počítaš mesačné výdavky? Povedz mi vzorec a ukáž príklad. | Explain the month filter, document totals, currencies, and a worked example. |
+| 9 | Current conversation | Що нового у ФактураБоті? Які функції додали останнім часом? | Give recent changes from the current build's user-facing release notes. |
+| 10 | Project history | Скільки фактур ми виставили від початку цього року? | Count saved outgoing invoices issued in the calendar year. No deletion or PDF display. |
+| 11 | Project history | На яку загальну суму я виставив фактури цього року? | Sum saved outgoing invoices for the year by currency. No deletion or PDF display. |
+| 12 | Current conversation | Покажи мені останню фактуру. | Show the latest saved outgoing invoice for the active profile. No aggregate or delete. |
+| 13 | Project history | Чи можу я видалити чек? | Explain the exact receipt deletion capability. Do not open invoice deletion. |
+| 14 | Project history | Vymaž vystavenú faktúru číslo desať. | Only open the usual exact-invoice confirmation if the invoice exists. Cancel afterward. |
+| 15 | Project history | Можеш зробити даньове признання на основі фактур і блочків? | Explain the tax-return boundary without creating an invoice or filing anything. |
+
+The delete probe stops at the preview and then cancels. Record the deployed
+version, exact input, STT transcript, visible response, fact source and
+business/FSM outcome for each run. Do not score the fixture result as live.
+
+Real configured-model probes on an isolated local input path selected
+`invoice_analytics` for `Koľko vystavených faktúr mám za tento rok?`,
+`show_existing_invoice` with `invoice_selector=latest` for
+`Покажи мені останню фактуру.`, and `delete_existing_invoice` for
+`Удали выставленную фактуру номер 10.` The probes stopped before dispatch.
+Selected audio transcripts also reached the local help routes. The original
+deletion audio's unreliable transcription reached invoice viewing; the exact
+text reached deletion. These runs provide routing evidence only.

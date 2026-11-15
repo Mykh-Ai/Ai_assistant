@@ -109,6 +109,12 @@ access.
 
 ## 2026-05-09 Addendum: state reset and read-only invoice view
 
+2026-11-15 local addition: a request to show the latest outgoing invoice uses
+the existing read-only view. Python selects one saved invoice from the active
+profile by newest issue date and ID. A supplied number still selects the exact
+reference. The latest selector is exclusive to viewing. Voice/Telegram live
+acceptance is pending.
+
 Approved users may view an already created outgoing invoice through the canonical top-level action `show_existing_invoice`. User wording such as “show/open invoice/faktura 04” must resolve to read-only invoice display, not to persisted invoice editing. Python resolves the invoice only inside the current supplier scope, sends the invoice summary and available PDF, and then clears FSM state / returns the bot to idle.
 
 Approved users may ask read-only questions about already saved outgoing invoices through canonical top-level action `invoice_analytics`. Simple yearly total/count wording such as "Na aku sumu som vystavil faktury tento rok?" or "Suhrn faktur za 2026" uses an internal deterministic fast path with Python-owned period parsing and tenant-scoped invoice aggregation by `supplier_telegram_id` and `issue_date`. The old `invoice_period_summary` behavior remains only as an internal analytics strategy, not as a competing user-facing top-level action. It must not create/edit/delete invoices, generate PDFs, summarize receipts, expenses, incoming invoices, bank data, VAT, tax, or claim broad accounting analytics.
@@ -1803,6 +1809,13 @@ The monitor never updates invoice/invoice-item rows, regenerates PDFs, changes `
 
 ## 2026-08-02 Addendum: Contextual InfoHelp Assistant V2
 
+2026-11-15 local repair (partial Level 2): the authorized idle V2 text/STT
+route can answer the active profile's receipt archive status and recorded coverage, explain the
+monthly document expense calculation with an example, and summarize the build's
+curated user-facing release notes. The current profile's saved upload record
+comes from a scoped read-only Python lookup. It does not prove current remote
+file presence. The rollout remains gated and live Telegram acceptance is open.
+
 The existing InfoHelp owner has a rollout-gated contextual V2 contract. It runs one bounded assistant call when the primary resolver is unknown or potentially unsafe/incomplete, then Python validates Product Truth, exact domain/object/operation, runtime owner, required slots, FSM, callback actor, tenant scope, confirmation and side effects. V2 adds no public business action and no generic nearest-action dispatcher.
 
 2026-08-05 language repair: capability/business-outcome questions are mapped by
@@ -1822,7 +1835,7 @@ confirmed, followed by the existing confirmation-gated administrator-review
 offer. The absence of a capability record must not be presented as verified
 support or as an implemented feature.
 
-Recent context is process-memory only, scoped by Telegram user/chat/workspace, limited to three user and three visible bot turns for ten minutes, and lost on restart. Explicit same-chat replies to this bot are part of the current request independently of TTL. No logs, DB rows, files, secrets or persistent transcript are used.
+Recent context is process-memory only, scoped by Telegram user/chat/workspace, limited to three user and three visible bot turns for ten minutes, and lost on restart. Explicit same-chat replies to this bot are part of the current request independently of TTL. Python prepares the scoped receipt status and release note answers from local trusted sources. The model does not receive raw logs, DB rows, files, secrets or a persistent transcript.
 
 Existing invoice actions that require a reference share `InvoiceReferenceContinuationStates.waiting_reference`; the next text/voice reference is state-owned and converges on the same scoped lookup/preview owner as a direct reference. Delete and mark-paid remain confirmation-gated.
 

@@ -29,6 +29,9 @@ INFO_HELP_SPEECH_CLARIFICATION = 'clarification_answer'
 INFO_HELP_SPEECH_INFORMATIONAL = 'informational_question'
 INFO_HELP_SPEECH_UNKNOWN = 'unknown'
 
+INFO_HELP_READ_TOPICS = ('receipt_drive_status', 'receipt_drive_coverage', 'product_updates', 'monthly_expense_method')
+INFO_HELP_RESPONSE_LANGUAGES = ('sk', 'uk', 'ru', 'en')
+
 _INTENT_KINDS = {
     INFO_HELP_INTENT_BUSINESS_ACTION, INFO_HELP_INTENT_CAPABILITY_QUESTION,
     INFO_HELP_INTENT_COMMAND_TYPO, INFO_HELP_INTENT_INCOMPLETE,
@@ -95,6 +98,8 @@ class InfoHelpAssistantResult:
     clarification_question_sk: str = ''
     normalized_business_need_sk: str = ''
     answer_sk: str = ''
+    read_topic: str | None = None
+    response_language: str = 'sk'
 
 
 def _set_parse_diagnostics(
@@ -148,6 +153,20 @@ def parse_info_help_assistant_model_output(
     domain_id = str(parsed.get('domain_id') or 'unknown')
     object_kind = str(parsed.get('object_kind') or 'unknown')
     operation_id = str(parsed.get('operation_id') or 'unknown')
+    capability_id = _optional_text(parsed.get('proposed_capability_id'), max_length=100)
+    known_capabilities = {item.capability_id for item in list_capabilities()}
+    read_topic = _optional_choice(parsed.get('read_topic'), INFO_HELP_READ_TOPICS)
+    read_only_answer = (
+        intent_kind == INFO_HELP_INTENT_CAPABILITY_QUESTION
+        and speech_act == INFO_HELP_SPEECH_CAPABILITY_QUESTION
+        and not parsed.get('proposed_action_id')
+        and not parsed.get('probable_command_target')
+        and (capability_id in known_capabilities or read_topic is not None)
+    )
+    if read_only_answer:
+        domain_id = domain_id if domain_id in _DOMAINS else 'unknown'
+        object_kind = object_kind if object_kind in _OBJECTS else 'unknown'
+        operation_id = operation_id if operation_id in _OPERATIONS else 'unknown'
     invalid_enum_fields = tuple(
         name
         for name, value, allowed in (
@@ -179,8 +198,6 @@ def parse_info_help_assistant_model_output(
             invalid_fields=('proposed_action_id',),
         )
         return InfoHelpAssistantResult()
-    known_capabilities = {item.capability_id for item in list_capabilities()}
-    capability_id = _optional_text(parsed.get('proposed_capability_id'), max_length=100)
     if capability_id and capability_id not in known_capabilities:
         _set_parse_diagnostics(
             diagnostics,
@@ -236,6 +253,10 @@ def parse_info_help_assistant_model_output(
         clarification_question_sk=_bounded_text(parsed.get('clarification_question_sk'), max_length=240),
         normalized_business_need_sk=normalized_business_need,
         answer_sk=answer,
+        read_topic=read_topic if read_only_answer else None,
+        response_language=_optional_choice(
+            parsed.get('response_language'), INFO_HELP_RESPONSE_LANGUAGES
+        ) or 'sk',
     )
     _set_parse_diagnostics(diagnostics, status='accepted')
     return result
@@ -326,7 +347,7 @@ def _enum_list(value: object, allowed: set[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(str(item) for item in value[:8] if str(item) in allowed))
 
 
-def _optional_choice(value: object, allowed: set[str]) -> str | None:
+def _optional_choice(value: object, allowed: set[str] | tuple[str, ...]) -> str | None:
     text = str(value or '')
     return text if text in allowed else None
 
