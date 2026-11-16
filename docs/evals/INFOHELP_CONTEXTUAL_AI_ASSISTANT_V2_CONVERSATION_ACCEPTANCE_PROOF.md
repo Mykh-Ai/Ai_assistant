@@ -256,3 +256,50 @@ time, including a genuine action using the same subject as a how-to question,
 an out-of-domain request that mentions a product term, an eligible feature
 proposal, and an active-state navigation request. Verify the actual Telegram
 text and voice journeys and that declined queries create no buttons or draft.
+## 2026-11-16 knowledge-backed candidate, 20 text checks
+
+Real `gpt-4o` through the production aiogram handlers and middleware, with
+synthetic Telegram updates and a local transport recorder. Two test
+workspaces included an invoice outside the active profile. The active
+profile had EUR 200 in November invoices, three outgoing invoices in the
+year, three receipts worth EUR 36.75, and one recorded Drive upload. Two
+receipts lacked Drive upload confirmation. None of the twenty checks changed
+the fixture database. All information and analytics requests stayed idle.
+
+| Group | First run | Findings |
+| --- | --- | --- |
+| Five prior phrases | 4 pass, 1 partial | Monthly time calculation and Excel regeneration, editing an invoice number and its voice limits, and the pre-2026 receipt date rule passed. Invoice lookup guidance invented syntax. |
+| Five new phrases | 2 pass, 3 partial | Payroll/tax export limits and preserving a locally saved receipt after Drive failure passed. Missing departure guidance lacked runnable syntax; the departure follow-up omitted preview/confirmation; folder sharing began with a misleading affirmative. |
+| Five command checks | 5 pass | Startup, menu, invoice draft entry, receipt upload entry, and the explicit lunch-break change preview used existing Python routes. |
+| Five analytics checks | 4 pass, 1 partial | Correct month total, year count, receipt count and total, and latest invoice number. Drive counts were correct, but pending and unverified receipts needed a more direct distinction. |
+
+On targeted rechecks, invoice lookup returned the runnable command, the prior
+missing clock answer gave an explicit command with confirmation, folder sharing
+correctly declined sharing the parent, and the Drive answer distinguished the
+one uploaded receipt from the two without confirmation. The additional
+`/vykonat zobraz faktúru 02` check displayed invoice 20260002 with a view
+heading and stayed idle.
+
+Observations before restoring direct requests: 19 passed, one failed. The
+Ukrainian follow-up asking whether saying “відхід о 16:20” closes the day
+still claimed it would close the day directly. The opted-in idle chat
+actually only answers, and explicit clock changes use a confirmation. The
+trace stayed idle and the database was unchanged. Release acceptance is
+open. Real Telegram transport and real audio were not exercised here.
+
+### Direct departure and information request recheck
+
+Real `gpt-4o`, actual Telegram handlers and confirmation owner, synthetic
+transport and a supplied speech transcript. Asking whether saying “закрий
+день о 16:29” would create a shift received an explanation about closing the
+same day after preview and confirmation. The existing day stayed open and
+the FSM stayed idle. The previous “відхід о 16:20” question also explained the
+preview without starting a workflow.
+
+Direct “Закрий день о 16:29” from text and the same injected transcript each
+reached the work-time preview for 16:29. Canceling the first preview preserved
+the database. Approving the second saved 16:29 as the end time and returned
+the bot to idle. Asking how to find an invoice by its suffix received a valid
+natural invocation, and issuing that request displayed invoice 20260002 and
+stayed idle. Both invoice checks preserved the database. The earlier
+127-test focused run and the final 13-test knowledge routing rerun passed.
