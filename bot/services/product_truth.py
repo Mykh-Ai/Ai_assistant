@@ -196,13 +196,20 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         domain='invoices',
         status=ProductTruthStatus.SUPPORTED,
         summary_for_user='Shows one saved outgoing invoice by scoped number or reference, or the latest saved outgoing invoice by issue date in the active profile.',
-        current_limitations=('Read-only; it must not enter edit mode or mutate invoice data.',),
+        current_limitations=(
+            'Read-only; it must not enter edit mode or mutate invoice data.',
+            'The scoped reference lookup supports an exact number or its trailing digits. If multiple '
+            'invoices match, use a longer suffix or the full invoice number.',
+        ),
         runtime_owner='bot/handlers/invoice.py::process_invoice_text',
         canonical_actions=('show_existing_invoice',),
         linked_handlers=('bot/handlers/invoice.py',),
         truth_source_refs=('docs/llm/Canonical_Action_Registry.md', 'docs/TZ_FakturaBot.md'),
         test_refs=('tests/test_invoice_intent_prerouter.py', 'tests/test_voice_state_routing.py', 'tests/test_info_help_contextual_journeys_v2.py'),
-        safe_next_steps=('Ask to show the latest outgoing invoice, or supply the number or reference of the invoice you want to see.',),
+        safe_next_steps=(
+            'Ask to show the latest outgoing invoice, or supply its number or reference. For a suffix '
+            'of 02, the existing Slovak action request is zobraz faktúru 02.',
+        ),
         requires_setup=True,
         setup_state_keys=('authorized_user', 'supplier_profile'),
     ),
@@ -326,6 +333,9 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         summary_for_user='Starts the bounded edit flow for an already persisted outgoing invoice after supplier-scoped lookup, with direct field buttons and bounded text/voice operation selection.',
         current_limitations=(
             'Exact invoice references, invoice numbers, item numeric values, service values, and final descriptions remain precision-sensitive/text-first; invoice dates may use bounded voice normalization followed by Python validation.',
+            'The number of a saved outgoing invoice can be edited. Choose the number field, enter the '
+            'new number as text, and review the validated change. A voice message can choose the '
+            'field, while the exact new number must be entered as text.',
         ),
         runtime_owner='bot/handlers/invoice.py::process_invoice_text',
         canonical_actions=('edit_existing_invoice',),
@@ -750,6 +760,7 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'Upload requires photo/PDF; broader document intake remains planned.',
             'Fresh empty receipt-upload waiting can be replaced by a clear new executable text/voice request through the primary model bundle. Any upload processing, draft or session data blocks this exception; unknown/help/model failure preserves waiting.',
             'Receipt issue dates before 2026 are rejected before confirmed save.',
+            'The bot has no user-facing operation to delete a single already confirmed receipt.',
             'Category changes update only the preview until the final save confirmation.',
             'Category support is controlled by the separate accounting_document_categories partial capability.',
         ),
@@ -816,6 +827,9 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'Partial scope is confirmed expense-side accounting documents only: receipts/bloceky and incoming invoices/prijate faktury in the current workspace.',
             'It can answer bounded read-only questions such as counts, sums, vendor totals, category totals, month filters, comparisons, limited lists, averages, and top rankings.',
             'Categories are confirmed intake metadata only; they are not tax deductibility, VAT reporting, or accounting approval.',
+            'A simple total for a period is the sum of the matching confirmed document amounts, '
+            'grouped by currency. For a receipt-only question, include only receipts, never incoming '
+            'or outgoing invoices. Example: two EUR receipts of 20 and 30 give an EUR total of 50.',
             'It does not analyze outgoing invoices, bank movements, cashflow, VAT/tax reports, accounting export, or full accounting conclusions.',
             'It must not create/edit/delete documents, categories, files, DB rows, registry entries, or other side effects.',
         ),
@@ -1128,7 +1142,11 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
             'The first report asks once whether lunch break should be deducted; users can later set, change, or disable the fixed lunch-break setting.',
             'Explicit start/end rows without a day exception report net minutes by subtracting the currently configured lunch break; duration-only rows keep the user-confirmed net duration stable and store a lunch snapshot for audit.',
             'Explicit arrival times, manual ranges, duration-only totals, ambiguous extracted exact values, lunch-break updates, and monthly deletion require preview confirmation before save/delete.',
+            'Closing with an explicit departure time previews the change for confirmation on the '
+            'existing open day. It does not add a second shift or silently infer a missing clock.',
             'Deleting a month removes DB work-time records only; generated Excel reports are on-demand files, not canonical stored attendance data.',
+            'Regenerating the same monthly Excel reads the existing work-time rows again and does not '
+            'change or overwrite the recorded hours. A report reflects the current applicable break rules.',
         ),
         runtime_owner='bot/handlers/work_time.py and bot/services/work_time.py',
         commands=('/dochadzka',),

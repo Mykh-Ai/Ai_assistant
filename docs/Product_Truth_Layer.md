@@ -445,6 +445,13 @@ it.
 
 ## Interaction With InfoHelp
 
+The local knowledge-backed InfoHelp candidate retrieves live registry entries,
+including limitations and forbidden claims, by ID. Approved release notes and
+Drive folder sharing guidance are additional product evidence. Selected profile
+facts are separately read through Python owners. A configuration state,
+successful upload and the number of confirmed receipts are different facts.
+Current product capability status remains partial until rollout acceptance.
+
 InfoHelp must query Product Truth before answering capability/how-to/support
 questions.
 

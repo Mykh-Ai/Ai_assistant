@@ -25,17 +25,25 @@
 
 ### sk
 
+Pri zapnutej znalostnej pomoci môžete položiť otázku o evidencii času, faktúrach alebo dokladoch a získať aj údaje z aktívneho profilu. Priamy pokyn na ukončenie dňa s konkrétnym časom zobrazí náhľad na potvrdenie.
+
 15. novembra 2026. V zapnutom InfoHelp V2 sa môžete opýtať na archív bločkov aktívneho profilu alebo na to, ako sprístupniť priečinok s bločkami účtovníkovi. Otázky o používaní funkcie dostanú návod. Pri otázkach mimo rozsahu OfficeFlow už bot neotvára ponuku pre správcu.
 
 ### uk
+
+У ввімкненій довідці з базою знань можна запитувати про табель, фактури й чеки та отримувати дані активного профілю. Пряма команда закрити день із точним часом показує попередній перегляд для підтвердження.
 
 15 листопада 2026 року. У ввімкненому InfoHelp V2 можна спитати про архів чеків активного профілю або як поділитися папкою чеків із бухгалтером. На запитання про користування функцією бот дає інструкцію. Сторонні запити більше не відкривають пропозицію звернутися до адміністратора.
 
 ### ru
 
+Когда включена справка с базой знаний, можно задавать вопросы о табеле, счетах и чеках и получать данные активного профиля. Прямая команда закрыть день с точным временем покажет предварительный результат для подтверждения.
+
 15 ноября 2026 года. При включённом InfoHelp V2 можно спросить об архиве чеков активного профиля или о том, как поделиться папкой чеков с бухгалтером. На вопросы об использовании функции бот отвечает инструкцией. Запросы вне сферы OfficeFlow больше не открывают предложение обратиться к администратору.
 
 ### en
+
+When knowledge-backed help is enabled, you can ask about time tracking, invoices and receipts, including data from the active profile. A direct command to close the day at an exact time shows a preview for confirmation.
 
 15 November 2026. With InfoHelp V2 active, you can ask about the current profile's receipt archive or how to share the receipt folder with your accountant. How-to questions receive instructions. Requests outside OfficeFlow's scope no longer open an administrator offer.
 
