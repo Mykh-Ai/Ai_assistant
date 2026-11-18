@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
+from html import escape
 import json
 import logging
 from pathlib import Path
@@ -10,6 +12,8 @@ import re
 import sqlite3
 import unicodedata
 from uuid import uuid4
+from secrets import token_urlsafe
+from types import SimpleNamespace
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -125,6 +129,18 @@ from bot.services.invoice_analytics_planner import (
 )
 from bot.services.invoice_drive_archive_service import InvoiceDriveArchiveService
 from bot.services.invoice_followup_service import InvoiceFollowupService
+from bot.services.invoice_preparation import (
+    CALCULATION_PROMPTS,
+    CalculationInputError,
+    business_clock,
+    calculate_amounts,
+    decimal_value,
+    format_calculation_summary,
+    invalidate_calculation,
+    needs_calculation,
+    resolve_date,
+    resolve_period,
+)
 from bot.services.invoice_service import CreateInvoiceItemPayload, InvoicePeriodSummary, InvoiceService
 from bot.services.llm_invoice_parser import LlmInvoicePayloadError, parse_invoice_phase2_payload
 from bot.services.pdf_generator import (
@@ -1103,6 +1119,7 @@ class InvoiceStates(StatesGroup):
     waiting_slot_clarification = State()
     waiting_customer_alias_confirm = State()
     waiting_confirm = State()
+    waiting_rate_consent = State()
     waiting_pdf_decision = State()
     waiting_edit_scope = State()
     waiting_edit_invoice_action = State()
@@ -2018,6 +2035,50 @@ def _draft_item_preview(draft: dict[str, object], target_index: int) -> str:
     )
 
 
+_INVOICE_PREVIEW_TTL = timedelta(minutes=15)
+_INVOICE_PREVIEW_DECISIONS: set[tuple[int | None, int | None]] = set()
+
+
+async def clear_invoice_preview_keyboard(*, message: Message, state: FSMContext) -> None:
+    preview = (await state.get_data()).get('invoice_preview_binding')
+    if not isinstance(preview, dict):
+        return
+    actor_id, chat_id = _message_context_ids(message)
+    if preview.get('actor_id') != actor_id or preview.get('chat_id') != chat_id:
+        return
+    await state.update_data(invoice_preview_binding=None)
+    if not isinstance(preview.get('message_id'), int) or getattr(message, 'bot', None) is None:
+        return
+    try:
+        await message.bot.edit_message_reply_markup(
+            chat_id=chat_id, message_id=preview['message_id'], reply_markup=None,
+        )
+    except Exception:
+        logger.exception('Could not remove owned invoice preview keyboard')
+
+
+async def _send_invoice_preview(*, message: Message, state: FSMContext, preview_text: str) -> None:
+    await clear_invoice_preview_keyboard(message=message, state=state)
+    actor_id, chat_id = _message_context_ids(message)
+    data = await state.get_data()
+    binding = {
+        'token': token_urlsafe(12),
+        'actor_id': actor_id,
+        'chat_id': chat_id,
+        'workspace_id': data.get(_INVOICE_WORKSPACE_ID_KEY),
+        'expires_at': (datetime.now(UTC) + _INVOICE_PREVIEW_TTL).isoformat(),
+    }
+    await state.update_data(invoice_preview_binding=binding)
+    await state.set_state(InvoiceStates.waiting_confirm)
+    sent = await answer_with_decision_keyboard(
+        message, preview_text, approve_edit_cancel_keyboard(invoice_preview_token=binding['token']),
+    )
+    if (await state.get_data()).get('invoice_preview_binding') == binding:
+        await state.update_data(invoice_preview_binding={
+            **binding, 'message_id': getattr(sent, 'message_id', None),
+        })
+
+
 async def _show_updated_draft_preview(
     *,
     message: Message,
@@ -2026,6 +2087,26 @@ async def _show_updated_draft_preview(
     success_text: str,
 ) -> None:
     _sync_draft_from_items(draft)
+    bundle = draft.get('calculation')
+    if isinstance(bundle, dict) and bundle.get('status') == 'valid':
+        if bundle.get('service_name') != draft['service_display_name']:
+            draft['calculation_manual_service'] = True
+            bundle.update(service_source='explicit', service_source_invoice=None, service_name=draft['service_display_name'])
+        changed_dates = {
+            key for key in ('issue_date', 'delivery_date', 'due_date') if bundle.get(key) != draft[key]
+        }
+        if changed_dates:
+            draft['calculation_manual_dates'] = sorted(set(draft.get('calculation_manual_dates', [])) | changed_dates)
+        if 'delivery_date' in changed_dates:
+            bundle['delivery_date_source'] = 'explicit'
+        bundle.update(
+            service_name=draft['service_display_name'], issue_date=draft['issue_date'],
+            delivery_date=draft['delivery_date'], due_date=draft['due_date'],
+        )
+    if isinstance(bundle, dict):
+        await message.answer(escape(format_calculation_summary(
+            bundle, supplier_name=str(draft['calculation_supplier']), customer_name=str(draft['customer_name']),
+        )))
     await state.update_data(
         invoice_draft=draft,
         edit_stage=None,
@@ -2034,15 +2115,22 @@ async def _show_updated_draft_preview(
         edit_item_action_mode=None,
         edit_invoice_date_operation=None,
     )
-    await state.set_state(InvoiceStates.waiting_confirm)
-    await answer_with_decision_keyboard(
-        message,
-        f'{success_text}\n\n{_format_preview(None, draft)}',
-        approve_edit_cancel_keyboard(),
+    await _send_invoice_preview(
+        message=message, state=state, preview_text=f'{success_text}\n\n{_format_preview(None, draft)}',
     )
 
 
-async def _resolve_invoice_edit_scope(*, config: Config, user_input_text: str) -> str:
+_CALCULATION_EDIT_ACTIONS = {
+    'edit_calculation_hours': ('calculation_hours', 'Change billable hours or their KW breakdown.'),
+    'edit_calculation_rate': ('calculation_rate', 'Change the hourly rate used to calculate the draft.'),
+    'edit_calculation_lodging': ('calculation_lodging', 'Change or remove the lodging deduction for the draft.'),
+    'edit_calculation_period': ('calculation_period', 'Change the service period or calendar weeks of the draft.'),
+}
+
+
+async def _resolve_invoice_edit_scope(
+    *, config: Config, user_input_text: str, calculation_edit: bool = False,
+) -> str:
     return await resolve_semantic_action(
         context_name='invoice_edit_scope_selection',
         allowed_actions=[
@@ -2060,12 +2148,18 @@ async def _resolve_invoice_edit_scope(*, config: Config, user_input_text: str) -
             _EDIT_ITEM_OPERATION_QUANTITY,
             _EDIT_ITEM_OPERATION_UNIT_PRICE,
             _EDIT_ITEM_OPERATION_TOTAL_AMOUNT,
+            *(_CALCULATION_EDIT_ACTIONS if calculation_edit else ()),
             _EDIT_ITEM_OPERATION_UNKNOWN,
         ],
         user_input_text=user_input_text,
         api_key=config.openai_api_key,
         model=config.openai_llm_model,
         action_hints={
+            **({
+                token: {'meaning': definition[1], 'not_this': ['physical PDF item values', 'persisted invoices']}
+                for token, definition in _CALCULATION_EDIT_ACTIONS.items()
+            } if calculation_edit else {}),
+
             'invoice_level': {
                 'meaning': 'The user generically wants to edit invoice-level fields but has not named a specific field.',
                 'positive_examples': ['upraviť faktúru', 'змінити дані фактури'],
@@ -2327,7 +2421,10 @@ async def _show_invoice_edit_main_menu(
     await _send_invoice_edit_keyboard(
         message=message,
         state=state,
-        text=_invoice_edit_main_prompt(invoice_number),
+        text=_invoice_edit_main_prompt(invoice_number) + (
+            '\nPre prepočet napíšte, či chcete zmeniť hodiny, hodinovú sadzbu, ubytovanie alebo obdobie.'
+            if (await state.get_data()).get('invoice_draft', {}).get('calculation_inputs') else ''
+        ),
         reply_markup=invoice_edit_main_keyboard(),
     )
 
@@ -2437,6 +2534,7 @@ def _extract_invoice_draft_from_phase2_payload(payload: dict) -> tuple[str, dict
         normalized_items = [singleton_item]
 
     parsed_draft = {
+        'calculation': (biznis_sk or {}).get('calculation'),
         'customer_raw_mention': (biznis_sk or {}).get('odberatel_raw_mention'),
         'customer_name': (biznis_sk or {}).get('odberatel_kandidat'),
         'service_raw_mention': singleton_item['service_raw_mention'],
@@ -3050,7 +3148,63 @@ async def _build_and_store_preview(
         )
         return
 
+    calculation = parsed_draft.get('calculation')
+    anchor = parsed_draft.get('business_anchor')
+    use_preparation = config.invoice_preparation_enabled and isinstance(calculation, dict) and isinstance(anchor, dict)
+    effective_today = date.fromisoformat(anchor['business_today']) if isinstance(anchor, dict) else date.today()
+    actual_text = str(parsed_draft.get('calculation_original_input') or raw_text)
+    currency = (parsed_draft.get('currency') or 'EUR').strip().upper() or 'EUR'
     item_inputs = _normalize_items_input(parsed_draft)
+    weeks = []
+    period_start = period_end = None
+    date_intents = {}
+    amounts = None
+    default_rate = None
+    rate_offer = None
+    prior_service = None
+    service_was_clarified = bool(parsed_draft.get('calculation_service_clarified'))
+    has_service = any(item.get('service_term_sk') or item.get('item_name_raw') for item in item_inputs)
+    has_amount_calculation = use_preparation and needs_calculation(calculation)
+    if use_preparation:
+        try:
+            weeks, period_start, period_end = resolve_period(calculation, today=effective_today, raw_text=actual_text)
+            date_intents = {
+                key: resolve_date(calculation.get(f'{key}_date'), today=effective_today,
+                                  raw_text=actual_text, slot=key, weeks=weeks)
+                for key in ('issue', 'delivery', 'due')
+            }
+            if not has_service:
+                prior_service = runtime.preparation.latest_contact_service(contact.id)
+                if prior_service is None:
+                    raise CalculationInputError('service')
+            if has_amount_calculation:
+                if currency != 'EUR' or len(item_inputs) != 1:
+                    raise CalculationInputError('amount')
+                default_rate = runtime.preparation.contact_rate(contact.id)
+                amounts = calculate_amounts(calculation, contact_rate=default_rate, weeks=weeks)
+                if default_rate is not None and amounts['rate_source'] == 'explicit':
+                    try:
+                        same_rate = decimal_value(default_rate, 'rate') == decimal_value(amounts['hourly_rate'], 'rate')
+                    except CalculationInputError:
+                        same_rate = False
+                    if not same_rate:
+                        rate_offer = {'expected': default_rate, 'replacement': amounts['hourly_rate']}
+        except CalculationInputError as error:
+            await _start_invoice_slot_clarification(
+                message=message, state=state, config=config, request_id=request_id,
+                raw_text=raw_text, parsed_draft=parsed_draft, unresolved_slot=error.slot,
+            )
+            return
+    needs_migrated_schema = use_preparation and (
+        has_amount_calculation or not has_service or weeks
+    )
+    preparation_ready = use_preparation and runtime.preparation.schema_ready()
+    if needs_migrated_schema and not preparation_ready:
+        await message.answer('Rozšírený výpočet faktúry ešte nie je dostupný v tomto úložisku.')
+        await state.clear()
+        return
+    if prior_service:
+        item_inputs[0]['service_term_sk'] = prior_service[0]
     if len(item_inputs) > 3:
         await _start_invoice_slot_clarification(
             message=message,
@@ -3096,15 +3250,21 @@ async def _build_and_store_preview(
             await state.clear()
             return
 
-        service_short_name, service_display_name, allowed_aliases = await _resolve_service_alias_bounded(
-            alias_service=service_alias_service,
-            supplier_telegram_id=message.from_user.id,
-            workspace_id=(runtime.context.workspace_id if runtime.context is not None else None),
-            supplier_id=int(supplier.id),
-            candidate_text=service_short_name_input,
-            config=config,
-            context_name='invoice_service_term_resolution',
-        )
+        if prior_service or service_was_clarified:
+            service_short_name = service_display_name = service_short_name_input
+            allowed_aliases = []
+        else:
+            service_short_name, service_display_name, allowed_aliases = await _resolve_service_alias_bounded(
+                alias_service=service_alias_service,
+                supplier_telegram_id=message.from_user.id,
+                workspace_id=(runtime.context.workspace_id if runtime.context is not None else None),
+                supplier_id=int(supplier.id),
+                candidate_text=service_short_name_input,
+                config=config,
+                context_name='invoice_service_term_resolution',
+            )
+        if has_amount_calculation and not service_short_name:
+            service_short_name = service_display_name = service_short_name_input
         if not service_short_name or not service_display_name:
             await _start_invoice_slot_clarification(
                 message=message,
@@ -3126,6 +3286,16 @@ async def _build_and_store_preview(
             item_input.get('service_raw_mention'),
             original_text=raw_text,
         )
+        if amounts is not None:
+            net = float(amounts['net'])
+            normalized_items.append({
+                'item_index': 1, 'service_short_name': service_short_name,
+                'item_term_canonical_internal': service_short_name,
+                'service_display_name': service_display_name, 'quantity': 1.0,
+                'unit_price': net, 'unit': 'ks', 'amount': net, 'item_description_raw': None,
+            })
+            total_amount = net
+            continue
         quantity_value = item_input.get('quantity')
         quantity_raw = _parse_positive_float(quantity_value)
         if quantity_value is not None and quantity_raw is None:
@@ -3204,10 +3374,11 @@ async def _build_and_store_preview(
         return
 
     first_item = normalized_items[0]
-    currency = (parsed_draft.get('currency') or 'EUR').strip().upper() or 'EUR'
 
     try:
-        issue_date_obj = _resolve_issue_date(raw_text=raw_text, today=date.today())
+        issue_date_obj = date_intents.get('issue') or _resolve_issue_date(
+            raw_text=actual_text, today=effective_today,
+        )
     except ValueError as exc:
         await _start_invoice_slot_clarification(
             message=message,
@@ -3221,11 +3392,30 @@ async def _build_and_store_preview(
         )
         return
     try:
-        delivery_date_obj = _resolve_delivery_date(
-            raw_text=raw_text,
-            issue_date_obj=issue_date_obj,
-            llm_delivery_value=parsed_draft.get('delivery_date'),
-        )
+        delivery_source = 'default_issue_date'
+        delivery_date_obj = date_intents.get('delivery')
+        if delivery_date_obj is not None:
+            delivery_source = 'explicit'
+        elif (
+            weeks and re.sub(r'[^a-z0-9]', '', contact.name.casefold()) in {'techcompany', 'techcompanysro'}
+            and calculation.get('period_intent') == 'previous_two_completed_weeks'
+            and calculation.get('iso_weeks') is None and not parsed_draft.get('delivery_date')
+        ):
+            delivery_date_obj = date.fromisoformat(weeks[-1]['start']) + timedelta(days=4)
+            delivery_source = 'tech_company_period_friday'
+        else:
+            delivery_value = parsed_draft.get('delivery_date')
+            if use_preparation and delivery_value:
+                proposed_delivery = _parse_date(delivery_value)
+                if proposed_delivery is None or not _has_explicit_year_confirmation_for_delivery_date(
+                    actual_text, proposed_delivery,
+                ):
+                    delivery_value = None
+            delivery_date_obj = _resolve_delivery_date(
+                raw_text=actual_text, issue_date_obj=issue_date_obj, llm_delivery_value=delivery_value,
+            )
+            if delivery_date_obj != issue_date_obj:
+                delivery_source = 'explicit'
     except ValueError as exc:
         await _start_invoice_slot_clarification(
             message=message,
@@ -3269,7 +3459,16 @@ async def _build_and_store_preview(
             )
             return
 
-    due_date_obj = issue_date_obj + timedelta(days=due_days)
+    due_date_obj = date_intents.get('due') or issue_date_obj + timedelta(days=due_days)
+    if date_intents.get('due') is not None:
+        specified_days = (due_date_obj - issue_date_obj).days
+        if specified_days < 0 or (draft_due_days is not None and due_days != specified_days):
+            await _start_invoice_slot_clarification(
+                message=message, state=state, config=config, request_id=request_id,
+                raw_text=raw_text, parsed_draft=parsed_draft, unresolved_slot='calculation_due',
+            )
+            return
+        due_days = specified_days
     proposed_invoice_number = runtime.generate_next_invoice_number(issue_date_obj.year)
 
     normalized = {
@@ -3292,6 +3491,60 @@ async def _build_and_store_preview(
         'due_days': due_days,
         'due_date': due_date_obj.isoformat(),
     }
+    draft_state = await state.get_data()
+    old_draft = draft_state.get('invoice_draft') if draft_state.get('invoice_calculation_reedit') else None
+    if isinstance(old_draft, dict):
+        if old_draft.get('invoice_number_manual_override') and _is_valid_invoice_number_for_edit(
+            invoice_issue_date=normalized['issue_date'], invoice_number_candidate=str(old_draft['invoice_number']),
+        ):
+            normalized['invoice_number'] = old_draft['invoice_number']
+            normalized['invoice_number_manual_override'] = True
+        for key in ('issue_date', 'delivery_date', 'due_date'):
+            if key in old_draft.get('calculation_manual_dates', []):
+                normalized[key] = old_draft[key]
+        if old_draft.get('calculation_manual_dates'):
+            normalized['calculation_manual_dates'] = old_draft['calculation_manual_dates']
+            normalized['due_days'] = (
+                date.fromisoformat(normalized['due_date']) - date.fromisoformat(normalized['issue_date'])
+            ).days
+        if len(normalized_items) == 1:
+            old_item = _draft_items(old_draft)[0]
+            normalized_items[0]['item_description_raw'] = old_item.get('item_description_raw')
+            if old_draft.get('calculation_manual_service'):
+                normalized['calculation_manual_service'] = True
+                for key in ('service_short_name', 'item_term_canonical_internal', 'service_display_name'):
+                    normalized_items[0][key] = normalized[key] = old_item[key]
+                prior_service = None
+    if preparation_ready or (use_preparation and not needs_migrated_schema):
+        amount_text = f'{total_amount:.2f}'
+        bundle = {
+            'schema_version': 1, 'status': 'valid',
+            'workspace_id': runtime.context.workspace_id if runtime.context else None,
+            'contact_id': contact.id, 'currency': currency,
+            'business_today': anchor['business_today'], 'period_start': period_start, 'period_end': period_end,
+            'iso_weeks': weeks, 'project_name': _clean_draft_text(calculation.get('project_name')),
+            'service_name': first_item['service_display_name'],
+            'service_source': 'last_invoice' if prior_service else 'explicit',
+            'service_source_invoice': prior_service[1] if prior_service else None,
+            'issue_date': normalized['issue_date'], 'delivery_date': normalized['delivery_date'],
+            'due_date': normalized['due_date'], 'delivery_date_source': delivery_source,
+            'overlap_invoice_numbers': runtime.preparation.overlaps(contact.id, weeks) if weeks else [],
+            **(amounts or {
+                'hours_total': None, 'hours_by_kw': None, 'hours_by_kw_source': None,
+                'hourly_rate': None, 'rate_source': None, 'gross': amount_text,
+                'lodging_groups': [], 'lodging_total': '0.00', 'net': amount_text,
+            }),
+        }
+        normalized['calculation'] = bundle
+        normalized['calculation_supplier'] = supplier.name
+        normalized['calculation_persist'] = preparation_ready
+        if rate_offer is not None:
+            normalized['rate_offer'] = rate_offer
+        if has_amount_calculation or weeks:
+            normalized['calculation_inputs'] = parsed_draft
+        await message.answer(escape(format_calculation_summary(
+            bundle, supplier_name=supplier.name, customer_name=contact.name,
+        )))
     if (
         alias_learning_candidate
         and contact_resolution_source in _ALIAS_LEARNING_RESOLUTION_SOURCES
@@ -3319,12 +3572,13 @@ async def _build_and_store_preview(
         },
     )
 
-    await state.update_data(invoice_draft=normalized)
-    await state.set_state(InvoiceStates.waiting_confirm)
-    await answer_with_decision_keyboard(
-        message,
-        _format_preview(raw_text if raw_text else None, normalized),
-        approve_edit_cancel_keyboard(),
+    obsolete = {
+        key: None for key in ('invoice_calculation_reedit', 'invoice_partial_draft') if key in draft_state
+    }
+    await state.update_data(invoice_draft=normalized, **obsolete)
+    await _send_invoice_preview(
+        message=message, state=state,
+        preview_text=_format_preview(raw_text if raw_text else None, normalized),
     )
 
 
@@ -3403,7 +3657,9 @@ async def _start_invoice_slot_clarification(
     else:
         await state.set_state(InvoiceStates.waiting_slot_clarification)
 
-    prompt = _SLOT_PROMPTS.get(unresolved_slot, 'Nepodarilo sa jednoznačne určiť údaj. Spresnite ho, prosím.')
+    prompt = CALCULATION_PROMPTS.get(unresolved_slot) or _SLOT_PROMPTS.get(
+        unresolved_slot, 'Nepodarilo sa jednoznačne určiť údaj. Spresnite ho, prosím.',
+    )
     if bounded_choices:
         prompt = f'{prompt}\nMožnosti: {", ".join(bounded_choices)}.'
     if update_hint:
@@ -3684,6 +3940,68 @@ def _merge_item_clarification_into_draft(
     return merged
 
 
+_CALCULATION_CLARIFICATION_FIELDS = {
+    'calculation_period': ('period_intent', 'iso_weeks', 'period_start', 'period_end'),
+    'calculation_issue': ('issue_date',),
+    'calculation_delivery': ('delivery_date',),
+    'calculation_due': ('due_date',),
+    'calculation_hours': ('hours_total', 'hours_by_kw'),
+    'calculation_rate': ('hourly_rate',),
+    'calculation_lodging': ('lodging_mentioned', 'lodging_groups'),
+    'calculation_amount': ('gross_amount', 'net_amount', 'amount_kind'),
+}
+
+_CALCULATION_TEXT_ONLY_SLOTS = frozenset({
+    'calculation_service', 'calculation_hours', 'calculation_rate',
+    'calculation_lodging', 'calculation_amount',
+})
+
+
+async def _apply_calculation_clarification(
+    *, parsed_draft: dict, slot: str, user_text: str, config: Config,
+) -> bool:
+    if slot == 'calculation_service':
+        service = user_text.strip()
+        if not 1 <= len(service) <= 180:
+            return False
+        parsed_draft['service_term_sk'] = service
+        parsed_draft['item_name_raw'] = service
+        if parsed_draft.get('items'):
+            parsed_draft['items'][0].update(service_term_sk=service, item_name_raw=service)
+        parsed_draft['calculation_service_clarified'] = True
+        return True
+    calculation = parsed_draft.get('calculation')
+    fields = _CALCULATION_CLARIFICATION_FIELDS.get(slot)
+    if not isinstance(calculation, dict) or fields is None or not config.openai_api_key:
+        return False
+    try:
+        payload = await parse_invoice_phase2_payload(
+            user_text, config.openai_api_key, config.openai_llm_model,
+            business_anchor=parsed_draft.get('business_anchor'),
+            clarification_context={'slot': slot, 'calculation': calculation},
+        )
+    except LlmInvoicePayloadError as error:
+        if not isinstance(error.partial_payload, dict):
+            return False
+        payload = error.partial_payload
+    except Exception:
+        logger.exception('Could not extract invoice calculation clarification')
+        return False
+    _, extracted = _extract_invoice_draft_from_phase2_payload(payload)
+    patch = extracted.get('calculation')
+    if not isinstance(patch, dict):
+        return False
+    if slot == 'calculation_due' and extracted.get('due_days') is not None:
+        parsed_draft['due_days'] = extracted['due_days']
+    elif not any(patch.get(key) is not None for key in fields):
+        return False
+    elif slot == 'calculation_due':
+        parsed_draft['due_days'] = None
+    for field in fields:
+        calculation[field] = patch.get(field)
+    return True
+
+
 async def process_invoice_slot_clarification(
     *,
     message: Message,
@@ -3705,7 +4023,17 @@ async def process_invoice_slot_clarification(
         await message.answer('Návrh faktúry už nie je dostupný. Spustite /invoice znova.')
         return
 
-    if unresolved_slot == _SLOT_QUANTITY_UNIT_PRICE:
+    if unresolved_slot in CALCULATION_PROMPTS:
+        if not await _apply_calculation_clarification(
+            parsed_draft=parsed_draft, slot=unresolved_slot, user_text=clarification_text, config=config,
+        ):
+            await message.answer(CALCULATION_PROMPTS[unresolved_slot])
+            return
+        parsed_draft['calculation_original_input'] = '\n'.join((
+            str(parsed_draft.get('calculation_original_input') or partial.get('raw_text') or ''),
+            clarification_text,
+        ))
+    elif unresolved_slot == _SLOT_QUANTITY_UNIT_PRICE:
         resolution = await resolve_quantity_unit_price_pair(
             user_input_text=clarification_text,
             api_key=config.openai_api_key,
@@ -5430,7 +5758,10 @@ async def process_invoice_text(
         return
 
     try:
-        payload = await parse_invoice_phase2_payload(invoice_text, config.openai_api_key, config.openai_llm_model)
+        anchor = business_clock()
+        payload = await parse_invoice_phase2_payload(
+            invoice_text, config.openai_api_key, config.openai_llm_model, business_anchor=anchor,
+        )
         payload_vstup = payload.get('vstup') if isinstance(payload, dict) else {}
         payload_biznis = payload.get('biznis_sk') if isinstance(payload, dict) else {}
         _emit_invoice_debug_log(
@@ -5447,6 +5778,8 @@ async def process_invoice_text(
             },
         )
         raw_text, parsed = _extract_invoice_draft_from_phase2_payload(payload)
+        parsed['business_anchor'] = anchor
+        parsed['calculation_original_input'] = invoice_text
     except LlmInvoicePayloadError as exc:
         payload_details = exc.details or {}
         _emit_invoice_debug_log(
@@ -5467,6 +5800,8 @@ async def process_invoice_text(
         )
         if exc.error_code in {'service_term_unresolved', 'customer_unresolved', 'items_shape_invalid', 'items_count_exceeded', 'items_service_unresolved'} and isinstance(exc.partial_payload, dict):
             raw_text, parsed = _extract_invoice_draft_from_phase2_payload(exc.partial_payload)
+            parsed['business_anchor'] = anchor
+            parsed['calculation_original_input'] = invoice_text
             await _start_invoice_slot_clarification(
                 message=message,
                 state=state,
@@ -5497,7 +5832,7 @@ async def process_invoice_text(
         state=state,
         config=config,
         request_id=flow_request_id,
-        raw_text=raw_text or invoice_text,
+        raw_text=invoice_text,
         parsed_draft=parsed,
     )
 
@@ -5691,11 +6026,21 @@ async def _finalize_invoice_draft(
         await message.answer('Profil dodávateľa neexistuje. Najprv spustite /moj_profil.')
         await state.clear()
         return
-    contact = runtime.get_contact_by_name(str(draft['customer_name']))
+    contact = runtime.get_contact_by_id(int(contact_id))
     if contact is None:
         await message.answer('Kontakt odberateľa sa nenašiel v databáze. Pridajte ho cez /contact.')
         await state.clear()
         return
+
+    bundle = draft.get('calculation')
+    if isinstance(bundle, dict) and bundle.get('status') == 'valid' and bundle.get('iso_weeks'):
+        overlaps = runtime.preparation.overlaps(int(contact_id), bundle['iso_weeks'])
+        if overlaps != bundle.get('overlap_invoice_numbers'):
+            bundle['overlap_invoice_numbers'] = overlaps
+            await _show_updated_draft_preview(
+                message=message, state=state, draft=draft, success_text='Kontrola fakturovaných týždňov sa zmenila.',
+            )
+            return
 
     proposed_invoice_number = str(draft.get('invoice_number') or '').strip()
     if not proposed_invoice_number:
@@ -5743,6 +6088,7 @@ async def _finalize_invoice_draft(
             status='pripravena',
             items=normalized_items,
             invoice_number=proposed_invoice_number,
+            calculation_bundle=draft.get('calculation') if draft.get('calculation_persist') else None,
         )
 
         invoice_id = invoice.id
@@ -5816,6 +6162,24 @@ async def _finalize_invoice_draft(
             return
         await state.clear()
         await message.answer('Nepodarilo sa dokončiť vytvorenie PDF faktúry. Skúste to znova.')
+        return
+
+    rate_offer = draft.get('rate_offer')
+    if isinstance(rate_offer, dict):
+        await state.update_data(
+            **{_INVOICE_WORKSPACE_ID_KEY: runtime.context.workspace_id if runtime.context else ''},
+            invoice_rate_offer={
+                **rate_offer, 'contact_id': int(contact_id), 'actor_id': runtime.actor_telegram_id,
+                'expires_at': (datetime.now(UTC) + _INVOICE_PREVIEW_TTL).isoformat(),
+            },
+        )
+        await state.set_state(InvoiceStates.waiting_rate_consent)
+        await message.answer(
+            f"Chcete pre budúce faktúry odberateľa {escape(contact.name)} uložiť "
+            f"{rate_offer['replacement']} EUR/h namiesto {rate_offer['expected']} EUR/h? "
+            'Odpovedzte áno alebo nie. Vytvorená faktúra používa už zadanú sadzbu.',
+        )
+
 
 
 async def process_invoice_preview_confirmation(
@@ -5825,6 +6189,71 @@ async def process_invoice_preview_confirmation(
     config: Config,
     confirmation_text: str,
     canonical_decision: str | None = None,
+    preview_token: str | None = None,
+) -> bool:
+    identity = _message_context_ids(message)
+    if identity in _INVOICE_PREVIEW_DECISIONS:
+        return False
+    data = await state.get_data()
+    binding = data.get('invoice_preview_binding')
+    if not isinstance(binding, dict):
+        if preview_token is not None or identity in _INVOICE_PREVIEW_DECISIONS:
+            return False
+        if isinstance(state, FSMContext):
+            await message.answer('Tento náhľad už nie je aktuálny. Spustite /invoice znova.')
+            return False
+        await _process_invoice_preview_decision(
+            message=message, state=state, config=config, confirmation_text=confirmation_text,
+            canonical_decision=canonical_decision,
+        )
+        return True
+
+    actor_id, chat_id = _message_context_ids(message)
+    if binding.get('actor_id') != actor_id or binding.get('chat_id') != chat_id:
+        return False
+    reply_id = getattr(getattr(message, 'reply_to_message', None), 'message_id', None)
+    if canonical_decision is not None:
+        if (not preview_token or preview_token != binding.get('token')
+            or getattr(message, 'message_id', None) != binding.get('message_id')):
+            return False
+    elif reply_id is not None and reply_id != binding.get('message_id'):
+        await message.answer('Tento náhľad už nie je aktuálny. Odpovedzte na aktuálny náhľad.')
+        return False
+    if binding.get('workspace_id') != data.get(_INVOICE_WORKSPACE_ID_KEY):
+        return False
+    current_state = await state.get_state()
+    if getattr(current_state, 'state', current_state) != InvoiceStates.waiting_confirm.state:
+        return False
+    if identity in _INVOICE_PREVIEW_DECISIONS:
+        return False
+    _INVOICE_PREVIEW_DECISIONS.add(identity)
+    try:
+        if (await state.get_data()).get('invoice_preview_binding') != binding:
+            return False
+        if datetime.now(UTC) >= datetime.fromisoformat(binding['expires_at']):
+            await clear_invoice_preview_keyboard(message=message, state=state)
+            await state.clear()
+            await message.answer('Platnosť náhľadu vypršala. Spustite /invoice znova.')
+            return True
+        if await _invoice_runtime_or_recover(message=message, state=state, config=config) is None:
+            return False
+        await _process_invoice_preview_decision(
+            message=message, state=state, config=config, confirmation_text=confirmation_text,
+            canonical_decision=canonical_decision, expected_binding=binding,
+        )
+        return True
+    finally:
+        _INVOICE_PREVIEW_DECISIONS.discard(identity)
+
+
+async def _process_invoice_preview_decision(
+    *,
+    message: Message,
+    state: FSMContext,
+    config: Config,
+    confirmation_text: str,
+    canonical_decision: str | None = None,
+    expected_binding: dict | None = None,
 ) -> None:
     request_id = str(uuid4())
     state_before = await state.get_state()
@@ -5868,6 +6297,14 @@ async def process_invoice_preview_confirmation(
                 ensure_ascii=False,
             )
         )
+    if expected_binding is not None:
+        if (await state.get_data()).get('invoice_preview_binding') != expected_binding:
+            return
+        if datetime.now(UTC) >= datetime.fromisoformat(expected_binding['expires_at']):
+            await clear_invoice_preview_keyboard(message=message, state=state)
+            await state.clear()
+            await message.answer('Platnosť náhľadu vypršala. Spustite /invoice znova.')
+            return
     if answer == 'unknown':
         if config.debug_invoice_transparency:
             logger.info(
@@ -5902,6 +6339,8 @@ async def process_invoice_preview_confirmation(
             )
         await message.answer('Prosím, odpovedzte: schváliť, upraviť alebo zrušiť.')
         return
+
+    await clear_invoice_preview_keyboard(message=message, state=state)
 
     if answer == 'cancel':
         if config.debug_invoice_transparency:
@@ -6043,6 +6482,10 @@ async def process_invoice_postpdf_decision(
         return
 
     state_data = await state.get_data()
+    if answer == 'cancel' and state_data.get('invoice_edit_calculation_saved'):
+        await state.clear()
+        await message.answer('Kontrola bola ukončená. Uložená faktúra zostáva k dispozícii.')
+        return
     invoice_id = state_data.get('last_invoice_id')
     if not isinstance(invoice_id, int):
         await state.clear()
@@ -6167,6 +6610,82 @@ def _resolve_target_item_from_index(*, invoice_items, target_item_index: int):
     return invoice_items[target_item_index - 1]
 
 
+def _render_existing_invoice_pdf(*, invoice, items, supplier, contact, pdf_path: Path) -> None:
+    generate_invoice_pdf(
+        target_path=pdf_path,
+        supplier=supplier,
+        customer=contact,
+        invoice=PdfInvoiceData(
+            invoice_number=invoice.invoice_number,
+            issue_date=invoice.issue_date,
+            delivery_date=invoice.delivery_date,
+            due_date=invoice.due_date,
+            variable_symbol=invoice.invoice_number,
+            payment_method='bankový prevod',
+            total_amount=float(invoice.total_amount),
+            currency=invoice.currency,
+        ),
+        items=[
+            PdfInvoiceItem(
+                description=item.description_normalized or item.description_raw,
+                detail=item.item_description_raw,
+                quantity=float(item.quantity),
+                unit=item.unit,
+                unit_price=float(item.unit_price),
+                total_price=float(item.total_price),
+            )
+            for item in items
+        ],
+    )
+
+
+async def _apply_saved_invoice_calculation_edit(
+    *, message: Message, state: FSMContext, runtime: ScopedInvoiceRuntime, invoice,
+    success_text: str, invoice_changes: dict | None = None, item_id: int | None = None,
+    item_changes: dict | None = None,
+) -> bool:
+    pdf_path = runtime.pdf_target_path(invoice.invoice_number)
+
+    def render(revised, items, target: Path) -> None:
+        supplier = runtime.get_supplier()
+        contact = runtime.get_contact_by_id(invoice.contact_id)
+        if supplier is None or contact is None:
+            raise ValueError('Invoice parties are no longer available')
+        _render_existing_invoice_pdf(
+            invoice=SimpleNamespace(**revised), items=[SimpleNamespace(**dict(item)) for item in items],
+            supplier=supplier, contact=contact, pdf_path=target,
+        )
+
+    try:
+        outcome = runtime.preparation.edit_with_calculation(
+            invoice.id, pdf_path=pdf_path, render_pdf=render, invoice_changes=invoice_changes,
+            item_id=item_id, item_changes=item_changes,
+        )
+    except Exception:
+        logger.exception('Saved invoice calculation edit did not complete')
+        await message.answer('Úpravu sa nepodarilo dokončiť. Skúste znova alebo použite /cancel.')
+        return True
+    if outcome is None:
+        return False
+    if not outcome:
+        await message.answer('Hodnota sa nezmenila.')
+        return True
+    await state.update_data(
+        last_invoice_id=invoice.id, last_invoice_number=invoice.invoice_number, last_pdf_path=str(pdf_path),
+        invoice_edit_calculation_saved=True,
+    )
+    try:
+        await message.answer_document(FSInputFile(pdf_path), caption=f'Aktualizovaná faktúra {invoice.invoice_number}')
+    except Exception:
+        logger.exception('Edited invoice was saved but PDF delivery failed')
+        await message.answer('Zmena je uložená. PDF si môžete otvoriť cez zobrazenie faktúry.')
+    await _send_post_edit_approval_prompt(
+        message=message, state=state,
+        success_text=success_text + ' Pôvodný výpočet je uložený už len ako história.',
+    )
+    return True
+
+
 async def _rebuild_pdf_for_existing_invoice(
     *,
     message: Message,
@@ -6208,31 +6727,8 @@ async def _rebuild_pdf_for_existing_invoice(
     items = invoice_service.get_items_by_invoice_id(invoice_id)
     pdf_path = invoice_service.pdf_target_path(invoice.invoice_number)
     try:
-        generate_invoice_pdf(
-            target_path=pdf_path,
-            supplier=supplier,
-            customer=contact,
-            invoice=PdfInvoiceData(
-                invoice_number=invoice.invoice_number,
-                issue_date=invoice.issue_date,
-                delivery_date=invoice.delivery_date,
-                due_date=invoice.due_date,
-                variable_symbol=invoice.invoice_number,
-                payment_method='bankový prevod',
-                total_amount=float(invoice.total_amount),
-                currency=invoice.currency,
-            ),
-            items=[
-                PdfInvoiceItem(
-                    description=item.description_normalized or item.description_raw,
-                    detail=item.item_description_raw,
-                    quantity=float(item.quantity),
-                    unit=item.unit,
-                    unit_price=float(item.unit_price),
-                    total_price=float(item.total_price),
-                )
-                for item in items
-            ],
+        _render_existing_invoice_pdf(
+            invoice=invoice, items=items, supplier=supplier, contact=contact, pdf_path=pdf_path,
         )
         invoice_service.save_pdf_path(invoice.id, pdf_path)
         await message.answer_document(
@@ -6393,6 +6889,53 @@ async def invoice_customer_alias_confirm(message: Message, state: FSMContext, co
         config=config,
         answer_text=(message.text or ''),
     )
+
+
+@router.message(InvoiceStates.waiting_rate_consent)
+async def invoice_rate_consent(message: Message, state: FSMContext, config: Config) -> None:
+    data = await state.get_data()
+    offer = data.get('invoice_rate_offer')
+    if not isinstance(offer, dict) or offer.get('actor_id') != _message_supplier_telegram_id(message):
+        return
+    expires_at = datetime.fromisoformat(offer['expires_at'])
+    if datetime.now(UTC) >= expires_at:
+        await state.clear()
+        await message.answer('Platnosť ponuky vypršala. Uložená sadzba sa nezmenila.')
+        return
+    decision = await resolve_yes_no(
+        context_name='invoice_contact_rate_consent', user_input_text=(message.text or ''),
+        api_key=config.openai_api_key, model=config.openai_llm_model,
+    )
+    if (await state.get_data()).get('invoice_rate_offer') != offer:
+        return
+    if datetime.now(UTC) >= expires_at:
+        await state.clear()
+        await message.answer('Platnosť ponuky vypršala. Uložená sadzba sa nezmenila.')
+        return
+    if decision not in {'yes', 'no'}:
+        await message.answer('Odpovedzte áno alebo nie, alebo použite /cancel.')
+        return
+    if decision == 'no':
+        await state.clear()
+        await message.answer('Sadzba uložená v kontakte zostáva rovnaká.')
+        return
+
+    runtime = await _invoice_runtime_or_recover(message=message, state=state, config=config)
+    if runtime is None or (await state.get_data()).get('invoice_rate_offer') != offer:
+        return
+    try:
+        updated = runtime.preparation.change_contact_rate(
+            offer['contact_id'], expected=offer['expected'], replacement=offer['replacement'],
+        )
+    except sqlite3.Error:
+        logger.exception('Could not save the confirmed contact hourly rate')
+        await message.answer('Sadzbu sa nepodarilo uložiť. Skúste znova alebo použite /cancel.')
+        return
+    await state.clear()
+    if updated:
+        await message.answer(f"Pre budúce faktúry je uložených {offer['replacement']} EUR/h.")
+    else:
+        await message.answer('Sadzba v kontakte sa medzitým zmenila. Ponechal som aktuálnu hodnotu.')
 
 
 @router.message(InvoiceStates.waiting_pdf_decision)
@@ -6950,10 +7493,21 @@ async def invoice_edit_scope(
     config: Config,
     canonical_operation: str | None = None,
 ) -> None:
+    state_data = await state.get_data()
+    draft = state_data.get('invoice_draft') if state_data.get('edit_stage') == 'draft' else None
+    inputs = draft.get('calculation_inputs') if isinstance(draft, dict) else None
     scope = canonical_operation or await _resolve_invoice_edit_scope(
-        config=config,
-        user_input_text=(message.text or ''),
+        config=config, user_input_text=(message.text or ''), calculation_edit=isinstance(inputs, dict),
     )
+    if scope in _CALCULATION_EDIT_ACTIONS and isinstance(inputs, dict):
+        await clear_invoice_edit_keyboard(message=message, state=state)
+        await state.update_data(invoice_calculation_reedit=True)
+        await _start_invoice_slot_clarification(
+            message=message, state=state, config=config, request_id=str(uuid4()),
+            raw_text=str(draft.get('raw_text') or ''), parsed_draft=deepcopy(inputs),
+            unresolved_slot=_CALCULATION_EDIT_ACTIONS[scope][0],
+        )
+        return
     if scope in _invoice_edit_invoice_operations():
         await clear_invoice_edit_keyboard(message=message, state=state)
         await invoice_edit_invoice_action(
@@ -7301,8 +7855,10 @@ async def invoice_edit_item_action(
             await message.answer('Položka na úpravu už nie je dostupná. Spustite /invoice znova.')
             return
         if not target_item.get('item_description_raw'):
-            await state.set_state(InvoiceStates.waiting_confirm)
-            await message.answer('Položka nemá žiadne detaily na vymazanie.')
+            await _show_updated_draft_preview(
+                message=message, state=state, draft=draft,
+                success_text='Položka nemá žiadne detaily na vymazanie.',
+            )
             return
         target_item['item_description_raw'] = None
         await _show_updated_draft_preview(
@@ -7486,6 +8042,12 @@ async def invoice_edit_service_value(message: Message, state: FSMContext, config
         await message.answer('PoloЕѕka na Гєpravu uЕѕ nie je dostupnГЎ. Spustite /invoice znova.')
         return
 
+    if await _apply_saved_invoice_calculation_edit(
+        message=message, state=state, runtime=invoice_service, invoice=invoice,
+        success_text='Služba položky bola zmenená.', item_id=int(target_item_id),
+        item_changes={'description_raw': resolved_alias, 'description_normalized': resolved_display_name},
+    ):
+        return
     invoice_service.update_item_service(
         item_id=int(target_item_id),
         service_short_name=resolved_alias,
@@ -7807,6 +8369,22 @@ async def invoice_edit_invoice_date_value(message: Message, state: FSMContext, c
         else None
     )
 
+    date_field, change_message = {
+        _EDIT_INVOICE_OPERATION_ISSUE_DATE: ('issue_date', 'Dátum vystavenia bol upravený.'),
+        _EDIT_INVOICE_OPERATION_DELIVERY_DATE: ('delivery_date', 'Dátum dodania bol upravený.'),
+        _EDIT_INVOICE_OPERATION_DUE_DATE: ('due_date', 'Dátum splatnosti bol upravený.'),
+    }[date_operation]
+    changes = {date_field: candidate_date_iso}
+    if date_field in {'issue_date', 'due_date'}:
+        new_issue = date.fromisoformat(changes.get('issue_date', invoice.issue_date))
+        new_due = date.fromisoformat(changes.get('due_date', invoice.due_date))
+        changes['due_days'] = (new_due - new_issue).days
+    if await _apply_saved_invoice_calculation_edit(
+        message=message, state=state, runtime=invoice_service, invoice=invoice,
+        success_text=change_message, invoice_changes=changes,
+    ):
+        return
+
     if date_operation == _EDIT_INVOICE_OPERATION_ISSUE_DATE:
         invoice_service.update_invoice_issue_date(
             invoice_id=invoice_id,
@@ -7912,7 +8490,12 @@ async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, c
                 _with_invoice_exact_value_recovery_hint('Hodnota musí byť nezáporná a množstvo väčšie ako 0.')
             )
             return
+        previous_values = (quantity, unit_price, item.get('amount'))
         item['quantity'], item['unit_price'], item['amount'] = applied
+        if isinstance(draft.get('calculation'), dict) and applied != previous_values:
+            _sync_draft_from_items(draft)
+            draft['calculation'] = invalidate_calculation(draft['calculation'], effective_total=draft['amount'])
+            draft.pop('rate_offer', None)
         await _show_updated_draft_preview(message=message, state=state, draft=draft, success_text=success_text)
         return
 
@@ -7963,6 +8546,12 @@ async def invoice_edit_item_numeric_value(message: Message, state: FSMContext, c
         )
         return
     new_quantity, new_unit_price, new_total = applied
+    if await _apply_saved_invoice_calculation_edit(
+        message=message, state=state, runtime=invoice_service, invoice=invoice,
+        success_text=success_text, item_id=int(target_item_id),
+        item_changes={'quantity': new_quantity, 'unit_price': new_unit_price, 'total_price': new_total},
+    ):
+        return
     invoice_service.update_item_financials(
         item_id=int(target_item_id),
         quantity=new_quantity,
@@ -8067,6 +8656,12 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
 
     success_text = 'Detaily položky boli doplnené.'
     if action_mode == 'replace_main_description':
+        if await _apply_saved_invoice_calculation_edit(
+            message=message, state=state, runtime=invoice_service, invoice=invoice,
+            success_text='Opis položky bol nahradený novým textom.', item_id=int(target_item_id),
+            item_changes={'description_raw': new_description_value, 'description_normalized': new_description_value},
+        ):
+            return
         invoice_service.update_item_main_description(
             item_id=int(target_item_id),
             description_raw=new_description_value,

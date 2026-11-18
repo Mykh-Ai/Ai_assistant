@@ -25,6 +25,7 @@ _OPTIONAL_BIZNIS_FIELDS = {
     'cena_za_jednotku',
     'odberatel_raw_mention',
     'service_raw_mention',
+    'calculation',
 }
 _MAX_MULTI_ITEMS = 3
 _MAX_RAW_MENTION_LENGTH = 120
@@ -267,7 +268,12 @@ def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
     biznis_sk['service_raw_mention'] = _normalize_optional_raw_mention(
         biznis_sk.get('service_raw_mention')
     )
-    _resolve_service_slots_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
+    calculation = biznis_sk.get('calculation')
+    if calculation is not None and not isinstance(calculation, dict):
+        raise LlmInvoicePayloadError('Invalid LLM payload: biznis_sk.calculation must be an object.')
+    if not (isinstance(calculation, dict) and biznis_sk['termin_sluzby_sk'] is None
+            and biznis_sk['polozka_povodna'] is None):
+        _resolve_service_slots_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
     _validate_optional_items_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
 
     for key in tuple(biznis_sk.keys()):
@@ -277,8 +283,15 @@ def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-async def parse_invoice_phase2_payload(text: str, api_key: str, model: str) -> dict[str, Any]:
+async def parse_invoice_phase2_payload(
+    text: str, api_key: str, model: str, *,
+    business_anchor: dict | None = None, clarification_context: dict | None = None,
+) -> dict[str, Any]:
     system_prompt = _PROMPT_PATH.read_text(encoding='utf-8')
+    if business_anchor:
+        system_prompt += '\nPython runtime clock: ' + json.dumps(business_anchor)
+    if clarification_context:
+        system_prompt += '\nPython clarification context: ' + json.dumps(clarification_context, ensure_ascii=False)
     client = AsyncOpenAI(api_key=api_key)
 
     response = await client.chat.completions.create(

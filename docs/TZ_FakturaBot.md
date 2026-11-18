@@ -1900,3 +1900,20 @@ original authorized user. A frozen activation cutoff prevents historical spam;
 Telegram delivery is separately retried and may be blocked. No exactly-once or
 all-banks/general-PDF-editing claim is permitted. Capability questions only
 explain setup and create no upload. Details: docs/ZEVS_Archive_Rollout_Runbook.md.
+
+## 2026-11-17 Addendum — invoice preparation Stage 1
+
+The existing outgoing invoice action can prepare a calculated draft when the
+feature is enabled and its additive schema is available. Phase 2 extracts
+structured inputs. Python computes ISO weeks from the request's Bratislava
+business date, looks up a missing service in the contact's latest scoped
+invoice, and computes the EUR total and lodging deductions. Total hours are
+sufficient for a PDF when the weekly breakdown is absent. A one-time stated
+rate takes priority. When it differs from an existing contact rate, the bot
+offers separate post-save confirmation for the future rate.
+
+The bot shows a calculation summary before the existing invoice draft preview.
+Approval belongs to that exact preview. The approved calculation is stored
+with the invoice. If a direct edit changes a saved calculation's service,
+invoice dates or financial values, the earlier detail is preserved as history
+and the effective total follows the local PDF and SQLite record.

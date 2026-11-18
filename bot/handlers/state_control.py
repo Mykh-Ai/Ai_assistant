@@ -14,6 +14,7 @@ from bot.handlers.delete_user_database import DeleteUserDatabaseStates
 from bot.handlers.invoice import (
     InvoiceStates,
     clear_invoice_edit_keyboard,
+    clear_invoice_preview_keyboard,
     process_invoice_postpdf_decision,
 )
 from bot.handlers.officeflow_attachment_router import OfficeFlowAttachmentRouterStates
@@ -109,6 +110,7 @@ async def clear_current_state_safely(*, state: FSMContext, config: Config, messa
         from bot.handlers.work_time import clear_work_time_report_choice_keyboard
 
         await clear_work_time_report_choice_keyboard(message=message, state=state)
+        await clear_invoice_preview_keyboard(message=message, state=state)
     current_state = await state.get_state()
     if current_state is None:
         await state.clear()

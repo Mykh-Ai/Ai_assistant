@@ -1,3 +1,10 @@
+# 2026-11-17 - Invoice preparation Stage 1 local implementation
+
+- Matched the updated specification and Design Proof against main `84ff360`. The owner confirmed immediate one-time use of an explicitly stated rate and a separate post-save offer to update the contact.
+- Extended the existing invoice action with a request-scoped Bratislava clock, ISO weeks, Decimal calculation, scoped service/rate lookup, lodging deductions, a binding to the exact preview and a stored calculation bundle.
+- Direct saved edits preserve the historical calculation and update the effective SQLite and PDF values. Added the explicit additive migration, compatibility mode and acceptance evidence.
+- The complete local suite passed 3066 tests and 7 subtests. SQLite and PDF checks used temporary fixtures with synthetic Telegram and OpenAI boundaries.
+
 # 2026-11-15 - Knowledge-backed InfoHelp candidate
 
 - Routing follow-up: the user clarified that a direct natural-language departure command must reach the existing work-time owner, while asking what it does is a support question. The prior candidate put both in the read-only path, contrary to the canonical mixed text/voice action contract. The change is limited to opted-in idle routing and guidance (partial Level 2). Verify a question about explicit departure, direct text/voice-transcript requests, the exact-time confirmation, and data preservation before approval. Existing authorization, active states, precision checks and storage contracts still own their behavior. No new learning signal.

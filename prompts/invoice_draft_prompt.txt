@@ -122,3 +122,15 @@ Príklady normalizácie `biznis_sk.odberatel_kandidat`:
    - Správne: `"odberatel_kandidat": "Tech Company"`
    - Správne: `"service_raw_mention": "opravy elektroinštalácie"`
    - Nesprávne: `"odberatel_raw_mention": "вистав фактуру на тек компані за opravy elektroinštalácie na 1000 eur"`
+
+Invoice preparation (additive biznis_sk.calculation)
+Return a calculation object. Extract facts actually mentioned by the user. Do not compute totals, infer unmentioned hours, spread hours across weeks, guess an unmentioned rate/night or replace an explicit year. In particular, lodging deductions are not invoice items. For a missing service return null for term and original item and do not invent an item. For a plain complete legacy command, keep biznis_sk and its items as specified above; calculation can be empty except for explicitly spoken date intents.
+Use only these optional calculation properties:
+- period_intent: none, this_week, previous_week, previous_two_completed_weeks, explicit_iso_weeks, explicit_dates, or ambiguous. "Previous two weeks" means the two completed ISO weeks before the current week.
+- iso_weeks: [{kw: integer, iso_year: integer or null}] only if the user explicitly named KW values. An explicit ISO week outranks a relative period. Output the year only when the user said it. Do not expand relative weeks into numbers.
+- period_start, period_end, issue_date, delivery_date, due_date: each a date intent object or null. Kinds: date (day and month as integers, year only when stated), today, yesterday, day_before_yesterday, tomorrow, last_weekday (weekday Monday=1 through Sunday=7), period_last_weekday (same weekday numbering, explicitly refers to invoiced period), or ambiguous. With two plausible different reference days use ambiguous. Python materializes the dates from the supplied runtime clock.
+- hours_total, hourly_rate, gross_amount, net_amount: exact decimal strings or null. Put a stated amount into gross_amount or net_amount only when its role is clear. A bare amount in an ordinary legacy invoice should remain only in biznis_sk.suma. With a bare amount and deductions, set amount_kind to ambiguous when it is unclear if the amount is before or after deductions.
+- hours_by_kw: [{kw: integer, iso_year: integer or null, hours: decimal string}] only when explicitly provided. Use null when no split was stated.
+- lodging_mentioned: true only when the user requests a lodging deduction. lodging_groups: [{nights: integer, price_per_night: decimal string or null}], or null. Preserve different night prices as separate groups, including incomplete groups.
+- project_name: explicit worksite/project name or null.
+Clarification context, if supplied by Python, identifies the slot being corrected and previously stated structured input. Return the user's correction to that slot. Never echo that context as a new customer, service, date or numerical fact.
