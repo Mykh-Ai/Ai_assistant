@@ -7,6 +7,7 @@ import pandas as pd
 
 from bot.services.contact_service import ContactLookupResult, ContactProfile, ContactService
 from bot.services.invoice_analytics_dataset import InvoiceAnalyticsDatasetService
+from bot.services.invoice_preparation_store import InvoicePreparationStore
 from bot.services.invoice_service import (
     CreateInvoiceItemPayload,
     InvoiceItemRecord,
@@ -40,6 +41,9 @@ class ScopedInvoiceRuntime:
         self.storage_dir = storage_dir
         self.actor_telegram_id = actor_telegram_id
         self.context = context
+        self.preparation = InvoicePreparationStore(
+            db_path, actor_id=actor_telegram_id, workspace_id=context.workspace_id if context else None,
+        )
         self._legacy_invoices = legacy_invoice_service or InvoiceService(db_path)
         self._workspace_invoices = WorkspaceInvoiceService(db_path)
         self._legacy_contacts = ContactService(db_path)
@@ -135,6 +139,7 @@ class ScopedInvoiceRuntime:
         status: str,
         items: list[CreateInvoiceItemPayload],
         invoice_number: str | None = None,
+        calculation_bundle: dict | None = None,
     ) -> InvoiceRecord:
         if self.context is None:
             invoice_id = self._legacy_invoices.create_invoice_with_items(
@@ -149,6 +154,7 @@ class ScopedInvoiceRuntime:
                 status=status,
                 items=items,
                 invoice_number=invoice_number,
+                calculation_bundle=calculation_bundle,
             )
             saved = self._legacy_invoices.get_invoice_for_supplier_by_id(
                 supplier_telegram_id=self.actor_telegram_id,
@@ -169,6 +175,7 @@ class ScopedInvoiceRuntime:
             status=status,
             items=items,
             invoice_number=invoice_number,
+            calculation_bundle=calculation_bundle,
         )
 
     def get_invoice(self, invoice_id: int) -> InvoiceRecord | None:

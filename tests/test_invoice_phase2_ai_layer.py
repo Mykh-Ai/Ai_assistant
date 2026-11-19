@@ -1482,7 +1482,7 @@ def test_items_slot_clarification_keeps_existing_customer_context(
         },
     }
 
-    async def _fake_parse_invoice_phase2_payload(text: str, api_key: str, model: str) -> dict:
+    async def _fake_parse_invoice_phase2_payload(text: str, api_key: str, model: str, **kwargs) -> dict:
         assert text == 'polozka 1 oprava 2000, polozka 2 stavebne prace 1000'
         return {
             'vstup': {'povodny_text': text, 'zisteny_jazyk': 'mixed'},

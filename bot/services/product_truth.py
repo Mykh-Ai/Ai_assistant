@@ -168,6 +168,9 @@ _REGISTRY: tuple[ProductTruthCapability, ...] = (
         summary_for_user='Creates an outgoing invoice draft from text or voice, validates it, asks for approval, then saves and generates a PDF.',
         current_limitations=(
             'Requires authorized user, supplier profile, at least one service alias, and contact data for normal use.',
+            'With the invoice preparation schema present and enabled, preview can calculate hours × rate, lodging deductions, and ISO service weeks. Saving a first or replacement contact rate for future invoices needs separate consent after invoice approval.',
+            'When the request clearly omits the service, the draft can reuse one unambiguous label from the selected contact’s latest invoice in the active profile. If a service mention cannot be resolved or presence is uncertain, the draft asks for the exact name.',
+            'Known hours stay a total unless a weekly breakdown was supplied. Missing or ambiguous calculation inputs require clarification.',
             'Exact identifiers, invoice numbers, dates, quantities, prices, IBAN, tax IDs, email, and final descriptions remain text-first where precision matters.',
         ),
         runtime_owner='bot/handlers/invoice.py::process_invoice_text',

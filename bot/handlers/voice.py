@@ -45,6 +45,8 @@ from bot.handlers.invoice import (
     process_invoice_customer_alias_confirm,
     process_invoice_postpdf_decision,
     process_invoice_preview_confirmation,
+    invoice_rate_consent,
+    _CALCULATION_TEXT_ONLY_SLOTS,
     process_invoice_service_clarification,
     process_invoice_slot_clarification,
     process_invoice_text,
@@ -132,6 +134,12 @@ async def handle_voice(
     }:
         await message.answer('V tomto kroku použite tlačidlo alebo zadajte presnú hodnotu textom.')
         return
+
+    if current_state == InvoiceStates.waiting_slot_clarification.state:
+        partial = (await state.get_data()).get('invoice_partial_draft') or {}
+        if partial.get('unresolved_slot') in _CALCULATION_TEXT_ONLY_SLOTS:
+            await message.answer('V tomto kroku zadajte presnú hodnotu textom.')
+            return
 
     if not config.openai_api_key:
         await message.answer(
@@ -246,6 +254,8 @@ async def handle_voice(
                 config=config,
                 answer_text=recognized_text,
             )
+        elif current_state == InvoiceStates.waiting_rate_consent.state:
+            await invoice_rate_consent(text_message, state, config)
         elif current_state == InvoiceStates.waiting_pdf_decision.state:
             if config.debug_invoice_transparency:
                 logger.info(

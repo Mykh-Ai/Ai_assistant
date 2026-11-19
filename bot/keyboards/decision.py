@@ -4,6 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 DECISION_CALLBACK_PREFIX = 'decision:'
+INVOICE_PREVIEW_CALLBACK_PREFIX = 'invprev:v1:'
 DECISION_YES = 'yes'
 DECISION_NO = 'no'
 DECISION_APPROVE = 'approve'
@@ -76,13 +77,19 @@ def approve_edit_cancel_keyboard(
     approve_label: str = 'Schváliť',
     edit_label: str = 'Upraviť',
     cancel_label: str = 'Zrušiť',
+    invoice_preview_token: str | None = None,
 ) -> InlineKeyboardMarkup:
+    def callback_data(token: str) -> str:
+        if invoice_preview_token is None:
+            return decision_callback_data(token)
+        return f'{INVOICE_PREVIEW_CALLBACK_PREFIX}{invoice_preview_token}:{token}'
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=approve_label, callback_data=decision_callback_data(DECISION_APPROVE)),
-                InlineKeyboardButton(text=edit_label, callback_data=decision_callback_data(DECISION_EDIT)),
-                InlineKeyboardButton(text=cancel_label, callback_data=decision_callback_data(DECISION_CANCEL)),
+                InlineKeyboardButton(text=approve_label, callback_data=callback_data(DECISION_APPROVE)),
+                InlineKeyboardButton(text=edit_label, callback_data=callback_data(DECISION_EDIT)),
+                InlineKeyboardButton(text=cancel_label, callback_data=callback_data(DECISION_CANCEL)),
             ]
         ]
     )

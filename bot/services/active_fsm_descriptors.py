@@ -25,6 +25,10 @@ _DESCRIPTORS = {
         'create_invoice', 'Vytvorenie faktúry', 'doplnenie chýbajúceho údaja',
         'state_owned_value', 'údaj vyžiadaný v poslednej správe bota',
     ),
+    'InvoiceStates:waiting_rate_consent': ActiveFsmDescriptor(
+        'create_invoice', 'Budúca sadzba odberateľa', 'potvrdenie novej sadzby',
+        'yes_no', 'áno pre uloženie sadzby pre budúce faktúry alebo nie pre ponechanie pôvodnej',
+    ),
     'InvoiceReferenceContinuationStates:waiting_reference': ActiveFsmDescriptor(
         'invoice_reference_action', 'Práca s existujúcou faktúrou', 'výber faktúry',
         'invoice_reference', 'číslo alebo jednoznačný suffix faktúry',

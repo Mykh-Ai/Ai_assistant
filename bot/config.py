@@ -42,6 +42,7 @@ class Config:
     google_drive_delete_local_invoice_pdf_after_upload: bool = False
     google_drive_archive_worker_interval_seconds: int = 60
     google_drive_archive_worker_batch_size: int = 5
+    invoice_preparation_enabled: bool = True
     invoice_followup_scheduler_enabled: bool = True
     invoice_followup_check_interval_seconds: int = 86400
     invoice_followup_notification_cooldown_hours: int = 24
@@ -199,6 +200,7 @@ def load_config() -> Config:
     ensure_storage_dirs(storage_dir)
 
     return Config(
+        invoice_preparation_enabled=_parse_bool(os.getenv('INVOICE_PREPARATION_ENABLED', '1')),
         bot_token=bot_token,
         openai_api_key=openai_api_key,
         openai_stt_model=openai_stt_model,
