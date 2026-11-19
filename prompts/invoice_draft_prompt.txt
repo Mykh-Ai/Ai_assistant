@@ -28,18 +28,8 @@ Vráť STRICTNE iba jeden JSON objekt v tomto tvare:
     "datum_dodania": null,
     "splatnost_dni": null,
     "datum_splatnosti": null,
-    "items": [
-      {
-        "service_raw_mention": null,
-        "polozka_povodna": null,
-        "termin_sluzby_sk": null,
-        "mnozstvo": null,
-        "jednotka": null,
-        "cena_za_jednotku": null,
-        "suma": null,
-        "item_description_raw": null
-      }
-    ]
+    "calculation": null,
+    "items": null
   },
   "stopa": {
     "chyba_udaje": [],
@@ -74,8 +64,8 @@ Pravidlá:
 - `biznis_sk.polozka_povodna` a `biznis_sk.termin_sluzby_sk` musia byť v slovenčine (bez cyriliky); raw cyriliku nechávaj len vo `vstup.povodny_text`/`stopa`.
 - Keď používateľ hovorí mixom jazykov, normalizuj význam do slovenčiny po poliach: firma, položky, dátumy, množstvo, jednotka, ceny.
 - Backward compatibility je povinná:
-  - singleton polia (`polozka_povodna`, `termin_sluzby_sk`, `mnozstvo`, `jednotka`, `cena_za_jednotku`, `suma`) vždy vyplň podľa najistejšej interpretácie,
-  - voliteľne môžeš pridať `biznis_sk.items[]` ako candidate segmentation pri multi-item vstupe.
+  - singleton polia (`polozka_povodna`, `termin_sluzby_sk`, `mnozstvo`, `jednotka`, `cena_za_jednotku`, `suma`) vyplň iba z údajov o skutočnej položke vo vstupe,
+  - `biznis_sk.items` je null alebo pole 1 až 3 skutočne oddelených položiek s rovnakými kľúčmi pre službu, množstvo a cenu; každá môže mať `item_description_raw`.
 - `biznis_sk.items[]` je striktne bounded: max 3 položky.
 - Nepoužívaj open-ended extrakciu ľubovoľného počtu položiek.
 - Ak si neistý hranicami položiek alebo významom násobenia, nepoužívaj tiché odhady; daj `null` a zaznamenaj nejasnosť do `stopa.nejasnosti`.
@@ -97,11 +87,7 @@ Pravidlá:
 - Ak si pri rozlíšení `cena_za_jednotku` vs `suma` neistý, nevymýšľaj čísla; nechaj pole `null` a uveď nejasnosť v `stopa.nejasnosti`.
 - Ak pole nevieš určiť spoľahlivo, daj null a uveď dôvod v `stopa.chyba_udaje` alebo `stopa.nejasnosti`.
 - `zamer.nazov` nastav na `vytvor_fakturu` ak je vstup faktúra-like (`invoice`, `faktura`, `рахунок`, `фактура`).
-- `datum_dodania` a `datum_splatnosti` normalizuj na `YYYY-MM-DD` iba ak sú explicitne/iste.
-- Ak používateľ povie deň+mesiac bez roka (napr. `4 апреля`, `4 apríla`, `4 apr`), pri `datum_dodania` použi rok aktuálneho invoice-flow (rok dátumu vystavenia) a nevymýšľaj iný minulý/budúci rok.
-- Nikdy nedoplňuj rok z vlastného tréningového/modelového kontextu. Ak rok nie je vo vstupe a nie si si istý aktuálnym invoice-flow rokom, daj `datum_dodania` = null a uveď nejasnosť v `stopa.nejasnosti`.
-- Ak by normalizovaný `datum_dodania` vyšiel viac než približne 2 mesiace pred dátumom vystavenia a používateľ výslovne nepovedal rok, nepoužívaj taký rok; daj `datum_dodania` = null.
-- Ak by normalizovaný `datum_dodania` vyšiel viac než približne 3 mesiace po dátume vystavenia a používateľ výslovne nepovedal rok, nepoužívaj taký rok; daj `datum_dodania` = null.
+- Pre spätnú kompatibilitu vyplň `datum_dodania` a `datum_splatnosti` v tvare `YYYY-MM-DD` iba pri výslovne uvedenom dni, mesiaci a roku. Relatívne dátumy a deň s mesiacom bez roka vyjadri v `calculation` bez dopočítaného roku.
 - `mena` normalizuj na ISO kód (napr. EUR, USD), ak je jasná.
 
 Príklady normalizácie `biznis_sk.odberatel_kandidat`:
@@ -124,13 +110,15 @@ Príklady normalizácie `biznis_sk.odberatel_kandidat`:
    - Nesprávne: `"odberatel_raw_mention": "вистав фактуру на тек компані за opravy elektroinštalácie na 1000 eur"`
 
 Invoice preparation (additive biznis_sk.calculation)
-Return a calculation object. Extract facts actually mentioned by the user. Do not compute totals, infer unmentioned hours, spread hours across weeks, guess an unmentioned rate/night or replace an explicit year. In particular, lodging deductions are not invoice items. For a missing service return null for term and original item and do not invent an item. For a plain complete legacy command, keep biznis_sk and its items as specified above; calculation can be empty except for explicitly spoken date intents.
+Return a calculation object for a period, a date intent, a rate/hours calculation, a lodging deduction, or when the service is missing. Extract facts actually mentioned by the user. Do not compute totals, infer unmentioned hours, spread hours across weeks, guess an unmentioned rate/night or replace an explicit year. Lodging deductions are not invoice items. If the service is missing, set `service_raw_mention`, `termin_sluzby_sk` and `polozka_povodna` to null on the singleton and on any corresponding item. Do not invent a generic service such as "Práca", "Služby" or "Odpracované hodiny". The Stage 1 hours-and-rate calculation has one payable line. Return `items: null` for this line and put its service in the singleton only if the user actually named it. For a plain complete legacy command without any of these features, return `calculation: null` and keep the existing singleton or multi-item values.
+When the user names the service, fill the singleton service fields even if there are also hours, rates, dates, or a deduction. For `за монтаж, 10 часов по 40 евро в час` set `service_raw_mention` to `монтаж` and both `termin_sluzby_sk` and `polozka_povodna` to `montáž`. With `за 10 часов по 40 евро в час` and no named service, leave those three fields null.
 Use only these optional calculation properties:
 - period_intent: none, this_week, previous_week, previous_two_completed_weeks, explicit_iso_weeks, explicit_dates, or ambiguous. "Previous two weeks" means the two completed ISO weeks before the current week.
 - iso_weeks: [{kw: integer, iso_year: integer or null}] only if the user explicitly named KW values. An explicit ISO week outranks a relative period. Output the year only when the user said it. Do not expand relative weeks into numbers.
 - period_start, period_end, issue_date, delivery_date, due_date: each a date intent object or null. Kinds: date (day and month as integers, year only when stated), today, yesterday, day_before_yesterday, tomorrow, last_weekday (weekday Monday=1 through Sunday=7), period_last_weekday (same weekday numbering, explicitly refers to invoiced period), or ambiguous. With two plausible different reference days use ambiguous. Python materializes the dates from the supplied runtime clock.
+- Explicit date labels identify independent fields even if a period or hours were also specified. For `Dátum dodania je 2. januára` return `delivery_date: {"kind":"date","month":1,"day":2,"year":null}`. For `дата постачання позавчора` return `delivery_date: {"kind":"day_before_yesterday"}`. For `дата выставления 20 мая 2022 года` return `issue_date: {"kind":"date","month":5,"day":20,"year":2022}`.
 - hours_total, hourly_rate, gross_amount, net_amount: exact decimal strings or null. Put a stated amount into gross_amount or net_amount only when its role is clear. A bare amount in an ordinary legacy invoice should remain only in biznis_sk.suma. With a bare amount and deductions, set amount_kind to ambiguous when it is unclear if the amount is before or after deductions.
 - hours_by_kw: [{kw: integer, iso_year: integer or null, hours: decimal string}] only when explicitly provided. Use null when no split was stated.
 - lodging_mentioned: true only when the user requests a lodging deduction. lodging_groups: [{nights: integer, price_per_night: decimal string or null}], or null. Preserve different night prices as separate groups, including incomplete groups.
 - project_name: explicit worksite/project name or null.
-Clarification context, if supplied by Python, identifies the slot being corrected and previously stated structured input. Return the user's correction to that slot. Never echo that context as a new customer, service, date or numerical fact.
+Clarification context, if supplied by Python, identifies the slot being corrected and previously stated structured input. Return the user's correction to that slot. If the user supplies only one endpoint of an existing date range, return only that endpoint. The unchanged endpoint is retained by Python. Never echo the context as a new customer, service, date or numerical fact.

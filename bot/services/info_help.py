@@ -204,7 +204,7 @@ _SLOVAK_CAPABILITY_COPY = {
     'create_invoice': {
         'title': 'Vytvorenie faktúry',
         'summary': 'Vytvorenie odosielanej faktúry je podporované cez existujúci fakturačný tok.',
-        'limitation': 'Bežné použitie vyžaduje autorizovaného používateľa, profil dodávateľa a kontakt. Ak je rozšírený výpočet zapnutý a databáza ho podporuje, náhľad môže zobraziť hodiny, sadzbu, ubytovanie a ISO týždne. Sadzba pre budúce faktúry sa zmení iba po samostatnom potvrdení.',
+        'limitation': 'Bežné použitie vyžaduje autorizovaného používateľa, profil dodávateľa a kontakt. Ak je rozšírený výpočet zapnutý a databáza ho podporuje, náhľad môže zobraziť hodiny, sadzbu, ubytovanie a ISO týždne. Chýbajúca služba sa môže doplniť z poslednej faktúry odberateľa v aktívnom profile, ak je jednoznačná. Prvá aj nová sadzba pre budúce faktúry sa uloží až po samostatnom potvrdení.',
         'safe_next': 'Ak chcete faktúru naozaj vytvoriť, napíšte konkrétne údaje faktúry alebo použite /invoice.',
     },
     'show_existing_invoice': {

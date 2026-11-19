@@ -1905,15 +1905,26 @@ explain setup and create no upload. Details: docs/ZEVS_Archive_Rollout_Runbook.m
 
 The existing outgoing invoice action can prepare a calculated draft when the
 feature is enabled and its additive schema is available. Phase 2 extracts
-structured inputs. Python computes ISO weeks from the request's Bratislava
-business date, looks up a missing service in the contact's latest scoped
-invoice, and computes the EUR total and lodging deductions. Total hours are
-sufficient for a PDF when the weekly breakdown is absent. A one-time stated
-rate takes priority. When it differs from an existing contact rate, the bot
-offers separate post-save confirmation for the future rate.
+structured inputs. Python uses the request's `Europe/Bratislava` system date
+for relative calendar dates and completed ISO weeks. Explicit KW references
+take priority. Yearless dates use the issue date or an applicable period
+boundary where available. The inclusive window is 120 days before to 30 days
+after the reference. An explicit calendar year is preserved, including for
+historical invoices. If the year is unclear, the bot requests clarification
+within the same draft.
+
+The latest invoice for the contact in the active profile supplies a missing
+service only when it has one unambiguous label. Otherwise the bot asks for
+the service and retains the calculation. Python computes the EUR total and
+lodging deductions. Total hours are sufficient for a PDF when the weekly
+breakdown is absent. A stated rate applies to the current invoice. After save,
+the bot offers separate confirmation if the contact has no saved rate or if
+the rate differs. The offer applies only to future invoices for that contact.
 
 The bot shows a calculation summary before the existing invoice draft preview.
 Approval belongs to that exact preview. The approved calculation is stored
 with the invoice. If a direct edit changes a saved calculation's service,
 invoice dates or financial values, the earlier detail is preserved as history
-and the effective total follows the local PDF and SQLite record.
+and the effective total follows the local PDF and SQLite record. A local
+edit journal reconciles an interrupted replacement with the committed SQLite
+revision at startup. This candidate remains under review in draft PR #119.

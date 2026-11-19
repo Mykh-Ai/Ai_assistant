@@ -135,6 +135,7 @@ from bot.services.invoice_preparation import (
     business_clock,
     calculate_amounts,
     decimal_value,
+    explicit_week_references,
     format_calculation_summary,
     invalidate_calculation,
     needs_calculation,
@@ -2578,6 +2579,14 @@ _ISSUE_DATE_CUE_PATTERN = re.compile(
     r')',
     flags=re.IGNORECASE,
 )
+_CALENDAR_DATE_LABELS = {
+    'issue': _ISSUE_DATE_CUE_PATTERN,
+    'delivery': re.compile(r'\b(?:d[aá]tum\s+dodania|(?:дата|датою)\s+(?:постачання|поставки))\b', re.IGNORECASE),
+    'due': re.compile(r'\b(?:d[aá]tum\s+splatnosti|дата\s+(?:оплати|оплаты))\b', re.IGNORECASE),
+}
+_DATE_LABEL_GAP = re.compile(r'\s*[:=–—-]?\s*(?:je\b\s*)?')
+_DOT_DATE_LITERAL = re.compile(r'(?P<day>\d{1,2})[./]\s*(?P<month>\d{1,2})(?!\d)')
+_DATE_YEAR_SUFFIX = re.compile(r'(?:[./]\s*|\s+)(\d{4})(?!\d|[.,]\d|\s*(?:EUR\b|€))', re.IGNORECASE)
 _DELIVERY_DAY_MONTH_PATTERN = re.compile(
     r'(?<!\d)(?P<day>0?[1-9]|[12]\d|3[01])\s*(?:[.\-/]\s*|\s+)'
     r'(?P<month>'
@@ -2622,6 +2631,7 @@ _DELIVERY_DAY_MONTH_PATTERN = re.compile(
 )
 _MONTH_TOKEN_TO_NUMBER = {
     'januar': 1,
+    'januara': 1,
     'jan': 1,
     'februar': 2,
     'februara': 2,
@@ -2805,6 +2815,27 @@ def _extract_day_month_without_explicit_year(raw_text: str) -> tuple[int, int] |
     if month is None:
         return None
     return day, month
+
+
+def _labeled_date_intent(raw_text: str, slot: str) -> dict | None:
+    """Read an exact date immediately after a known date label in the user text."""
+    candidates = set()
+    for label in _CALENDAR_DATE_LABELS[slot].finditer(raw_text):
+        start = _DATE_LABEL_GAP.match(raw_text, label.end()).end()
+        numeric = _DOT_DATE_LITERAL.match(raw_text, start)
+        match = numeric or _DELIVERY_DAY_MONTH_PATTERN.match(raw_text, start)
+        if not match:
+            continue
+        month = int(match['month']) if numeric else _MONTH_TOKEN_TO_NUMBER.get(_normalize_month_token(match['month']))
+        if month is not None:
+            year = _DATE_YEAR_SUFFIX.match(raw_text, match.end())
+            candidates.add((int(match['day']), month, int(year[1]) if year else None))
+    if len(candidates) > 1:
+        return {'kind': 'ambiguous'}
+    if candidates:
+        day, month, year = candidates.pop()
+        return {'kind': 'date', 'day': day, 'month': month, 'year': year}
+    return None
 
 
 def _resolve_issue_date(*, raw_text: str, today: date) -> date:
@@ -3151,10 +3182,16 @@ async def _build_and_store_preview(
     calculation = parsed_draft.get('calculation')
     anchor = parsed_draft.get('business_anchor')
     use_preparation = config.invoice_preparation_enabled and isinstance(calculation, dict) and isinstance(anchor, dict)
-    effective_today = date.fromisoformat(anchor['business_today']) if isinstance(anchor, dict) else date.today()
+    effective_today = date.fromisoformat((anchor if isinstance(anchor, dict) else business_clock())['business_today'])
     actual_text = str(parsed_draft.get('calculation_original_input') or raw_text)
+    calculation_sources = parsed_draft.get('calculation_sources') or {}
+    period_text = calculation_sources.get('period_intent', actual_text)
     currency = (parsed_draft.get('currency') or 'EUR').strip().upper() or 'EUR'
     item_inputs = _normalize_items_input(parsed_draft)
+    has_amount_calculation = use_preparation and needs_calculation(calculation)
+    if has_amount_calculation and all(not any(item.values()) for item in item_inputs):
+        # Empty segmentation placeholders do not represent additional payable items.
+        item_inputs = _normalize_items_input({**parsed_draft, 'items': None})
     weeks = []
     period_start = period_end = None
     date_intents = {}
@@ -3164,16 +3201,33 @@ async def _build_and_store_preview(
     prior_service = None
     service_was_clarified = bool(parsed_draft.get('calculation_service_clarified'))
     has_service = any(item.get('service_term_sk') or item.get('item_name_raw') for item in item_inputs)
-    has_amount_calculation = use_preparation and needs_calculation(calculation)
     if use_preparation:
         try:
-            weeks, period_start, period_end = resolve_period(calculation, today=effective_today, raw_text=actual_text)
-            date_intents = {
-                key: resolve_date(calculation.get(f'{key}_date'), today=effective_today,
-                                  raw_text=actual_text, slot=key, weeks=weeks)
-                for key in ('issue', 'delivery', 'due')
-            }
-            if not has_service:
+            issue_source = calculation_sources.get('issue_date', actual_text)
+            issue_intent = _labeled_date_intent(issue_source, 'issue') or calculation.get('issue_date')
+            issue_depends_on_period = isinstance(issue_intent, dict) and issue_intent.get('kind') == 'period_last_weekday'
+            date_intents['issue'] = None if issue_depends_on_period else resolve_date(
+                issue_intent, today=effective_today, raw_text=issue_source, slot='issue', weeks=[],
+            )
+            issue_reference = date_intents['issue'] or effective_today
+            weeks, period_start, period_end = resolve_period(
+                calculation, today=effective_today, issue=issue_reference,
+                raw_text=period_text, date_sources=calculation_sources,
+            )
+            if issue_depends_on_period:
+                date_intents['issue'] = resolve_date(
+                    issue_intent, today=effective_today, raw_text=issue_source, slot='issue', weeks=weeks,
+                )
+                issue_reference = date_intents['issue']
+            delivery_references = (date.fromisoformat(period_end), issue_reference) if period_end else (issue_reference,)
+            for key, references in (('delivery', delivery_references), ('due', (issue_reference,))):
+                field = f'{key}_date'
+                source = calculation_sources.get(field, actual_text)
+                date_intents[key] = resolve_date(
+                    _labeled_date_intent(source, key) or calculation.get(field), today=effective_today, raw_text=source,
+                    slot=key, weeks=weeks, references=references,
+                )
+            if len(item_inputs) == 1 and not has_service:
                 prior_service = runtime.preparation.latest_contact_service(contact.id)
                 if prior_service is None:
                     raise CalculationInputError('service')
@@ -3182,11 +3236,13 @@ async def _build_and_store_preview(
                     raise CalculationInputError('amount')
                 default_rate = runtime.preparation.contact_rate(contact.id)
                 amounts = calculate_amounts(calculation, contact_rate=default_rate, weeks=weeks)
-                if default_rate is not None and amounts['rate_source'] == 'explicit':
-                    try:
-                        same_rate = decimal_value(default_rate, 'rate') == decimal_value(amounts['hourly_rate'], 'rate')
-                    except CalculationInputError:
-                        same_rate = False
+                if amounts['rate_source'] == 'explicit':
+                    same_rate = False
+                    if default_rate is not None:
+                        try:
+                            same_rate = decimal_value(default_rate, 'rate') == decimal_value(amounts['hourly_rate'], 'rate')
+                        except CalculationInputError:
+                            pass
                     if not same_rate:
                         rate_offer = {'expected': default_rate, 'replacement': amounts['hourly_rate']}
         except CalculationInputError as error:
@@ -3376,7 +3432,7 @@ async def _build_and_store_preview(
     first_item = normalized_items[0]
 
     try:
-        issue_date_obj = date_intents.get('issue') or _resolve_issue_date(
+        issue_date_obj = (date_intents.get('issue') or effective_today) if use_preparation else _resolve_issue_date(
             raw_text=actual_text, today=effective_today,
         )
     except ValueError as exc:
@@ -3399,7 +3455,7 @@ async def _build_and_store_preview(
         elif (
             weeks and re.sub(r'[^a-z0-9]', '', contact.name.casefold()) in {'techcompany', 'techcompanysro'}
             and calculation.get('period_intent') == 'previous_two_completed_weeks'
-            and calculation.get('iso_weeks') is None and not parsed_draft.get('delivery_date')
+            and not explicit_week_references(period_text) and not parsed_draft.get('delivery_date')
         ):
             delivery_date_obj = date.fromisoformat(weeks[-1]['start']) + timedelta(days=4)
             delivery_source = 'tech_company_period_friday'
@@ -3411,7 +3467,7 @@ async def _build_and_store_preview(
                     actual_text, proposed_delivery,
                 ):
                     delivery_value = None
-            delivery_date_obj = _resolve_delivery_date(
+            delivery_date_obj = (_parse_date(delivery_value) or issue_date_obj) if use_preparation else _resolve_delivery_date(
                 raw_text=actual_text, issue_date_obj=issue_date_obj, llm_delivery_value=delivery_value,
             )
             if delivery_date_obj != issue_date_obj:
@@ -3966,8 +4022,10 @@ async def _apply_calculation_clarification(
             return False
         parsed_draft['service_term_sk'] = service
         parsed_draft['item_name_raw'] = service
-        if parsed_draft.get('items'):
-            parsed_draft['items'][0].update(service_term_sk=service, item_name_raw=service)
+        if items := parsed_draft.get('items'):
+            items[0].update(service_term_sk=service, item_name_raw=service)
+            if len(items) > 1 and all(not any(item.values()) for item in items[1:]):
+                parsed_draft['items'] = items[:1]
         parsed_draft['calculation_service_clarified'] = True
         return True
     calculation = parsed_draft.get('calculation')
@@ -3989,16 +4047,26 @@ async def _apply_calculation_clarification(
         return False
     _, extracted = _extract_invoice_draft_from_phase2_payload(payload)
     patch = extracted.get('calculation')
-    if not isinstance(patch, dict):
-        return False
     if slot == 'calculation_due' and extracted.get('due_days') is not None:
         parsed_draft['due_days'] = extracted['due_days']
-    elif not any(patch.get(key) is not None for key in fields):
+        patch = {}
+    elif not isinstance(patch, dict) or not any(patch.get(key) is not None for key in fields):
         return False
     elif slot == 'calculation_due':
         parsed_draft['due_days'] = None
+    sources = parsed_draft.setdefault('calculation_sources', {})
+    if slot == 'calculation_period':
+        mode = patch.get('period_intent')
+        # An endpoint-only correction must retain the other endpoint and its original evidence.
+        if calculation.get('period_intent') == 'explicit_dates' and mode in (None, 'explicit_dates'):
+            if not any(patch.get(field) is not None for field in ('period_start', 'period_end')):
+                return False
+            for field in ('period_start', 'period_end'):
+                if patch.get(field) is not None:
+                    calculation[field], sources[field] = patch[field], user_text
+            return True
     for field in fields:
-        calculation[field] = patch.get(field)
+        calculation[field], sources[field] = patch.get(field), user_text
     return True
 
 
@@ -4029,10 +4097,6 @@ async def process_invoice_slot_clarification(
         ):
             await message.answer(CALCULATION_PROMPTS[unresolved_slot])
             return
-        parsed_draft['calculation_original_input'] = '\n'.join((
-            str(parsed_draft.get('calculation_original_input') or partial.get('raw_text') or ''),
-            clarification_text,
-        ))
     elif unresolved_slot == _SLOT_QUANTITY_UNIT_PRICE:
         resolution = await resolve_quantity_unit_price_pair(
             user_input_text=clarification_text,
@@ -6174,9 +6238,11 @@ async def _finalize_invoice_draft(
             },
         )
         await state.set_state(InvoiceStates.waiting_rate_consent)
+        previous_rate = rate_offer['expected']
+        replace_text = f' namiesto {previous_rate} EUR/h' if previous_rate is not None else ''
         await message.answer(
             f"Chcete pre budúce faktúry odberateľa {escape(contact.name)} uložiť "
-            f"{rate_offer['replacement']} EUR/h namiesto {rate_offer['expected']} EUR/h? "
+            f"{rate_offer['replacement']} EUR/h{replace_text}? "
             'Odpovedzte áno alebo nie. Vytvorená faktúra používa už zadanú sadzbu.',
         )
 

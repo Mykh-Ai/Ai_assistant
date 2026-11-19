@@ -1,14 +1,23 @@
 """Workspace- or supplier-scoped persistence for invoice preparation."""
 
 from decimal import Decimal
+import hashlib
 import json
+import logging
 import os
 from pathlib import Path
+from shutil import copyfile
 import sqlite3
-from tempfile import TemporaryDirectory
 
 from bot.services.db import managed_connection
 from bot.services.invoice_preparation import invalidate_calculation, money
+
+
+logger = logging.getLogger(__name__)
+_PDF_REVISION_FIELDS = (
+    'invoice_number', 'pdf_path', 'issue_date', 'delivery_date', 'due_date', 'due_days',
+    'total_amount', 'calculation_bundle_json',
+)
 
 
 def table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
@@ -25,6 +34,110 @@ def attach_calculation(connection, *, invoice_id: int, bundle: dict | None, tota
         'UPDATE invoice SET calculation_bundle_json = ? WHERE id = ?',
         (json.dumps({**bundle, 'invoice_id': invoice_id}, ensure_ascii=False), invoice_id),
     )
+
+
+def _file_digest(path: Path) -> str | None:
+    if path.is_symlink():
+        raise ValueError('Unexpected symlink in invoice edit storage')
+    try:
+        with path.open('rb') as stream:
+            return hashlib.file_digest(stream, 'sha256').hexdigest()
+    except FileNotFoundError:
+        return None
+
+
+def _sync_path(path: Path) -> None:
+    if os.name == 'nt' and path.is_dir():
+        return  # Windows does not expose directory fsync through os.open.
+    descriptor = os.open(path, os.O_RDONLY if os.name != 'nt' else os.O_RDWR | os.O_BINARY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _invoice_revision(connection: sqlite3.Connection, invoice_id: int) -> str:
+    row = connection.execute(
+        f'SELECT {", ".join(_PDF_REVISION_FIELDS)} FROM invoice WHERE id = ?', (invoice_id,),
+    ).fetchone()
+    items = connection.execute(
+        'SELECT * FROM invoice_item WHERE invoice_id = ? ORDER BY id', (invoice_id,),
+    ).fetchall()
+    return hashlib.sha256(json.dumps([tuple(row), [tuple(item) for item in items]]).encode()).hexdigest()
+
+
+def _journal_path(target: Path) -> Path:
+    return target.with_name(f'.invoice-edit-{target.name}')
+
+
+def _remove_journal(journal: Path) -> None:
+    (journal / 'pending.json').unlink(missing_ok=True)
+    _sync_path(journal)
+    for name in ('pending.tmp', 'previous.pdf', 'next.pdf'):
+        (journal / name).unlink(missing_ok=True)
+    journal.rmdir()
+    _sync_path(journal.parent)
+
+
+def _recover_edit(connection: sqlite3.Connection, target: Path) -> None:
+    """Reconcile an edit under the same SQLite write lock used to publish it."""
+    journal = _journal_path(target)
+    if journal.is_symlink():
+        raise ValueError('Unexpected invoice edit journal symlink')
+    if not journal.exists():
+        return
+    marker = journal / 'pending.json'
+    if marker.is_symlink():
+        raise ValueError('Unexpected invoice edit marker symlink')
+    if not marker.exists():
+        # A replacement is only allowed after publication of the marker.
+        _remove_journal(journal)
+        return
+    record = json.loads(marker.read_text(encoding='utf-8'))
+    invoice_id = record['invoice_id']
+    invoice = connection.execute('SELECT * FROM invoice WHERE id = ?', (invoice_id,)).fetchone()
+    if invoice is None:
+        raise ValueError('Invoice edit journal has no invoice')
+    storage_key = str(invoice['supplier_telegram_id'])
+    if 'workspace_id' in invoice.keys() and invoice['workspace_id'] is not None:
+        workspace = connection.execute(
+            'SELECT storage_key FROM workspace WHERE workspace_id = ?', (invoice['workspace_id'],),
+        ).fetchone()
+        storage_key = workspace[0] if workspace else None
+    if target.parent.name != storage_key or target.name != f"{invoice['invoice_number']}.pdf":
+        raise ValueError('Invoice edit journal is outside the invoice scope')
+
+    revision = _invoice_revision(connection, invoice_id)
+    digest = _file_digest(target)
+    if revision == record['after_revision'] and digest == record['after_pdf']:
+        pass  # The committed SQLite edit owns the installed PDF.
+    elif revision == record['before_revision']:
+        if digest != record['before_pdf']:
+            if digest != record['after_pdf']:
+                raise ValueError('Invoice PDF changed outside its pending edit')
+            backup = journal / 'previous.pdf'
+            if record['before_pdf'] is None:
+                target.unlink()
+            elif _file_digest(backup) == record['before_pdf']:
+                os.replace(backup, target)
+            else:
+                raise ValueError('Invoice edit backup failed verification')
+            _sync_path(target.parent)
+    else:
+        raise ValueError('Pending invoice edit does not match SQLite and PDF')
+    _remove_journal(journal)
+
+
+def recover_pending_invoice_edits(db_path: Path, storage_dir: Path) -> None:
+    root = (storage_dir / 'invoices').resolve()
+    for journal in root.glob('*/.invoice-edit-*.pdf'):
+        if journal.parent.is_symlink():
+            raise ValueError('Unexpected symlink at invoice edit journal owner')
+        target = journal.with_name(journal.name.removeprefix('.invoice-edit-'))
+        with managed_connection(db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute('BEGIN IMMEDIATE')
+            _recover_edit(connection, target)
 
 
 class InvoicePreparationStore:
@@ -59,12 +172,12 @@ class InvoicePreparationStore:
             ).fetchone()
         return row[0] if row else None
 
-    def change_contact_rate(self, contact_id: int, *, expected: str, replacement: str) -> bool:
+    def change_contact_rate(self, contact_id: int, *, expected: str | None, replacement: str) -> bool:
         with managed_connection(self.db_path) as connection:
             where, owner = self.scope(connection, 'contact')
             result = connection.execute(
                 f'UPDATE contact SET default_hourly_rate_eur = ?, updated_at = CURRENT_TIMESTAMP '
-                f'WHERE id = ? AND {where} AND default_hourly_rate_eur = ?',
+                f'WHERE id = ? AND {where} AND default_hourly_rate_eur IS ?',
                 (replacement, contact_id, owner, expected),
             )
             connection.commit()
@@ -84,7 +197,7 @@ class InvoicePreparationStore:
                 'SELECT description_normalized, description_raw FROM invoice_item WHERE invoice_id = ?',
                 (row[0],),
             ).fetchall()
-        names = {str(item[0] or item[1] or '').strip() for item in items}
+        names = {str(normalized or '').strip() or str(raw or '').strip() for normalized, raw in items}
         if len(names) != 1 or '' in names:
             return None
         return names.pop(), str(row[1])
@@ -137,6 +250,8 @@ class InvoicePreparationStore:
                 return None
             if pdf_path.name != f"{invoice['invoice_number']}.pdf":
                 raise ValueError('Invoice number changed concurrently')
+            _recover_edit(connection, pdf_path)
+            before_revision = _invoice_revision(connection, invoice_id)
 
             changed = any(invoice[field] != value for field, value in invoice_changes.items())
             if item_changes:
@@ -171,21 +286,40 @@ class InvoicePreparationStore:
                 (*updates.values(), invoice_id, owner),
             )
             pdf_path.parent.mkdir(parents=True, exist_ok=True)
-            with TemporaryDirectory(prefix='.invoice-edit-', dir=pdf_path.parent) as temp_dir:
-                staged_pdf = Path(temp_dir) / pdf_path.name
-                previous_pdf = Path(temp_dir) / 'previous.pdf'
+            journal = _journal_path(pdf_path)
+            journal.mkdir()
+            staged_pdf = journal / 'next.pdf'
+            try:
                 render_pdf(revised, items, staged_pdf)
-                if pdf_path.exists():
-                    os.link(pdf_path, previous_pdf)
-                installed = False
-                try:
-                    os.replace(staged_pdf, pdf_path)
-                    installed = True
-                    connection.commit()
-                except Exception:
-                    if installed and previous_pdf.exists():
-                        os.replace(previous_pdf, pdf_path)
-                    elif installed:
-                        pdf_path.unlink(missing_ok=True)
-                    raise
+                _sync_path(staged_pdf)
+                before_pdf = _file_digest(pdf_path)
+                if before_pdf is not None:
+                    backup = journal / 'previous.pdf'
+                    copyfile(pdf_path, backup)
+                    _sync_path(backup)
+                marker = journal / 'pending.tmp'
+                marker.write_text(json.dumps({
+                    'invoice_id': invoice_id,
+                    'before_revision': before_revision,
+                    'after_revision': _invoice_revision(connection, invoice_id),
+                    'before_pdf': before_pdf,
+                    'after_pdf': _file_digest(staged_pdf),
+                }), encoding='utf-8')
+                _sync_path(marker)
+                os.replace(marker, journal / 'pending.json')
+                _sync_path(journal)
+                _sync_path(pdf_path.parent)
+                os.replace(staged_pdf, pdf_path)
+                _sync_path(pdf_path.parent)
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                connection.execute('BEGIN IMMEDIATE')
+                _recover_edit(connection, pdf_path)
+                raise
+            try:
+                connection.execute('BEGIN IMMEDIATE')
+                _recover_edit(connection, pdf_path)
+            except (OSError, sqlite3.Error, ValueError):
+                logger.exception('Committed invoice edit needs journal reconciliation for invoice %s', invoice_id)
             return True

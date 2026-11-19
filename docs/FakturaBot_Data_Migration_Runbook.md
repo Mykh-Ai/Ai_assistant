@@ -397,6 +397,27 @@ their values. New approved calculations are stored with schema version 1.
 A direct edit of an already-saved calculated invoice preserves the original
 inputs as history and records the effective SQLite/PDF total.
 
+Calculated invoice edits stage the replacement and retain any previous PDF
+in a journal beside the canonical PDF. The journal binds both PDF hashes to
+the old and new SQLite revisions. At startup, before polling and background
+schedulers, the compatibility and enabled runtimes reconcile pending
+journals under a SQLite write lock. A rolled-back edit restores the previous
+PDF or its previous absence. A committed edit keeps the verified replacement.
+Reconciliation tolerates repeated starts. An unverified SQLite revision,
+storage scope, or PDF hash stops recovery and keeps the journal for inspection.
+
+The review repair changes neither SQLite DDL nor canonical PDF paths. The
+effect on existing data is limited to journaled edits of already-calculated
+invoices and separate confirmed contact-rate updates. Before a rollout,
+inspect a sanctioned copy for existing calculation bundles, null hourly rates,
+canonical PDF pointers, and unfinished `.invoice-edit-*` directories.
+Stop writers and checkpoint the database and invoice storage together,
+including pending journals. Use the migration audit and dry run below only
+for copies that still require the Stage 1 DDL. On recovery conflict, retain the
+database, PDF, and journal together for a read-only comparison before any
+manual restore. The compatibility build must be allowed to reconcile journals
+before rolling back to an earlier runtime.
+
 Use the following commands against an isolated fixture or sanctioned database copy.
 
 ```sh

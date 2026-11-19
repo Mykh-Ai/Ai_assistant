@@ -16,6 +16,7 @@ from bot.services.google_gmail_config import load_google_gmail_config
 from bot.services.gmail_statement_scheduler import run_gmail_statement_scheduler
 from bot.services.google_integration_callback_runner import run_google_integration_callback
 from bot.services.invoice_followup_scheduler import run_invoice_followup_scheduler
+from bot.services.invoice_preparation_store import recover_pending_invoice_edits
 from bot.services.contact_registry_monitor import (
     run_contact_registry_monitor_scheduler,
 )
@@ -30,6 +31,7 @@ async def main() -> None:
     config = load_config()
     gmail_config = load_google_gmail_config()
     init_db(config.db_path)
+    recover_pending_invoice_edits(config.db_path, config.storage_dir)
 
     bot = Bot(
         token=config.bot_token,

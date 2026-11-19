@@ -116,7 +116,6 @@ def _normalize_optional_raw_mention(value: Any) -> str | None:
 def _resolve_service_slots_or_raise(
     *,
     biznis_sk: dict[str, Any],
-    payload_snapshot: dict[str, Any],
 ) -> None:
     polozka_raw = biznis_sk.get('polozka_povodna')
     termin_raw = biznis_sk.get('termin_sluzby_sk')
@@ -194,6 +193,7 @@ def _validate_optional_items_or_raise(*, biznis_sk: dict[str, Any], payload_snap
             partial_payload=payload_snapshot,
         )
 
+    allow_missing_service = isinstance(biznis_sk.get('calculation'), dict)
     normalized_items: list[dict[str, Any]] = []
     for index, raw_item in enumerate(items_raw, start=1):
         if not isinstance(raw_item, dict):
@@ -213,14 +213,19 @@ def _validate_optional_items_or_raise(*, biznis_sk: dict[str, Any], payload_snap
             'suma': raw_item.get('suma'),
             'item_description_raw': raw_item.get('item_description_raw'),
         }
-        _resolve_service_candidate_or_raise(
-            item_payload=candidate,
-            payload_snapshot=payload_snapshot,
-            item_index=index,
-        )
+        if not (allow_missing_service and _service_is_missing(candidate)):
+            _resolve_service_candidate_or_raise(
+                item_payload=candidate,
+                payload_snapshot=payload_snapshot,
+                item_index=index,
+            )
         normalized_items.append(candidate)
 
     biznis_sk['items'] = normalized_items
+
+
+def _service_is_missing(candidate: dict[str, Any]) -> bool:
+    return candidate.get('termin_sluzby_sk') is None and candidate.get('polozka_povodna') is None
 
 
 def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -271,9 +276,8 @@ def validate_invoice_phase2_payload(payload: dict[str, Any]) -> dict[str, Any]:
     calculation = biznis_sk.get('calculation')
     if calculation is not None and not isinstance(calculation, dict):
         raise LlmInvoicePayloadError('Invalid LLM payload: biznis_sk.calculation must be an object.')
-    if not (isinstance(calculation, dict) and biznis_sk['termin_sluzby_sk'] is None
-            and biznis_sk['polozka_povodna'] is None):
-        _resolve_service_slots_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
+    if not (isinstance(calculation, dict) and _service_is_missing(biznis_sk)):
+        _resolve_service_slots_or_raise(biznis_sk=biznis_sk)
     _validate_optional_items_or_raise(biznis_sk=biznis_sk, payload_snapshot=payload_snapshot)
 
     for key in tuple(biznis_sk.keys()):
