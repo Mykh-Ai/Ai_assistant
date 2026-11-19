@@ -1,3 +1,10 @@
+# 2026-11-19 - PR #119 second calendar review
+
+- Preflight used the Stage 1 specification, recovered Design Proof v2, and the active Python/AI, Product Truth, learning, canonical action, FSM and acceptance contracts. Existing Stage 1 is partial. The follow-up repairs literal validation inside `create_invoice`. It adds neither a maturity level nor a learning signal. Confirmation, routing, STT/LMM, access, database schema, PDF, and server operations are outside the change.
+- Added tests first on `37ee697`. Seventeen failed across truncated or incomplete ISO-week groups and incorrectly reused year numbers. The corrected path reads the full KW list or range, or resumes the same draft for clarification. It binds a calendar year to the matching day, month and field and applies the existing Bratislava −120/+30-day window to dates without a supported year.
+- Recovered the original approved Markdown attachment and verified its SHA-256 before adding it to the architecture material. Subsequent owner decisions remain recorded outside the copy. Existing capability claims stay scoped to enabled Stage 1 and its prepared schema.
+- Passed 332 focused Windows tests. Replayed all 23 prior full-suite failures on pre-PR `84ff360` and the candidate. Each ID failed for the same Windows reason in both runs, with the same extra encrypted-payload teardown error. The Stage 1 acceptance proof records the case-by-case comparison. The full Windows suite remains non-green, and a full Linux run was not performed.
+
 # 2026-11-19 - Invoice preparation Stage 1 review of PR #119
 
 - Preflight used the active product doctrine, AI, Product Truth, learning, InfoHelp, LLM and decision contracts, implementation and evaluation standards, and the workspace, PDF and migration contracts. The Stage 1 spec and its acceptance proof record the approved Design Proof v2 decisions. The standalone v2 file is absent in this checkout. Code at `42e2572` conflicted with the intended calendar, service continuation and first-rate behavior, and its edit rollback was only exception-safe.

@@ -1,7 +1,8 @@
 # Invoice preparation Stage 1 conversation acceptance
 
 Design verification used GitHub main `84ff360`, specification version 6,
-Design Proof version 2 and the owner's 17 November decision. A stated
+[Design Proof version 2](../architecture/FAKTURABOT_INVOICE_PREPARATION_ARCHITECTURE_DESIGN_PROOF.md)
+and the owner's 17 November decision. A stated
 replacement rate applies to the current invoice, and a separate offer follows
 successful save. Text and STT replies use the existing yes/no decision family.
 The offer binds the actor, workspace, contact, previous rate (including NULL)
@@ -57,6 +58,76 @@ bytes before and after the conversation. Earlier probes exposed model omission
 of a date and once of a stated service. Exact labeled calendar dates now have
 a Python verification path. The prompt explicitly distinguishes named services
 from unnamed calculated lines.
+
+### Second review of `37ee697`
+
+The tests-first run produced 17 failures and one pass. The fixtures showed
+partial week lists and ranges, incomplete groups reaching calculation, and
+dates borrowing a year from the customer, a total, an invoice ID, or a
+separate dated field. The corrected suite also covers historical rollovers,
+an ordinary yearless date carrying a spurious model year, and an in-draft
+year-only reply that preserves the other calculation inputs and writes no PDF
+or database rows.
+
+The approved Design Proof was recovered as the original Markdown attachment
+from the design verification chat. Its SHA-256 is
+`e54a1e09f7b71cdef63fa454a939f1ce8c885d78c48c17c6696933f6152a2391`.
+The later owner decision about saving a rate remains recorded in this eval
+and `PROJECT_LOG.md`.
+
+The focused invoice, workspace, decision, InfoHelp and Product Truth run
+passed 332 tests on the repaired candidate. Compilation passed.
+
+#### Windows audit of the 23 prior full-suite failures
+
+Replayed the exact 23 test IDs on Windows 11 with Python 3.12.0 against
+pre-PR `main` at `84ff360` and the repaired candidate. Both runs produced the
+same 23 failed test IDs, the same per-test errors, and one additional teardown
+error for the encrypted-payload case. The archive source and test fixtures
+are identical across those versions.
+
+The paired replay deferred automatic garbage collection to reproduce the
+fixture's open SQLite handles deterministically. `sqlite3.connect()` used as
+a context manager commits a transaction on exit and leaves the connection
+open. On Windows, cleanup raises `WinError 32` when it removes the temporary
+`bot.db` while that connection is open. With normal collection, several cases
+pass when isolated. The paired replay ran outside loopback sandbox restrictions
+so the two child-process checks reached the Windows `signal` assertion.
+
+Every row below failed with the listed cause on both `84ff360` and the candidate.
+The first two rows are from `test_archive_delivery_recovery.py`. The remaining
+rows are from `test_archive_delivery_v1.py::DeliveryTests`.
+
+| Test | Failure on both versions |
+|---|---|
+| `test_actual_child_sigkill_notice_restarts_without_upload_retry[before_ack]` | Missing SIGKILL |
+| `test_actual_child_sigkill_notice_restarts_without_upload_retry[after_ack]` | Missing SIGKILL |
+| `test_403_rate_limit_differs_from_permission_failure` | Open SQLite cleanup |
+| `test_annual_routing_is_document_based_for_2026_2027_2028` | Open SQLite cleanup |
+| `test_context_probe_does_not_create_missing_database` | Open SQLite cleanup |
+| `test_duplicate_annual_folder_fails_closed` | Open SQLite cleanup |
+| `test_encrypted_payload_original_and_period_preserved` | Open SQLite cleanup / POSIX mode 0600 |
+| `test_external_tree_with_valid_workspace_suffix_is_rejected` | Open SQLite cleanup |
+| `test_legacy_provider_cannot_report_routed_success` | Open SQLite cleanup |
+| `test_missing_gmail_pointer_is_not_silently_lost` | Open SQLite cleanup |
+| `test_missing_original_message_is_honest_and_cutoff_frozen` | Open SQLite cleanup |
+| `test_missing_provider_exhausts_exactly_five_attempts` | Open SQLite cleanup |
+| `test_notice_restart_delivery_retry_and_no_keyboard` | Open SQLite cleanup |
+| `test_remote_mismatch_is_not_overwritten` | Open SQLite cleanup |
+| `test_revoked_member_cannot_receive_notice` | Open SQLite cleanup |
+| `test_rollout_audit_is_read_only_and_blocks_legacy_jobs` | Open SQLite cleanup |
+| `test_route_config_invalid_never_becomes_legacy` | Open SQLite cleanup |
+| `test_same_folder_reused_and_immutable_route_after_config_change` | Open SQLite cleanup |
+| `test_snapshot_job_insert_is_atomic_and_duplicate_is_stable` | Open SQLite cleanup |
+| `test_timeout_reconciles_same_file_without_duplicate` | Open SQLite cleanup |
+| `test_transient_authority_lookup_retries_instead_of_blocking` | Open SQLite cleanup |
+| `test_worker_rejects_untrusted_storage_before_payload_write` | Open SQLite cleanup |
+| `test_wrong_secret_worker_notifies_without_upload` | Open SQLite cleanup |
+
+The encrypted-payload check expects `0o600` and reads Windows mode `0o666`.
+The separate error for that same test occurs during SQLite cleanup. This audit
+establishes that the 23 listed failures predate PR #119. The full Windows suite
+remains non-green and a full Linux run was not performed.
 
 ## Verdict
 

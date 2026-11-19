@@ -494,10 +494,13 @@ an equivalent unnamed `items[]` candidate. Python owns history lookup and
 the clarification in the same draft. Genuine line segmentation continues to
 use the bounded legacy rules.
 
-The model extracts date intents and any stated year. It emits explicit
-`iso_weeks` only for numbered weeks stated by the user. Python resolves
-relative periods and dates from the Bratislava system date, validates
-numbered-week evidence and computes calendar values. Slot corrections keep
+The model extracts date intents and years attached to those dates. It emits
+explicit `iso_weeks` only for numbered weeks stated by the user. Python reads
+the complete user-written KW list or range and requests clarification if it
+cannot establish the full period. It resolves relative periods and dates from
+the Bratislava system date. An explicit calendar year requires evidence in
+the matching day/month and owning field. A year-only response is admissible
+inside a pending clarification for that specific date. Slot corrections keep
 the original inputs and source evidence for unaffected fields, including the
 other endpoint of a partially corrected date range.
 

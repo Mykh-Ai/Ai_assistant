@@ -5,21 +5,29 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 from zoneinfo import ZoneInfo
 
+from bot.services.invoice_date_evidence import explicit_date_year
+
 
 BUSINESS_TIMEZONE = 'Europe/Bratislava'
 CENT = Decimal('0.01')
 MAX_IMPLICIT_DATE_PAST_DAYS = 120
 MAX_IMPLICIT_DATE_FUTURE_DAYS = 30
-_KW_LITERAL = re.compile(
-    r'(?<!\w)(?:(?P<leading_year>\d{4})-W|(?:KW|ISO[- ]?(?:W|week))\s*)'
-    r'(?P<week>\d{1,2})(?!\d)(?:(?:\s*[/.-]\s*|\s+(?:roku?\s+|року\s+|года\s+)?)'
-    r'(?P<year>\d{4})(?!\d|[.,]\d|\s*(?:€|EUR\b|hod\b|годин\b|часов\b)))?',
-    re.IGNORECASE,
+_KW_MARKER = re.compile(r'(?<!\w)(?:(?P<year>\d{4})-W|(?:KW|ISO[- ]?(?:week|W))(?=\d|\W|$))\s*', re.I)
+_WEEK_NUMBER = re.compile(r'\d+')
+_WEEK_UNIT = r'(?:[€$]|EUR\b|USD\b|euro\b|євро\b|евро\b|h\b|hod\w*\b|годин\w*\b|час\w*\b|noc\w*\b|ноч\w*\b)'
+_NON_WEEK_VALUE = re.compile(rf'(?:[.,]\d+)?\s*{_WEEK_UNIT}', re.I)
+_WEEK_YEAR = re.compile(rf'(?:\s*/\s*|\s+(?:rok(?:u)?\s+|року\s+|года\s+)?)(\d{{4}})(?!\w|[.,]\d|\s*{_WEEK_UNIT})', re.I)
+_WEEK_SEPARATOR = re.compile(
+    r'\s*(?:(?P<range>[-–—]|\.{2}|\b(?:až|до|по)\b)|'
+    r'(?P<list>(?:,\s*)?\b(?:а\s+так(?:ож|же)|a|aj|and|i|і|й|та|и)\b|[,;/&+])|'
+    r'(?P<alternative>\b(?:alebo|або|или|либо)\b))\s*', re.I,
 )
-_KW_GROUP_MEMBER = re.compile(
-    r'\s*(?:[/&]|\b(?:a|and|і|й|и)\b)\s*(?P<week>\d{1,2})(?!\d)'
-    r'(?:\s*/\s*(?P<year>\d{4})(?!\d))?(?=\s*(?:[,/&;]|\b(?:a|and|і|й|и)\b|[.!?]?\s*$))',
-    re.IGNORECASE,
+_SPOKEN_WEEK_NUMBER = re.compile(
+    r'(?:jed(?:en|na)|dva|dve|tri|štyr\w*|päť\w*|šesť\w*|sedem\w*|osem\w*|deväť\w*|'
+    r'desať\w*|dvadsať\w*|tridsať\w*|štyridsať\w*|päťdesiat\w*|'
+    r'один|одна|два|дві|две|три|чотир\w*|четыр\w*|п[’\']?ят\w*|'
+    r'шіст\w*|шест\w*|сім\w*|сем\w*|вісім\w*|восем\w*|дев[’\']?ят\w*|'
+    r'десят\w*|двадцят\w*|двадцат\w*|тридцят\w*|тридцат\w*|сорок\w*)\b', re.I,
 )
 _NUMBERED_WEEK = re.compile(
     r'(?<![\d.,])(?P<week>\d{1,2})(?:[.]|-(?:й|ий|ій|го|му|я|ю|ої)|(?=\s+(?:kalendárn\w*|календарн\w*|ISO)\b))\s*'
@@ -74,19 +82,6 @@ def money(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def _explicit_year(value, *, raw_text: str, slot: str) -> int:
-    if type(value) is not int:
-        raise CalculationInputError(slot)
-    for match in re.finditer(rf'(?<!\d){value}(?!\d)', raw_text):
-        before = raw_text[max(0, match.start() - 5):match.start()]
-        after = raw_text[match.end():match.end() + 16]
-        if not re.search(r'(?:€|EUR|\$)\s*$', before, flags=re.IGNORECASE) and not re.match(
-            r'(?:[.,]\d+)?\s*(?:€|EUR\b|USD\b|\$)', after, flags=re.IGNORECASE,
-        ):
-            return value
-    raise CalculationInputError(slot)
-
-
 def _week(week: int, year: int) -> dict:
     try:
         if type(week) is not int or type(year) is not int:
@@ -114,7 +109,7 @@ def _implicit_date(month: int, day: int, references: tuple[date, ...], slot: str
 
 def resolve_date(
     intent, *, today: date, raw_text: str, slot: str, weeks: list[dict],
-    references: tuple[date, ...] = (),
+    references: tuple[date, ...] = (), field: str | None = None,
 ) -> date | None:
     if intent is None:
         return None
@@ -126,10 +121,13 @@ def resolve_date(
             offset = {'today': 0, 'yesterday': -1, 'day_before_yesterday': -2, 'tomorrow': 1}[kind]
             return today + timedelta(days=offset)
         if kind == 'date':
-            if intent.get('year') is not None:
-                year = _explicit_year(intent['year'], raw_text=raw_text, slot=slot)
-                return date(year, intent['month'], intent['day'])
-            return _implicit_date(intent['month'], intent['day'], references or (today,), slot)
+            day, month = intent['day'], intent['month']
+            if type(day) is not int or type(month) is not int:
+                raise CalculationInputError(slot)
+            year = explicit_date_year(raw_text, day=day, month=month, field=field or slot)
+            if year is not None:
+                return date(year, month, day)
+            return _implicit_date(month, day, references or (today,), slot)
         if kind in ('last_weekday', 'period_last_weekday'):
             weekday = intent.get('weekday')
             if type(weekday) is not int or not 1 <= weekday <= 7:
@@ -160,17 +158,92 @@ def _nearest_iso_week(kw: int, reference: date) -> dict:
     return min(candidates)[2]
 
 
-def explicit_week_references(raw_text: str) -> list[tuple[int, int | None]]:
+def _week_member(raw_text: str, start: int, marker: re.Match | None) -> tuple[tuple[int, int | None], int] | None:
+    number = _WEEK_NUMBER.match(raw_text, marker.end() if marker else start)
+    if number is None or (marker is None and _NON_WEEK_VALUE.match(raw_text, number.end())):
+        return None
+    kw = int(number[0]) if len(number[0]) <= 2 else 0
+    if not 1 <= kw <= 53 or (number.end() < len(raw_text) and raw_text[number.end()].isalpha()):
+        raise CalculationInputError('period')
+    suffix = _WEEK_YEAR.match(raw_text, number.end())
+    literal_year = marker['year'] if marker else None
+    if literal_year and suffix and literal_year != suffix[1]:
+        raise CalculationInputError('period')
+    year = literal_year or (suffix[1] if suffix else None)
+    return (kw, int(year) if year else None), suffix.end() if suffix else number.end()
+
+
+def _week_range(
+    first: tuple[int, int | None], last: tuple[int, int | None], reference: date | None,
+) -> list[tuple[int, int | None]]:
+    start_kw, start_year = first
+    end_kw, end_year = last
+    rollover = end_kw < start_kw
+    if start_year is None and end_year is None:
+        if reference is None and not rollover:
+            return [(kw, None) for kw in range(start_kw, end_kw + 1)]
+        if reference is None:
+            raise CalculationInputError('period')
+        start_year = _nearest_iso_week(start_kw, reference)['iso_year']
+        if rollover:
+            end_year = _nearest_iso_week(end_kw, reference)['iso_year']
+            if end_year != start_year + 1:
+                raise CalculationInputError('period')
+    if start_year is None:
+        start_year = end_year - rollover
+    if end_year is None:
+        end_year = start_year + rollover
+    start = date.fromisoformat(_week(start_kw, start_year)['start'])
+    end = date.fromisoformat(_week(end_kw, end_year)['start'])
+    count = (end - start).days // 7 + 1
+    if not 1 <= count <= 53:
+        raise CalculationInputError('period')
+    weeks = []
+    for offset in range(count):
+        year, kw, _ = (start + timedelta(weeks=offset)).isocalendar()
+        weeks.append((kw, year))
+    return weeks
+
+
+def explicit_week_references(raw_text: str, *, reference: date | None = None) -> list[tuple[int, int | None]]:
     references = []
-    for match in _KW_LITERAL.finditer(raw_text):
-        year = match['leading_year'] or match['year']
-        group = [(int(match['week']), int(year) if year else None)]
-        end = match.end()
-        while member := _KW_GROUP_MEMBER.match(raw_text, end):
-            group.append((int(member['week']), int(member['year']) if member['year'] else None))
-            end = member.end()
+    cursor = 0
+    while marker := _KW_MARKER.search(raw_text, cursor):
+        first = _week_member(raw_text, marker.start(), marker)
+        if first is None:
+            raise CalculationInputError('period')
+        current, cursor = first
+        group = [current]
+        previous_was_range = False
+        while separator := _WEEK_SEPARATOR.match(raw_text, cursor):
+            start = separator.end()
+            next_marker = _KW_MARKER.match(raw_text, start)
+            member = _week_member(raw_text, start, next_marker)
+            if member is None:
+                value = _WEEK_NUMBER.match(raw_text, start)
+                non_week = _NON_WEEK_VALUE.match(raw_text, value.end()) if value else None
+                if non_week:
+                    if separator[0] == ',' and non_week[0].startswith(','):
+                        raise CalculationInputError('period')
+                    break
+                if (separator['range'] or separator['list'] == '/' or next_marker or _SPOKEN_WEEK_NUMBER.match(raw_text, start)
+                        or start == len(raw_text) or raw_text[start] == '?'):
+                    raise CalculationInputError('period')
+                break
+            following, cursor = member
+            if separator['alternative'] or (previous_was_range and separator['range']):
+                raise CalculationInputError('period')
+            if separator['range']:
+                group[-1:] = _week_range(current, following, reference)
+            else:
+                group.append(following)
+            current = following
+            previous_was_range = bool(separator['range'])
         references.extend(group)
-    return references
+    for match in _NUMBERED_WEEK.finditer(raw_text):
+        suffix = _WEEK_YEAR.match(raw_text, match.end())
+        references.append((int(match['week']), int(suffix[1]) if suffix else None))
+    return list(dict.fromkeys(references))
 
 
 def resolve_period(
@@ -179,27 +252,13 @@ def resolve_period(
 ) -> tuple[list[dict], str | None, str | None]:
     period = calculation.get('period_intent')
     monday = today - timedelta(days=today.weekday())
-    literals = explicit_week_references(raw_text)
+    literals = explicit_week_references(raw_text, reference=issue or today)
     if literals or period == 'explicit_iso_weeks':
-        references = literals
-        if not references:
-            numbered = {int(match['week']) for match in _NUMBERED_WEEK.finditer(raw_text)}
-            explicit = calculation.get('iso_weeks')
-            if not isinstance(explicit, list) or not 1 <= len(explicit) <= 53:
-                raise CalculationInputError('period')
-            for item in explicit:
-                if not isinstance(item, dict) or type(item.get('kw')) is not int or item['kw'] not in numbered:
-                    raise CalculationInputError('period')
-                year = item.get('iso_year')
-                references.append((item['kw'], _explicit_year(year, raw_text=raw_text, slot='period')
-                                   if year is not None else None))
-            if {kw for kw, _ in references} != numbered:
-                raise CalculationInputError('period')
-        if len(references) > 53:
+        if not 1 <= len(literals) <= 53:
             raise CalculationInputError('period')
         weeks = sorted((
             _week(kw, year) if year is not None else _nearest_iso_week(kw, issue or today)
-            for kw, year in references
+            for kw, year in literals
         ), key=lambda week: week['start'])
         if len({week['start'] for week in weeks}) != len(weeks):
             raise CalculationInputError('period')
@@ -218,11 +277,17 @@ def resolve_period(
         endpoints = {}
         # An explicit/relative endpoint is a stronger reference than the issue date for its yearless partner.
         fields = ('period_start', 'period_end')
-        for field in sorted(fields, key=lambda key: _is_yearless(calculation.get(key))):
+        try:
+            order = sorted(fields, key=lambda field: _is_yearless(
+                calculation.get(field), raw_text=sources.get(field, raw_text), field=field,
+            ))
+        except ValueError as exc:
+            raise CalculationInputError('period') from exc
+        for field in order:
             other = next(iter(endpoints.values()), None)
             endpoints[field] = resolve_date(
                 calculation.get(field), today=today, raw_text=sources.get(field, raw_text), slot='period',
-                weeks=[], references=(other or issue or today,),
+                weeks=[], references=(other or issue or today,), field=field,
             )
         start, end = (endpoints[field] for field in fields)
         if start is None or end is None or not 0 <= (end - start).days <= 366:
@@ -237,8 +302,11 @@ def resolve_period(
     raise CalculationInputError('period')
 
 
-def _is_yearless(intent) -> bool:
-    return isinstance(intent, dict) and intent.get('kind') == 'date' and intent.get('year') is None
+def _is_yearless(intent, *, raw_text: str, field: str) -> bool:
+    return (
+        isinstance(intent, dict) and intent.get('kind') == 'date'
+        and explicit_date_year(raw_text, day=intent.get('day'), month=intent.get('month'), field=field) is None
+    )
 
 
 def needs_calculation(calculation: dict) -> bool:

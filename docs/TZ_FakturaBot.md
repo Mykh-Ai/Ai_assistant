@@ -1907,11 +1907,16 @@ The existing outgoing invoice action can prepare a calculated draft when the
 feature is enabled and its additive schema is available. Phase 2 extracts
 structured inputs. Python uses the request's `Europe/Bratislava` system date
 for relative calendar dates and completed ISO weeks. Explicit KW references
-take priority. Yearless dates use the issue date or an applicable period
+take priority. Python reads full lists and inclusive ranges such as
+`KW 45, 46`, `KW45–47`, and `KW 45 та 46`. If the series is incomplete or
+ambiguous, the bot asks for the period again within the same draft.
+Yearless dates use the issue date or an applicable period
 boundary where available. The inclusive window is 120 days before to 30 days
-after the reference. An explicit calendar year is preserved, including for
-historical invoices. If the year is unclear, the bot requests clarification
-within the same draft.
+after the reference. A year attached to the specific date is preserved,
+including for historical invoices. Numbers from another field do not supply
+the date's year. A year-only reply can complete the date currently being
+clarified. See the [approved Architecture Design Proof][invoice-preparation-design]
+for the Stage 1 architecture and the project log for subsequent owner decisions.
 
 The latest invoice for the contact in the active profile supplies a missing
 service only when it has one unambiguous label. Otherwise the bot asks for
@@ -1928,3 +1933,5 @@ invoice dates or financial values, the earlier detail is preserved as history
 and the effective total follows the local PDF and SQLite record. A local
 edit journal reconciles an interrupted replacement with the committed SQLite
 revision at startup. This candidate remains under review in draft PR #119.
+
+[invoice-preparation-design]: architecture/FAKTURABOT_INVOICE_PREPARATION_ARCHITECTURE_DESIGN_PROOF.md

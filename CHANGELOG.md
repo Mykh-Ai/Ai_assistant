@@ -53,6 +53,8 @@ When knowledge-backed help is enabled, you can ask about time tracking, invoices
 
 - Resolve yearless dates and completed ISO weeks from the Bratislava business
   calendar, including December and January transitions.
+- Parse complete explicit KW lists and ranges and bind a stated calendar year
+  to the date it describes.
 - Reuse one unambiguous service from the active contact's latest invoice or
   collect it in the existing draft. Offer separately confirmed first-time
   and replacement hourly rates for future invoices.

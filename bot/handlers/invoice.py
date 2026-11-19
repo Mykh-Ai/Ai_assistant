@@ -129,6 +129,14 @@ from bot.services.invoice_analytics_planner import (
 )
 from bot.services.invoice_drive_archive_service import InvoiceDriveArchiveService
 from bot.services.invoice_followup_service import InvoiceFollowupService
+from bot.services.invoice_date_evidence import (
+    DAY_MONTH_NAME_PATTERN as _DELIVERY_DAY_MONTH_PATTERN,
+    ISSUE_DATE_CUE_PATTERN as _ISSUE_DATE_CUE_PATTERN,
+    MONTH_TOKEN_TO_NUMBER as _MONTH_TOKEN_TO_NUMBER,
+    explicit_date_year,
+    labeled_date_intent as _labeled_date_intent,
+    normalize_month_token as _normalize_month_token,
+)
 from bot.services.invoice_preparation import (
     CALCULATION_PROMPTS,
     CalculationInputError,
@@ -2567,161 +2575,6 @@ _EXPLICIT_YEAR_PATTERN = re.compile(r'(?<!\d)(?:19|20)\d{2}(?!\d)')
 _DAY_NUMBER_PATTERN = re.compile(r'(?<!\d)(0?[1-9]|[12]\d|3[01])(?!\d)')
 _MAX_UNCONFIRMED_PAST_DELIVERY_DAYS = 62
 _MAX_UNCONFIRMED_FUTURE_DELIVERY_DAYS = 93
-_ISSUE_DATE_CUE_PATTERN = re.compile(
-    r'(?:'
-    r'\b(?:d[aá]tum\s+)?vystavenia\b'
-    r'|\b(?:datum|d[aá]tum)\s+vystavenia\b'
-    r'|(?:дата|датом|датум)\s+'
-    r'(?:'
-    r'виставлення|выставления|виставлен[іяя]|выставлен[ияя]'
-    r'|вытворення|вытворения|створення|создания'
-    r')'
-    r')',
-    flags=re.IGNORECASE,
-)
-_CALENDAR_DATE_LABELS = {
-    'issue': _ISSUE_DATE_CUE_PATTERN,
-    'delivery': re.compile(r'\b(?:d[aá]tum\s+dodania|(?:дата|датою)\s+(?:постачання|поставки))\b', re.IGNORECASE),
-    'due': re.compile(r'\b(?:d[aá]tum\s+splatnosti|дата\s+(?:оплати|оплаты))\b', re.IGNORECASE),
-}
-_DATE_LABEL_GAP = re.compile(r'\s*[:=–—-]?\s*(?:je\b\s*)?')
-_DOT_DATE_LITERAL = re.compile(r'(?P<day>\d{1,2})[./]\s*(?P<month>\d{1,2})(?!\d)')
-_DATE_YEAR_SUFFIX = re.compile(r'(?:[./]\s*|\s+)(\d{4})(?!\d|[.,]\d|\s*(?:EUR\b|€))', re.IGNORECASE)
-_DELIVERY_DAY_MONTH_PATTERN = re.compile(
-    r'(?<!\d)(?P<day>0?[1-9]|[12]\d|3[01])\s*(?:[.\-/]\s*|\s+)'
-    r'(?P<month>'
-    r'janu[aá]r[a]?|jan'
-    r'|febru[aá]r[a]?|feb'
-    r'|marec|marca|mar'
-    r'|apr[ií]l[a]?|apr'
-    r'|m[aá]j[a]?'
-    r'|j[uú]n[a]?'
-    r'|j[uú]l[a]?'
-    r'|august[a]?|aug'
-    r'|sept(?:ember|embra)?|sep'
-    r'|okt(?:[oó]ber|[oó]bra)?|okt'
-    r'|nov(?:ember|embra)?|nov'
-    r'|dec(?:ember|embra)?|dec'
-    r'|январ[ья]|янв'
-    r'|феврал[ья]|фев'
-    r'|март[ае]?|марта|мар'
-    r'|апрел[ья]|апр'
-    r'|ма[йя]'
-    r'|июн[ья]|июн'
-    r'|июл[ья]|июл'
-    r'|август[ае]?|авг'
-    r'|сентябр[ья]|сен'
-    r'|октябр[ья]|окт'
-    r'|ноябр[ья]|ноя'
-    r'|декабр[ья]|дек'
-    r'|січня|січ'
-    r'|лютого|лют'
-    r'|березня|бер'
-    r'|квітня|квіт'
-    r'|травня|трав'
-    r'|червня|черв'
-    r'|липня|лип'
-    r'|серпня|серп'
-    r'|вересня|вер'
-    r'|жовтня|жовт'
-    r'|листопада|лист'
-    r'|грудня|груд'
-    r')\b',
-    flags=re.IGNORECASE,
-)
-_MONTH_TOKEN_TO_NUMBER = {
-    'januar': 1,
-    'januara': 1,
-    'jan': 1,
-    'februar': 2,
-    'februara': 2,
-    'feb': 2,
-    'marec': 3,
-    'marca': 3,
-    'mar': 3,
-    'april': 4,
-    'aprila': 4,
-    'apr': 4,
-    'maj': 5,
-    'maja': 5,
-    'jun': 6,
-    'juna': 6,
-    'jul': 7,
-    'jula': 7,
-    'august': 8,
-    'augusta': 8,
-    'aug': 8,
-    'september': 9,
-    'septembra': 9,
-    'sep': 9,
-    'oktober': 10,
-    'oktobra': 10,
-    'okt': 10,
-    'november': 11,
-    'novembra': 11,
-    'nov': 11,
-    'december': 12,
-    'decembra': 12,
-    'dec': 12,
-    'январь': 1,
-    'января': 1,
-    'янв': 1,
-    'февраль': 2,
-    'февраля': 2,
-    'фев': 2,
-    'март': 3,
-    'марта': 3,
-    'апрель': 4,
-    'апреля': 4,
-    'апр': 4,
-    'май': 5,
-    'мая': 5,
-    'июнь': 6,
-    'июня': 6,
-    'июн': 6,
-    'июль': 7,
-    'июля': 7,
-    'июл': 7,
-    'август': 8,
-    'августа': 8,
-    'авг': 8,
-    'сентябрь': 9,
-    'сентября': 9,
-    'сен': 9,
-    'октябрь': 10,
-    'октября': 10,
-    'окт': 10,
-    'ноябрь': 11,
-    'ноября': 11,
-    'ноя': 11,
-    'декабрь': 12,
-    'декабря': 12,
-    'дек': 12,
-    'січня': 1,
-    'січ': 1,
-    'лютого': 2,
-    'лют': 2,
-    'березня': 3,
-    'бер': 3,
-    'квітня': 4,
-    'квіт': 4,
-    'травня': 5,
-    'трав': 5,
-    'червня': 6,
-    'черв': 6,
-    'липня': 7,
-    'лип': 7,
-    'серпня': 8,
-    'серп': 8,
-    'вересня': 9,
-    'вер': 9,
-    'жовтня': 10,
-    'жовт': 10,
-    'листопада': 11,
-    'лист': 11,
-    'грудня': 12,
-    'груд': 12,
-}
 
 
 def _parse_confident_unit_price_pattern(raw_text: str) -> tuple[float, float] | None:
@@ -2734,17 +2587,6 @@ def _parse_confident_unit_price_pattern(raw_text: str) -> tuple[float, float] | 
     if qty is None or unit_price is None:
         return None
     return qty, unit_price
-
-
-def _normalize_month_token(token: str) -> str:
-    return (
-        token.strip()
-        .lower()
-        .replace('á', 'a')
-        .replace('í', 'i')
-        .replace('ú', 'u')
-        .replace('ó', 'o')
-    )
 
 
 def _extract_explicit_year_near_day_month(raw_text: str, start: int, end: int) -> int | None:
@@ -2815,27 +2657,6 @@ def _extract_day_month_without_explicit_year(raw_text: str) -> tuple[int, int] |
     if month is None:
         return None
     return day, month
-
-
-def _labeled_date_intent(raw_text: str, slot: str) -> dict | None:
-    """Read an exact date immediately after a known date label in the user text."""
-    candidates = set()
-    for label in _CALENDAR_DATE_LABELS[slot].finditer(raw_text):
-        start = _DATE_LABEL_GAP.match(raw_text, label.end()).end()
-        numeric = _DOT_DATE_LITERAL.match(raw_text, start)
-        match = numeric or _DELIVERY_DAY_MONTH_PATTERN.match(raw_text, start)
-        if not match:
-            continue
-        month = int(match['month']) if numeric else _MONTH_TOKEN_TO_NUMBER.get(_normalize_month_token(match['month']))
-        if month is not None:
-            year = _DATE_YEAR_SUFFIX.match(raw_text, match.end())
-            candidates.add((int(match['day']), month, int(year[1]) if year else None))
-    if len(candidates) > 1:
-        return {'kind': 'ambiguous'}
-    if candidates:
-        day, month, year = candidates.pop()
-        return {'kind': 'date', 'day': day, 'month': month, 'year': year}
-    return None
 
 
 def _resolve_issue_date(*, raw_text: str, today: date) -> date:
@@ -3455,7 +3276,7 @@ async def _build_and_store_preview(
         elif (
             weeks and re.sub(r'[^a-z0-9]', '', contact.name.casefold()) in {'techcompany', 'techcompanysro'}
             and calculation.get('period_intent') == 'previous_two_completed_weeks'
-            and not explicit_week_references(period_text) and not parsed_draft.get('delivery_date')
+            and not explicit_week_references(period_text, reference=issue_date_obj) and not parsed_draft.get('delivery_date')
         ):
             delivery_date_obj = date.fromisoformat(weeks[-1]['start']) + timedelta(days=4)
             delivery_source = 'tech_company_period_friday'
@@ -3463,9 +3284,9 @@ async def _build_and_store_preview(
             delivery_value = parsed_draft.get('delivery_date')
             if use_preparation and delivery_value:
                 proposed_delivery = _parse_date(delivery_value)
-                if proposed_delivery is None or not _has_explicit_year_confirmation_for_delivery_date(
-                    actual_text, proposed_delivery,
-                ):
+                if proposed_delivery is None or explicit_date_year(
+                    actual_text, day=proposed_delivery.day, month=proposed_delivery.month, field='delivery',
+                ) != proposed_delivery.year:
                     delivery_value = None
             delivery_date_obj = (_parse_date(delivery_value) or issue_date_obj) if use_preparation else _resolve_delivery_date(
                 raw_text=actual_text, issue_date_obj=issue_date_obj, llm_delivery_value=delivery_value,
@@ -4030,7 +3851,25 @@ async def _apply_calculation_clarification(
         return True
     calculation = parsed_draft.get('calculation')
     fields = _CALCULATION_CLARIFICATION_FIELDS.get(slot)
-    if not isinstance(calculation, dict) or fields is None or not config.openai_api_key:
+    if not isinstance(calculation, dict) or fields is None:
+        return False
+    if slot in {'calculation_issue', 'calculation_delivery', 'calculation_due'}:
+        year = re.fullmatch(r'\s*(\d{4})\s*(?:rok(?:u)?|рік|року|год(?:а)?)?\s*[.]?\s*', user_text, re.I)
+        if year:
+            field = fields[0]
+            sources = parsed_draft.setdefault('calculation_sources', {})
+            source = sources.get(field, parsed_draft.get('calculation_original_input') or '')
+            previous = _labeled_date_intent(source, slot.removeprefix('calculation_')) or calculation.get(field)
+            if isinstance(previous, dict) and previous.get('kind') == 'date':
+                day, month = previous.get('day'), previous.get('month')
+                if type(day) is int and type(month) is int:
+                    # A bare year is evidence only inside this date clarification.
+                    calculation[field] = {**previous, 'year': int(year[1])}
+                    sources[field] = f'{day}.{month}.{year[1]}'
+                    if slot == 'calculation_due':
+                        parsed_draft['due_days'] = None
+                    return True
+    if not config.openai_api_key:
         return False
     try:
         payload = await parse_invoice_phase2_payload(
