@@ -1824,6 +1824,30 @@ async def _resolve_customer_candidate_bounded(
     return available_profiles[canonical], deduplicated_names
 
 
+async def _invoice_service_was_omitted(*, user_text: str, config: Config) -> bool:
+    presence = await resolve_semantic_action(
+        context_name='invoice_calculation_service_presence',
+        allowed_actions=['service_named', 'service_omitted', 'unknown'],
+        user_input_text=user_text,
+        api_key=config.openai_api_key,
+        model=config.openai_llm_model,
+        action_hints={
+            'service_named': {
+                'meaning': 'The invoice request names or describes the billable service or work, even informally.',
+            },
+            'service_omitted': {
+                'meaning': 'The invoice request clearly contains no service or work description.',
+                'not_this': ['Unclear, partial, or noisy wording that may describe work. Use unknown in that case.'],
+            },
+        },
+        auxiliary_context={
+            'task': 'Check service presence in the original invoice request. A customer, project, period, '
+                    'hours, rate, invoice amount, or lodging deduction alone does not name a billable service.',
+        },
+    )
+    return presence == 'service_omitted'
+
+
 async def _resolve_service_alias_bounded(
     *,
     alias_service: ServiceAliasService,
@@ -3049,6 +3073,10 @@ async def _build_and_store_preview(
                     slot=key, weeks=weeks, references=references,
                 )
             if len(item_inputs) == 1 and not has_service:
+                if item_inputs[0].get('service_raw_mention') or not await _invoice_service_was_omitted(
+                    user_text=actual_text, config=config,
+                ):
+                    raise CalculationInputError('service')
                 prior_service = runtime.preparation.latest_contact_service(contact.id)
                 if prior_service is None:
                     raise CalculationInputError('service')

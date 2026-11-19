@@ -129,6 +129,25 @@ The separate error for that same test occurs during SQLite cleanup. This audit
 establishes that the 23 listed failures predate PR #119. The full Windows suite
 remains non-green and a full Linux run was not performed.
 
+### Service fallback review of `a420dbd`
+
+The public text handler receives a new ventilation-installation service. Phase 2
+omits its canonical fields and echoes text without the service. The same contact's
+last invoice contains electrical work. These scenarios cover the singleton and
+`items[]` forms with a raw mention, a bounded `service_named` result, and a
+bounded `unknown` result. The first four cases reproduced the incorrect
+history-based preview on `a420dbd`.
+
+The corrected route asks for the exact service without reading history. The
+reply advances the same draft to confirmation with the new service, 120 hours,
+EUR 406.00 in deductions and EUR 3434.00 payable. The fixture verifies identical
+SQLite bytes and zero delivered PDFs before approval. The positive control still
+uses the unique scoped historical label when the request genuinely omits the
+service. Telegram and OpenAI transport are synthetic in these regressions.
+The focused invoice, workspace, decision, InfoHelp and Product Truth run
+passed 338 tests. All 12 service-fallback regressions and controls also passed
+in a separate run.
+
 ## Verdict
 
 `runtime_not_proven` for rollout. The local result uses the real SQLite and

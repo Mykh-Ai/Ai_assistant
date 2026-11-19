@@ -490,9 +490,15 @@ Status marker:
 Stage 1 invoice preparation extends `biznis_sk` with nullable `calculation`.
 Ordinary complete legacy inputs may keep it null. A single calculated line
 can leave the singleton service fields null, including when the model returns
-an equivalent unnamed `items[]` candidate. Python owns history lookup and
-the clarification in the same draft. Genuine line segmentation continues to
-use the bounded legacy rules.
+an equivalent unnamed `items[]` candidate. Blank canonical service fields
+alone cannot authorize fallback. A raw service mention without a resolved
+label goes directly to the existing `calculation_service` clarification.
+Otherwise the bounded `invoice_calculation_service_presence` context checks
+the original user text or STT transcript for `service_named`, `service_omitted`
+or `unknown`. Python may look up the same contact's last invoice only on
+`service_omitted`. No historical candidate is sent to the classifier. All
+other outcomes keep the same draft and ask for the exact service. Genuine
+line segmentation continues to use the bounded legacy rules.
 
 The model extracts date intents and years attached to those dates. It emits
 explicit `iso_weeks` only for numbered weeks stated by the user. Python reads

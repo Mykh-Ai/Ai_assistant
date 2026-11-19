@@ -101,6 +101,8 @@ def seed_prior_invoice(config, contact_id, *, ambiguous=False):
 
 def mock_phase2(monkeypatch, calculation):
     async def intent(**kwargs):
+        if kwargs['context_name'] == 'invoice_calculation_service_presence':
+            return 'service_omitted'
         return 'create_invoice'
 
     async def parse(text, _key, _model, *, business_anchor, clarification_context=None):
@@ -229,6 +231,60 @@ def test_missing_service_keeps_calculation(sandbox, monkeypatch, item_count, has
     assert draft['calculation']['hours_total'] == '120'
     assert draft['calculation']['lodging_total'] == '406.00'
     assert draft['amount'] == 3434
+
+
+@pytest.mark.parametrize('use_items', [False, True])
+@pytest.mark.parametrize(('raw_mention', 'presence'), [
+    (None, 'service_named'), (None, 'unknown'), ('монтаж вентиляції', None),
+])
+def test_named_service_omitted_by_parser_must_not_reuse_history(sandbox, monkeypatch, raw_mention, presence, use_items):
+    config, contact_id = sandbox
+    seed_prior_invoice(config, contact_id)
+    mock_phase2(monkeypatch, CALCULATION)
+    invoice_text = 'Вистав Tech Company за монтаж вентиляції за два попередні тижні, 120 годин, відніми 14 ночей по 29 €'
+    presence_checks = []
+
+    async def intent(**kwargs):
+        if kwargs['context_name'] == 'top_level_action':
+            return 'create_invoice'
+        assert kwargs['context_name'] == 'invoice_calculation_service_presence'
+        assert kwargs['user_input_text'] == invoice_text
+        assert set(kwargs['allowed_actions']) == {'service_named', 'service_omitted', 'unknown'}
+        presence_checks.append(True)
+        return presence
+
+    async def parse(_text, *_args, **_kwargs):
+        draft = payload(CALCULATION.copy())  # The model echo also loses the service.
+        if use_items:
+            draft['biznis_sk']['items'] = [{'service_raw_mention': raw_mention}]
+        else:
+            draft['biznis_sk']['service_raw_mention'] = raw_mention
+        return validate_invoice_phase2_payload(draft)
+
+    monkeypatch.setattr('bot.handlers.invoice.resolve_semantic_action', intent)
+    monkeypatch.setattr('bot.handlers.invoice.parse_invoice_phase2_payload', parse)
+
+    def unexpected_history_lookup(*args, **kwargs):
+        pytest.fail('The service clarification must not consult the previous invoice.')
+
+    monkeypatch.setattr(InvoicePreparationStore, 'latest_contact_service', unexpected_history_lookup)
+    chat, state = Chat(), _DummyState()
+    before = config.db_path.read_bytes()
+    asyncio.run(process_invoice_text(message=chat, state=state, config=config, invoice_text=invoice_text))
+
+    assert state.current_state == InvoiceStates.waiting_slot_clarification
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'calculation_service'
+    assert all('Elektrické práce' not in reply for reply, _, _ in chat.replies)
+    assert len(presence_checks) == (0 if raw_mention else 1)
+    asyncio.run(process_invoice_slot_clarification(
+        message=chat, state=state, config=config, clarification_text='Montáž vzduchotechniky',
+    ))
+    assert state.current_state == InvoiceStates.waiting_confirm
+    bundle = state.data['invoice_draft']['calculation']
+    assert bundle['service_name'] == 'Montáž vzduchotechniky'
+    assert bundle['service_source'] == 'explicit' and bundle['service_source_invoice'] is None
+    assert bundle['hours_total'] == '120' and bundle['lodging_total'] == '406.00' and bundle['net'] == '3434.00'
+    assert config.db_path.read_bytes() == before and not chat.documents
 
 
 def test_date_range_correction_keeps_existing_endpoint_and_calculation(sandbox, monkeypatch):

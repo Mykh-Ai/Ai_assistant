@@ -141,6 +141,12 @@ This is expected and should be documented as a manual command flow, not as a mis
 
 ## F) Runtime note for `create_invoice` dual-shape intake
 
+- In the Stage 1 calculated draft, `invoice_calculation_service_presence`
+  classifies original input as `service_named`, `service_omitted` or `unknown`
+  when canonical and raw service fields are empty. An unresolved raw mention,
+  a named service without a label, and `unknown` enter the existing text-only
+  `calculation_service` clarification. Only `service_omitted` permits scoped
+  history lookup. These tokens classify evidence inside the existing action.
 - Phase 1 runtime dual-shape support is implemented:
   - singleton remains valid,
   - optional bounded `items[]` (max 3) is supported,

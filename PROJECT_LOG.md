@@ -1,3 +1,10 @@
+# 2026-11-19 - PR #119 service fallback review
+
+- Preflight used the approved Design Proof v2 and the active bounded AI, invoice/FSM, Product Truth, InfoHelp, confirmed-learning, and acceptance contracts. On `a420dbd`, four tests reproduced a preview using the last invoice's unrelated service when Phase 2 left the canonical fields blank. The bug affected both singleton and `items[]` drafts, with or without a raw service mention.
+- The existing `create_invoice` preview now checks service presence before reading invoice history. Raw evidence goes directly to the existing service clarification. Otherwise the shared bounded resolver checks the original request or STT transcript. Only a clear omission opens the scoped history lookup. Named or uncertain input stays in the same draft and asks for the exact service. Tests verify preserved hours, lodging, total, SQLite, and PDF state through clarification.
+- Stage 1 remains partial. This repair adds neither a canonical action nor a learning signal, and does not change DecisionResolver, STT/LMM, access, storage, SQLite schema, PDF layout, or server behavior. Product Truth and InfoHelp reflect the scoped history and clarification behavior.
+- The targeted invoice, workspace, decision, InfoHelp, and Product Truth run passed 338 tests. The 12 service-fallback controls and regressions also passed separately, with synthetic Telegram and OpenAI transports.
+
 # 2026-11-19 - PR #119 second calendar review
 
 - Preflight used the Stage 1 specification, recovered Design Proof v2, and the active Python/AI, Product Truth, learning, canonical action, FSM and acceptance contracts. Existing Stage 1 is partial. The follow-up repairs literal validation inside `create_invoice`. It adds neither a maturity level nor a learning signal. Confirmation, routing, STT/LMM, access, database schema, PDF, and server operations are outside the change.

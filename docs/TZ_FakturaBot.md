@@ -1919,8 +1919,10 @@ clarified. See the [approved Architecture Design Proof][invoice-preparation-desi
 for the Stage 1 architecture and the project log for subsequent owner decisions.
 
 The latest invoice for the contact in the active profile supplies a missing
-service only when it has one unambiguous label. Otherwise the bot asks for
-the service and retains the calculation. Python computes the EUR total and
+service only when the request clearly omits the service and the prior invoice
+has one unambiguous label. If extraction leaves a mention unresolved, or the
+bot cannot determine whether the request named a service, it asks for the
+exact name and retains the calculation. Python computes the EUR total and
 lodging deductions. Total hours are sufficient for a PDF when the weekly
 breakdown is absent. A stated rate applies to the current invoice. After save,
 the bot offers separate confirmation if the contact has no saved rate or if
