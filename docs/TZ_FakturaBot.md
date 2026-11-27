@@ -1886,3 +1886,40 @@ original authorized user. A frozen activation cutoff prevents historical spam;
 Telegram delivery is separately retried and may be blocked. No exactly-once or
 all-banks/general-PDF-editing claim is permitted. Capability questions only
 explain setup and create no upload. Details: docs/ZEVS_Archive_Rollout_Runbook.md.
+
+## 2026-11-17 Addendum — invoice preparation Stage 1
+
+The existing outgoing invoice action can prepare a calculated draft when the
+feature is enabled and its additive schema is available. Phase 2 extracts
+structured inputs. Python uses the request's `Europe/Bratislava` system date
+for relative calendar dates and completed ISO weeks. Explicit KW references
+take priority. Python reads full lists and inclusive ranges such as
+`KW 45, 46`, `KW45–47`, and `KW 45 та 46`. If the series is incomplete or
+ambiguous, the bot asks for the period again within the same draft.
+Yearless dates use the issue date or an applicable period
+boundary where available. The inclusive window is 120 days before to 30 days
+after the reference. A year attached to the specific date is preserved,
+including for historical invoices. Numbers from another field do not supply
+the date's year. A year-only reply can complete the date currently being
+clarified. See the [approved Architecture Design Proof][invoice-preparation-design]
+for the Stage 1 architecture and the project log for subsequent owner decisions.
+
+The latest invoice for the contact in the active profile supplies a missing
+service only when the request clearly omits the service and the prior invoice
+has one unambiguous label. If extraction leaves a mention unresolved, or the
+bot cannot determine whether the request named a service, it asks for the
+exact name and retains the calculation. Python computes the EUR total and
+lodging deductions. Total hours are sufficient for a PDF when the weekly
+breakdown is absent. A stated rate applies to the current invoice. After save,
+the bot offers separate confirmation if the contact has no saved rate or if
+the rate differs. The offer applies only to future invoices for that contact.
+
+The bot shows a calculation summary before the existing invoice draft preview.
+Approval belongs to that exact preview. The approved calculation is stored
+with the invoice. If a direct edit changes a saved calculation's service,
+invoice dates or financial values, the earlier detail is preserved as history
+and the effective total follows the local PDF and SQLite record. A local
+edit journal reconciles an interrupted replacement with the committed SQLite
+revision at startup. This candidate remains under review in draft PR #119.
+
+[invoice-preparation-design]: architecture/FAKTURABOT_INVOICE_PREPARATION_ARCHITECTURE_DESIGN_PROOF.md

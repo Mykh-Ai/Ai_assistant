@@ -1,3 +1,32 @@
+# 2026-11-19 - PR #119 service fallback review
+
+- Preflight used the approved Design Proof v2 and the active bounded AI, invoice/FSM, Product Truth, InfoHelp, confirmed-learning, and acceptance contracts. On `a420dbd`, four tests reproduced a preview using the last invoice's unrelated service when Phase 2 left the canonical fields blank. The bug affected both singleton and `items[]` drafts, with or without a raw service mention.
+- The existing `create_invoice` preview now checks service presence before reading invoice history. Raw evidence goes directly to the existing service clarification. Otherwise the shared bounded resolver checks the original request or STT transcript. Only a clear omission opens the scoped history lookup. Named or uncertain input stays in the same draft and asks for the exact service. Tests verify preserved hours, lodging, total, SQLite, and PDF state through clarification.
+- Stage 1 remains partial. This repair adds neither a canonical action nor a learning signal, and does not change DecisionResolver, STT/LMM, access, storage, SQLite schema, PDF layout, or server behavior. Product Truth and InfoHelp reflect the scoped history and clarification behavior.
+- The targeted invoice, workspace, decision, InfoHelp, and Product Truth run passed 338 tests. The 12 service-fallback controls and regressions also passed separately, with synthetic Telegram and OpenAI transports.
+
+# 2026-11-19 - PR #119 second calendar review
+
+- Preflight used the Stage 1 specification, recovered Design Proof v2, and the active Python/AI, Product Truth, learning, canonical action, FSM and acceptance contracts. Existing Stage 1 is partial. The follow-up repairs literal validation inside `create_invoice`. It adds neither a maturity level nor a learning signal. Confirmation, routing, STT/LMM, access, database schema, PDF, and server operations are outside the change.
+- Added tests first on `37ee697`. Seventeen failed across truncated or incomplete ISO-week groups and incorrectly reused year numbers. The corrected path reads the full KW list or range, or resumes the same draft for clarification. It binds a calendar year to the matching day, month and field and applies the existing Bratislava −120/+30-day window to dates without a supported year.
+- Recovered the original approved Markdown attachment and verified its SHA-256 before adding it to the architecture material. Subsequent owner decisions remain recorded outside the copy. Existing capability claims stay scoped to enabled Stage 1 and its prepared schema.
+- Passed 332 focused Windows tests. Replayed all 23 prior full-suite failures on pre-PR `84ff360` and the candidate. Each ID failed for the same Windows reason in both runs, with the same extra encrypted-payload teardown error. The Stage 1 acceptance proof records the case-by-case comparison. The full Windows suite remains non-green, and a full Linux run was not performed.
+
+# 2026-11-19 - Invoice preparation Stage 1 review of PR #119
+
+- Preflight used the active product doctrine, AI, Product Truth, learning, InfoHelp, LLM and decision contracts, implementation and evaluation standards, and the workspace, PDF and migration contracts. The Stage 1 spec and its acceptance proof record the approved Design Proof v2 decisions. The standalone v2 file is absent in this checkout. Code at `42e2572` conflicted with the intended calendar, service continuation and first-rate behavior, and its edit rollback was only exception-safe.
+- The repair scopes are bounded LLM extraction, the existing invoice FSM, contact-rate confirmation, and local SQLite/PDF edit recovery. The canonical action, STT/LMM ownership, access checks, PDF layout, SQLite schema, Gmail, Drive/archive and server work remain outside the repair. No new AI maturity level or semantic-learning hook. Reusing a prior service reads the active contact's latest scoped invoice. Saving its future rate uses a separate confirmed profile preference. The Stage 1 candidate remains partial pending release acceptance.
+- Added calendar and ISO source validation, draft continuation for missing services and partial date corrections, and a scope-bound compare-and-set for the first rate. The pre-repair regression run reproduced 15 failures. Recovery journals preserve canonical paths and reconcile a calculated edit before the runtime starts polling. Local tests use disposable SQLite and PDF storage. Live SQLite, server deployment and migration require separate owner approval.
+- The focused Windows run passed 297 tests, including real PDF readback and process exits before and after SQLite commit. The final isolated `gpt-4o` run passed seven Ukrainian, Slovak and Russian previews with byte-identical synthetic databases and zero PDF writes. The real-model probes led to literal date verification and an explicit named-service example in the extraction prompt.
+- The full Windows run passed 3075 tests and 7 subtests. The 23 failures were confined to the existing archive suites and matched the earlier repair run by test ID. Representative failures also reproduced on the `42e2572` export. The archive cases depend on POSIX signals or permission modes, or try to remove open SQLite files during Windows cleanup. Linux rollout acceptance remains open.
+
+# 2026-11-17 - Invoice preparation Stage 1 local implementation
+
+- Matched the updated specification and Design Proof against main `84ff360`. The owner confirmed immediate one-time use of an explicitly stated rate and a separate post-save offer to update the contact.
+- Extended the existing invoice action with a request-scoped Bratislava clock, ISO weeks, Decimal calculation, scoped service/rate lookup, lodging deductions, a binding to the exact preview and a stored calculation bundle.
+- Direct saved edits preserve the historical calculation and update the effective SQLite and PDF values. Added the explicit additive migration, compatibility mode and acceptance evidence.
+- The complete local suite passed 3066 tests and 7 subtests. SQLite and PDF checks used temporary fixtures with synthetic Telegram and OpenAI boundaries.
+
 # 2026-11-15 - InfoHelp routing release integration
 
 - Owner authorized merge, push, and deployment of the local InfoHelp repairs. GitHub main and the running bot were at 3425a6d. Integrated the scope-before-intent route, Drive folder guidance, and administrator offer retry into an isolated checkout of that deployed release. Preserved the working checkout and server-local edits. Updated the curated user release notes.

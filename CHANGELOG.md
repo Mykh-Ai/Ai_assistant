@@ -41,6 +41,18 @@
 
 ## Development history
 
+### 2026-11-19 — Invoice preparation Stage 1 draft review
+
+- Resolve yearless dates and completed ISO weeks from the Bratislava business
+  calendar, including December and January transitions.
+- Parse complete explicit KW lists and ranges and bind a stated calendar year
+  to the date it describes.
+- Reuse one unambiguous service from the active contact's latest invoice or
+  collect it in the existing draft. Offer separately confirmed first-time
+  and replacement hourly rates for future invoices.
+- Reconcile interrupted calculated-invoice PDF edits against SQLite before
+  polling. The Stage 1 draft still requires rollout acceptance.
+
 - Deployed and enabled2026-10-20 through PR#117 (merge9a88536): work-day closing shows gross,
   deducted break and net hours and leaves FSM idle. Optional day-bound break
   editing, including zero, extends the existing action with scope/date/minutes

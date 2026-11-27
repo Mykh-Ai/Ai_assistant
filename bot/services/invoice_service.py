@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 
 from bot.services.db import managed_connection
+from bot.services.invoice_preparation_store import attach_calculation
 from bot.services.validation import validate_invoice_number_for_year
 
 
@@ -248,6 +249,7 @@ class InvoiceService:
         status: str,
         items: list[CreateInvoiceItemPayload],
         invoice_number: str | None = None,
+        calculation_bundle: dict | None = None,
     ) -> int:
         if not items:
             raise RuntimeError('Invoice save failed: at least one item is required.')
@@ -320,6 +322,7 @@ class InvoiceService:
                         item.total_price,
                     ),
                 )
+            attach_calculation(connection, invoice_id=invoice_id, bundle=calculation_bundle, total_amount=total_amount)
             connection.commit()
 
         return int(invoice_id)

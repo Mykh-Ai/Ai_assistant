@@ -34,6 +34,7 @@ officeflow_attachment_router_module = importlib.import_module('bot.handlers.offi
 # these matrices. Handlers must call bot/services/decision_resolver.py and
 # branch only on canonical outputs, not on raw localized reply text.
 YES_NO_CONTEXTS = (
+    'invoice_contact_rate_consent',
     'contact_confirm',
     'contact_intake_confirm',
     'contact_registry_confirm',

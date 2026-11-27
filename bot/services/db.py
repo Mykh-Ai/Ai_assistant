@@ -858,7 +858,9 @@ def _bootstrap_contact_table(connection: sqlite3.Connection) -> None:
         connection.execute(CONTACT_SCHEMA)
         return
 
-    existing_column_names = set(existing_columns.keys())
+    if 'default_hourly_rate_eur' in existing_columns and existing_columns['default_hourly_rate_eur'].upper() != 'TEXT':
+        raise RuntimeError('Invalid type for contact.default_hourly_rate_eur')
+    existing_column_names = set(existing_columns) - {'default_hourly_rate_eur'}
     if (
         existing_column_names == CONTACT_PRE_IBAN_EXPECTED_COLUMN_NAMES
         or existing_column_names == CONTACT_LEGACY_PRE_IBAN_EXPECTED_COLUMN_NAMES
@@ -887,7 +889,9 @@ def _bootstrap_invoice_table(connection: sqlite3.Connection) -> None:
         connection.execute(INVOICE_SCHEMA)
         return
 
-    existing_column_names = set(existing_columns.keys())
+    if 'calculation_bundle_json' in existing_columns and existing_columns['calculation_bundle_json'].upper() != 'TEXT':
+        raise RuntimeError('Invalid type for invoice.calculation_bundle_json')
+    existing_column_names = set(existing_columns) - {'calculation_bundle_json'}
     if existing_column_names == set(INVOICE_EXPECTED_COLUMNS.keys()):
         _ensure_invoice_workspace_unique_index(connection)
         return
@@ -976,8 +980,12 @@ def _ensure_invoice_tenant_unique_index(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_invoice_global_unique_to_tenant_unique(connection: sqlite3.Connection) -> None:
+    keep_calculation = any(row[1] == 'calculation_bundle_json' for row in connection.execute('PRAGMA table_info(invoice)'))
     connection.execute('ALTER TABLE invoice RENAME TO invoice_legacy_global_unique')
     connection.execute(LEGACY_INVOICE_SCHEMA)
+    calculation_column = ', calculation_bundle_json' if keep_calculation else ''
+    if keep_calculation:
+        connection.execute('ALTER TABLE invoice ADD COLUMN calculation_bundle_json TEXT')
     connection.execute(
         (
             'INSERT INTO invoice '
@@ -985,7 +993,7 @@ def _migrate_invoice_global_unique_to_tenant_unique(connection: sqlite3.Connecti
             'due_days, total_amount, currency, status, pdf_path, created_at, updated_at) '
             'SELECT id, supplier_telegram_id, contact_id, invoice_number, issue_date, delivery_date, due_date, '
             'due_days, total_amount, currency, status, pdf_path, created_at, updated_at '
-            'FROM invoice_legacy_global_unique'
+            f'{calculation_column} FROM invoice_legacy_global_unique'
         )
     )
     connection.execute('DROP TABLE invoice_legacy_global_unique')

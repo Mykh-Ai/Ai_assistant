@@ -65,6 +65,7 @@ from bot.keyboards.decision import (
     DECISION_SKIP,
     DECISION_SKIP_DAY,
     DECISION_YES,
+    INVOICE_PREVIEW_CALLBACK_PREFIX,
     INFO_HELP_OFFER_CALLBACK_PREFIX,
     INFO_HELP_OFFER_MAIN_MENU,
     INFO_HELP_OFFER_REQUEST_ADMIN,
@@ -208,6 +209,24 @@ class _CallbackMessageAdapter:
         await self._callback.answer('Dokument sa nepodarilo odoslat z tlacidla.', show_alert=True)
 
 
+@router.callback_query(F.data.startswith(INVOICE_PREVIEW_CALLBACK_PREFIX))
+async def invoice_preview_callback(callback: CallbackQuery, state: FSMContext, config: Config) -> None:
+    payload = (callback.data or '').removeprefix(INVOICE_PREVIEW_CALLBACK_PREFIX)
+    preview_token, _, decision = payload.partition(':')
+    if not preview_token or decision not in {DECISION_APPROVE, DECISION_EDIT, DECISION_CANCEL}:
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+        return
+    handled = await process_invoice_preview_confirmation(
+        message=_CallbackMessageAdapter(callback), state=state, config=config,
+        confirmation_text='', canonical_decision=decision, preview_token=preview_token,
+    )
+    if handled:
+        await callback.answer()
+        await touch_active_fsm_activity(state)
+    else:
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+
+
 @router.callback_query(F.data.startswith(DECISION_CALLBACK_PREFIX))
 async def decision_callback(callback: CallbackQuery, state: FSMContext, config: Config, bot: Bot | None = None) -> None:
     if ((await state.get_data()).get('work_time_boundary_change') is not None
@@ -218,6 +237,9 @@ async def decision_callback(callback: CallbackQuery, state: FSMContext, config: 
         return
     token = _parse_decision_token(callback.data)
     current_state = _state_name(await state.get_state())
+    if current_state == InvoiceStates.waiting_confirm.state:
+        await callback.answer(_STALE_DECISION_MESSAGE, show_alert=True)
+        return
     report_choice = current_state == WorkTimeStates.waiting_lunch_break_initial_choice.state
     if report_choice:
         if not await is_current_work_time_report_choice(callback, state):
