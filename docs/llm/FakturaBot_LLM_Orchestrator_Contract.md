@@ -627,20 +627,6 @@ Rules:
 This is a project-wide contract, not invoice-only. The same behavior applies to existing and future structured flows.
 
 
-## Knowledge-backed InfoHelp candidate
-
-For enabled idle users the knowledge conversation takes precedence over the
-primary resolver. Its only tools read current Product Truth and scoped profile
-facts. Python validates arguments and builds tool results; the final factual
-reply must reference evidence returned during the current turn. A direct
-text command or STT transcript may instead propose an available canonical
-action with no answer or read-tool results. Python calls the existing
-primary resolver on the original input. Only an explicit business-action
-result with the same canonical action reaches the Python owner. The
-conversation itself has no dispatch or confirmation authority. A registered
-command or `/vykonat <request>` retains its explicit entry path. Active states
-keep their own contracts. See [InfoHelp Guidance Layer](../Info_Help_Guidance_Layer.md).
-
 ## Contextual InfoHelp V2 orchestration - 2026-08-02
 
 The enhanced InfoHelp call receives current normalized input/channel/language/command hints, primary resolver result and diagnostics, same-chat explicit reply to this bot, bounded recent process-memory turns, safe active-state descriptors, compact Product Truth and the Python-owned action semantic registry. It returns JSON only; Python validates all enums, IDs, confidence and free text.

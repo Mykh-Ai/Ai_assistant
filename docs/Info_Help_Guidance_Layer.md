@@ -998,48 +998,6 @@ prefix starts the existing confirmation-gated admin-review request preview;
 no request row exists until approval. Unauthorized users still do not reach
 STT/LLM or either persistence path. Active non-admin FSM ownership is unchanged.
 
-## Knowledge-backed InfoHelp candidate
-
-The knowledge-backed path is a local, partial Level 2 candidate.
-`INFOHELP_KNOWLEDGE_ROLLOUT=disabled|admin_pilot|enabled` defaults to
-disabled. For opted-in authorized users it owns idle text and STT transcripts
-before the primary action resolver. Conversation history is short-lived and
-scoped to user, chat and active workspace. It supplies context for follow-ups.
-The assistant retrieves current evidence again on each factual turn.
-
-- Product articles are read from the current Product Truth registry. The
-  verified Drive sharing instructions and curated release notes supplement it.
-- Workspace facts come from registered read-only Python functions. They use
-  the selected workspace in private chats. Missing or ambiguous profile
-  selection produces an explicit unavailable result. The model cannot pass
-  a different workspace or call a business action.
-- A factual reply must cite evidence IDs obtained in its current turn.
-  Sources are passed to the model with their current limitations. The visible
-  reply is plain text in the user's language. This structural check does not
-  replace evaluating whether the reply accurately explains the cited evidence.
-- Registered slash commands retain their existing handlers. Idle questions
-  receive guidance or scoped facts. A direct natural-language text or voice
-  request can propose an existing action from the intersection of enabled
-  runtime actions and supported or partial Product Truth capabilities. The
-  primary resolver must independently return the same action with an
-  explicit execution intent before Python calls the owner. A missing,
-  conflicting or fallback result leaves the workflow unstarted and
-  requests guidance with action proposals disabled. A turn that already
-  queried a read tool cannot switch to an action. The
-  optional `/vykonat <request>` also reaches the existing action resolver.
-  Action entry never counts as confirmation. For example, a direct exact
-  time departure reaches the existing work-time preview, while asking how
-  the same phrase works stays in InfoHelp.
-- Active FSM routes keep their existing authority. There are no new
-  confirmation, keyboard, persistence, customization or self-learning flows.
-  The knowledge path does not open an administrator offer on its own.
-
-Acceptance requires independent multilingual questions, follow-ups, actual
-scoped data checks, refusal and injection controls, voice/state parity and
-verification of both visible answers and absence of unintended effects.
-The legacy V2 contract below describes the rollback path and the current
-deployed baseline.
-
 ## Contextual InfoHelp Assistant V2 - 2026-08-02
 
 Contextual V2 extends the existing InfoHelp owner; it is not a parallel recovery layer. One inbound update may cause exactly one enhanced InfoHelp call after the primary resolver when the primary result is unknown, capability-like/informational, corrective/negative, an unknown command, an explicit reply follow-up, an active-flow help question, unsupported, or genuinely ambiguous. A Product-Truth-supported canonical action with a registered runtime owner is not classified again: mutation class alone is not an InfoHelp trigger, and an owner-handled missing slot enters that owner's existing continuation FSM.
