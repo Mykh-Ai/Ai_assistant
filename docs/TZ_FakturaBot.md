@@ -1906,9 +1906,11 @@ for the Stage 1 architecture and the project log for subsequent owner decisions.
 
 The latest invoice for the contact in the active profile supplies a missing
 service only when the request clearly omits the service and the prior invoice
-has one unambiguous label. If extraction leaves a mention unresolved, or the
-bot cannot determine whether the request named a service, it asks for the
-exact name and retains the calculation. Python computes the EUR total and
+has one unambiguous label. The service check classifies the original request
+independently of top-level routing. A clear omission stays with the same draft
+while the bot collects a missing rate or other input. If extraction leaves a
+mention unresolved, or the bot cannot determine whether the request named a
+service, it asks for the exact name and retains the calculation. Python computes the EUR total and
 lodging deductions. Total hours are sufficient for a PDF when the weekly
 breakdown is absent. While waiting for the hourly rate, Python reads typed
 values such as `32`, `32 EUR`, and `32,50 €/hod` directly as a positive EUR

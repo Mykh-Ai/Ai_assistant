@@ -1491,6 +1491,7 @@ async def resolve_semantic_action(
     if api_key and api_key.startswith('sk-'):
         try:
             top_level = context_name == 'top_level_action'
+            invoice_service_presence = context_name == 'invoice_calculation_service_presence'
             intent_policy = (
                 'First decide routing_kind from the result the user expects. '
                 'Use capability_or_howto for instructions, a question about what the product supports, how it behaves, '
@@ -1510,6 +1511,15 @@ async def resolve_semantic_action(
                 if top_level else
                 'A question asking for instructions or help instead of providing the expected input uses a help routing kind and canonical_action "unknown".'
             )
+            if invoice_service_presence:
+                intent_policy = (
+                    'The invoice creation action is already selected. Classify only the presence of a billable service '
+                    'in the original request. A clearly omitted service is a known result, service_omitted. '
+                    'Choose unknown only when wording could describe a service but its meaning is unclear. '
+                    'Uncertainty about dates, dates of delivery, periods, hours, amounts, or other metadata '
+                    'does not make service presence unknown. Set routing_kind to business_action for a known result. '
+                )
+                help_policy = ''
             client = AsyncOpenAI(api_key=api_key)
             response = await client.chat.completions.create(
                 model=model,
@@ -1569,7 +1579,7 @@ async def resolve_semantic_action(
                     'unknown',
                 }:
                     routing_kind = default_routing_kind
-                if routing_kind in {'capability_or_howto', 'contextual_help', 'unknown'}:
+                if not invoice_service_presence and routing_kind in {'capability_or_howto', 'contextual_help', 'unknown'}:
                     canonical = _UNKNOWN
                 if diagnostics is not None:
                     diagnostics['raw_model_output'] = raw

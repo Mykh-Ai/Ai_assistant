@@ -1,3 +1,10 @@
+# 2026-11-27 - Invoice service from the latest customer invoice
+
+- The live Ukrainian transcript specified the customer, two weeks, 120 hours and a delivery date. The selected contact's latest invoice had one service, yet the bot asked for its name. The previous logs did not record the service classification.
+- Reproduced one path to the failure with a bounded model result of `service_omitted` paired with `routing_kind: unknown`. The shared resolver discarded the known classification. The existing create-invoice handler now classifies service presence independently of top-level routing and distinguishes dates and work periods from service wording.
+- A clear omission stays with the original draft through rate clarification. The existing scoped lookup still selects one unambiguous label from the latest invoice. Named and uncertain services retain the existing clarification. Previews show the historical source and require the existing confirmation.
+- The conversation test uses the live transcript and a simulated OpenAI response. It checks the latest service, entry of `32 EUR`, the 3,840 EUR preview, the requested delivery date, and unchanged SQLite and PDF storage before approval. Named and uncertain service cases stay in clarification.
+
 # 2026-11-27 - Invoice hourly-rate entry
 
 - The live invoice draft asked for the hourly rate again after typed `32` and `32 EUR`. The existing rate clarification relied on the full invoice extractor to infer the field from the reply.

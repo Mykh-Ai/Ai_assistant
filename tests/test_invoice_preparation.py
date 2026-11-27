@@ -279,6 +279,66 @@ def test_missing_service_keeps_calculation(sandbox, monkeypatch, item_count, has
     assert draft['amount'] == 3434
 
 
+@pytest.mark.parametrize(('service_phrase', 'presence'), [
+    ('', 'service_omitted'),
+    (' за монтаж вентиляції', 'service_named'),
+    (' за невиразно названу роботу', 'unknown'),
+])
+def test_service_presence_is_independent_of_routing_kind(sandbox, monkeypatch, service_phrase, presence):
+    config, contact_id = sandbox
+    config = replace(config, openai_api_key='sk-test')
+    seed_prior_invoice(config, contact_id)
+    with managed_connection(config.db_path) as connection:
+        connection.execute('UPDATE contact SET default_hourly_rate_eur = NULL WHERE id = ?', (contact_id,))
+        connection.commit()
+    text = f'Зроби фактуру на Tech Company{service_phrase} за попередні два тижні 120 годин датом додання остання субота.'
+    presence_checks = []
+
+    async def create_completion(*, messages, **_kwargs):
+        request = json.loads(messages[-1]['content'])
+        if request['context_name'] == 'top_level_action':
+            result = {'canonical_action': 'create_invoice', 'routing_kind': 'business_action'}
+        else:
+            assert request['context_name'] == 'invoice_calculation_service_presence'
+            presence_checks.append(request['user_input_text'])
+            result = {'canonical_action': presence, 'routing_kind': 'unknown'}
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(result)))])
+
+    async def parse_invoice(text, *_args, **_kwargs):
+        return validate_invoice_phase2_payload(payload({
+            'period_intent': 'previous_two_completed_weeks',
+            'hours_total': '120',
+            'delivery_date': {'kind': 'last_weekday', 'weekday': 6},
+        }, text=text))
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create_completion)))
+    monkeypatch.setattr('bot.services.semantic_action_resolver.AsyncOpenAI', lambda **_kwargs: client)
+    monkeypatch.setattr('bot.handlers.invoice.parse_invoice_phase2_payload', parse_invoice)
+    monkeypatch.setattr('bot.handlers.invoice.business_clock', lambda: {**ANCHOR, 'business_today': '2026-11-27'})
+    chat, state = Chat(), _DummyState()
+    before = config.db_path.read_bytes()
+
+    asyncio.run(process_invoice_text(message=chat, state=state, config=config, invoice_text=text))
+
+    assert presence_checks == [text]
+    assert config.db_path.read_bytes() == before and not chat.documents
+    if presence != 'service_omitted':
+        assert state.current_state == InvoiceStates.waiting_slot_clarification
+        assert state.data['invoice_partial_draft']['unresolved_slot'] == 'calculation_service'
+        return
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'calculation_rate'
+    chat.text = '32 EUR'
+    asyncio.run(invoice_slot_clarification(chat, state, config))
+
+    assert presence_checks == [text]
+    assert config.db_path.read_bytes() == before and not chat.documents
+    assert state.current_state == InvoiceStates.waiting_confirm
+    bundle = state.data['invoice_draft']['calculation']
+    assert bundle['service_name'] == 'Elektrické práce'
+    assert bundle['service_source'] == 'last_invoice' and bundle['service_source_invoice'] == '20260001'
+    assert bundle['delivery_date'] == '2026-11-21' and bundle['net'] == '3840.00'
+
+
 @pytest.mark.parametrize('use_items', [False, True])
 @pytest.mark.parametrize(('raw_mention', 'presence'), [
     (None, 'service_named'), (None, 'unknown'), ('монтаж вентиляції', None),

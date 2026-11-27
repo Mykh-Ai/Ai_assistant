@@ -1821,8 +1821,8 @@ async def _resolve_customer_candidate_bounded(
     return available_profiles[canonical], deduplicated_names
 
 
-async def _invoice_service_was_omitted(*, user_text: str, config: Config) -> bool:
-    presence = await resolve_semantic_action(
+async def _resolve_invoice_service_presence(*, user_text: str, config: Config) -> str:
+    return await resolve_semantic_action(
         context_name='invoice_calculation_service_presence',
         allowed_actions=['service_named', 'service_omitted', 'unknown'],
         user_input_text=user_text,
@@ -1831,18 +1831,21 @@ async def _invoice_service_was_omitted(*, user_text: str, config: Config) -> boo
         action_hints={
             'service_named': {
                 'meaning': 'The invoice request names or describes the billable service or work, even informally.',
+                'positive_examples': ['Vystav faktúru za opravu rozvádzača, 120 hodín, dátum dodania minulá sobota.'],
             },
             'service_omitted': {
                 'meaning': 'The invoice request clearly contains no service or work description.',
+                'positive_examples': [
+                    'Зроби фактуру на Demo за попередні два тижні 120 годин датом додання остання субота.',
+                ],
                 'not_this': ['Unclear, partial, or noisy wording that may describe work. Use unknown in that case.'],
             },
         },
         auxiliary_context={
             'task': 'Check service presence in the original invoice request. A customer, project, period, '
-                    'hours, rate, invoice amount, or lodging deduction alone does not name a billable service.',
+                    'delivery date, hours, rate, invoice amount, or lodging deduction alone does not name a billable service.',
         },
     )
-    return presence == 'service_omitted'
 
 
 async def _resolve_service_alias_bounded(
@@ -3070,10 +3073,18 @@ async def _build_and_store_preview(
                     slot=key, weeks=weeks, references=references,
                 )
             if len(item_inputs) == 1 and not has_service:
-                if item_inputs[0].get('service_raw_mention') or not await _invoice_service_was_omitted(
-                    user_text=actual_text, config=config,
-                ):
+                if item_inputs[0].get('service_raw_mention'):
                     raise CalculationInputError('service')
+                if parsed_draft.get('calculation_service_omitted') is not True:
+                    presence = await _resolve_invoice_service_presence(user_text=actual_text, config=config)
+                    _emit_invoice_debug_log(
+                        config=config, event='invoice_service_presence_resolved', request_id=request_id,
+                        telegram_update_id=getattr(message, 'update_id', None), telegram_message_id=message_id,
+                        payload={'service_presence': presence},
+                    )
+                    if presence != 'service_omitted':
+                        raise CalculationInputError('service')
+                    parsed_draft['calculation_service_omitted'] = True
                 prior_service = runtime.preparation.latest_contact_service(contact.id)
                 if prior_service is None:
                     raise CalculationInputError('service')
