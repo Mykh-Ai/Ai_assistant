@@ -1807,20 +1807,6 @@ Inactive workspace profiles are also checked when their supplier owner is still 
 
 The monitor never updates invoice/invoice-item rows, regenerates PDFs, changes `pdf_path`, or changes contact email, IBAN, person, or contract path. User-data deletion removes monitor/proposal rows before contact/workspace deletion. Rollout is backup-first, disabled deploy, schema validation, no-write dry-run, then controlled enablement.
 
-## Knowledge-backed InfoHelp candidate
-
-The local candidate uses the Product Truth registry, verified usage guidance
-and the curated release notes as its knowledge base. Opted-in idle text and
-voice transcripts share one read-only conversation. Python selects the
-authorized active workspace for live facts including invoice totals,
-receipt totals and recorded Drive upload coverage. Product guidance does not
-enter a business workflow. Direct natural-language requests and existing
-slash commands can reach the normal Python workflow for a supported
-operation. Explicit work-day departure times require a preview and approval.
-The candidate also accepts `/vykonat <request>` for explicit text entry.
-Rollout remains disabled by default. See
-[InfoHelp Guidance Layer](Info_Help_Guidance_Layer.md).
-
 ## 2026-08-02 Addendum: Contextual InfoHelp Assistant V2
 
 2026-11-15 local repair (partial Level 2): the authorized idle V2 text/STT

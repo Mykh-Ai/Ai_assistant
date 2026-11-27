@@ -95,9 +95,8 @@ from bot.services.info_help_assistant import (
     validate_info_help_answer_sk,
 )
 from bot.services.info_help_context import info_help_conversation_context
-from bot.services.info_help_chat import answer_info_help
 from bot.services.info_help_resolver import resolve_info_help_assistant_with_llm
-from bot.services.info_help_rollout import contextual_info_help_v2_enabled, knowledge_info_help_enabled
+from bot.services.info_help_rollout import contextual_info_help_v2_enabled
 from bot.services.accounting_document_analytics_answerer import answer_accounting_document_analytics
 from bot.services.accounting_document_analytics_dataset import (
     AccountingDocumentAnalyticsDatasetService,
@@ -134,7 +133,7 @@ from bot.services.pdf_generator import (
     validate_item_detail_render_fit,
 )
 from bot.services.service_alias_service import ServiceAliasService
-from bot.services.product_truth import get_capability, get_safe_answer_payload, list_capabilities
+from bot.services.product_truth import get_capability, get_safe_answer_payload
 from bot.services.semantic_action_resolver import (
     resolve_bounded_confirmation_reply,
     resolve_invoice_date_normalization,
@@ -588,10 +587,9 @@ def _format_existing_invoice_summary(
     items: list[object],
     total_amount: float,
     currency: str,
-    for_edit: bool,
 ) -> str:
     lines = [
-        'Našiel som túto faktúru na úpravu:' if for_edit else 'Našiel som túto faktúru:',
+        'Našiel som túto faktúru na úpravu:',
         f'Číslo faktúry: {invoice_number}',
         f'Odberateľ: {customer_name}',
         f'Dátum vystavenia: {issue_date}',
@@ -1082,7 +1080,6 @@ async def _send_existing_invoice_view(
             items=matched_items,
             total_amount=float(invoice.total_amount),
             currency=invoice.currency,
-            for_edit=False,
         )
     )
     if invoice.pdf_path:
@@ -4500,7 +4497,6 @@ async def _execute_invoice_reference_action(
             items=matched_items,
             total_amount=float(matched_invoice.total_amount),
             currency=matched_invoice.currency,
-            for_edit=True,
         )
     )
     if matched_invoice.pdf_path:
@@ -4526,47 +4522,6 @@ async def _execute_invoice_reference_action(
     )
 
 
-async def _handle_knowledge_info_help(
-    *, message: Message, config: Config, text: str, channel: str, request_id: str,
-    allowed_actions: tuple[str, ...],
-) -> str | None:
-    actor_id, chat_id = _message_context_ids(message)
-    if actor_id is None or chat_id is None:
-        return
-    workspace = None
-    if getattr(message.chat, 'type', None) == 'private' and config.db_path.is_file():
-        try:
-            workspace = WorkspaceContextService(config.db_path).resolve_for_user_readonly(actor_id)
-        except (WorkspaceContextError, sqlite3.Error):
-            pass
-    key = info_help_conversation_context.key(
-        telegram_user_id=actor_id, chat_id=chat_id,
-        workspace_id=workspace.workspace_id if workspace else None,
-    )
-    recent = [
-        {'role': 'assistant' if turn.role == 'bot' else 'user', 'content': turn.text}
-        for turn in info_help_conversation_context.recent(key)
-    ]
-    channel = 'voice_stt' if channel == 'voice' else channel
-    explicit_reply = _explicit_reply_context(message)
-    if explicit_reply and explicit_reply.get('replied_to_bot_text'):
-        recent.append({
-            'role': 'assistant',
-            'content': str(explicit_reply['replied_to_bot_text'])[:1200],
-        })
-    answer = await answer_info_help(
-        config=config, actor_id=actor_id, workspace=workspace, user_text=text, recent=recent,
-        business_date=work_time_local_date(), request_id=request_id, allowed_actions=allowed_actions,
-        language_hint=getattr(message.from_user, 'language_code', None),
-    )
-    if answer.action is not None:
-        return answer.action
-    info_help_conversation_context.capture_user(key, text=text, channel=channel)
-    await message.answer(answer.text, parse_mode=None)
-    info_help_conversation_context.capture_bot(key, text=answer.text)
-    return None
-
-
 async def process_invoice_text(
     *,
     message: Message,
@@ -4577,7 +4532,6 @@ async def process_invoice_text(
     input_channel: str = 'text',
     telegram_update_id: int | None = None,
     empty_intake_snapshot: dict | None = None,
-    explicit_knowledge_action: bool = False,
 ) -> bool | None:
     flow_request_id = request_id or str(uuid4())
     message_id = getattr(message, 'message_id', None)
@@ -4632,7 +4586,6 @@ async def process_invoice_text(
         )
         return
 
-    knowledge_help = knowledge_info_help_enabled(config, actor_telegram_id)
     allowed_actions = [
         _START_INTENT,
         _CREATE_INVOICE_INTENT,
@@ -4662,28 +4615,6 @@ async def process_invoice_text(
     if runtime_issue_allowed:
         allowed_actions.append(RUNTIME_ISSUE_ACTION)
     allowed_actions.append(_UNKNOWN_INVOICE_INTENT)
-
-    proposed_action = None
-    if (
-        knowledge_help
-        and not explicit_knowledge_action
-        and empty_intake_snapshot is None
-        and await state.get_state() is None
-    ):
-        product_actions = {
-            action for cap in list_capabilities() if cap.status in {'supported', 'partial'}
-            for action in cap.canonical_actions
-        }
-        proposed_action = await _handle_knowledge_info_help(
-            message=message, config=config, text=invoice_text, channel=input_channel,
-            request_id=flow_request_id,
-            allowed_actions=(
-                tuple(action for action in allowed_actions if action in product_actions)
-                if input_channel != 'command' and not invoice_text.lstrip().startswith('/') else ()
-            ),
-        )
-        if proposed_action is None:
-            return
 
     top_level_intent = await resolve_semantic_action(
         context_name='top_level_action',
@@ -5085,22 +5016,6 @@ async def process_invoice_text(
             ensure_ascii=False,
         )
     )
-    if proposed_action is not None:
-        if await state.get_state() is not None:
-            return
-        parsed = top_level_diagnostics.get('parsed_model_output')
-        if (
-            top_level_intent != proposed_action
-            or top_level_diagnostics.get('resolution_source') != 'llm_bundle'
-            or not isinstance(parsed, dict)
-            or parsed.get('routing_kind') != 'business_action'
-        ):
-            await _handle_knowledge_info_help(
-                message=message, config=config, text=invoice_text, channel=input_channel,
-                request_id=flow_request_id, allowed_actions=(),
-            )
-            return
-
     if empty_intake_snapshot is not None:
         # A failed model call/local fallback cannot discard even an empty flow.
         if (
@@ -5124,8 +5039,7 @@ async def process_invoice_text(
 
     info_help_routing_diagnostics: dict[str, object] = {}
     if (
-        not knowledge_help
-        and contextual_info_help_v2_enabled(config, actor_telegram_id)
+        contextual_info_help_v2_enabled(config, actor_telegram_id)
         and should_run_contextual_info_help(
             primary_action=top_level_intent,
             input_text=invoice_text,
@@ -8105,26 +8019,6 @@ async def invoice_edit_description_value(message: Message, state: FSMContext, co
             state=state,
             success_text=success_text,
         )
-
-
-@router.message(Command('vykonat'))
-async def cmd_vykonat(
-    message: Message, state: FSMContext, config: Config, event_update: Update | None = None,
-) -> None:
-    if await state.get_state() is not None:
-        return
-    if not knowledge_info_help_enabled(config, getattr(message.from_user, 'id', None)):
-        await unknown_slash_command(message, state, config, event_update)
-        return
-    pieces = (message.text or '').split(maxsplit=1)
-    if len(pieces) != 2 or not pieces[1].strip():
-        await message.answer('Napíšte /vykonat a pridajte, čo chcete urobiť.')
-        return
-    await process_invoice_text(
-        message=message, state=state, config=config, invoice_text=pieces[1].strip(),
-        input_channel='command', telegram_update_id=getattr(event_update, 'update_id', None),
-        explicit_knowledge_action=True,
-    )
 
 
 @router.message(lambda message: bool((message.text or '').strip()) and (message.text or '').startswith('/'))

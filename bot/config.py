@@ -59,7 +59,6 @@ class Config:
     financna_sprava_api_key: str | None = field(default=None, repr=False)
     financna_sprava_timeout_seconds: int = 5
     infohelp_contextual_v2_rollout: str = 'disabled'
-    infohelp_knowledge_rollout: str = 'disabled'
     work_time_day_break_enabled: bool = False
 
 
@@ -242,11 +241,8 @@ def load_config() -> Config:
         contact_tax_lookup_enabled=contact_tax_lookup_enabled,
         financna_sprava_api_key=financna_sprava_api_key,
         financna_sprava_timeout_seconds=financna_sprava_timeout_seconds,
-        infohelp_contextual_v2_rollout=_parse_infohelp_rollout(
+        infohelp_contextual_v2_rollout=_parse_infohelp_contextual_v2_rollout(
             os.getenv('INFOHELP_CONTEXTUAL_V2_ROLLOUT', 'disabled')
-        ),
-        infohelp_knowledge_rollout=_parse_infohelp_rollout(
-            os.getenv('INFOHELP_KNOWLEDGE_ROLLOUT', 'disabled')
         ),
         work_time_day_break_enabled=_parse_bool(os.getenv('WORK_TIME_DAY_BREAK_ENABLED', '')),
     )
@@ -300,7 +296,7 @@ def _parse_optional_path(raw_value: str) -> Path | None:
     return Path(text).resolve()
 
 
-def _parse_infohelp_rollout(raw_value: str) -> str:
+def _parse_infohelp_contextual_v2_rollout(raw_value: str) -> str:
     value = raw_value.strip().casefold()
     if value not in {'disabled', 'admin_pilot', 'enabled'}:
         return 'disabled'
