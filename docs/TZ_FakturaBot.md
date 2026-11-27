@@ -1910,7 +1910,9 @@ has one unambiguous label. If extraction leaves a mention unresolved, or the
 bot cannot determine whether the request named a service, it asks for the
 exact name and retains the calculation. Python computes the EUR total and
 lodging deductions. Total hours are sufficient for a PDF when the weekly
-breakdown is absent. A stated rate applies to the current invoice. After save,
+breakdown is absent. While waiting for the hourly rate, Python reads typed
+values such as `32`, `32 EUR`, and `32,50 €/hod` directly as a positive EUR
+rate. A stated rate applies to the current invoice. After save,
 the bot offers separate confirmation if the contact has no saved rate or if
 the rate differs. The offer applies only to future invoices for that contact.
 

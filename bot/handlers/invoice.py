@@ -3878,6 +3878,20 @@ async def _apply_calculation_clarification(
     fields = _CALCULATION_CLARIFICATION_FIELDS.get(slot)
     if not isinstance(calculation, dict) or fields is None:
         return False
+    if slot == 'calculation_rate':
+        rate_match = re.fullmatch(
+            r'([0-9]+(?:[.,][0-9]+)?)\s*(?:(?:EUR|€)(?:\s*/\s*(?:h|hod|год))?)?',
+            user_text.strip(),
+            re.IGNORECASE,
+        )
+        if rate_match:
+            try:
+                rate = decimal_value(rate_match[1], 'rate')
+            except CalculationInputError:
+                return False
+            calculation['hourly_rate'] = str(rate)
+            parsed_draft.setdefault('calculation_sources', {})['hourly_rate'] = user_text
+            return True
     if slot in {'calculation_issue', 'calculation_delivery', 'calculation_due'}:
         year = re.fullmatch(r'\s*(\d{4})\s*(?:rok(?:u)?|рік|року|год(?:а)?)?\s*[.]?\s*', user_text, re.I)
         if year:

@@ -14,7 +14,8 @@ import pytest
 from bot.handlers.decision_callbacks import decision_callback, invoice_preview_callback
 from bot.handlers.invoice import (
     InvoiceStates, invoice_edit_item_numeric_value, invoice_edit_scope, invoice_rate_consent,
-    process_invoice_postpdf_decision, process_invoice_slot_clarification, process_invoice_text,
+    invoice_slot_clarification, process_invoice_postpdf_decision, process_invoice_slot_clarification,
+    process_invoice_text,
 )
 from bot.invoice_preparation_migration import apply, audit
 from bot.services.db import CONTACT_SCHEMA, LEGACY_INVOICE_SCHEMA, init_db, managed_connection
@@ -201,6 +202,51 @@ def test_explicit_rate_is_used_now_and_reused_only_with_separate_consent(sandbox
     assert store.contact_rate(contact_id) == ('40' if answer == 'áno' else previous_rate)
     assert state.current_state is None and get_saved(config) == saved
     assert saved[0][3].read_bytes() == original_pdf
+
+
+@pytest.mark.parametrize(('reply', 'rate', 'total'), [
+    ('32', '32', '3840.00'),
+    ('32 EUR', '32', '3840.00'),
+    ('32 EUR/h', '32', '3840.00'),
+    ('32,50 €/hod', '32.50', '3900.00'),
+    ('0 EUR', None, None),
+])
+def test_typed_rate_continues_waiting_invoice_without_reparsing(sandbox, monkeypatch, reply, rate, total):
+    config, contact_id = sandbox
+    with managed_connection(config.db_path) as connection:
+        connection.execute('UPDATE contact SET default_hourly_rate_eur = NULL WHERE id = ?', (contact_id,))
+        connection.commit()
+    mock_phase2(monkeypatch, {'period_intent': 'previous_two_completed_weeks', 'hours_total': '120'})
+    chat, state = Chat(), _DummyState()
+    before = config.db_path.read_bytes()
+
+    asyncio.run(process_invoice_text(
+        message=chat, state=state, config=config,
+        invoice_text='Зроби фактуру на Tech Company за попередні два тижні, 120 годин',
+    ))
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'calculation_service'
+    chat.text = 'Opravy'
+    asyncio.run(invoice_slot_clarification(chat, state, config))
+    assert state.data['invoice_partial_draft']['unresolved_slot'] == 'calculation_rate'
+
+    async def unexpected_parse(*_args, **_kwargs):
+        pytest.fail('A literal rate should not be sent to the invoice parser')
+
+    monkeypatch.setattr('bot.handlers.invoice.parse_invoice_phase2_payload', unexpected_parse)
+    chat.text = reply
+    asyncio.run(invoice_slot_clarification(chat, state, config))
+    assert config.db_path.read_bytes() == before and not chat.documents
+    if rate is None:
+        assert state.current_state == InvoiceStates.waiting_slot_clarification
+        assert 'hourly_rate' not in state.data['invoice_partial_draft']['parsed_draft']['calculation']
+        return
+
+    assert state.current_state == InvoiceStates.waiting_confirm
+    draft = state.data['invoice_draft']
+    assert draft['calculation']['hourly_rate'] == rate
+    assert draft['calculation']['net'] == total
+    assert draft['calculation']['service_name'] == 'Opravy'
+    assert draft['rate_offer'] == {'expected': None, 'replacement': rate}
 
 
 @pytest.mark.parametrize('item_count', [0, 1, 2])

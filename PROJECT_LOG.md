@@ -1,3 +1,9 @@
+# 2026-11-27 - Invoice hourly-rate entry
+
+- The live invoice draft asked for the hourly rate again after typed `32` and `32 EUR`. The existing rate clarification relied on the full invoice extractor to infer the field from the reply.
+- The approved Stage 1 design assigns exact typed values and EUR validation to Python. The existing rate step now reads literal EUR amounts directly, including decimal commas and hourly units, and uses the existing `Decimal` validator. Natural-language clarification still uses the existing bounded extractor. The same draft produces a bound preview, and saving a future contact rate still requires separate consent after saving the invoice.
+- A conversation test follows the request for 120 hours through service and rate clarification. It checks the 3,840 EUR preview for `32` and `32 EUR`, decimal rates, a zero-rate retry, and unchanged SQLite and PDF storage before approval.
+
 # 2026-11-19 - PR #119 service fallback review
 
 - Preflight used the approved Design Proof v2 and the active bounded AI, invoice/FSM, Product Truth, InfoHelp, confirmed-learning, and acceptance contracts. On `a420dbd`, four tests reproduced a preview using the last invoice's unrelated service when Phase 2 left the canonical fields blank. The bug affected both singleton and `items[]` drafts, with or without a raw service mention.
