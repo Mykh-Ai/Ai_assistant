@@ -174,12 +174,20 @@ For user access, onboarding, and authorization, read:
 
 - `docs/User_Access_Model_Roadmap.md`
 
-For server-side operations, first check the private local runbook:
+For server-side operations, read the private
+[FakturaBot server runbook](docs/local-only/FakturaBot_Server_Agent_Context.md).
+In Work, use the current private `02-FakturaBot_Server_Agent_Context.md` if the
+local copy is unavailable. If an attached copy lacks the Hetzner console
+section, look up the current private document by that filename.
 
-- `docs/local-only/FakturaBot_Server_Agent_Context.md`
+For browser access to the VPS, follow
+[Hetzner Cloud Console access and operator handoff](docs/local-only/FakturaBot_Server_Agent_Context.md#hetzner-cloud-console-access-and-operator-handoff).
+Reuse the agent's authorized browser tab and hand it over to the owner when
+Hetzner or the Linux console asks for authentication. Once the shell is open,
+the agent handles the server work authorized by the task.
 
-Never use `docs/local-only/*.example.md` as the live server runbook. Example
-files are public-safe placeholders only.
+Keep account identifiers in the private runbook. Use the files in
+`docs/local-only/*.example.md` as public-safe placeholders only.
 
 ## Agent Preflight
 
